@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "author": "Gemini Calculator",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 100, "left": 0, "attrs": {} },
+    { "type": "wokwi-ili9341", "id": "tft", "top": 0, "left": 250, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:GND.1", "tft:GND", "black", [ "v0" ] ],
+    [ "esp:3V3", "tft:VCC", "red", [ "v0" ] ],
+    [ "esp:D18", "tft:SCK", "yellow", [ "v0" ] ],
+    [ "esp:D23", "tft:MOSI", "orange", [ "v0" ] ],
+    [ "esp:D5", "tft:CS", "blue", [ "v0" ] ],
+    [ "esp:D16", "tft:D/C", "green", [ "v0" ] ],
+    [ "esp:D17", "tft:RST", "white", [ "v0" ] ],
+    [ "esp:D4", "tft:LED", "red", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}

@@ -1,0 +1,8 @@
+# Reglas del Proyecto: Calculadora Graficadora ESP32
+
+- **Hardware**: ESP32 DevKit V1, TFT 3.2" (ILI9341), Matriz 6x8.
+- **Prioridad**: Código eficiente para microcontroladores (evitar uso excesivo de `std::string` si es posible, preferir `char*` o `String` de Arduino optimizado).
+- **Parser**: Debe soportar multiplicación implícita (ej. 2x, (a)(b)) y errores detallados.
+- **UI**: Orientación vertical. Estilo visual inspirado en Casio (Científica) y TI-84 (Gráficos).
+- **Documentación**: Cada módulo debe tener su explicación en archivos .md en la carpeta /docs.
+- **Calidad**: Antes de dar por finalizado un módulo matemático, genera tests unitarios básicos para verificar resultados.

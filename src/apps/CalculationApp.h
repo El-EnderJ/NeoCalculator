@@ -1,7 +1,3 @@
-/**
- * CalculationApp.h — Natural V.P.A.M. calculator.
- * Fractions, square/nth roots, history with orange selection.
- */
 #pragma once
 #include <Arduino.h>
 #include <vector>
@@ -13,6 +9,7 @@
 #include "math/Evaluator.h"
 #include "math/VariableContext.h"
 
+// Estructura para guardar cálculos pasados
 struct HistoryEntry {
     String expression;
     String result;
@@ -26,7 +23,7 @@ public:
 
     void begin();
     void handleKey(const KeyEvent &ev);
-    void render(); 
+    void render(); // El método maestro de dibujo
 
     void setAngleMode(AngleMode m) { _angleMode = m; }
     AngleMode angleMode() const    { return _angleMode; }
@@ -47,14 +44,18 @@ private:
 
     /* ── History ── */
     std::vector<HistoryEntry> _history;
-    bool _histBrowsing;
-    int  _histSelIdx;
-    static const int MAX_HIST = 30;
+    bool _histBrowsing; // Si estamos navegando por el historial para editar
+    int  _histSelIdx;   // Índice seleccionado
+    static const int MAX_HIST = 50;
 
-    /* ── Metrics struct ── */
+    /* ── Métricas y Layout ── */
     struct Metrics { int w, above, below; };
+    
+    // Constantes de diseño (se usan en el cpp)
+    static const int HEADER_HEIGHT = 24;
+    static const int INPUT_AREA_HEIGHT = 60; 
 
-    /* ── Node helpers ── */
+    /* ── Helpers del Motor Matemático (NO TOCAR LÓGICA) ── */
     void resetInput();
     void insertChar(char c);
     void insertBlock(const String &blk);
@@ -63,26 +64,28 @@ private:
     void insertPower();
     void deleteAtCursor();
 
-    /* ── Cursor ── */
+    /* ── Movimiento del Cursor ── */
     void cursorLeft();
     void cursorRight();
     void cursorUp();
     void cursorDown();
 
-    /* ── Tree search ── */
+    /* ── Búsqueda en Árbol ── */
     struct ParentInfo { ExprNode* node; CursorPart part; };
     ParentInfo findParent(ExprNode* head, ExprNode* target);
-    ExprNode*  lastTextInChain(ExprNode* head);
+    ExprNode* lastTextInChain(ExprNode* head);
 
-    /* ── Evaluate ── */
+    /* ── Evaluación ── */
     String flattenChain(ExprNode* head);
     void   evaluate();
 
-    /* ── Rendering ── */
-    void drawStatusBar();
-    void drawHistory();
-    void drawInputArea();
-    Metrics measureChain(ExprNode* head, uint8_t size = 2);
-    void    drawChain(ExprNode* head, int x, int axisY, bool showCur, uint8_t size = 2);
-    void    drawRadical(int x, int axisY, int cW, int cAbove, int cBelow, bool hasIdx);
+    /* ── Rutinas de Dibujo (Visualización Natural) ── */
+    void drawHeader();
+    void drawHistory();     // Dibuja la lista scrollable
+    void drawInputArea();   // Dibuja la línea de edición actual
+    
+    // Motor recursivo de dibujo
+    Metrics measureChain(ExprNode* head, uint8_t size);
+    void    drawChain(ExprNode* head, int x, int axisY, bool showCur, uint8_t size);
+    void    drawRadical(int x, int axisY, int cW, int cAbove, int cBelow);
 };

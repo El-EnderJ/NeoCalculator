@@ -3,3 +3,8 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+.pio/
+.vscode/
+node_modules/
+*.bin
+*.elf

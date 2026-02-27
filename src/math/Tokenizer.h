@@ -12,7 +12,11 @@
 
 #pragma once
 
-#include <Arduino.h>
+#ifdef ARDUINO
+  #include <Arduino.h>
+#else
+  #include "hal/ArduinoCompat.h"
+#endif
 #include <vector>
 
 enum class TokenType : uint8_t {

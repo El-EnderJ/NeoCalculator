@@ -5,7 +5,11 @@
 
 #pragma once
 
-#include <Arduino.h>
+#ifdef ARDUINO
+  #include <Arduino.h>
+#else
+  #include "hal/ArduinoCompat.h"
+#endif
 #include <vector>
 #include "display/DisplayDriver.h"
 #include "input/KeyMatrix.h"
@@ -18,8 +22,10 @@
 #include "ui/GraphView.h"
 #include "ui/Icons.h"
 #include "ui/MainMenu.h"
+#include "input/LvglKeypad.h"
 #include "apps/CalculationApp.h"
 #include "apps/GrapherApp.h"
+#include "apps/EquationsApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -34,12 +40,17 @@ enum class Mode : uint8_t {
     MENU,              // Icon grid
     APP_CALCULATION,   // Scientific calculator
     APP_GRAPHER,       // Graph viewer
-    APP_PYTHON,        // Python shell (placeholder)
+    APP_TABLE,         // Function table (placeholder)
     APP_STATISTICS,    // Statistics (placeholder)
+    APP_PROBABILITY,   // Probability distribution (placeholder)
     APP_EQUATIONS,     // Equation solver
+    APP_SEQUENCE,      // Sequence solver (placeholder)
+    APP_REGRESSION,    // Regression analysis (placeholder)
+    APP_PYTHON,        // Python shell (placeholder)
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
+
 
 class SystemApp {
 public:
@@ -51,6 +62,20 @@ public:
     /// Inject a KeyEvent from external source (e.g. SerialBridge)
     void injectKey(const KeyEvent &ev);
 
+    /**
+     * Lanza una app por su ID (0-9).
+     * Llamado desde el callback del launcher LVGL.
+     * Pausa el rendering de LVGL y activa la app heredada.
+     */
+    void launchApp(int id);
+
+    /**
+     * Apaga el sistema: fade-out LVGL → backlight off → deep sleep.
+     * Se activa con SHIFT + AC desde cualquier modo.
+     * Despierta con ext0 en PIN_KEY_R1 (tecla ON).
+     */
+    void powerOff();
+
 private:
     DisplayDriver &_display;
     KeyMatrix &_keypad;
@@ -61,6 +86,7 @@ private:
     // ── Apps ──
     CalculationApp* _calcApp;
     GrapherApp*     _grapherApp;
+    EquationsApp*   _equationsApp;
 
     // Math Engine
     Tokenizer _tokenizer;
@@ -103,6 +129,12 @@ private:
 
     // ── App transitions ──
     void switchApp(int id);
+
+    /**
+     * Vuelve al modo MENU, reanuda LVGL y recarga el launcher screen.
+     * Todos los retornos al menú desde apps deben usar este helper.
+     */
+    void returnToMenu();
 
     // ── Rendering ──
     void render();

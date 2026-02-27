@@ -1,26 +1,106 @@
 /**
  * DisplayDriver.cpp
- * Updated for Anti-Flickering using TFT_eSprite.
+ * Driver TFT con bridge para LVGL 9.x.
+ *
+ * Flujo LVGL:
+ *   1. main.cpp llama display.begin() → inicia el panel SPI.
+ *   2. main.cpp asigna buffers en PSRAM y llama display.initLvgl().
+ *   3. LVGL renderiza regiones "sucias" en el buffer y llama lvglFlushCb().
+ *   4. lvglFlushCb() transfiere los píxeles al GRAM via TFT_eSPI::pushColors().
+ *
+ * Las apps heredadas (CalculationApp, GrapherApp) siguen escribiendo
+ * directamente a _display.tft() cuando LVGL está en pausa (ver main.cpp).
  */
 
 #include "DisplayDriver.h"
 #include "../ui/Theme.h"
 
-DisplayDriver::DisplayDriver() : _tft(), _sprite(&_tft), _useSprite(false) {
+DisplayDriver::DisplayDriver() : _tft(), _sprite(&_tft), _useSprite(false), _lvDisp(nullptr) {
 }
 
 void DisplayDriver::begin() {
-    delay(100); 
-    _tft.init();
-    _tft.setRotation(1); 
-    _tft.fillScreen(TFT_BLACK);
+    Serial.println("[TFT] Iniciando...");
 
-    // Initialize Sprite strategy:
-    // User requested "Banded Sprites" to save RAM.
-    // We will NOT allocate a full screen sprite here.
-    // Individual components will create short-lived sprites.
+    // BL está conectado físicamente a 3.3V → NO tocar GPIO 45.
+    // Si lo configuramos como OUTPUT LOW crearíamos un cortocircuito.
+    // Dejamos el pin como INPUT (alta impedancia) para no interferir.
+    pinMode(TFT_BL, INPUT);
+
+    // Reset físico del panel ILI9341
+    pinMode(TFT_RST, OUTPUT);
+    digitalWrite(TFT_RST, HIGH); delay(50);
+    digitalWrite(TFT_RST, LOW);  delay(100);
+    digitalWrite(TFT_RST, HIGH); delay(200);
+
+    // TFT_eSPI maneja SPI internamente (USE_FSPI_PORT → SPI_PORT=2)
+    _tft.init();
+    _tft.setRotation(SCREEN_ROTATION);
+    _tft.invertDisplay(true);   // Panel IPS: invertir colores
+
+    // Limpiar GRAM con negro puro (0x0000) → elimina ruido IPS residual
+    _tft.fillScreen(0x0000);
+
     _useSprite = false;
-    _tft.fillScreen(COLOR_BACKGROUND);
+    Serial.println("[TFT] OK");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LVGL Bridge
+// ═══════════════════════════════════════════════════════════════════════════
+
+void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
+    // Crea el display LVGL con las dimensiones lógicas post-rotación.
+    _lvDisp = lv_display_create(SCREEN_WIDTH, SCREEN_HEIGHT);
+    if (!_lvDisp) {
+        Serial.println("[LVGL] ERROR: lv_display_create() retornó NULL!");
+        return;
+    }
+    Serial.printf("[LVGL] Display creado: %ux%u (ptr=%p)\n",
+                  SCREEN_WIDTH, SCREEN_HEIGHT, _lvDisp);
+
+    lv_display_set_user_data(_lvDisp, this);
+    lv_display_set_flush_cb(_lvDisp, lvglFlushCb);
+    Serial.println("[LVGL] Flush callback registrado");
+
+    // Asigna los buffers de render (ya alojados en PSRAM desde main.cpp).
+    // LV_DISPLAY_RENDER_MODE_PARTIAL: solo las "dirty regions" se renderizan.
+    lv_display_set_buffers(_lvDisp,
+                           buf1, buf2,
+                           bufBytes,
+                           LV_DISPLAY_RENDER_MODE_PARTIAL);
+    Serial.printf("[LVGL] Buffers asignados: %u bytes cada uno\n", (unsigned)bufBytes);
+}
+
+/**
+ * lvglFlushCb — Envía una región de píxeles RGB565 al GRAM del panel TFT.
+ *
+ * Invocado por el sistema de rendering de LVGL al final de cada ciclo de
+ * dibujado. Los píxeles están en formato RGB565 (16 bpp) en pxMap.
+ * Usamos startWrite/pushColors/endWrite para la transferencia SPI en bloque.
+ */
+void DisplayDriver::lvglFlushCb(lv_display_t* disp,
+                                const lv_area_t* area,
+                                uint8_t* pxMap) {
+    DisplayDriver* self = static_cast<DisplayDriver*>(lv_display_get_user_data(disp));
+    if (!self) {
+        lv_display_flush_ready(disp);
+        return;
+    }
+
+    const uint32_t w = lv_area_get_width(area);
+    const uint32_t h = lv_area_get_height(area);
+
+    self->_tft.startWrite();
+    self->_tft.setAddrWindow(area->x1, area->y1, w, h);
+    // pushColors espera uint16_t*; swap=true convierte de little-endian (ESP32)
+    // a big-endian (ILI9341 SPI wire format).
+    self->_tft.pushColors(reinterpret_cast<uint16_t*>(pxMap),
+                          static_cast<uint32_t>(w * h),
+                          true);
+    self->_tft.endWrite();
+
+    // Notifica a LVGL que el flush terminó y el buffer puede reutilizarse.
+    lv_display_flush_ready(disp);
 }
 
 void DisplayDriver::pushFrame() {

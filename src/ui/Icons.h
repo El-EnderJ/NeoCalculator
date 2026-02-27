@@ -1,5 +1,12 @@
 #pragma once
-#include <Arduino.h>
+#ifdef ARDUINO
+  #include <Arduino.h>
+#else
+  #include <cstdint>
+  #ifndef PROGMEM
+    #define PROGMEM
+  #endif
+#endif
 
 // 'Calculation', 64x64px
 static const uint16_t icon_Calculation [] PROGMEM = {

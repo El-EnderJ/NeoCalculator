@@ -1,91 +1,122 @@
-#pragma once
-#include <Arduino.h>
-#include <vector>
-#include "display/DisplayDriver.h"
-#include "input/KeyMatrix.h"
-#include "math/ExprNode.h"
-#include "math/Tokenizer.h"
-#include "math/Parser.h"
-#include "math/Evaluator.h"
-#include "math/VariableContext.h"
+/**
+ * CalculationApp.h — Calculadora V.P.A.M. con LVGL 9.5
+ *
+ * Integración de las Fases 1-4 del Motor Matemático:
+ *   · MathAST           — Árbol de sintaxis abstracta (la expresión)
+ *   · CursorController  — Cursor estructural + inserción VPAM
+ *   · MathCanvas        — Renderizado LVGL pixel-perfect
+ *   · MathEvaluator     — Evaluador simbólico + decimal (S⇔D)
+ *
+ * La app crea una pantalla LVGL propia con:
+ *   · Header naranja con título "Calculation"
+ *   · Zona superior con MathCanvas (la expresión en formato 2D)
+ *   · Línea separadora entre expresión y resultado
+ *   · Zona inferior con MathCanvas para el resultado
+ *
+ * Flujo:
+ *   1. begin() → crea pantalla LVGL + 2 MathCanvas + AST raíz
+ *   2. handleKey() → traduce KeyCode a acciones del CursorController
+ *   3. El CursorController modifica el AST
+ *   4. ENTER → evalúa el AST y muestra resultado (modo S por defecto)
+ *   5. FREE_EQ (S⇔D) → alterna entre resultado exacto y decimal
+ *   6. Cualquier input nuevo con resultado visible → limpia resultado
+ */
 
-// Estructura para guardar cálculos pasados
-struct HistoryEntry {
-    String expression;
-    String result;
-    bool   isError;
-};
+#pragma once
+
+#include <lvgl.h>
+#include <vector>
+#include "../math/MathAST.h"
+#include "../math/CursorController.h"
+#include "../math/MathEvaluator.h"
+#include "../math/VariableManager.h"
+#include "../ui/MathRenderer.h"
+#include "../ui/StatusBar.h"
+#include "../input/KeyCodes.h"
+#include "../input/KeyboardManager.h"
 
 class CalculationApp {
 public:
-    CalculationApp(DisplayDriver &disp, VariableContext &vars);
+    CalculationApp();
     ~CalculationApp();
 
+    /**
+     * Crea la pantalla LVGL y los widgets.
+     * Debe llamarse DESPUÉS de lv_init() y del registro del display.
+     */
     void begin();
-    void handleKey(const KeyEvent &ev);
-    void render(); // El método maestro de dibujo
 
-    void setAngleMode(AngleMode m) { _angleMode = m; }
-    AngleMode angleMode() const    { return _angleMode; }
+    /**
+     * Destruye la pantalla LVGL y libera recursos.
+     * Llamar al volver al menú.
+     */
+    void end();
+
+    /**
+     * Procesa un evento de teclado.
+     * Traduce KeyCodes a operaciones del CursorController.
+     */
+    void handleKey(const KeyEvent& ev);
+
+    /**
+     * Carga la pantalla LVGL de la calculadora (la hace visible).
+     */
+    void load();
+
+    /**
+     * Indica si la pantalla LVGL está creada y activa.
+     */
+    bool isActive() const { return _screen != nullptr; }
 
 private:
-    DisplayDriver  &_display;
-    Tokenizer       _tokenizer;
-    Parser          _parser;
-    Evaluator       _evaluator;
-    VariableContext &_vars;
-    AngleMode       _angleMode;
+    // ── LVGL UI ──────────────────────────────────────────────────────────
+    lv_obj_t*          _screen;        ///< Pantalla LVGL propia
+    ui::StatusBar      _statusBar;     ///< Barra de estado global (24 px)
+    lv_obj_t*          _resultSep;     ///< Línea separadora expr↔resultado
+    vpam::MathCanvas   _mathCanvas;    ///< Canvas de la expresión (arriba)
+    vpam::MathCanvas   _resultCanvas;  ///< Canvas del resultado (abajo)
 
-    /* ── Input tree ── */
-    ExprNode* _root;
-    CursorPos _cursor;
-    bool      _shiftActive;
-    bool      _redraw;
+    // ── Motor VPAM ───────────────────────────────────────────────────────
+    vpam::NodePtr              _rootNode;    ///< Nodo raíz del AST (owned)
+    vpam::NodeRow*             _rootRow;     ///< Puntero directo al NodeRow raíz
+    vpam::CursorController     _cursor;      ///< Controlador de cursor
+    vpam::MathEvaluator        _evaluator;   ///< Evaluador simbólico
 
-    /* ── History ── */
-    std::vector<HistoryEntry> _history;
-    bool _histBrowsing; // Si estamos navegando por el historial para editar
-    int  _histSelIdx;   // Índice seleccionado
-    static const int MAX_HIST = 50;
+    // ── Estado del resultado ─────────────────────────────────────────────
+    bool                   _hasResult;       ///< Hay un resultado visible
+    bool                   _showDecimal;     ///< Legacy (conservado)
+    vpam::ResultMode       _resultMode;      ///< 3-state: Symbolic/Periodic/Extended
+    vpam::ExactVal         _lastResult;      ///< Último resultado evaluado
+    vpam::NodePtr          _resultNode;      ///< AST del resultado (owned)
+    vpam::NodeRow*         _resultRow;       ///< Puntero directo al NodeRow del resultado
 
-    /* ── Métricas y Layout ── */
-    struct Metrics { int w, above, below; };
-    
-    // Constantes de diseño (se usan en el cpp)
-    static const int HEADER_HEIGHT = 24;
-    static const int INPUT_AREA_HEIGHT = 60; 
+    // ── Historial ────────────────────────────────────────────────────────
+    struct HistoryEntry {
+        vpam::NodePtr  exprAST;     ///< Copia profunda del AST de la expresión
+        vpam::ExactVal result;      ///< Resultado evaluado
+    };
+    std::vector<HistoryEntry> _history;      ///< Entradas de historial
+    int  _historyIndex;                      ///< -1 = nueva expresión, 0..N-1 = historial
+    static constexpr int MAX_HISTORY = 50;   ///< Máximo de entradas guardadas
 
-    /* ── Helpers del Motor Matemático (NO TOCAR LÓGICA) ── */
-    void resetInput();
-    void insertChar(char c);
-    void insertBlock(const String &blk);
-    void insertFraction();
-    void insertRoot(bool withIndex);
-    void insertPower();
-    void deleteAtCursor();
+    // ── Estado ───────────────────────────────────────────────────────────
+    // (KeyboardManager singleton gestiona SHIFT/ALPHA/LOCK/STO)
 
-    /* ── Movimiento del Cursor ── */
-    void cursorLeft();
-    void cursorRight();
-    void cursorUp();
-    void cursorDown();
+    // ── Helpers ──────────────────────────────────────────────────────────
+    void createUI();
+    void refreshExpression();
+    void resetExpression();
+    void evaluateExpression();
+    void showResult();
+    void clearResult();
+    void toggleSD();
+    void navigateHistory(int direction);  ///< -1 = arriba (atrás), +1 = abajo (reciente)
+    void loadHistoryEntry(int index);     ///< Carga una entrada del historial en el canvas
 
-    /* ── Búsqueda en Árbol ── */
-    struct ParentInfo { ExprNode* node; CursorPart part; };
-    ParentInfo findParent(ExprNode* head, ExprNode* target);
-    ExprNode* lastTextInChain(ExprNode* head);
+    /// Mapea una tecla numérica al char de variable Alpha correspondiente
+    /// (en modo ALPHA: NUM_1→A, NUM_2→B, ..., NUM_6→F, VAR_X→x, VAR_Y→y)
+    static char alphaKeyToVarName(KeyCode code);
 
-    /* ── Evaluación ── */
-    String flattenChain(ExprNode* head);
-    void   evaluate();
-
-    /* ── Rutinas de Dibujo (Visualización Natural) ── */
-    void drawHeader();
-    void drawHistory();     // Dibuja la lista scrollable
-    void drawInputArea();   // Dibuja la línea de edición actual
-    
-    // Motor recursivo de dibujo
-    Metrics measureChain(ExprNode* head, uint8_t size);
-    void    drawChain(ExprNode* head, int x, int axisY, bool showCur, uint8_t size);
-    void    drawRadical(int x, int axisY, int cW, int cAbove, int cBelow);
+    /// Ejecuta la acción STO: guarda Ans en la variable indicada
+    void executeStore(char varName);
 };

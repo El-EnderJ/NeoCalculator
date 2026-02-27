@@ -7,6 +7,15 @@
 
 #include <stdint.h>
 
+// ── Acciones de tecla (movido aquí desde KeyMatrix.h para portabilidad) ──
+enum class KeyAction {
+    NONE = 0,
+    PRESS,
+    RELEASE,
+    REPEAT
+};
+
+// ── Códigos lógicos de tecla ─────────────────────────────────────────────
 enum class KeyCode : uint8_t {
     NONE = 0,
 
@@ -53,5 +62,40 @@ enum class KeyCode : uint8_t {
     ADD, NEG, NUM_0, DOT, ENTER,
     
     // Virtual Keys or extras
-    RIGHT_F5
+    RIGHT_F5,
+    
+    // Virtual keys for functions/constants (via SHIFT combos or serial)
+    LN,          // ln (logaritmo natural)
+    LOG,         // log (logaritmo base 10)
+    LOG_BASE,    // log_n(x) (logaritmo de base custom)
+    CONST_PI,    // π
+    CONST_E,     // e (Euler)
+
+    // ── Variables y Ans ──
+    ANS,         // Ans (último resultado)
+    PREANS,      // PreAns (penúltimo resultado)
+    STO,         // Store (modo almacenamiento)
+
+    // ── Variables Alpha (A-F, x, y, z) ──
+    // Se activan vía ALPHA + tecla numérica o vía serial
+    ALPHA_A,
+    ALPHA_B,
+    ALPHA_C,
+    ALPHA_D,
+    ALPHA_E,
+    ALPHA_F,
+
+    // ── Negación (cambio de signo) ──
+    NEGATE,      // (−) toggle signo
+
+    // ── Funciones avanzadas ──
+    FACT,        // Factorización en primos (SHIFT + botón asignado)
+};
+
+// ── Estructura completa de KeyEvent (usa KeyCode definido arriba) ────────
+struct KeyEvent {
+    KeyCode   code   = KeyCode::NONE;
+    KeyAction action = KeyAction::NONE;
+    int       row    = -1;
+    int       col    = -1;
 };

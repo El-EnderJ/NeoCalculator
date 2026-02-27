@@ -25,7 +25,11 @@
 
 #pragma once
 
-#include <Arduino.h>
+#ifdef ARDUINO
+  #include <Arduino.h>
+#else
+  #include "hal/ArduinoCompat.h"
+#endif
 #include "input/KeyMatrix.h"   // For KeyEvent, KeyAction, KeyCode
 
 class SerialBridge {

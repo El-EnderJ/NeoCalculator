@@ -8,22 +8,7 @@
 
 #include <Arduino.h>
 #include "../Config.h"
-#include "KeyCodes.h"
-
-// Basic event structure
-enum class KeyAction {
-    NONE = 0,
-    PRESS,
-    RELEASE,
-    REPEAT
-};
-
-struct KeyEvent {
-    KeyCode code;
-    KeyAction action;
-    int row;
-    int col;
-};
+#include "KeyCodes.h"   // KeyCode, KeyAction, KeyEvent
 
 class KeyMatrix {
 public:

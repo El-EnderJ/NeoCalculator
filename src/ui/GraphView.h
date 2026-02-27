@@ -5,7 +5,11 @@
 
 #pragma once
 
-#include <Arduino.h>
+#ifdef ARDUINO
+  #include <Arduino.h>
+#else
+  #include "hal/ArduinoCompat.h"
+#endif
 #include "../display/DisplayDriver.h"
 #include "../math/Tokenizer.h"
 #include "../math/Parser.h"

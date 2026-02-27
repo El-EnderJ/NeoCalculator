@@ -5,8 +5,12 @@
 
 #pragma once
 
-#include <Arduino.h>
-#include <Preferences.h>
+#ifdef ARDUINO
+  #include <Arduino.h>
+  #include <Preferences.h>
+#else
+  #include "hal/ArduinoCompat.h"
+#endif
 
 class VariableContext {
 public:
@@ -15,14 +19,21 @@ public:
     // En Wokwi, NVS funciona correctamente, pero a veces requiere un pequeño delay inicial
     // para estabilizar la partición virtual.
     void begin() {
+        #ifdef ARDUINO
         #ifdef WOKWI_SIMULATOR
             delay(100);
         #endif
         _prefs.begin(NVS_NAMESPACE, false);
         loadFromNVS();
+        #endif
     }
+    #ifdef ARDUINO
     void loadFromNVS();
     void saveToNVS();
+    #else
+    void loadFromNVS() {}
+    void saveToNVS() {}
+    #endif
 
     bool setVariable(char name, double value);
     void setVar(char name, double value) { setVariable(name, value); }
@@ -43,7 +54,9 @@ private:
     static constexpr const char *NVS_NAMESPACE = "calcVars";
     static constexpr const char *NVS_KEY = "vars";
 
+    #ifdef ARDUINO
     mutable Preferences _prefs;
+    #endif
     PackedVars _data;
 
     int indexFromName(char name) const;

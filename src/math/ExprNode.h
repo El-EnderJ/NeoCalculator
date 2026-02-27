@@ -3,7 +3,11 @@
  * Supports TEXT, FRACTION, ROOT and POWER nodes.
  */
 #pragma once
-#include <Arduino.h>
+#ifdef ARDUINO
+  #include <Arduino.h>
+#else
+  #include "hal/ArduinoCompat.h"
+#endif
 
 enum class NodeType : uint8_t { TEXT, FRACTION, ROOT, POWER };
 

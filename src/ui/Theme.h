@@ -5,7 +5,11 @@
 
 #pragma once
 
-#include <Arduino.h>
+#ifdef ARDUINO
+  #include <Arduino.h>
+#else
+  #include <cstdint>
+#endif
 
 // Colors (RGB565)
 // White/Cream background

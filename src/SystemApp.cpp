@@ -9,6 +9,18 @@
 #include "SystemApp.h"
 #include "ui/Theme.h"
 #include "ui/Icons.h"
+#include "Config.h"
+#include "math/VariableManager.h"
+#include "input/KeyboardManager.h"
+
+#ifdef ARDUINO
+#include <esp_sleep.h>
+#include <LittleFS.h>
+#endif
+
+// Definido en main.cpp. true = LVGL activo (modo MENU).
+// false = app heredada corriendo directamente en TFT.
+extern bool g_lvglActive;
 
 // ═════════════════════════════════════════════════
 // Constructor
@@ -19,6 +31,7 @@ SystemApp::SystemApp(DisplayDriver &display, KeyMatrix &keypad)
       _mainMenu(display),
       _calcApp(nullptr),
       _grapherApp(nullptr),
+      _equationsApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -47,35 +60,49 @@ void SystemApp::begin() {
     _equationSolver.setAngleMode(_angleMode);
     _graphView.setAngleMode(_angleMode);
 
-    // ── Boot Splash ──
-    _display.tft().fillScreen(COLOR_BACKGROUND);
-    _display.tft().setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-    _display.tft().setTextSize(3);
-    String title = "NumOS";
-    int w = _display.tft().textWidth(title);
-    _display.tft().drawString(title, (320 - w) / 2, 90);
+    // ── LittleFS: cargar variables persistidas ──
+    if (LittleFS.begin(true)) {   // true = formatOnFail
+        if (vpam::VariableManager::instance().loadFromFlash()) {
+            Serial.println("[SYSTEM] LittleFS OK, variables loaded");
+        } else {
+            Serial.println("[SYSTEM] LittleFS OK, vars.dat no existe (primer boot)");
+        }
+    } else {
+        Serial.println("[SYSTEM] LittleFS FAIL (continuando sin persistencia)");
+    }
 
-    _display.tft().setTextSize(1);
-    _display.tft().setTextColor(COLOR_TEXT_LIGHT, COLOR_BACKGROUND);
-    String ver = "v1.0.0 Alpha";
-    int wv = _display.tft().textWidth(ver);
-    _display.tft().drawString(ver, (320 - wv) / 2, 130);
-    delay(800);
-
-    // ── Create CalculationApp ──
-    _calcApp = new CalculationApp(_display, _vars);
-    _calcApp->setAngleMode(_angleMode);
+    // ── Create CalculationApp (LVGL-native VPAM) ──
+    _calcApp = new CalculationApp();
     _calcApp->begin();
 
     // ── Create GrapherApp ──
     _grapherApp = new GrapherApp(_display, _vars);
     _grapherApp->begin();
 
+    // ── Create EquationsApp (LVGL-native CAS-Lite) ──
+    _equationsApp = new EquationsApp();
+    _equationsApp->begin();
+
     // ── Load apps & go to menu ──
     initApps();
     _mode = Mode::MENU;
     _selectedAppIndex = 0;
-    _redraw = true;
+    _redraw = false;
+
+    // ── LVGL Launcher ──
+    // Registra el callback que LVGL llamará cuando el usuario pulse ENTER
+    // sobre una card del grid (evento LV_EVENT_CLICKED).
+    _mainMenu.setLaunchCallback([this](int id) { launchApp(id); });
+
+    // Construye los widgets LVGL del launcher (llamar una sola vez).
+    _mainMenu.create();
+
+    // Conecta el indev del teclado físico al grupo de foco del launcher.
+    lv_indev_set_group(LvglKeypad::indev(), _mainMenu.group());
+
+    // Activa la pantalla del launcher (la hace visible).
+    _mainMenu.load();
+    g_lvglActive = true;
 }
 
 // ═════════════════════════════════════════════════
@@ -85,11 +112,16 @@ void SystemApp::initApps() {
     _apps.clear();
     _apps.emplace_back(0, "Calculation",  icon_Calculation);
     _apps.emplace_back(1, "Grapher",      icon_Grapher);
-    _apps.emplace_back(2, "Python",       icon_Python);
+    _apps.emplace_back(2, "Table",        icon_Finance);  // Placeholder icon
     _apps.emplace_back(3, "Statistics",   icon_Statistics);
-    _apps.emplace_back(4, "Equations",    icon_Equations);
-    _apps.emplace_back(5, "Settings",     icon_Settings);
+    _apps.emplace_back(4, "Probability",  icon_Distributions);
+    _apps.emplace_back(5, "Solver",       icon_Equations);
+    _apps.emplace_back(6, "Sequence",     icon_Sequences);
+    _apps.emplace_back(7, "Regression",   icon_Regression);
+    _apps.emplace_back(8, "Python",       icon_Python);
+    _apps.emplace_back(9, "Settings",     icon_Settings);
 }
+
 
 // ═════════════════════════════════════════════════
 // update() — Main loop tick (called every frame)
@@ -102,11 +134,15 @@ void SystemApp::update() {
         handleKey(ev);
     }
 
-    // CalculationApp manages its own _redraw internally
-    if (_mode == Mode::APP_CALCULATION && _calcApp) {
-        _calcApp->render();
+    // CalculationApp es ahora LVGL-native: LVGL maneja su renderizado
+    // via lv_timer_handler() en main.cpp. No se llama render().
+    if (_mode == Mode::APP_CALCULATION) {
+        // LVGL se encarga del renderizado del MathCanvas
     } else if (_mode == Mode::APP_GRAPHER && _grapherApp) {
-        _grapherApp->render(); // GrapherApp handles its own redraw check
+        _grapherApp->render();
+    } else if (_mode == Mode::MENU) {
+        // LVGL maneja el renderizado del menú via lv_timer_handler() en main.cpp
+        _redraw = false;
     } else if (_redraw) {
         render();
         _redraw = false;
@@ -125,19 +161,24 @@ void SystemApp::injectKey(const KeyEvent &ev) {
 // ═════════════════════════════════════════════════
 void SystemApp::render() {
     switch (_mode) {
-        case Mode::MENU:            renderMenu();       break;
+        case Mode::MENU:            /* LVGL maneja el menú — no-op */   break;
         case Mode::APP_CALCULATION: break;  // Handled in update() via _calcApp
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
         // All placeholder apps
-        case Mode::APP_PYTHON:
+        case Mode::APP_TABLE:
         case Mode::APP_STATISTICS:
+        case Mode::APP_PROBABILITY:
         case Mode::APP_EQUATIONS:
+        case Mode::APP_SEQUENCE:
+        case Mode::APP_REGRESSION:
+        case Mode::APP_PYTHON:
         case Mode::APP_SETTINGS:
             renderAppView();
             break;
     }
 }
+
 
 // ═════════════════════════════════════════════════
 // drawStatusBar() — Shared yellow top bar
@@ -197,7 +238,9 @@ void SystemApp::renderMenu() {
 
     int totalW = cols * iconW + (cols - 1) * gapX;
     int startX = (320 - totalW) / 2;
-    int startY = 34;
+    // baseY is 34 minus scroll offset
+    int baseY  = 34 - _menuScrollOffset;
+
 
     // 5. Swap bytes for 16-bit bitmaps
     tft.setSwapBytes(true);
@@ -208,7 +251,11 @@ void SystemApp::renderMenu() {
         int row = i / cols;
 
         int x = startX + col * (iconW + gapX);
-        int y = startY + row * cellH;
+        int y = baseY  + row * cellH;
+
+        // Clipping: only draw if icon/label is visible (status bar is at Y=0-23)
+        if (y + iconH + labelH < 24 || y > 240) continue;
+
 
         // ── Selection cursor (orange, 2-line thick rounded rect) ──
         if (i == _selectedAppIndex) {
@@ -232,8 +279,12 @@ void SystemApp::renderMenu() {
         tft.drawString(name, x + (iconW - tw) / 2, y + iconH + 4);
     }
 
+    // Ensure status bar stays on top of any partially visible icons
+    drawStatusBar();
+
     tft.setSwapBytes(false);
 }
+
 
 // ═════════════════════════════════════════════════
 // handleKey() — Global input dispatcher
@@ -242,6 +293,29 @@ void SystemApp::handleKey(const KeyEvent &ev) {
     // Only act on PRESS and REPEAT (no duplicate processing)
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
+    auto& km = vpam::KeyboardManager::instance();
+
+    // ── SHIFT + AC → Apagado del sistema (desde cualquier modo) ──
+    // Verificar ANTES de pasar el SHIFT al KeyboardManager
+    if (km.isShift() && ev.code == KeyCode::AC) {
+        km.reset();
+        _shiftActive = false;
+        powerOff();
+        return;   // No se ejecutará: el sistema entra en deep sleep
+    }
+
+    // ── SHIFT/ALPHA gestión global (CalculationApp tiene su propia) ──
+    if (ev.code == KeyCode::SHIFT && _mode != Mode::APP_CALCULATION) {
+        _shiftActive = !_shiftActive;
+        km.pressShift();
+        return;
+    }
+    if (ev.code == KeyCode::ALPHA && _mode != Mode::APP_CALCULATION) {
+        _alphaActive = !_alphaActive;
+        km.pressAlpha();
+        return;
+    }
+
     switch (_mode) {
         case Mode::MENU:
             handleKeyMenu(ev);
@@ -249,8 +323,7 @@ void SystemApp::handleKey(const KeyEvent &ev) {
         case Mode::APP_CALCULATION:
             // MODE key returns to menu, everything else goes to CalculationApp
             if (ev.code == KeyCode::MODE) {
-                _mode = Mode::MENU;
-                _redraw = true;
+                returnToMenu();
             } else if (_calcApp) {
                 _calcApp->handleKey(ev);
             }
@@ -261,10 +334,16 @@ void SystemApp::handleKey(const KeyEvent &ev) {
         case Mode::STEP_VIEW:
             handleKeySteps(ev);
             break;
+        case Mode::APP_EQUATIONS:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_equationsApp) {
+                _equationsApp->handleKey(ev);
+            }
+            break;
         // All placeholder apps share generic handler
         case Mode::APP_PYTHON:
         case Mode::APP_STATISTICS:
-        case Mode::APP_EQUATIONS:
         case Mode::APP_SETTINGS:
             handleKeyApp(ev);
             break;
@@ -272,61 +351,76 @@ void SystemApp::handleKey(const KeyEvent &ev) {
 }
 
 // ═════════════════════════════════════════════════
-// handleKeyMenu() — Grid navigation
+// handleKeyMenu() — Reenvía las teclas en modo MENU al indev de LVGL.
+// LVGL + gridnav manejan la navegación 2D del grid internamente.
+// Al pulsar ENTER, la card enfocada emite LV_EVENT_CLICKED → launchApp().
 // ═════════════════════════════════════════════════
 void SystemApp::handleKeyMenu(const KeyEvent &ev) {
-    const int cols = 3;
-    int maxIdx = (int)_apps.size() - 1;
+    // Una pulsación = pushed + released para que LVGL lo trate como un click
+    LvglKeypad::pushKey(ev.code, true);
+    LvglKeypad::pushKey(ev.code, false);
+}
 
-    switch (ev.code) {
-        case KeyCode::RIGHT:
-            _selectedAppIndex = (_selectedAppIndex < maxIdx) ? _selectedAppIndex + 1 : 0;
-            _redraw = true;
-            break;
 
-        case KeyCode::LEFT:
-            _selectedAppIndex = (_selectedAppIndex > 0) ? _selectedAppIndex - 1 : maxIdx;
-            _redraw = true;
-            break;
-
-        case KeyCode::DOWN:
-            if (_selectedAppIndex + cols <= maxIdx) {
-                _selectedAppIndex += cols;
-                _redraw = true;
-            }
-            break;
-
-        case KeyCode::UP:
-            if (_selectedAppIndex - cols >= 0) {
-                _selectedAppIndex -= cols;
-                _redraw = true;
-            }
-            break;
-
-        case KeyCode::ENTER:    // OK / EXE
-            switchApp(_apps[_selectedAppIndex].id);
-            break;
-
-        default:
-            break;
+// ═════════════════════════════════════════════════
+// launchApp() — Lanza una app por ID desde el launcher LVGL
+// ═════════════════════════════════════════════════
+void SystemApp::launchApp(int id) {
+    if (id == 0) {
+        // CalculationApp es LVGL-native: LVGL sigue activo
+        g_lvglActive = true;
+        switchApp(id);
+        if (_calcApp) _calcApp->load();
+    } else if (id == 5) {
+        // EquationsApp es LVGL-native: LVGL sigue activo
+        g_lvglActive = true;
+        switchApp(id);
+        if (_equationsApp) _equationsApp->load();
+    } else {
+        g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
+        switchApp(id);           // Actualiza _mode y fuerza _redraw
     }
 }
 
 // ═════════════════════════════════════════════════
-// switchApp() — Transition from menu to app
+// returnToMenu() — Reanuda LVGL y recarga el launcher
 // ═════════════════════════════════════════════════
+void SystemApp::returnToMenu() {
+    // Si venimos de la CalculationApp (LVGL-native), detener su cursor
+    if (_mode == Mode::APP_CALCULATION && _calcApp) {
+        _calcApp->end();
+        _calcApp->begin();   // Recrear para la próxima vez
+    }
+    // Si venimos de la EquationsApp (LVGL-native)
+    if (_mode == Mode::APP_EQUATIONS && _equationsApp) {
+        _equationsApp->end();
+        _equationsApp->begin();
+    }
+
+    _mode    = Mode::MENU;
+    _redraw  = false;
+    g_lvglActive = true;
+    _mainMenu.load();                     // Activa el screen del launcher
+    lv_obj_invalidate(lv_scr_act());      // Fuerza redibujado completo
+}
+
 void SystemApp::switchApp(int id) {
     switch (id) {
         case 0: _mode = Mode::APP_CALCULATION; break;
         case 1: _mode = Mode::APP_GRAPHER;     break;
-        case 2: _mode = Mode::APP_PYTHON;      break;
-        case 3: _mode = Mode::APP_STATISTICS;   break;
-        case 4: _mode = Mode::APP_EQUATIONS;    break;
-        case 5: _mode = Mode::APP_SETTINGS;     break;
-        default: _mode = Mode::MENU;            break;
+        case 2: _mode = Mode::APP_TABLE;       break;
+        case 3: _mode = Mode::APP_STATISTICS;  break;
+        case 4: _mode = Mode::APP_PROBABILITY; break;
+        case 5: _mode = Mode::APP_EQUATIONS;   break;
+        case 6: _mode = Mode::APP_SEQUENCE;    break;
+        case 7: _mode = Mode::APP_REGRESSION;  break;
+        case 8: _mode = Mode::APP_PYTHON;      break;
+        case 9: _mode = Mode::APP_SETTINGS;    break;
+        default: _mode = Mode::MENU;           break;
     }
     _redraw = true;
 }
+
 
 // ═════════════════════════════════════════════════
 // renderAppView() — Placeholder screen for unfinished apps
@@ -341,14 +435,19 @@ void SystemApp::renderAppView() {
     String appName = "App";
     for (int i = 0; i < (int)_apps.size(); i++) {
         // Find the matching app to get its name
-        if ((_mode == Mode::APP_PYTHON     && _apps[i].id == 2) ||
-            (_mode == Mode::APP_STATISTICS && _apps[i].id == 3) ||
-            (_mode == Mode::APP_EQUATIONS  && _apps[i].id == 4) ||
-            (_mode == Mode::APP_SETTINGS   && _apps[i].id == 5)) {
+        if ((_mode == Mode::APP_TABLE       && _apps[i].id == 2) ||
+            (_mode == Mode::APP_STATISTICS  && _apps[i].id == 3) ||
+            (_mode == Mode::APP_PROBABILITY && _apps[i].id == 4) ||
+            (_mode == Mode::APP_EQUATIONS   && _apps[i].id == 5) ||
+            (_mode == Mode::APP_SEQUENCE    && _apps[i].id == 6) ||
+            (_mode == Mode::APP_REGRESSION  && _apps[i].id == 7) ||
+            (_mode == Mode::APP_PYTHON      && _apps[i].id == 8) ||
+            (_mode == Mode::APP_SETTINGS    && _apps[i].id == 9)) {
             appName = _apps[i].name;
             break;
         }
     }
+
     drawStatusBar(appName);
 
     // Placeholder content
@@ -377,8 +476,7 @@ void SystemApp::renderAppView() {
 // ═════════════════════════════════════════════════
 void SystemApp::handleKeyApp(const KeyEvent &ev) {
     if (ev.code == KeyCode::MODE || ev.code == KeyCode::AC) {
-        _mode = Mode::MENU;
-        _redraw = true;
+        returnToMenu();
     }
 }
 
@@ -429,8 +527,7 @@ void SystemApp::renderSteps() {
 // ═════════════════════════════════════════════════
 void SystemApp::handleKeyGraph(const KeyEvent &ev) {
     if (ev.code == KeyCode::MODE) {
-        _mode = Mode::MENU;
-        _redraw = true;
+        returnToMenu();
     } else if (_grapherApp) {
         _grapherApp->handleKey(ev);
     }
@@ -441,4 +538,62 @@ void SystemApp::handleKeyGraph(const KeyEvent &ev) {
 // ═════════════════════════════════════════════════
 void SystemApp::renderGraphMode() {
     if (_grapherApp) _grapherApp->render();
+}
+
+// ═════════════════════════════════════════════════
+// powerOff() — Apagado con fade-out LVGL + deep sleep
+//
+// Secuencia:
+//   1. Crea un screen negro con opacity 0
+//   2. Fade-in del negro (= fade-out visual) en 500 ms
+//   3. Apaga backlight vía PWM
+//   4. Configura ext0 wakeup en PIN_KEY_R1 (tecla ON, GPIO 2)
+//   5. Entra en deep sleep
+// ═════════════════════════════════════════════════
+void SystemApp::powerOff() {
+    Serial.println("[SYSTEM] Apagando...");
+
+    // Asegurar que LVGL está activo para renderizar el fade
+    g_lvglActive = true;
+
+    // ── Screen negro para fade-out ──
+    lv_obj_t* scrOff = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(scrOff, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(scrOff, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(scrOff, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Label "Apagando..." sutil, centrado
+    lv_obj_t* lblBye = lv_label_create(scrOff);
+    lv_label_set_text(lblBye, LV_SYMBOL_POWER " Apagando...");
+    lv_obj_set_style_text_font(lblBye, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(lblBye, lv_color_make(0x80, 0x80, 0x80), 0);
+    lv_obj_set_style_text_align(lblBye, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(lblBye, LV_ALIGN_CENTER, 0, 0);
+
+    // Transición: fade desde pantalla actual → negro en 500 ms
+    lv_screen_load_anim(scrOff, LV_SCREEN_LOAD_ANIM_FADE_IN, 500, 0, true);
+
+    // Bombear LVGL hasta que el fade complete (500 ms + margen)
+    uint32_t t0 = millis();
+    while (millis() - t0 < 650) {
+        lv_timer_handler();
+        delay(5);
+    }
+
+    // ── Apagar backlight via PWM ──
+    analogWrite(PIN_TFT_BL, 0);
+
+    Serial.println("[SYSTEM] Deep sleep...");
+    Serial.flush();
+
+    // ── Configurar wakeup ──
+    // PIN_KEY_R1 = GPIO 2 (fila de la tecla ON = R1C0).
+    // La fila tiene INPUT_PULLUP, al presionar ON la columna C0 tira a LOW.
+    // ext0 despierta al detectar nivel bajo.
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_KEY_R1, 0);
+
+    // ── Entrar en deep sleep ──
+    esp_deep_sleep_start();
+
+    // No se ejecuta nada después de aquí
 }

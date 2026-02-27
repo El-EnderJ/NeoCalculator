@@ -14,8 +14,14 @@ SerialBridge::SerialBridge()
 
 void SerialBridge::begin() {
     Serial.println("[SerialBridge] PC keyboard bridge active.");
-    Serial.println("[SerialBridge] w/a/s/d=arrows  z=OK  x=DEL  h=HOME  c=AC");
-    Serial.println("[SerialBridge] 0-9 +-*/. ^()  f=FRAC  r=SQRT  R=nthROOT  S=SHIFT");
+    Serial.println("[SerialBridge] Controles (minusculas!):");
+    Serial.println("  w/a/s/d = Flechas    z = OK/Enter");
+    Serial.println("  x = DEL   c = AC     h = HOME");
+    Serial.println("  0-9 +-*/. ^()        f = FRAC");
+    Serial.println("  r = SQRT  R = nthROOT  S = SHIFT");
+    Serial.println("  g = GRAPH  t = SIN   y = VAR_Y");
+    Serial.println("[SerialBridge] NOTA: Usa MINUSCULAS (desactiva CapsLock)");
+    Serial.println("[SerialBridge] Escribe un caracter y pulsa Enter.");
 }
 
 // ── Circular buffer helpers ──
@@ -63,13 +69,21 @@ bool SerialBridge::pollEvent(KeyEvent &outEvent) {
 // ── Character → KeyCode mapping ──
 
 void SerialBridge::processChar(int ch) {
+    // Eco del caracter crudo recibido (confirma que la S3 recibe datos)
+    if (ch >= 0x20 && ch <= 0x7E) {
+        Serial.printf("[SB] RX: '%c' (0x%02X)\n", (char)ch, ch);
+    } else {
+        Serial.printf("[SB] RX: 0x%02X\n", ch);
+    }
+
     // Deduplicate \r\n: if we get \n within 50ms of \r, skip it
     static unsigned long lastEnterMs = 0;
     if (ch == '\r' || ch == '\n') {
         unsigned long now = millis();
         if (now - lastEnterMs < 50) return; // Skip duplicate
         lastEnterMs = now;
-        push(KeyCode::ENTER, "ENTER");
+        // Enter por si solo NO genera ENTER — usa 'z' para OK.
+        // Esto evita enter accidentales al enviar comandos.
         return;
     }
 
@@ -77,8 +91,8 @@ void SerialBridge::processChar(int ch) {
         // ── Navigation (WASD) ──
         case 'w': case 'W': push(KeyCode::UP,    "UP");    break;
         case 's':           push(KeyCode::DOWN,  "DOWN");  break;
-        case 'a':           push(KeyCode::LEFT,  "LEFT");  break;
-        case 'd':           push(KeyCode::RIGHT, "RIGHT"); break;
+        case 'a': case 'A': push(KeyCode::LEFT,  "LEFT");  break;
+        case 'd': case 'D': push(KeyCode::RIGHT, "RIGHT"); break;
 
         // ── Actions ──
         case 'z': case 'Z': push(KeyCode::ENTER, "ENTER"); break;

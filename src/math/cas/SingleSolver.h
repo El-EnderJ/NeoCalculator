@@ -1,5 +1,5 @@
 /**
- * SingleSolver.h — Single-variable equation solver for CAS-Lite.
+ * SingleSolver.h — Single-variable equation solver for CAS-S3-ULTRA.
  *
  * Solves equations of the form  f(x) = 0  after normalization.
  * Supports:
@@ -7,17 +7,24 @@
  *   · Quadratic (degree 2):  ax² + bx + c = 0  →  discriminant method
  *   · Fallback  (degree ≥ 3): Newton-Raphson numeric approximation
  *
- * Every algebraic manipulation is logged to a CASStepLogger for
- * step-by-step display.
+ * Pilar 1 — CASNumber:
+ *   All intermediate arithmetic uses CASNumber (Rational → BigInt → Double)
+ *   instead of raw int64_t ExactVal.  Results bridge to ExactVal via
+ *   CASNumber::toExactVal() for the rendering pipeline.
  *
- * Part of: NumOS CAS-Lite — Phase C (SingleSolver + Steps)
+ * Pilar 2 — PedagogicalLogger:
+ *   Algebraic steps are logged via SolveAction + ActionContext, producing
+ *   rich contextual phrases instead of static strings.
+ *
+ * Part of: NumOS CAS-S3-ULTRA — Phase C (SingleSolver + Dynamic Reasoning)
  */
 
 #pragma once
 
 #include <cstdint>
 #include <vector>
-#include "CASStepLogger.h"
+#include "CASNumber.h"
+#include "PedagogicalLogger.h"
 #include "SymEquation.h"
 #include "SymPoly.h"
 #include "PSRAMAllocator.h"
@@ -48,8 +55,17 @@ struct SolveResult {
     /// true if numeric fallback (Newton) was used
     bool           numeric  = false;
 
-    /// Reference to the step logger used (owned by caller)
-    CASStepLogger  steps;
+    /// true if discriminant < 0 → complex conjugate roots
+    bool           hasComplexRoots = false;
+
+    /// Real part of complex roots: Re = -b/(2a)
+    vpam::ExactVal complexReal;
+
+    /// Imaginary magnitude: |Im| = sqrt(|Δ|)/(2a)
+    vpam::ExactVal complexImagMag;
+
+    /// Step-by-step reasoning log (PedagogicalLogger for action-based phrases)
+    PedagogicalLogger  steps;
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -68,7 +84,7 @@ private:
     // ── Internal solver methods ─────────────────────────────────────
 
     /// Normalize equation to f(x) = 0 form via moveAllToLHS().
-    SymEquation normalize(const SymEquation& eq, CASStepLogger& log);
+    SymEquation normalize(const SymEquation& eq, PedagogicalLogger& log);
 
     /// Solve linear: ax + b = 0  →  x = -b/a
     bool solveLinear(const SymEquation& eq, char var, SolveResult& result);

@@ -79,6 +79,11 @@ struct OmniResult {
     std::string    error;
     char           variable = 'x';
     CASStepLogger  steps;
+
+    /// Complex root data (from quadratic with negative discriminant)
+    bool           hasComplexRoots = false;
+    vpam::ExactVal complexReal;       ///< Real part: -b/(2a)
+    vpam::ExactVal complexImagMag;    ///< |Im|: sqrt(|D|)/(2a)
 };
 
 // ════════════════════════════════════════════════════════════════════

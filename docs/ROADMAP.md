@@ -1,6 +1,6 @@
 # NumOS — Project Roadmap
 
-> **Last update:** February 2026
+> **Last update:** March 2026
 >
 > Historical record and future plan for NumOS. Each phase builds upon the previous one until achieving an open-source scientific calculator that rivals the best on the market.
 
@@ -15,8 +15,8 @@
 | **Phase 3** | Launcher 3.0, SerialBridge and Documentation | ✅ Complete | 100% |
 | **Phase 4** | Migration to LVGL 9.x — HW Bring-Up ESP32-S3 | ✅ Complete | 100% |
 | **Phase 5** | CAS-Lite Engine + EquationsApp | ✅ Complete | 100% |
-| **CAS Elite** | Pro-CAS: BigNum, DAG, Derivatives, Integrals, CalculusApp, IntegralApp | ✅ **Complete** | 100% |
-| **Phase 6** | Complete Scientific Apps + Settings | 🔲 Planned | 0% |
+| **CAS Elite** | Pro-CAS: BigNum, DAG, Derivatives, Integrals, Unified CalculusApp, SettingsApp | ✅ **Complete** | 100% |
+| **Phase 6** | Complete Scientific Apps | 🔲 Planned | 0% |
 | **Phase 7** | Matrices + Complex + Bases | 🔲 Planned | 0% |
 | **Phase 8** | Final Hardware + Connectivity + Scripting | 🔲 Planned | 0% |
 
@@ -38,6 +38,9 @@
 | **Feb 2026** | **CalculusApp: symbolic derivatives with Natural Display and steps** |
 | **Feb 2026** | **IntegralApp: Slagle integrals (table/u-sub/parts), +C, steps** |
 | **Feb 2026** | **Active production: RAM 29.0% · Flash 18.5% · tests disabled** |
+| **Mar 2026** | **CalculusApp unificada: derivadas + integrales en app única con pestañas d/dx ↔ ∫dx** |
+| **Mar 2026** | **SettingsApp: raíces complejas, precisión decimal, modo angular** |
+| **Mar 2026** | **Active production: RAM 28.8% · Flash 19.3% · tests disabled** |
 
 ---
 
@@ -178,12 +181,12 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 | Resource | Used | Total | % |
 |:--------|------:|------:|:-:|
-| RAM (data+bss) | 94 948 B | 327 680 B | **29.0%** |
-| Flash (program) | 1 215 025 B | 6 553 600 B | **18.5%** |
+| RAM (data+bss) | 94 512 B | 327 680 B | **28.8%** |
+| Flash (program) | 1 263 109 B | 6 553 600 B | **19.3%** |
 
 ---
 
-## CAS Elite Phase — Pro-CAS Engine + CalculusApp + IntegralApp (Complete)
+## CAS Elite Phase — Pro-CAS Engine + Unified Calculus App (Complete)
 
 > *Objective: CAS-Lite → Pro-CAS evolution. Full symbolic engine with derivatives, integrals, multi-pass simplification, and non-linear equation solving. See [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) for the breakdown of the 6 internal phases.*
 
@@ -196,16 +199,18 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [x] **Phase 4**: ASTFlattener v2 + OmniSolver + HybridNewton — MathAST→SymExpr, advanced solver
 - [x] **Phase 5**: SymPolyMulti + SystemSolver NL — Sylvester resultant, non-linear systems
 - [x] **Phase 6A**: CalculusApp — Symbolic derivatives with Natural Display and detailed steps
-- [x] **Phase 6B**: IntegralApp — Slagle integrals (table/u-sub/parts), +C, ∫, steps
+- [x] **Phase 6B**: Unified CalculusApp — Merged derivatives + Slagle integrals (table/u-sub/parts), +C, ∫, steps, tab-based switching
 - [x] **Phase 6B**: SymIntegrate — Heuristic Slagle: direct table, linearity, u-substitution, LIATE parts
 - [x] **Phase 6B**: SymExprToAST — Bridge SymExpr → MathAST with `convertIntegral()` (+C)
+- [x] **Phase 6C**: SettingsApp — Complex roots toggle, decimal precision, angle mode display
+- [x] **Phase 7**: **Documentation** — All .md files updated for unified CalculusApp + SettingsApp, build stats, keyboard 5×10
 
-### Build Stats (Pro-CAS — production)
+### Build Stats (Production — March 2026)
 
 | Resource | Used | Total | % |
 |:--------|------:|------:|:-:|
-| RAM | 94 948 B | 327 680 B | **29.0%** |
-| Flash | 1 215 025 B | 6 553 600 B | **18.5%** |
+| RAM | 94 512 B | 327 680 B | **28.8%** |
+| Flash | 1 263 109 B | 6 553 600 B | **19.3%** |
 
 ---
 
@@ -244,8 +249,10 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [ ] Vertical scroll of rows, fixed column width
 - [ ] Synchronized with the active function in GrapherApp
 
-### 6.6 Settings App
-- [ ] Angle mode: DEG / RAD / GRA (with indicator in status bar)
+### 6.6 Settings App ✅ Complete
+- [x] Complex roots toggle (ON/OFF)
+- [x] Decimal precision selector (6/8/10/12)
+- [x] Angle mode display (informational)
 - [ ] Screen brightness (PWM if BL reconnected to GPIO OUTPUT)
 - [ ] Number format: fixed decimal / scientific / engineering
 - [ ] Factory reset: delete all variables, restore configuration
@@ -381,4 +388,4 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 *NumOS — Open-source scientific calculator OS for ESP32-S3.*
 *Every commit is a step towards the best scientific calculator in the world.*
 
-*Last update: February 2026*
+*Last update: March 2026*

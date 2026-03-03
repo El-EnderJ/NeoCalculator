@@ -1,11 +1,11 @@
 # NumOS — Hardware Reference
 
-> **Platform**: ESP32-S3 N16R8 CAM · ILI9341 IPS 3.2" · 6×8 Keyboard
-> **Build Stats (Feb 2026)**: RAM 29.0% (94 920 B / 327 680 B) · Flash 17.1% (1 118 121 B / 6 553 600 B)
+> **Platform**: ESP32-S3 N16R8 CAM · ILI9341 IPS 3.2" · 5×10 Keyboard
+> **Build Stats (Mar 2026)**: RAM 28.8% (94 512 B / 327 680 B) · Flash 19.3% (1 263 109 B / 6 553 600 B)
 >
 > Complete hardware reference for NumOS. Covers pinout, wiring, known GPIO conflicts, critical bugs resolved, bring-up notes, and memory management (CAS-Lite PSRAM).
 >
-> **Last updated**: February 2026
+> **Last updated**: March 2026
 
 ---
 
@@ -46,7 +46,7 @@ board_build.partitions          = default_16MB.csv
 | **Resolution** | 320 × 240 px (landscape) |
 | **Color** | 16 bpp (RGB565) |
 | **Interface** | SPI (4 wires: MOSI, SCLK, CS, DC) |
-| **SPI Frequency** | 40 MHz (`-DSPI_FREQUENCY=40000000`, ILI9341 supports up to ~66 MHz write) |
+| **SPI Frequency** | 10 MHz (`-DSPI_FREQUENCY=10000000`) — reduced from 40 MHz to avoid artifacts on breadboard |
 | **SPI Bus** | FSPI (SPI_PORT=2) — CRITICAL: see Fix ② |
 | **Power** | 3.3V logic, BL hardwired to 3.3V |
 
@@ -138,15 +138,16 @@ void* buf2 = heap_caps_malloc(32 * 1024, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
 
 ---
 
-## 4. Keyboard — 6×8 Matrix
+## 4. Keyboard — 5×10 Matrix
 
 ### Specifications
 
 | Parameter | Value |
 |:----------|:------|
-| **Configuration** | 6 rows (input) × 8 columns (output) = 48 keys |
-| **Rows** | INPUT_PULLUP — no external resistors needed |
-| **Columns** | OUTPUT, toggled LOW during scan |
+| **Configuration** | 5 rows (output) × 10 columns (input) = 50 keys max |
+| **Currently wired** | 5 rows × 3 columns = 15 keys |
+| **Rows** | OUTPUT, toggled LOW during scan |
+| **Columns** | INPUT_PULLUP — no external resistors needed |
 | **Debounce** | 20 ms in firmware |
 | **Autorepeat** | 500 ms delay, 80 ms rate |
 

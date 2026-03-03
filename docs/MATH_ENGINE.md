@@ -31,9 +31,8 @@
    - 8.10 [SymDiff — Symbolic Differentiation](#810-symdiff--symbolic-differentiation-phase-3)
    - 8.11 [SymSimplify — Simplifier](#811-symsimplify--algebraic-simplifier-phase-3)
    - 8.12 [SymExprToAST — Conversion](#812-symexprtoast--conversion-to-mathast-phase-3)
-   - 8.13 [CalculusApp — Derivatives App](#813-calculusapp--derivatives-app-phase-6)
+   - 8.13 [CalculusApp — Unified Calculus App](#813-calculusapp--unified-calculus-app)
    - 8.14 [SymIntegrate — Symbolic Integration](#814-symintegrate--symbolic-integration-phase-6b)
-   - 8.15 [IntegralApp — Integrals App](#815-integralapp--integrals-app-phase-6b)
 9. [CAS Test Suite](#9-cas-test-suite)
 10. [Extensibility](#10-extensibility)
 
@@ -685,13 +684,20 @@ Converts a `SymExpr` tree (result of diff/simplify) back to
 
 ---
 
-## 8.13 CalculusApp — Derivatives App (Phase 6)
+## 8.13 CalculusApp — Unified Calculus App
 
 **Files**: `src/apps/CalculusApp.h`, `CalculusApp.cpp`
 
-LVGL-native app for interactive symbolic differentiation.
+LVGL-native app that unifies symbolic derivatives and integrals in a single interface with tab-based mode switching. Replaces the former separate CalculusApp (derivatives only) and IntegralApp.
 
-### Complete Pipeline
+### Modes
+
+| Mode | Tab Label | Accent Color | Pipeline |
+|------|-----------|:------------:|----------|
+| `DERIVATIVE` | "d/dx Derivar" | Orange `#E05500` | SymDiff → SymSimplify → SymExprToAST::convert() |
+| `INTEGRAL` | "∫dx Integrar" | Purple `#6A1B9A` | SymIntegrate → SymSimplify → SymExprToAST::convertIntegral() (+C) |
+
+### Complete Pipeline (Derivatives)
 
 ```
                    ┌──────────────┐
@@ -720,14 +726,55 @@ LVGL-native app for interactive symbolic differentiation.
                    └──────────────┘
 ```
 
+### Complete Pipeline (Integrals)
+
+```
+                   ┌──────────────┐
+ Keyboard ──► VPAM │ MathCanvas   │  Visual node (2D)
+                   │  (NodeRow)   │
+                   └──────┬───────┘
+                          │ ASTFlattener
+                          ▼
+                   ┌──────────────┐
+                   │  SymExpr*    │  Symbolic tree (arena)
+                   └──────┬───────┘
+                          │ SymIntegrate::integrate()
+                          ▼
+                   ┌──────────────┐
+                   │ Raw Integral │  Antiderivative (or nullptr)
+                   └──────┬───────┘
+                          │ SymSimplify::simplify()
+                          ▼
+                   ┌──────────────┐
+                   │ Simplified   │  Simplified integral
+                   └──────┬───────┘
+                          │ SymExprToAST::convertIntegral()
+                          ▼
+                   ┌──────────────┐
+                   │ MathCanvas   │  2D rendering: F(x) + C
+                   └──────────────┘
+```
+
 ### App States
 
 | State | Description |
 |--------|-------------|
 | `EDITING` | Expression input with MathCanvas + cursor |
-| `COMPUTING` | Spinner + random message while calculating |
-| `RESULT` | Shows f(x) and f'(x) with 2D rendering |
-| `STEPS` | Scrollable list of differentiation steps |
+| `COMPUTING` | Spinner + mode-specific random message while calculating |
+| `RESULT` | Shows f(x) and f'(x) or F(x)+C with 2D rendering |
+| `STEPS` | Scrollable list of differentiation/integration steps |
+
+### Two Result Branches (Integral mode)
+
+1. **Integral Solved** (`_integralFound = true`):
+   - Label: "F(x) ="
+   - Uses `SymExprToAST::convertIntegral()` which adds `+ C` automatically
+   - Green accent on status bar
+
+2. **Integral Unsolved** (`_integralFound = false`):
+   - Label: "∫f(x)dx ="
+   - Shows original expression with ∫ symbol
+   - Orange accent on status bar
 
 ### Supported Functions
 
@@ -738,10 +785,11 @@ All NumOS keyboard functions: `sin`, `cos`, `tan`, `arcsin`, `arccos`,
 
 | Key | Action |
 |--------|--------|
-| ENTER | Differentiate the expression |
+| ENTER / = | Compute derivative or integral |
 | AC | Clear / go back |
+| GRAPH | Toggle mode: d/dx ↔ ∫dx |
 | SHIFT+trig | Inverse functions (arcsin, etc.) |
-| SHOW_STEPS | View differentiation steps |
+| SHOW_STEPS | View computation steps |
 | ↑/↓ | Scroll in steps view |
 
 ### Memory Management
@@ -749,7 +797,8 @@ All NumOS keyboard functions: `sin`, `cos`, `tan`, `arcsin`, `arccos`,
 - `SymExprArena _arena` as class member (not stack-local)
 - `_arena.reset()` at beginning of each computation
 - `_arena.reset()` in `end()` to cleanup PSRAM on exit
-- Result `_derivExpr` is arena-owned — valid until next reset
+- `_casSteps.clear()` in `end()` to free StepVec PSRAM
+- Result `_resultExpr` is arena-owned — valid until next reset
 
 ---
 
@@ -802,82 +851,6 @@ Input: SymExpr* (expression to integrate)
            ▼
        nullptr  (unresolved integral → shown as ∫)
 ```
-
----
-
-## 8.15 IntegralApp — Integrals App (Phase 6B)
-
-**Files**: `src/apps/IntegralApp.h`, `IntegralApp.cpp`
-
-LVGL-native app for interactive symbolic integration. Parallel design to CalculusApp with purple color scheme (0x6A1B9A).
-
-### Complete Pipeline
-
-```
-                   ┌──────────────┐
- Keyboard ──► VPAM │ MathCanvas   │  Visual node (2D)
-                   │  (NodeRow)   │
-                   └──────┬───────┘
-                          │ ASTFlattener
-                          ▼
-                   ┌──────────────┐
-                   │  SymExpr*    │  Symbolic tree (arena)
-                   └──────┬───────┘
-                          │ SymIntegrate::integrate()
-                          ▼
-                   ┌──────────────┐
-                   │ Raw Integral │  Antiderivative (or nullptr)
-                   └──────┬───────┘
-                          │ SymSimplify::simplify()
-                          ▼
-                   ┌──────────────┐
-                   │ Simplified   │  Simplified integral
-                   └──────┬───────┘
-                          │ SymExprToAST::convertIntegral()
-                          ▼
-                   ┌──────────────┐
-                   │ MathCanvas   │  2D rendering: F(x) + C
-                   └──────────────┘
-```
-
-### App States
-
-| State | Description |
-|--------|-------------|
-| `EDITING` | Expression input with MathCanvas + cursor |
-| `COMPUTING` | Spinner + random message ("Integrating...", "Finding antiderivative...") |
-| `RESULT` | Shows f(x) and F(x)+C (or ∫f(x)dx if unsolved) |
-| `STEPS` | Scrollable list of integration steps |
-
-### Two Result Branches
-
-1. **Integral Solved** (`_integralFound = true`):
-   - Label: "F(x) ="
-   - Uses `SymExprToAST::convertIntegral()` which adds `+ C` automatically
-   - Green accent on status bar
-
-2. **Integral Unsolved** (`_integralFound = false`):
-   - Label: "∫f(x)dx ="
-   - Shows original expression with ∫ symbol
-   - Orange accent on status bar
-
-### Controls
-
-| Key | Action |
-|--------|--------|
-| ENTER/EXE | Integrate the expression |
-| AC | Clear / go back |
-| SHIFT+trig | Inverse functions (arcsin, etc.) |
-| SHOW_STEPS | View integration steps |
-| ↑/↓ | Scroll in steps view |
-
-### Memory Management
-
-- `SymExprArena _arena` as class member
-- `_arena.reset()` at beginning of each computation
-- `_arena.reset()` in `end()` to cleanup PSRAM on exit
-- `_integSteps.clear()` in `end()` to free StepVec PSRAM
-- Result `_integralExpr` is arena-owned — valid until next reset
 
 ---
 

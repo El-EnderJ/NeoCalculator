@@ -33,7 +33,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _grapherApp(nullptr),
       _equationsApp(nullptr),
       _calculusApp(nullptr),
-      _integralApp(nullptr),
+      _settingsApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -85,13 +85,13 @@ void SystemApp::begin() {
     _equationsApp = new EquationsApp();
     _equationsApp->begin();
 
-    // ── Create CalculusApp (LVGL-native Derivatives) ──
+    // ── Create CalculusApp (LVGL-native Derivatives + Integrals) ──
     _calculusApp = new CalculusApp();
     _calculusApp->begin();
 
-    // ── Create IntegralApp (LVGL-native Integration) ──
-    _integralApp = new IntegralApp();
-    _integralApp->begin();
+    // ── Create SettingsApp (LVGL-native Settings) ──
+    _settingsApp = new SettingsApp();
+    _settingsApp->begin();
 
     // ── Load apps & go to menu ──
     initApps();
@@ -149,8 +149,6 @@ void SystemApp::update() {
         // LVGL handles CalculationApp rendering
     } else if (_mode == Mode::APP_CALCULUS) {
         // LVGL handles CalculusApp rendering
-    } else if (_mode == Mode::APP_INTEGRAL) {
-        // LVGL handles IntegralApp rendering
     } else if (_mode == Mode::APP_EQUATIONS) {
         // LVGL handles EquationsApp rendering
     } else if (_mode == Mode::APP_GRAPHER && _grapherApp) {
@@ -179,8 +177,8 @@ void SystemApp::render() {
         case Mode::MENU:            /* LVGL maneja el menú — no-op */   break;
         case Mode::APP_CALCULATION: break;  // Handled in update() via _calcApp
         case Mode::APP_CALCULUS:    break;  // LVGL-native — no-op
-        case Mode::APP_INTEGRAL:   break;  // LVGL-native — no-op
         case Mode::APP_EQUATIONS:   break;  // LVGL-native — no-op
+        case Mode::APP_SETTINGS:    break;  // LVGL-native — no-op
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
         // All placeholder apps
@@ -189,7 +187,6 @@ void SystemApp::render() {
         case Mode::APP_SEQUENCE:
         case Mode::APP_REGRESSION:
         case Mode::APP_PYTHON:
-        case Mode::APP_SETTINGS:
             renderAppView();
             break;
     }
@@ -330,12 +327,12 @@ void SystemApp::handleKey(const KeyEvent &ev) {
     }
 
     // ── SHIFT/ALPHA gestión global (CalculationApp y CalculusApp tienen su propia) ──
-    if (ev.code == KeyCode::SHIFT && _mode != Mode::APP_CALCULATION && _mode != Mode::APP_CALCULUS && _mode != Mode::APP_INTEGRAL) {
+    if (ev.code == KeyCode::SHIFT && _mode != Mode::APP_CALCULATION && _mode != Mode::APP_CALCULUS) {
         _shiftActive = !_shiftActive;
         km.pressShift();
         return;
     }
-    if (ev.code == KeyCode::ALPHA && _mode != Mode::APP_CALCULATION && _mode != Mode::APP_CALCULUS && _mode != Mode::APP_INTEGRAL) {
+    if (ev.code == KeyCode::ALPHA && _mode != Mode::APP_CALCULATION && _mode != Mode::APP_CALCULUS) {
         _alphaActive = !_alphaActive;
         km.pressAlpha();
         return;
@@ -373,11 +370,11 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _calculusApp->handleKey(ev);
             }
             break;
-        case Mode::APP_INTEGRAL:
+        case Mode::APP_SETTINGS:
             if (ev.code == KeyCode::MODE) {
                 returnToMenu();
-            } else if (_integralApp) {
-                _integralApp->handleKey(ev);
+            } else if (_settingsApp) {
+                _settingsApp->handleKey(ev);
             }
             break;
         // All placeholder apps share generic handler
@@ -387,7 +384,6 @@ void SystemApp::handleKey(const KeyEvent &ev) {
         case Mode::APP_PROBABILITY:
         case Mode::APP_SEQUENCE:
         case Mode::APP_REGRESSION:
-        case Mode::APP_SETTINGS:
             handleKeyApp(ev);
             break;
     }
@@ -462,10 +458,15 @@ void SystemApp::launchApp(int id) {
         switchApp(id);
         if (_equationsApp) _equationsApp->load();
     } else if (id == 3) {
-        // Calculus (IntegralApp) es LVGL-native: integrales + derivadas
+        // CalculusApp es LVGL-native: derivadas + integrales
         g_lvglActive = true;
         switchApp(id);
-        if (_integralApp) _integralApp->load();
+        if (_calculusApp) _calculusApp->load();
+    } else if (id == 8) {
+        // Settings es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_settingsApp) _settingsApp->load();
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -491,10 +492,10 @@ void SystemApp::returnToMenu() {
         _calculusApp->end();
         _calculusApp->begin();
     }
-    // Si venimos de la IntegralApp (LVGL-native)
-    if (_mode == Mode::APP_INTEGRAL && _integralApp) {
-        _integralApp->end();
-        _integralApp->begin();
+    // Si venimos de la SettingsApp (LVGL-native)
+    if (_mode == Mode::APP_SETTINGS && _settingsApp) {
+        _settingsApp->end();
+        _settingsApp->begin();
     }
 
     _mode    = Mode::MENU;
@@ -509,7 +510,7 @@ void SystemApp::switchApp(int id) {
         case 0: _mode = Mode::APP_CALCULATION; break;
         case 1: _mode = Mode::APP_GRAPHER;     break;
         case 2: _mode = Mode::APP_EQUATIONS;   break;   // Equations (pure equation solving)
-        case 3: _mode = Mode::APP_INTEGRAL;    break;   // Calculus (integrals + derivatives)
+        case 3: _mode = Mode::APP_CALCULUS;    break;   // Calculus (derivatives + integrals)
         case 4: _mode = Mode::APP_PROBABILITY; break;
         case 5: _mode = Mode::APP_SEQUENCE;    break;
         case 6: _mode = Mode::APP_REGRESSION;  break;

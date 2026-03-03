@@ -1,18 +1,31 @@
 /**
  * SingleSolver.cpp — Implementation of the single-variable equation solver.
  *
- * Solver pipeline:
- *   1. Normalize to f(x) = 0 via moveAllToLHS()
- *   2. Determine degree of f(x)
- *   3. Dispatch to linear / quadratic / Newton-Raphson
- *   4. Return solutions + step log
+ * CAS-S3-ULTRA engine integration:
  *
- * Step descriptions are in Spanish per project requirements.
+ *   Pilar 1 (CASNumber):
+ *     All intermediate arithmetic uses CASNumber — exact fractions via
+ *     CASRational (with CASInt BigInt auto-promotion on overflow),
+ *     exact radicals for sqrt(D), and double fallback for irrationals.
+ *     Results bridge to vpam::ExactVal only at the end for rendering.
  *
- * Part of: NumOS CAS-Lite — Phase C
+ *   Pilar 2 (PedagogicalLogger):
+ *     Every step is logged via SolveAction + ActionContext.  The logger
+ *     generates rich contextual phrases explaining *why* each computation
+ *     happens, not just *what* is being done.
+ *
+ *   Pilar 3 (SymExprArena):
+ *     SymPoly terms use PSRAMAllocator; step vectors live in PSRAM.
+ *     The arena + ConsTable deduplication is active for any SymExpr
+ *     operations in the OmniSolver layer above.
+ *
+ * Part of: NumOS CAS-S3-ULTRA — Phase C (SingleSolver + Dynamic Reasoning)
  */
 
 #include "SingleSolver.h"
+#include "CASNumber.h"
+#include "PedagogicalLogger.h"
+#include "../../Config.h"
 #include <cmath>
 #include <cstdlib>
 
@@ -35,8 +48,8 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable) {
     result.variable = variable;
     result.ok       = false;
 
-    // Step 0 — Log the original equation
-    result.steps.log("Ecuacion original", eq, MethodId::General);
+    // Step 0 — Log the original equation with VPAM snapshot
+    result.steps.log("Original equation", eq, MethodId::General);
 
     // Step 1 — Normalize: move everything to LHS = 0
     SymEquation normalized = normalize(eq, result.steps);
@@ -48,35 +61,37 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable) {
         // Constant equation (e.g., 5 = 0 → no variable terms)
         ExactVal constVal = normalized.lhs.coeffAtExact(0);
         if (constVal.isZero()) {
-            result.steps.logNote("Identidad: 0 = 0 (infinitas soluciones)", MethodId::General);
+            result.steps.logNote("Identity: 0 = 0 (infinite solutions)", MethodId::General);
             result.ok    = true;
-            result.count = 0;  // Identity — all values are solutions
+            result.count = 0;
         } else {
-            result.steps.logNote("Contradiccion: " + normalized.lhs.toString() + " != 0 (sin solucion)",
+            result.steps.logNote("Contradiction: " + normalized.lhs.toString() + " != 0 (no solution)",
                                  MethodId::General);
             result.ok    = false;
             result.count = 0;
-            result.error = "Sin solucion (contradiccion)";
+            result.error = "No solution (contradiction)";
         }
         return result;
     }
 
+    // Step 3 — Identify equation type (action-based)
+    result.steps.logAction(
+        SolveAction::IDENTIFY_EQUATION_TYPE,
+        ActionContext().var(variable).deg(deg),
+        MethodId::General);
+
     if (deg == 1) {
-        // Linear
-        result.steps.logNote("Ecuacion lineal detectada (grado 1)", MethodId::Linear);
         if (solveLinear(normalized, variable, result)) {
             result.ok = true;
         }
     } else if (deg == 2) {
-        // Quadratic
-        result.steps.logNote("Ecuacion cuadratica detectada (grado 2)", MethodId::Quadratic);
         if (solveQuadratic(normalized, variable, result)) {
             result.ok = true;
         }
     } else {
-        // Higher degree → Newton-Raphson fallback
-        result.steps.logNote(
-            "Grado " + std::to_string(deg) + " detectado. Usando aproximacion numerica (Newton-Raphson)",
+        result.steps.logAction(
+            SolveAction::NEWTON_START,
+            ActionContext().var(variable).deg(deg),
             MethodId::Newton);
         if (solveNewton(normalized, variable, result)) {
             result.ok      = true;
@@ -91,171 +106,297 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable) {
 // normalize — Move all terms to LHS, log the step
 // ════════════════════════════════════════════════════════════════════
 
-SymEquation SingleSolver::normalize(const SymEquation& eq, CASStepLogger& log) {
+SymEquation SingleSolver::normalize(const SymEquation& eq, PedagogicalLogger& log) {
     SymEquation norm = eq.moveAllToLHS();
-    log.log("Mover todos los terminos al lado izquierdo e igualar a cero", norm, MethodId::General);
+    // Single merged step: normalize + show result
+    log.log("Moving and grouping all terms to the left side", norm, MethodId::General);
     return norm;
 }
 
 // ════════════════════════════════════════════════════════════════════
-// solveLinear — ax + b = 0  →  x = -b / a
+// solveLinear — ax + b = 0  →  x = -b/a
+//
+// Uses CASNumber for overflow-safe arithmetic.
+// Uses PedagogicalLogger for contextual step descriptions.
 // ════════════════════════════════════════════════════════════════════
 
 bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& result) {
-    const SymPoly& f = eq.lhs;   // f(x) = ax + b = 0
+    const SymPoly& f = eq.lhs;
 
-    ExactVal a = f.coeffAtExact(1);   // coefficient of x
-    ExactVal b = f.coeffAtExact(0);   // constant term
+    // Extract coefficients as CASNumber (from ExactVal bridge)
+    CASNumber a = CASNumber::fromExactVal(f.coeffAtExact(1));
+    CASNumber b = CASNumber::fromExactVal(f.coeffAtExact(0));
 
-    // Should not happen, but guard
     if (a.isZero()) {
-        result.error = "Coeficiente principal es cero";
-        result.steps.logNote("Error: coeficiente de " + std::string(1, var) + " es cero", MethodId::Linear);
+        result.error = "Leading coefficient is zero";
+        result.steps.logNote("Error: coefficient of " + std::string(1, var) + " is zero",
+                             MethodId::Linear);
         return false;
     }
 
-    // Step: Isolate the constant
-    // ax + b = 0   →   ax = -b
+    // Log coefficient identification
+    result.steps.logAction(
+        SolveAction::LINEAR_IDENTIFY_COEFFICIENTS,
+        ActionContext().var(var).val("a", a).val("b", b),
+        MethodId::Linear);
+
+    // Step: Isolate variable term — ax = -b
+    CASNumber negB = CASNumber::neg(b);
     {
-        ExactVal negB = vpam::exactNeg(b);
-        SymPoly lhsStep = SymPoly::fromTerm(SymTerm::variable(var, a.num, a.den, 1));
-        SymPoly rhsStep = SymPoly::fromConstant(negB);
+        ExactVal aEV = a.toExactVal();
+        ExactVal negBEV = negB.toExactVal();
+        SymPoly lhsStep = SymPoly::fromTerm(SymTerm::variable(var, aEV.num, aEV.den, 1));
+        SymPoly rhsStep = SymPoly::fromConstant(negBEV);
         SymEquation step(lhsStep, rhsStep);
 
-        std::string desc = "Mover termino independiente al lado derecho";
-        if (!b.isZero()) {
-            desc += ": " + std::string(1, var);
-            // Show what we're isolating
-        }
-        result.steps.log(desc, step, MethodId::Linear);
+        result.steps.logAction(
+            SolveAction::LINEAR_ISOLATE_VARIABLE,
+            ActionContext().var(var).snap(&step),
+            MethodId::Linear);
     }
 
-    // Step: Divide by coefficient of x
-    // ax = -b   →   x = -b/a
-    ExactVal solution = vpam::exactDiv(vpam::exactNeg(b), a);
-    solution.simplify();
+    // Step: Divide by coefficient — x = -b/a
+    CASNumber solution = CASNumber::div(negB, a);
+    ExactVal solEV = solution.toExactVal();
+    solEV.simplify();
 
     {
         SymPoly lhsSol = SymPoly::fromTerm(SymTerm::variable(var, 1, 1, 1));
-        SymPoly rhsSol = SymPoly::fromConstant(solution);
+        SymPoly rhsSol = SymPoly::fromConstant(solEV);
         SymEquation stepEq(lhsSol, rhsSol);
-        result.steps.log("Dividir ambos lados por el coeficiente de " + std::string(1, var),
-                         stepEq, MethodId::Linear);
+
+        result.steps.logAction(
+            SolveAction::LINEAR_DIVIDE_BY_COEFFICIENT,
+            ActionContext().var(var).val("a", a).snap(&stepEq),
+            MethodId::Linear);
+
+        result.steps.logAction(
+            SolveAction::LINEAR_PRESENT_SOLUTION,
+            ActionContext().var(var).val("solution", solution).snap(&stepEq),
+            MethodId::Linear);
     }
 
-    result.solutions[0] = solution;
+    result.solutions[0] = solEV;
     result.count         = 1;
     return true;
 }
 
 // ════════════════════════════════════════════════════════════════════
 // solveQuadratic — ax² + bx + c = 0
+//
+// ★ SHOWCASE for all three CAS-S3-ULTRA pillars:
+//
+//   Pilar 1 (CASNumber): All arithmetic uses CASNumber.  Discriminant
+//     computation is exact even for large coefficients.  sqrt(D) returns
+//     a Radical when D is not a perfect square, preserving exact form
+//     like 3*sqrt(7) instead of ≈7.937.
+//
+//   Pilar 2 (PedagogicalLogger): Each step emits an ACTION with context,
+//     generating phrases like "Computing the discriminant: D = b^2 - 4ac =
+//     (5)^2 - 4*(2)*(-3) = 49" instead of "Compute discriminant: D = 49".
+//
+//   Pilar 3 (SymExprArena): SymPoly terms and step vectors live in PSRAM.
 // ════════════════════════════════════════════════════════════════════
 
 bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& result) {
     const SymPoly& f = eq.lhs;
 
-    ExactVal a = f.coeffAtExact(2);   // x² coefficient
-    ExactVal b = f.coeffAtExact(1);   // x  coefficient
-    ExactVal c = f.coeffAtExact(0);   // constant
+    // ── Extract coefficients via CASNumber ──────────────────────────
+    CASNumber a = CASNumber::fromExactVal(f.coeffAtExact(2));
+    CASNumber b = CASNumber::fromExactVal(f.coeffAtExact(1));
+    CASNumber c = CASNumber::fromExactVal(f.coeffAtExact(0));
 
     if (a.isZero()) {
-        result.error = "Coeficiente cuadratico es cero";
-        result.steps.logNote("Error: coeficiente de " + std::string(1, var) + "^2 es cero",
+        result.error = "Quadratic coefficient is zero";
+        result.steps.logNote("Error: coefficient of " + std::string(1, var) + "^2 is zero",
                              MethodId::Quadratic);
         return false;
     }
 
-    // Log the coefficients
-    {
-        std::string msg = "Identificar coeficientes: a=" + std::to_string(a.num);
-        if (a.den != 1) msg += "/" + std::to_string(a.den);
-        msg += ", b=" + std::to_string(b.num);
-        if (b.den != 1) msg += "/" + std::to_string(b.den);
-        msg += ", c=" + std::to_string(c.num);
-        if (c.den != 1) msg += "/" + std::to_string(c.den);
-        result.steps.logNote(msg, MethodId::Quadratic);
-    }
+    // ── ACTION: Identify coefficients ──────────────────────────────
+    result.steps.logAction(
+        SolveAction::QUAD_IDENTIFY_COEFFICIENTS,
+        ActionContext().var(var)
+            .val("a", a).val("b", b).val("c", c),
+        MethodId::Quadratic);
 
-    // Compute discriminant Δ = b² - 4ac
-    ExactVal b2   = vpam::exactMul(b, b);                           // b²
-    ExactVal four = ExactVal::fromInt(4);
-    ExactVal ac4  = vpam::exactMul(four, vpam::exactMul(a, c));     // 4ac
-    ExactVal disc = vpam::exactSub(b2, ac4);                        // Δ = b² - 4ac
-    disc.simplify();
+    // ── Compute discriminant D = b² - 4ac ──────────────────────────
+    CASNumber b2   = CASNumber::mul(b, b);                              // b²
+    CASNumber four = CASNumber::fromInt(4);
+    CASNumber ac4  = CASNumber::mul(four, CASNumber::mul(a, c));        // 4ac
+    CASNumber disc = CASNumber::sub(b2, ac4);                           // D = b² - 4ac
 
-    // Log the discriminant
-    {
-        std::string msg = "Calcular discriminante: D = b^2 - 4ac = " +
-                          std::to_string(disc.num);
-        if (disc.den != 1) msg += "/" + std::to_string(disc.den);
-        result.steps.logNote(msg, MethodId::Quadratic);
-    }
+    // ── ACTION: Show discriminant computation ──────────────────────
+    result.steps.logAction(
+        SolveAction::QUAD_COMPUTE_DISCRIMINANT,
+        ActionContext().var(var)
+            .val("a", a).val("b", b).val("c", c).val("D", disc),
+        MethodId::Quadratic);
 
-    // Check discriminant sign (exact — no floating-point comparison)
-    // For rational disc: sign = sign(num) * sign(den) (den always > 0 after simplify)
-    bool discNegative = (disc.num < 0 && disc.den > 0) || (disc.num > 0 && disc.den < 0);
+    // ── Evaluate discriminant sign (exact) ─────────────────────────
+    bool discNegative = disc.isNegative();
     bool discZero     = disc.isZero();
 
+    // ════════════════════════════════════════════════════════════════
+    // CASE 1: Discriminant < 0 — Complex conjugate roots
+    // ════════════════════════════════════════════════════════════════
+
     if (discNegative) {
-        // No real solutions
-        result.steps.logNote("Discriminante negativo: no hay soluciones reales", MethodId::Quadratic);
-        result.count = 0;
-        result.ok    = true;
+        result.steps.logAction(
+            SolveAction::QUAD_DISCRIMINANT_NEGATIVE,
+            ActionContext().var(var).val("D", disc),
+            MethodId::Quadratic);
+
+        // ── Complex toggle: if disabled, stop here ─────────────────
+        if (!setting_complex_enabled) {
+            result.count = 0;
+            result.ok    = false;
+            result.error = "No real solutions";
+            return false;   // signal "not solved" → propagates error
+        }
+
+        // 2a
+        CASNumber twoA = CASNumber::mul(CASNumber::fromInt(2), a);
+
+        // Real part: Re = -b / (2a)
+        CASNumber negB     = CASNumber::neg(b);
+        CASNumber realPart = CASNumber::div(negB, twoA);
+
+        // |D| = -D (since D < 0)
+        CASNumber absDisc = CASNumber::neg(disc);
+
+        // Imaginary magnitude: |Im| = sqrt(|D|) / (2a)
+        CASNumber sqrtAbsDisc = CASNumber::sqrt(absDisc);
+        CASNumber imagMag     = CASNumber::div(sqrtAbsDisc, twoA);
+
+        // Ensure imagMag is positive (take absolute value)
+        imagMag = CASNumber::abs(imagMag);
+
+        // ── ACTION: Show complex parts ─────────────────────────────
+        result.steps.logAction(
+            SolveAction::QUAD_COMPUTE_COMPLEX_PARTS,
+            ActionContext().var(var).val("re", realPart).val("im", imagMag),
+            MethodId::Quadratic);
+
+        // ── ACTION: Present complex roots ──────────────────────────
+        result.steps.logAction(
+            SolveAction::QUAD_PRESENT_COMPLEX_ROOTS,
+            ActionContext().var(var).val("re", realPart).val("im", imagMag),
+            MethodId::Quadratic);
+
+        // Store in result
+        result.hasComplexRoots = true;
+        result.complexReal     = realPart.toExactVal();
+        result.complexReal.simplify();
+        result.complexImagMag  = imagMag.toExactVal();
+        result.complexImagMag.simplify();
+        result.count           = 0;
+        result.ok              = true;
+
         return true;
     }
 
-    // Compute -b
-    ExactVal negB = vpam::exactNeg(b);
+    // ── Common: Compute -b and 2a ──────────────────────────────────
+    CASNumber negB = CASNumber::neg(b);
+    CASNumber twoA = CASNumber::mul(CASNumber::fromInt(2), a);
 
-    // Compute 2a
-    ExactVal twoA = vpam::exactMul(ExactVal::fromInt(2), a);
+    // ── ACTION: State the quadratic formula ────────────────────────
+    result.steps.logAction(
+        SolveAction::QUAD_APPLY_FORMULA,
+        ActionContext().var(var),
+        MethodId::Quadratic);
 
-    result.steps.logNote("Aplicar formula cuadratica: x = (-b +/- sqrt(D)) / 2a", MethodId::Quadratic);
+    // ════════════════════════════════════════════════════════════════
+    // CASE 2: Discriminant = 0 — One repeated root
+    // ════════════════════════════════════════════════════════════════
 
     if (discZero) {
-        // One repeated root: x = -b / (2a)
-        ExactVal root = vpam::exactDiv(negB, twoA);
-        root.simplify();
+        result.steps.logAction(
+            SolveAction::QUAD_DISCRIMINANT_ZERO,
+            ActionContext().var(var),
+            MethodId::Quadratic);
 
-        result.steps.logNote("Discriminante = 0: una solucion repetida", MethodId::Quadratic);
+        CASNumber root = CASNumber::div(negB, twoA);
+        ExactVal rootEV = root.toExactVal();
+        rootEV.simplify();
 
+        // Build equation snapshot for display
         SymPoly lhs = SymPoly::fromTerm(SymTerm::variable(var, 1, 1, 1));
-        SymPoly rhs = SymPoly::fromConstant(root);
-        result.steps.log("Solucion unica", SymEquation(lhs, rhs), MethodId::Quadratic);
+        SymPoly rhs = SymPoly::fromConstant(rootEV);
+        SymEquation stepEq(lhs, rhs);
 
-        result.solutions[0] = root;
+        result.steps.logAction(
+            SolveAction::QUAD_PRESENT_REAL_SOLUTION,
+            ActionContext().var(var).val("solution", root)
+                          .solIdx(0).snap(&stepEq),
+            MethodId::Quadratic);
+
+        result.solutions[0] = rootEV;
         result.count         = 1;
         return true;
     }
 
-    // Two distinct real roots: x = (-b ± √Δ) / (2a)
-    ExactVal sqrtDisc = vpam::exactSqrt(disc);
+    // ════════════════════════════════════════════════════════════════
+    // CASE 3: Discriminant > 0 — Two distinct real roots
+    // ════════════════════════════════════════════════════════════════
 
-    // x₁ = (-b + √Δ) / (2a)
-    ExactVal num1  = vpam::exactAdd(negB, sqrtDisc);
-    ExactVal root1 = vpam::exactDiv(num1, twoA);
-    root1.simplify();
+    result.steps.logAction(
+        SolveAction::QUAD_DISCRIMINANT_POSITIVE,
+        ActionContext().var(var).val("D", disc),
+        MethodId::Quadratic);
 
-    // x₂ = (-b - √Δ) / (2a)
-    ExactVal num2  = vpam::exactSub(negB, sqrtDisc);
-    ExactVal root2 = vpam::exactDiv(num2, twoA);
-    root2.simplify();
+    // Compute sqrt(D) — CASNumber returns Radical if not a perfect square
+    CASNumber sqrtDisc = CASNumber::sqrt(disc);
 
-    // Log solutions
+    // ── ACTION: Show sqrt(D) computation ───────────────────────────
+    result.steps.logAction(
+        SolveAction::QUAD_COMPUTE_SQRT_DISC,
+        ActionContext().var(var).val("D", disc).val("sqrtD", sqrtDisc),
+        MethodId::Quadratic);
+
+    // ── ACTION: Show formula substitution ──────────────────────────
+    result.steps.logAction(
+        SolveAction::QUAD_COMPUTE_ROOTS,
+        ActionContext().var(var)
+            .val("negB", negB).val("sqrtD", sqrtDisc).val("twoA", twoA),
+        MethodId::Quadratic);
+
+    // ── x₁ = (-b + sqrt(D)) / (2a) ────────────────────────────────
+    CASNumber num1  = CASNumber::add(negB, sqrtDisc);
+    CASNumber root1 = CASNumber::div(num1, twoA);
+    ExactVal root1EV = root1.toExactVal();
+    root1EV.simplify();
+
+    // ── x₂ = (-b - sqrt(D)) / (2a) ────────────────────────────────
+    CASNumber num2  = CASNumber::sub(negB, sqrtDisc);
+    CASNumber root2 = CASNumber::div(num2, twoA);
+    ExactVal root2EV = root2.toExactVal();
+    root2EV.simplify();
+
+    // ── Log solutions with equation snapshots ──────────────────────
     {
         SymPoly lhs  = SymPoly::fromTerm(SymTerm::variable(var, 1, 1, 1));
-        SymPoly rhs1 = SymPoly::fromConstant(root1);
-        result.steps.log("Primera solucion: " + std::string(1, var) + "1",
-                         SymEquation(lhs, rhs1), MethodId::Quadratic);
+        SymPoly rhs1 = SymPoly::fromConstant(root1EV);
+        SymEquation eq1(lhs, rhs1);
 
-        SymPoly rhs2 = SymPoly::fromConstant(root2);
-        result.steps.log("Segunda solucion: " + std::string(1, var) + "2",
-                         SymEquation(lhs, rhs2), MethodId::Quadratic);
+        result.steps.logAction(
+            SolveAction::QUAD_PRESENT_REAL_SOLUTION,
+            ActionContext().var(var).val("solution", root1)
+                          .solIdx(1).snap(&eq1),
+            MethodId::Quadratic);
+
+        SymPoly rhs2 = SymPoly::fromConstant(root2EV);
+        SymEquation eq2(lhs, rhs2);
+
+        result.steps.logAction(
+            SolveAction::QUAD_PRESENT_REAL_SOLUTION,
+            ActionContext().var(var).val("solution", root2)
+                          .solIdx(2).snap(&eq2),
+            MethodId::Quadratic);
     }
 
-    result.solutions[0] = root1;
-    result.solutions[1] = root2;
+    result.solutions[0] = root1EV;
+    result.solutions[1] = root2EV;
     result.count         = 2;
     return true;
 }
@@ -321,8 +462,8 @@ bool SingleSolver::solveNewton(const SymEquation& eq, char var, SolveResult& res
     result.count = found;
 
     if (found == 0) {
-        result.error = "Newton-Raphson no convergio";
-        result.steps.logNote("Newton-Raphson: no se encontraron raices reales", MethodId::Newton);
+        result.error = "Newton-Raphson did not converge";
+        result.steps.logNote("Newton-Raphson: no real roots found", MethodId::Newton);
         return false;
     }
 
@@ -330,9 +471,9 @@ bool SingleSolver::solveNewton(const SymEquation& eq, char var, SolveResult& res
     for (int i = 0; i < found; ++i) {
         SymPoly lhs = SymPoly::fromTerm(SymTerm::variable(var, 1, 1, 1));
         SymPoly rhs = SymPoly::fromConstant(result.solutions[i]);
-        std::string label = "Solucion numerica " + std::string(1, var) +
-                            std::to_string(i + 1) + " (aprox.)";
-        result.steps.log(label, SymEquation(lhs, rhs), MethodId::Newton);
+        std::string label = "Numeric solution " + std::string(1, var) +
+                            std::to_string(i + 1) + " (approx.)";
+        result.steps.logResult(label, SymEquation(lhs, rhs), MethodId::Newton);
     }
 
     return true;

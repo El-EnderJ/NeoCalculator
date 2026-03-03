@@ -127,21 +127,13 @@ SymSimplify::CoeffBase SymSimplify::extractCoeffAndBase(const SymExpr* term) {
                     mul->factors[numIdx == 0 ? 1 : 0]);
                 return { c, base };
             }
-            // 3+ factors: rebuild a smaller Mul without the numeric factor
-            // Note: we don't actually rebuild here to avoid arena waste.
-            // Instead, return coeff=c and base=original Mul.
-            // The caller will rebuild if needed.
-            // Actually, let's rebuild for correctness:
-            std::vector<SymExpr*> rest;
-            for (uint16_t i = 0; i < mul->count; ++i) {
-                if (i == static_cast<uint16_t>(numIdx)) continue;
-                rest.push_back(const_cast<SymExpr*>(mul->factors[i]));
-            }
-            // Don't allocate without arena — return the special marker
-            // that the caller should handle.
-            // For simplicity, if there are 2+ remaining factors,
-            // we can't easily form a base without the arena. Return coeff=1.
-            return { c, nullptr };  // will be handled at call site with arena
+            // 3+ factors: we can't rebuild a smaller Mul without an arena.
+            // Return coeff=1 and base=original term. This means like-term
+            // collection uses pointer identity on the full Mul node, which
+            // is safe (hash-consed nodes with identical structure share
+            // the same pointer). Terms like 2xy + 3xy won't merge here,
+            // but they won't be lost or miscounted either.
+            return { CASRational::one(), const_cast<SymExpr*>(term) };
         }
     }
 
@@ -387,9 +379,9 @@ SymExpr* SymSimplify::simplifyAdd(SymAdd* a, SymExprArena& arena) {
         for (auto* term : nonZero) {
             CoeffBase cb = extractCoeffAndBase(term);
 
-            // extractCoeffAndBase might return base=nullptr for complex Muls
-            // with 3+ factors. In that case, just keep the term as-is.
-            if (cb.base == nullptr && !cb.coeff.isOne()) {
+            // extractCoeffAndBase returns base=nullptr only for pure
+            // rational constants. Handle them separately.
+            if (cb.base == nullptr) {
                 // Pure constant that wasn't isPureNum — shouldn't happen
                 // but be safe: add to constant accumulator
                 hasConst = true;

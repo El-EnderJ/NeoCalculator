@@ -11,6 +11,9 @@
 #include <lvgl.h>
 #include <esp_heap_caps.h>
 #include "Config.h"
+
+// ── Global CAS settings ─────────────────────────────────────────────
+bool setting_complex_enabled = true;int  setting_decimal_precision = 10;
 #include "display/DisplayDriver.h"
 #include "input/KeyMatrix.h"   // legacy driver — no instanciado; conservado por si acaso
 #include "drivers/Keyboard.h"  // nuevo driver 5×10

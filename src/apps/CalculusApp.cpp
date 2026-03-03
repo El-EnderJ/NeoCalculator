@@ -1,13 +1,14 @@
 /**
- * CalculusApp.cpp — Symbolic Calculus App for NumOS.
+ * CalculusApp.cpp — Unified Symbolic Calculus App for NumOS.
  *
- * Phase 6: Derivative App & Production Polish.
+ * Phase 4: Unified Calculus (Derivatives + Integrals).
  *
  * Pipeline:
- *   MathAST → ASTFlattener → SymExpr → SymDiff::diff() →
+ *   MathAST → ASTFlattener → SymExpr →
+ *     [SymDiff::diff() | SymIntegrate::integrate()] →
  *   SymSimplify::simplify() → SymExprToAST → MathCanvas display
  *
- * Part of: NumOS Pro-CAS — Phase 6 (Calculus & Production Polish)
+ * Part of: NumOS Pro-CAS — Phase 4 (Unified Calculus App)
  */
 
 #include "CalculusApp.h"
@@ -23,23 +24,27 @@ using namespace vpam;
 
 static constexpr uint32_t COL_BG_HEX      = 0xFFFFFF;
 static constexpr uint32_t COL_SEP_HEX     = 0x333333;
-static constexpr uint32_t COL_ACCENT_HEX  = 0xE05500;
 static constexpr uint32_t COL_HINT_HEX    = 0x888888;
-static constexpr uint32_t COL_ACTIVE_HEX  = 0xE05500;
 static constexpr uint32_t COL_STEP_HEX    = 0x1A1A1A;
 static constexpr uint32_t COL_DESC_HEX    = 0x2E7D32;
-static constexpr uint32_t COL_DERIV_HEX   = 0x1565C0;  // Blue for derivative label
+static constexpr uint32_t COL_RESULT_HEX  = 0x1565C0;  // Blue for result label
+static constexpr uint32_t COL_TAB_INACTIVE = 0xCCCCCC;
+
+// Mode-specific accent colors
+static constexpr uint32_t COL_DERIV_HEX   = 0xE05500;  // Orange for d/dx
+static constexpr uint32_t COL_INTEG_HEX   = 0x6A1B9A;  // Purple for ∫dx
 
 static constexpr int SCREEN_W  = 320;
 static constexpr int SCREEN_H  = 240;
 static constexpr int BAR_H     = ui::StatusBar::HEIGHT + 1;
 static constexpr int PAD       = 6;
+static constexpr int TAB_H     = 26;   // Tab strip height
 
 // ════════════════════════════════════════════════════════════════════════════
-// Computing messages
+// Computing messages (derivative + integral)
 // ════════════════════════════════════════════════════════════════════════════
 
-static const char* COMPUTING_MESSAGES[] = {
+static const char* DERIV_MESSAGES[] = {
     "Derivando...",
     "Aplicando regla de la cadena...",
     "Simplificando resultado...",
@@ -47,7 +52,17 @@ static const char* COMPUTING_MESSAGES[] = {
     "Leibniz al rescate...",
     "Diferenciando...",
 };
-static constexpr int NUM_COMPUTING_MSGS = sizeof(COMPUTING_MESSAGES) / sizeof(COMPUTING_MESSAGES[0]);
+static constexpr int NUM_DERIV_MSGS = sizeof(DERIV_MESSAGES) / sizeof(DERIV_MESSAGES[0]);
+
+static const char* INTEG_MESSAGES[] = {
+    "Integrando...",
+    "Buscando antiderivada...",
+    "Probando sustitucion...",
+    "Integrando por partes...",
+    "Riemann estaria orgulloso...",
+    "Calculando integral...",
+};
+static constexpr int NUM_INTEG_MSGS = sizeof(INTEG_MESSAGES) / sizeof(INTEG_MESSAGES[0]);
 
 // ════════════════════════════════════════════════════════════════════════════
 // Constructor / Destructor
@@ -55,6 +70,8 @@ static constexpr int NUM_COMPUTING_MSGS = sizeof(COMPUTING_MESSAGES) / sizeof(CO
 
 CalculusApp::CalculusApp()
     : _scr(nullptr)
+    , _tabDerivative(nullptr)
+    , _tabIntegral(nullptr)
     , _inputContainer(nullptr)
     , _inputTitle(nullptr)
     , _inputHint(nullptr)
@@ -68,12 +85,14 @@ CalculusApp::CalculusApp()
     , _originalLabel(nullptr)
     , _stepsContainer(nullptr)
     , _state(State::EDITING)
+    , _calcMode(CalcMode::DERIVATIVE)
     , _stepScroll(0)
     , _variable('x')
     , _inputRow(nullptr)
     , _resultRow(nullptr)
     , _originalRow(nullptr)
-    , _derivExpr(nullptr)
+    , _resultExpr(nullptr)
+    , _integralFound(false)
 {
 }
 
@@ -111,6 +130,8 @@ void CalculusApp::end() {
     if (_scr) {
         lv_obj_delete(_scr);
         _scr               = nullptr;
+        _tabDerivative     = nullptr;
+        _tabIntegral       = nullptr;
         _inputContainer    = nullptr;
         _inputTitle        = nullptr;
         _inputHint         = nullptr;
@@ -126,8 +147,9 @@ void CalculusApp::end() {
     }
 
     _state = State::EDITING;
-    _derivExpr = nullptr;
-    _diffSteps.clear();
+    _resultExpr = nullptr;
+    _integralFound = false;
+    _casSteps.clear();
     _arena.reset();
 }
 
@@ -138,6 +160,58 @@ void CalculusApp::load() {
 
     if (_state == State::EDITING) {
         _inputCanvas.startCursorBlink();
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Mode management
+// ════════════════════════════════════════════════════════════════════════════
+
+uint32_t CalculusApp::accentColor() const {
+    return (_calcMode == CalcMode::DERIVATIVE) ? COL_DERIV_HEX : COL_INTEG_HEX;
+}
+
+void CalculusApp::setMode(CalcMode mode) {
+    if (_calcMode == mode) return;
+    _calcMode = mode;
+    updateTabStyles();
+
+    // Update input title and hint based on mode
+    if (_state == State::EDITING) {
+        if (_calcMode == CalcMode::DERIVATIVE) {
+            lv_label_set_text(_inputTitle, "Introduce f(x):");
+            lv_label_set_text(_inputHint, "EXE: Derivar   GRAPH: Modo   AC: Volver");
+        } else {
+            lv_label_set_text(_inputTitle, "Introduce f(x):");
+            lv_label_set_text(_inputHint, "EXE: Integrar   GRAPH: Modo   AC: Volver");
+        }
+        lv_obj_set_style_text_color(_inputTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
+    }
+}
+
+void CalculusApp::updateTabStyles() {
+    if (!_tabDerivative || !_tabIntegral) return;
+
+    uint32_t activeCol = accentColor();
+
+    if (_calcMode == CalcMode::DERIVATIVE) {
+        // d/dx tab active
+        lv_obj_set_style_bg_color(_tabDerivative, lv_color_hex(activeCol), LV_PART_MAIN);
+        lv_obj_set_style_text_color(_tabDerivative, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_tabDerivative, LV_OPA_COVER, LV_PART_MAIN);
+        // ∫dx tab inactive
+        lv_obj_set_style_bg_color(_tabIntegral, lv_color_hex(COL_TAB_INACTIVE), LV_PART_MAIN);
+        lv_obj_set_style_text_color(_tabIntegral, lv_color_hex(COL_SEP_HEX), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_tabIntegral, LV_OPA_COVER, LV_PART_MAIN);
+    } else {
+        // d/dx tab inactive
+        lv_obj_set_style_bg_color(_tabDerivative, lv_color_hex(COL_TAB_INACTIVE), LV_PART_MAIN);
+        lv_obj_set_style_text_color(_tabDerivative, lv_color_hex(COL_SEP_HEX), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_tabDerivative, LV_OPA_COVER, LV_PART_MAIN);
+        // ∫dx tab active
+        lv_obj_set_style_bg_color(_tabIntegral, lv_color_hex(activeCol), LV_PART_MAIN);
+        lv_obj_set_style_text_color(_tabIntegral, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_tabIntegral, LV_OPA_COVER, LV_PART_MAIN);
     }
 }
 
@@ -154,15 +228,55 @@ void CalculusApp::createUI() {
 
     // ── StatusBar ──
     _statusBar.create(_scr);
-    _statusBar.setTitle("Calculo");
+    _statusBar.setTitle("Calculus");
     _statusBar.setBatteryLevel(100);
+
+    // ─────────────────────────────────────────────────────────────────
+    // Mode tabs (d/dx | ∫dx) — positioned below status bar
+    // ─────────────────────────────────────────────────────────────────
+    int tabY = BAR_H;
+    int tabW = SCREEN_W / 2;
+
+    _tabDerivative = lv_obj_create(_scr);
+    lv_obj_set_size(_tabDerivative, tabW, TAB_H);
+    lv_obj_set_pos(_tabDerivative, 0, tabY);
+    lv_obj_set_style_border_width(_tabDerivative, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_tabDerivative, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(_tabDerivative, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_tabDerivative, LV_OBJ_FLAG_SCROLLABLE);
+    {
+        lv_obj_t* lbl = lv_label_create(_tabDerivative);
+        lv_label_set_text(lbl, "d/dx  Derivar");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_center(lbl);
+    }
+
+    _tabIntegral = lv_obj_create(_scr);
+    lv_obj_set_size(_tabIntegral, tabW, TAB_H);
+    lv_obj_set_pos(_tabIntegral, tabW, tabY);
+    lv_obj_set_style_border_width(_tabIntegral, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_tabIntegral, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(_tabIntegral, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_tabIntegral, LV_OBJ_FLAG_SCROLLABLE);
+    {
+        lv_obj_t* lbl = lv_label_create(_tabIntegral);
+        // ∫ = UTF-8 \xe2\x88\xab
+        lv_label_set_text(lbl, "\xe2\x88\xab" "dx  Integrar");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_center(lbl);
+    }
+
+    updateTabStyles();
+
+    int contentY = tabY + TAB_H;
+    int contentH = SCREEN_H - contentY;
 
     // ─────────────────────────────────────────────────────────────────
     // INPUT container
     // ─────────────────────────────────────────────────────────────────
     _inputContainer = lv_obj_create(_scr);
-    lv_obj_set_size(_inputContainer, SCREEN_W, SCREEN_H - BAR_H);
-    lv_obj_set_pos(_inputContainer, 0, BAR_H);
+    lv_obj_set_size(_inputContainer, SCREEN_W, contentH);
+    lv_obj_set_pos(_inputContainer, 0, contentY);
     lv_obj_set_style_bg_opa(_inputContainer, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_inputContainer, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_inputContainer, 0, LV_PART_MAIN);
@@ -171,32 +285,32 @@ void CalculusApp::createUI() {
     _inputTitle = lv_label_create(_inputContainer);
     lv_label_set_text(_inputTitle, "Introduce f(x):");
     lv_obj_set_style_text_font(_inputTitle, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_inputTitle, lv_color_hex(COL_ACCENT_HEX), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_inputTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
     lv_obj_set_pos(_inputTitle, PAD, 4);
 
     _inputCanvas.create(_inputContainer);
     lv_obj_set_pos(_inputCanvas.obj(), PAD + 4, 24);
-    lv_obj_set_size(_inputCanvas.obj(), SCREEN_W - 2 * PAD - 4, 130);
+    lv_obj_set_size(_inputCanvas.obj(), SCREEN_W - 2 * PAD - 4, contentH - 50);
 
     _inputHint = lv_label_create(_inputContainer);
-    lv_label_set_text(_inputHint, "d/dx: Derivar   AC: Volver");
+    lv_label_set_text(_inputHint, "EXE: Derivar   GRAPH: Modo   AC: Volver");
     lv_obj_set_style_text_font(_inputHint, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(_inputHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_inputHint, PAD, SCREEN_H - BAR_H - 18);
+    lv_obj_set_pos(_inputHint, PAD, contentH - 18);
 
     // ─────────────────────────────────────────────────────────────────
     // COMPUTING container (spinner + message)
     // ─────────────────────────────────────────────────────────────────
     _computingContainer = lv_obj_create(_scr);
-    lv_obj_set_size(_computingContainer, SCREEN_W, SCREEN_H - BAR_H);
-    lv_obj_set_pos(_computingContainer, 0, BAR_H);
+    lv_obj_set_size(_computingContainer, SCREEN_W, contentH);
+    lv_obj_set_pos(_computingContainer, 0, contentY);
     lv_obj_set_style_bg_opa(_computingContainer, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_computingContainer, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_computingContainer, 0, LV_PART_MAIN);
     lv_obj_remove_flag(_computingContainer, LV_OBJ_FLAG_SCROLLABLE);
 
     _computingLabel = lv_label_create(_computingContainer);
-    lv_label_set_text(_computingLabel, "Derivando...");
+    lv_label_set_text(_computingLabel, "Calculando...");
     lv_obj_set_style_text_font(_computingLabel, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(_computingLabel, lv_color_hex(COL_SEP_HEX), LV_PART_MAIN);
     lv_obj_align(_computingLabel, LV_ALIGN_CENTER, 0, -20);
@@ -206,7 +320,7 @@ void CalculusApp::createUI() {
     lv_obj_set_size(_computingSpinner, 40, 40);
     lv_obj_align(_computingSpinner, LV_ALIGN_CENTER, 0, 25);
     lv_obj_set_style_arc_color(_computingSpinner,
-                               lv_color_hex(COL_ACCENT_HEX), LV_PART_INDICATOR);
+                               lv_color_hex(accentColor()), LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(_computingSpinner,
                                lv_color_hex(0xDDDDDD), LV_PART_MAIN);
 
@@ -214,58 +328,53 @@ void CalculusApp::createUI() {
     // RESULT container
     // ─────────────────────────────────────────────────────────────────
     _resultContainer = lv_obj_create(_scr);
-    lv_obj_set_size(_resultContainer, SCREEN_W, SCREEN_H - BAR_H);
-    lv_obj_set_pos(_resultContainer, 0, BAR_H);
+    lv_obj_set_size(_resultContainer, SCREEN_W, contentH);
+    lv_obj_set_pos(_resultContainer, 0, contentY);
     lv_obj_set_style_bg_opa(_resultContainer, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_resultContainer, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_resultContainer, 0, LV_PART_MAIN);
     lv_obj_remove_flag(_resultContainer, LV_OBJ_FLAG_SCROLLABLE);
 
     _resultTitle = lv_label_create(_resultContainer);
-    lv_label_set_text(_resultTitle, "Derivada");
+    lv_label_set_text(_resultTitle, "Resultado");
     lv_obj_set_style_text_font(_resultTitle, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_resultTitle, lv_color_hex(COL_ACCENT_HEX), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_resultTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
     lv_obj_set_pos(_resultTitle, PAD, 4);
 
-    // Original expression label
     _originalLabel = lv_label_create(_resultContainer);
     lv_label_set_text(_originalLabel, "f(x) =");
     lv_obj_set_style_text_font(_originalLabel, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(_originalLabel, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
     lv_obj_set_pos(_originalLabel, PAD, 24);
 
-    // Original expression canvas (small)
     _originalCanvas.create(_resultContainer);
     lv_obj_set_pos(_originalCanvas.obj(), PAD + 50, 20);
     lv_obj_set_size(_originalCanvas.obj(), SCREEN_W - PAD - 54, 30);
     lv_obj_add_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
 
-    // Derivative label
     _resultLabel = lv_label_create(_resultContainer);
     lv_label_set_text(_resultLabel, "f'(x) =");
     lv_obj_set_style_text_font(_resultLabel, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_resultLabel, lv_color_hex(COL_DERIV_HEX), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_resultLabel, lv_color_hex(COL_RESULT_HEX), LV_PART_MAIN);
     lv_obj_set_pos(_resultLabel, PAD, 58);
 
-    // Derivative canvas
     _resultCanvas.create(_resultContainer);
     lv_obj_set_pos(_resultCanvas.obj(), PAD + 4, 78);
     lv_obj_set_size(_resultCanvas.obj(), SCREEN_W - 2 * PAD - 4, 80);
     lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
 
-    // Result hint
     _resultHint = lv_label_create(_resultContainer);
     lv_label_set_text(_resultHint, "STEPS: Ver pasos    AC: Nuevo");
     lv_obj_set_style_text_font(_resultHint, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(_resultHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_resultHint, PAD, SCREEN_H - BAR_H - 22);
+    lv_obj_set_pos(_resultHint, PAD, contentH - 22);
 
     // ─────────────────────────────────────────────────────────────────
     // STEPS container (scrollable)
     // ─────────────────────────────────────────────────────────────────
     _stepsContainer = lv_obj_create(_scr);
-    lv_obj_set_size(_stepsContainer, SCREEN_W, SCREEN_H - BAR_H);
-    lv_obj_set_pos(_stepsContainer, 0, BAR_H);
+    lv_obj_set_size(_stepsContainer, SCREEN_W, contentH);
+    lv_obj_set_pos(_stepsContainer, 0, contentY);
     lv_obj_set_style_bg_opa(_stepsContainer, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_stepsContainer, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_stepsContainer, PAD, LV_PART_MAIN);
@@ -298,11 +407,14 @@ void CalculusApp::hideAllContainers() {
 void CalculusApp::showInput() {
     hideAllContainers();
     _state = State::EDITING;
-    _statusBar.setTitle("Calculo");
+    _statusBar.setTitle("Calculus");
 
     if (!_inputNode) resetInput();
     _inputCanvas.setExpression(_inputRow, &_inputCursor);
     _inputCanvas.invalidate();
+
+    // Update UI for current mode
+    setMode(_calcMode);
 
     lv_obj_remove_flag(_inputContainer, LV_OBJ_FLAG_HIDDEN);
     _inputCanvas.startCursorBlink();
@@ -312,10 +424,20 @@ void CalculusApp::showInput() {
 void CalculusApp::showComputing() {
     hideAllContainers();
     _state = State::COMPUTING;
-    _statusBar.setTitle("Derivando");
 
-    int idx = rand() % NUM_COMPUTING_MSGS;
-    lv_label_set_text(_computingLabel, COMPUTING_MESSAGES[idx]);
+    if (_calcMode == CalcMode::DERIVATIVE) {
+        _statusBar.setTitle("Derivando");
+        int idx = rand() % NUM_DERIV_MSGS;
+        lv_label_set_text(_computingLabel, DERIV_MESSAGES[idx]);
+    } else {
+        _statusBar.setTitle("Integrando");
+        int idx = rand() % NUM_INTEG_MSGS;
+        lv_label_set_text(_computingLabel, INTEG_MESSAGES[idx]);
+    }
+
+    lv_obj_set_style_arc_color(_computingSpinner,
+                               lv_color_hex(accentColor()), LV_PART_INDICATOR);
+
     lv_obj_remove_flag(_computingContainer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_invalidate(_scr);
 
@@ -326,7 +448,12 @@ void CalculusApp::showComputing() {
 void CalculusApp::showResult() {
     hideAllContainers();
     _state = State::RESULT;
-    _statusBar.setTitle("Derivada");
+
+    if (_calcMode == CalcMode::DERIVATIVE) {
+        _statusBar.setTitle("Derivada");
+    } else {
+        _statusBar.setTitle("Integral");
+    }
 
     buildResultDisplay();
 
@@ -472,9 +599,16 @@ void CalculusApp::handleKeyInput(const KeyEvent& ev) {
             showInput();
             break;
 
-        // ── ENTER → derive ──
+        // ── ENTER or = → compute ──
         case KeyCode::ENTER:
-            computeDerivative();
+        case KeyCode::FREE_EQ:
+            computeResult();
+            break;
+
+        // ── GRAPH → toggle mode (d/dx ↔ ∫dx) ──
+        case KeyCode::GRAPH:
+            setMode(_calcMode == CalcMode::DERIVATIVE
+                    ? CalcMode::INTEGRAL : CalcMode::DERIVATIVE);
             break;
 
         default:
@@ -606,10 +740,10 @@ char CalculusApp::detectVariable(const cas::SymExpr* expr) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Compute derivative — Core pipeline
+// Compute result — Dispatches to derivative or integral
 // ════════════════════════════════════════════════════════════════════════════
 
-void CalculusApp::computeDerivative() {
+void CalculusApp::computeResult() {
     if (!_inputRow || _inputRow->isEmpty()) {
         _statusBar.setTitle("Entrada vacia");
         _statusBar.update();
@@ -621,19 +755,20 @@ void CalculusApp::computeDerivative() {
 
     // Reset arena and steps for this computation
     _arena.reset();
-    _diffSteps.clear();
-    _derivExpr = nullptr;
+    _casSteps.clear();
+    _resultExpr = nullptr;
+    _integralFound = false;
 
     // Step 1: Flatten MathAST → SymExpr
-    _diffSteps.logNote("Convirtiendo expresion a forma simbolica");
+    _casSteps.logNote("Convirtiendo expresion a forma simbolica");
 
     cas::ASTFlattener flattener;
     flattener.setArena(&_arena);
     cas::SymExpr* expr = flattener.flattenToExpr(_inputRow);
 
     if (!expr) {
-        _diffSteps.logNote("Error: no se pudo interpretar la expresion");
-        _derivExpr = nullptr;
+        _casSteps.logNote("Error: no se pudo interpretar la expresion");
+        _resultExpr = nullptr;
         showResult();
         return;
     }
@@ -646,24 +781,38 @@ void CalculusApp::computeDerivative() {
         char varBuf[64];
         snprintf(varBuf, sizeof(varBuf),
                  "Expresion original: %s", expr->toString().c_str());
-        _diffSteps.logNote(varBuf);
+        _casSteps.logNote(varBuf);
     }
+
+    // Step 3: Dispatch to derivative or integral
+    if (_calcMode == CalcMode::DERIVATIVE) {
+        computeDerivative(expr);
+    } else {
+        computeIntegral(expr);
+    }
+
+    showResult();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Compute derivative
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculusApp::computeDerivative(cas::SymExpr* expr) {
     {
         char varBuf[48];
         snprintf(varBuf, sizeof(varBuf),
                  "Derivando respecto a '%c'", _variable);
-        _diffSteps.logNote(varBuf);
+        _casSteps.logNote(varBuf);
     }
 
-    // Step 3: Differentiate
-    _diffSteps.logNote("Aplicando reglas de derivacion");
+    _casSteps.logNote("Aplicando reglas de derivacion");
 
     cas::SymExpr* rawDeriv = cas::SymDiff::diff(expr, _variable, _arena);
 
     if (!rawDeriv) {
-        _diffSteps.logNote("Error: derivacion no soportada para esta expresion");
-        _derivExpr = nullptr;
-        showResult();
+        _casSteps.logNote("Error: derivacion no soportada para esta expresion");
+        _resultExpr = nullptr;
         return;
     }
 
@@ -671,30 +820,67 @@ void CalculusApp::computeDerivative() {
         char rawBuf[128];
         snprintf(rawBuf, sizeof(rawBuf),
                  "Derivada sin simplificar: %s", rawDeriv->toString().c_str());
-        _diffSteps.logNote(rawBuf);
+        _casSteps.logNote(rawBuf);
     }
 
-    // Step 4: Simplify
-    _diffSteps.logNote("Simplificando resultado");
+    _casSteps.logNote("Simplificando resultado");
 
     cas::SymExpr* simplified = cas::SymSimplify::simplify(rawDeriv, _arena);
-    _derivExpr = simplified ? simplified : rawDeriv;
+    _resultExpr = simplified ? simplified : rawDeriv;
 
-    // Check if the result is polynomial — note it
-    if (_derivExpr->isPolynomial()) {
-        _diffSteps.logNote("Resultado: expresion polinomica");
+    if (_resultExpr->isPolynomial()) {
+        _casSteps.logNote("Resultado: expresion polinomica");
     } else {
-        _diffSteps.logNote("Resultado: expresion transcendental");
+        _casSteps.logNote("Resultado: expresion transcendental");
     }
 
     {
         char resBuf[128];
         snprintf(resBuf, sizeof(resBuf),
-                 "f'(%c) = %s", _variable, _derivExpr->toString().c_str());
-        _diffSteps.logNote(resBuf);
+                 "f'(%c) = %s", _variable, _resultExpr->toString().c_str());
+        _casSteps.logNote(resBuf);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Compute integral
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculusApp::computeIntegral(cas::SymExpr* expr) {
+    {
+        char varBuf[48];
+        snprintf(varBuf, sizeof(varBuf),
+                 "Integrando respecto a '%c'", _variable);
+        _casSteps.logNote(varBuf);
     }
 
-    showResult();
+    _casSteps.logNote("Buscando antiderivada simbolica");
+
+    cas::SymExpr* antideriv = cas::SymIntegrate::integrate(expr, _variable, _arena);
+
+    if (antideriv) {
+        _integralFound = true;
+        _resultExpr = antideriv;
+
+        {
+            char resBuf[128];
+            snprintf(resBuf, sizeof(resBuf),
+                     "Antiderivada encontrada: %s + C", antideriv->toString().c_str());
+            _casSteps.logNote(resBuf);
+        }
+
+        if (_resultExpr->isPolynomial()) {
+            _casSteps.logNote("Resultado: expresion polinomica");
+        } else {
+            _casSteps.logNote("Resultado: expresion transcendental");
+        }
+    } else {
+        _integralFound = false;
+        _resultExpr = expr;
+
+        _casSteps.logNote("No se encontro antiderivada en forma cerrada");
+        _casSteps.logNote("Mostrando integral sin evaluar");
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -713,14 +899,16 @@ void CalculusApp::buildResultDisplay() {
     _originalNode.reset();
     _originalRow = nullptr;
 
-    if (!_derivExpr) {
+    if (!_resultExpr) {
         // Error case
-        lv_label_set_text(_resultTitle, "Error de derivacion");
+        if (_calcMode == CalcMode::DERIVATIVE) {
+            lv_label_set_text(_resultTitle, "Error de derivacion");
+        } else {
+            lv_label_set_text(_resultTitle, "Error de integracion");
+        }
         lv_label_set_text(_resultLabel, "");
         return;
     }
-
-    lv_label_set_text(_resultTitle, "Derivada simbolica");
 
     // Show original expression (small)
     if (_inputRow) {
@@ -737,30 +925,84 @@ void CalculusApp::buildResultDisplay() {
         _originalCanvas.invalidate();
     }
 
-    // Show derivative (large)
-    {
+    // ── Derivative mode ──
+    if (_calcMode == CalcMode::DERIVATIVE) {
+        lv_label_set_text(_resultTitle, "Derivada simbolica");
+        lv_obj_set_style_text_color(_resultTitle, lv_color_hex(COL_DERIV_HEX), LV_PART_MAIN);
+
         char dLabel[16];
         snprintf(dLabel, sizeof(dLabel), "f'(%c) =", _variable);
         lv_label_set_text(_resultLabel, dLabel);
-    }
 
-    // Convert SymExpr → MathAST for 2D rendering
-    NodePtr derivAST = cas::SymExprToAST::convert(_derivExpr);
+        NodePtr derivAST = cas::SymExprToAST::convert(_resultExpr);
+        if (derivAST) {
+            if (derivAST->type() == NodeType::Row) {
+                _resultNode = std::move(derivAST);
+            } else {
+                auto row = makeRow();
+                static_cast<NodeRow*>(row.get())->appendChild(std::move(derivAST));
+                _resultNode = std::move(row);
+            }
+            _resultRow = static_cast<NodeRow*>(_resultNode.get());
 
-    if (derivAST) {
-        if (derivAST->type() == NodeType::Row) {
-            _resultNode = std::move(derivAST);
-        } else {
-            auto row = makeRow();
-            static_cast<NodeRow*>(row.get())->appendChild(std::move(derivAST));
-            _resultNode = std::move(row);
+            lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+            _resultCanvas.setExpression(_resultRow, nullptr);
+            _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+            _resultCanvas.invalidate();
         }
-        _resultRow = static_cast<NodeRow*>(_resultNode.get());
+    }
+    // ── Integral mode ──
+    else {
+        lv_obj_set_style_text_color(_resultTitle, lv_color_hex(COL_INTEG_HEX), LV_PART_MAIN);
 
-        lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
-        _resultCanvas.setExpression(_resultRow, nullptr);
-        _resultRow->calculateLayout(_resultCanvas.normalMetrics());
-        _resultCanvas.invalidate();
+        if (_integralFound) {
+            lv_label_set_text(_resultTitle, "Integral simbolica");
+
+            char iLabel[24];
+            snprintf(iLabel, sizeof(iLabel), "F(%c) =", _variable);
+            lv_label_set_text(_resultLabel, iLabel);
+
+            NodePtr integAST = cas::SymExprToAST::convertIntegral(_resultExpr);
+            if (integAST) {
+                if (integAST->type() == NodeType::Row) {
+                    _resultNode = std::move(integAST);
+                } else {
+                    auto row = makeRow();
+                    static_cast<NodeRow*>(row.get())->appendChild(std::move(integAST));
+                    _resultNode = std::move(row);
+                }
+                _resultRow = static_cast<NodeRow*>(_resultNode.get());
+
+                lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+                _resultCanvas.setExpression(_resultRow, nullptr);
+                _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+                _resultCanvas.invalidate();
+            }
+        } else {
+            lv_label_set_text(_resultTitle, "Integral sin evaluar");
+
+            char iLabel[32];
+            snprintf(iLabel, sizeof(iLabel),
+                     "\xe2\x88\xab" "f(%c)d%c =", _variable, _variable);
+            lv_label_set_text(_resultLabel, iLabel);
+
+            NodePtr exprAST = cas::SymExprToAST::convert(_resultExpr);
+            if (exprAST) {
+                if (exprAST->type() == NodeType::Row) {
+                    _resultNode = std::move(exprAST);
+                } else {
+                    auto row = makeRow();
+                    static_cast<NodeRow*>(row.get())->appendChild(std::move(exprAST));
+                    _resultNode = std::move(row);
+                }
+                _resultRow = static_cast<NodeRow*>(_resultNode.get());
+
+                lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+                _resultCanvas.setExpression(_resultRow, nullptr);
+                _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+                _resultCanvas.invalidate();
+            }
+        }
     }
 }
 
@@ -771,7 +1013,7 @@ void CalculusApp::buildResultDisplay() {
 void CalculusApp::buildStepsDisplay() {
     lv_obj_clean(_stepsContainer);
 
-    const auto& steps = _diffSteps.steps();
+    const auto& steps = _casSteps.steps();
 
     if (steps.empty()) {
         lv_obj_t* lbl = lv_label_create(_stepsContainer);

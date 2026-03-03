@@ -128,6 +128,38 @@ public:
 
     // ── Stats ───────────────────────────────────────────────────────
 
+    /// Snapshot of arena memory usage (for debugging / step display)
+    struct ArenaStats {
+        size_t totalAllocated;    ///< Total bytes allocated (blocks * blockSize)
+        size_t currentBlockUsed;  ///< Bytes used in current (last) block
+        size_t numBlocks;         ///< Number of PSRAM blocks in use
+        size_t consTableSize;     ///< Entries in the hash-consing table
+        size_t consTableCap;      ///< Capacity of the hash-consing table
+        size_t bigIntCount;       ///< Number of BigInt promotions tracked
+
+        /// Approximate total bytes actually used (all blocks).
+        /// Counts full blocks (except last) + current offset in last block.
+        size_t estimatedUsed(size_t blockSize) const {
+            if (numBlocks == 0) return 0;
+            return (numBlocks - 1) * blockSize + currentBlockUsed;
+        }
+    };
+
+    /// Get a snapshot of current arena statistics.
+    ArenaStats stats() const {
+        ArenaStats s;
+        s.totalAllocated   = _numBlocks * _blockSize;
+        s.currentBlockUsed = _offset;
+        s.numBlocks        = _numBlocks;
+        s.consTableSize    = _consTable.size();
+        s.consTableCap     = _consTable.capacity();
+        s.bigIntCount      = 0;
+#ifdef ARDUINO
+        s.bigIntCount      = _bigIntRegistry.size();
+#endif
+        return s;
+    }
+
     /// Total bytes allocated from PSRAM for this arena
     size_t totalAllocated() const { return _numBlocks * _blockSize; }
 

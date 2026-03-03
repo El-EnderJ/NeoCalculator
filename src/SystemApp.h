@@ -28,7 +28,7 @@
 #include "apps/GrapherApp.h"
 #include "apps/EquationsApp.h"
 #include "apps/CalculusApp.h"
-#include "apps/IntegralApp.h"
+#include "apps/SettingsApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -47,8 +47,7 @@ enum class Mode : uint8_t {
     APP_STATISTICS,    // Statistics (placeholder)
     APP_PROBABILITY,   // Probability distribution (placeholder)
     APP_EQUATIONS,     // Equation solver
-    APP_CALCULUS,      // Calculus (derivatives)
-    APP_INTEGRAL,      // Integral (antiderivatives)
+    APP_CALCULUS,      // Calculus (derivatives + integrals)
     APP_SEQUENCE,      // Sequence solver (placeholder)
     APP_REGRESSION,    // Regression analysis (placeholder)
     APP_PYTHON,        // Python shell (placeholder)
@@ -93,7 +92,7 @@ private:
     GrapherApp*     _grapherApp;
     EquationsApp*   _equationsApp;
     CalculusApp*    _calculusApp;
-    IntegralApp*    _integralApp;
+    SettingsApp*    _settingsApp;
 
     // Math Engine
     Tokenizer _tokenizer;

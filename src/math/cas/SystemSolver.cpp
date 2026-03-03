@@ -168,10 +168,10 @@ SystemResult SystemSolver::solve2x2(const LinEq& eq1, const LinEq& eq2,
     char vars[3] = { var1, var2, '\0' };
 
     // Log original system
-    result.steps.logNote("Sistema de ecuaciones 2x2:", MethodId::General);
-    result.steps.log("  Ec.1: " + eqToString(eq1, vars, 2),
+    result.steps.logNote("System of equations 2x2:", MethodId::General);
+    result.steps.log("  Eq.1: " + eqToString(eq1, vars, 2),
                      eqToSymEquation(eq1, vars, 2), MethodId::General);
-    result.steps.log("  Ec.2: " + eqToString(eq2, vars, 2),
+    result.steps.log("  Eq.2: " + eqToString(eq2, vars, 2),
                      eqToSymEquation(eq2, vars, 2), MethodId::General);
 
     // Choose method
@@ -180,11 +180,11 @@ SystemResult SystemSolver::solve2x2(const LinEq& eq1, const LinEq& eq2,
 
     bool success = false;
     if (method == SystemMethod::Reduction) {
-        result.steps.logNote("Metodo seleccionado: Reduccion (igualacion de coeficientes)",
+        result.steps.logNote("Method selected: Reduction (coefficient matching)",
                              MethodId::Reduction);
         success = solveByReduction(eq1, eq2, var1, var2, result);
     } else {
-        result.steps.logNote("Metodo seleccionado: Sustitucion",
+        result.steps.logNote("Method selected: Substitution",
                              MethodId::Substitution);
         success = solveBySubstitution(eq1, eq2, var1, var2, result);
     }
@@ -232,8 +232,8 @@ bool SystemSolver::solveBySubstitution(const LinEq& eq1, const LinEq& eq2,
     // var[isoVar] = (rhs - coeffs[otherVar]*var[otherVar]) / coeffs[isoVar]
 
     result.steps.logNote(
-        "Despejando " + std::string(1, vars[isoVar]) +
-        " en la Ecuacion " + std::to_string(isoEq + 1), M);
+        "Isolating " + std::string(1, vars[isoVar]) +
+        " in Equation " + std::to_string(isoEq + 1), M);
 
     // ── Step 3: Substitute into the other equation ───────────────
     // oEq: coeffs[isoVar]*var[isoVar] + coeffs[otherVar]*var[otherVar] = rhs
@@ -253,16 +253,16 @@ bool SystemSolver::solveBySubstitution(const LinEq& eq1, const LinEq& eq2,
     newRhs.simplify();
 
     result.steps.logNote(
-        "Sustituyendo en la Ecuacion " + std::to_string(otherEq + 1), M);
+        "Substituting into Equation " + std::to_string(otherEq + 1), M);
 
     // Check for zero coefficient (no solution or infinite solutions)
     if (newCoeff.isZero()) {
         if (newRhs.isZero()) {
-            result.steps.logNote("Sistema dependiente: infinitas soluciones", M);
-            result.error = "Sistema dependiente";
+            result.steps.logNote("Dependent system: infinite solutions", M);
+            result.error = "Dependent system";
         } else {
-            result.steps.logNote("Sistema incompatible: sin solucion", M);
-            result.error = "Sin solucion (sistema incompatible)";
+            result.steps.logNote("Incompatible system: no solution", M);
+            result.error = "No solution (incompatible system)";
         }
         return false;
     }
@@ -277,7 +277,7 @@ bool SystemSolver::solveBySubstitution(const LinEq& eq1, const LinEq& eq2,
         reduced.coeffs[otherVar] = newCoeff;
         reduced.rhs = newRhs;
         result.steps.log(
-            "Resolviendo para " + std::string(1, vars[otherVar]),
+            "Solving for " + std::string(1, vars[otherVar]),
             eqToSymEquation(reduced, vars, 2), M);
     }
 
@@ -303,8 +303,8 @@ bool SystemSolver::solveBySubstitution(const LinEq& eq1, const LinEq& eq2,
         SymPoly lhs = SymPoly::fromTerm(SymTerm::variable(vars[isoVar], 1, 1, 1));
         SymPoly rhs = SymPoly::fromConstant(solIso);
         result.steps.log(
-            "Sustituyendo " + std::string(1, vars[otherVar]) +
-            " para encontrar " + std::string(1, vars[isoVar]),
+            "Substituting " + std::string(1, vars[otherVar]) +
+            " to find " + std::string(1, vars[isoVar]),
             SymEquation(lhs, rhs), M);
     }
 
@@ -362,9 +362,9 @@ bool SystemSolver::solveByReduction(const LinEq& eq1, const LinEq& eq2,
 
     // Check for zero coefficients
     if (c1.isZero() && c2.isZero()) {
-        result.steps.logNote("Ambos coeficientes de " + std::string(1, vars[elimVar]) +
-                             " son cero", M);
-        result.error = "Coeficientes cero";
+        result.steps.logNote("Both coefficients of " + std::string(1, vars[elimVar]) +
+                             " are zero", M);
+        result.error = "Zero coefficients";
         return false;
     }
 
@@ -395,9 +395,9 @@ bool SystemSolver::solveByReduction(const LinEq& eq1, const LinEq& eq2,
 
     // Log multiplication steps
     result.steps.logNote(
-        "Multiplicando Ec.1 por " + std::to_string(c2.num) +
+        "Multiplying Eq.1 by " + std::to_string(c2.num) +
         (c2.den != 1 ? "/" + std::to_string(c2.den) : "") +
-        " para igualar coeficientes de " + std::string(1, vars[elimVar]), M);
+        " to match coefficients of " + std::string(1, vars[elimVar]), M);
 
     // Build scaled equations for logging
     LinEq scaled1, scaled2;
@@ -412,15 +412,15 @@ bool SystemSolver::solveByReduction(const LinEq& eq1, const LinEq& eq2,
     scaled2.rhs = exactMul(c1, eq2.rhs);
     scaled2.rhs.simplify();
 
-    result.steps.log("  Ec.1 * " + std::to_string(c2.num) +
+    result.steps.log("  Eq.1 * " + std::to_string(c2.num) +
                      (c2.den != 1 ? "/" + std::to_string(c2.den) : ""),
                      eqToSymEquation(scaled1, vars, 2), M);
 
     result.steps.logNote(
-        "Multiplicando Ec.2 por " + std::to_string(c1.num) +
+        "Multiplying Eq.2 by " + std::to_string(c1.num) +
         (c1.den != 1 ? "/" + std::to_string(c1.den) : ""), M);
 
-    result.steps.log("  Ec.2 * " + std::to_string(c1.num) +
+    result.steps.log("  Eq.2 * " + std::to_string(c1.num) +
                      (c1.den != 1 ? "/" + std::to_string(c1.den) : ""),
                      eqToSymEquation(scaled2, vars, 2), M);
 
@@ -434,7 +434,7 @@ bool SystemSolver::solveByReduction(const LinEq& eq1, const LinEq& eq2,
     combined.rhs.simplify();
 
     result.steps.log(
-        "Restando ecuaciones para eliminar " + std::string(1, vars[elimVar]),
+        "Subtracting equations to eliminate " + std::string(1, vars[elimVar]),
         eqToSymEquation(combined, vars, 2), M);
 
     // ── Solve for keepVar ────────────────────────────────────────
@@ -442,11 +442,11 @@ bool SystemSolver::solveByReduction(const LinEq& eq1, const LinEq& eq2,
 
     if (keepCoeff.isZero()) {
         if (combined.rhs.isZero()) {
-            result.steps.logNote("Sistema dependiente: infinitas soluciones", M);
-            result.error = "Sistema dependiente";
+            result.steps.logNote("Dependent system: infinite solutions", M);
+            result.error = "Dependent system";
         } else {
-            result.steps.logNote("Sistema incompatible: sin solucion", M);
-            result.error = "Sin solucion (sistema incompatible)";
+            result.steps.logNote("Incompatible system: no solution", M);
+            result.error = "No solution (incompatible system)";
         }
         return false;
     }
@@ -458,7 +458,7 @@ bool SystemSolver::solveByReduction(const LinEq& eq1, const LinEq& eq2,
         SymPoly lhs = SymPoly::fromTerm(SymTerm::variable(vars[keepVar], 1, 1, 1));
         SymPoly rhs = SymPoly::fromConstant(solKeep);
         result.steps.log(
-            "Resolviendo para " + std::string(1, vars[keepVar]),
+            "Solving for " + std::string(1, vars[keepVar]),
             SymEquation(lhs, rhs), M);
     }
 
@@ -472,8 +472,8 @@ bool SystemSolver::solveByReduction(const LinEq& eq1, const LinEq& eq2,
         SymPoly lhs = SymPoly::fromTerm(SymTerm::variable(vars[elimVar], 1, 1, 1));
         SymPoly rhs = SymPoly::fromConstant(solElim);
         result.steps.log(
-            "Sustituyendo " + std::string(1, vars[keepVar]) +
-            " en Ec.1 para encontrar " + std::string(1, vars[elimVar]),
+            "Substituting " + std::string(1, vars[keepVar]) +
+            " in Eq.1 to find " + std::string(1, vars[elimVar]),
             SymEquation(lhs, rhs), M);
     }
 
@@ -500,15 +500,15 @@ SystemResult SystemSolver::solve3x3(const LinEq& eq1, const LinEq& eq2,
     char vars[4] = { var1, var2, var3, '\0' };
 
     // Log original system
-    result.steps.logNote("Sistema de ecuaciones 3x3:", MethodId::Gauss);
-    result.steps.log("  Ec.1: " + eqToString(eq1, vars, 3),
+    result.steps.logNote("System of equations 3x3:", MethodId::Gauss);
+    result.steps.log("  Eq.1: " + eqToString(eq1, vars, 3),
                      eqToSymEquation(eq1, vars, 3), MethodId::Gauss);
-    result.steps.log("  Ec.2: " + eqToString(eq2, vars, 3),
+    result.steps.log("  Eq.2: " + eqToString(eq2, vars, 3),
                      eqToSymEquation(eq2, vars, 3), MethodId::Gauss);
-    result.steps.log("  Ec.3: " + eqToString(eq3, vars, 3),
+    result.steps.log("  Eq.3: " + eqToString(eq3, vars, 3),
                      eqToSymEquation(eq3, vars, 3), MethodId::Gauss);
 
-    result.steps.logNote("Metodo: Eliminacion de Gauss", MethodId::Gauss);
+    result.steps.logNote("Method: Gaussian elimination", MethodId::Gauss);
 
     result.ok = solveByGauss(eq1, eq2, eq3, var1, var2, var3, result);
     return result;
@@ -535,7 +535,7 @@ bool SystemSolver::solveByGauss(const LinEq& eq1, const LinEq& eq2,
         mat[r][3] = eqs[r]->rhs;
     }
 
-    result.steps.logNote("Aplicando eliminacion de Gauss para triangular la matriz", M);
+    result.steps.logNote("Applying Gaussian elimination to triangulate the matrix", M);
 
     // ── Forward elimination ──────────────────────────────────────
     for (int col = 0; col < 3; ++col) {
@@ -550,9 +550,9 @@ bool SystemSolver::solveByGauss(const LinEq& eq1, const LinEq& eq2,
 
         if (pivotRow < 0) {
             result.steps.logNote(
-                "Pivote cero en columna " + std::string(1, vars[col]) +
-                ": sistema singular", M);
-            result.error = "Sistema singular (sin solucion unica)";
+                "Zero pivot in column " + std::string(1, vars[col]) +
+                ": singular system", M);
+            result.error = "Singular system (no unique solution)";
             return false;
         }
 
@@ -564,8 +564,8 @@ bool SystemSolver::solveByGauss(const LinEq& eq1, const LinEq& eq2,
                 mat[pivotRow][j] = tmp;
             }
             result.steps.logNote(
-                "Intercambiando Ec." + std::to_string(col + 1) +
-                " con Ec." + std::to_string(pivotRow + 1), M);
+                "Swapping Eq." + std::to_string(col + 1) +
+                " with Eq." + std::to_string(pivotRow + 1), M);
         }
 
         // Eliminate below pivot
@@ -587,8 +587,8 @@ bool SystemSolver::solveByGauss(const LinEq& eq1, const LinEq& eq2,
                 rowEq.rhs = mat[r][3];
 
                 result.steps.log(
-                    "Eliminando " + std::string(1, vars[col]) +
-                    " de Ec." + std::to_string(r + 1),
+                    "Eliminating " + std::string(1, vars[col]) +
+                    " from Eq." + std::to_string(r + 1),
                     eqToSymEquation(rowEq, vars, 3), M);
             }
         }
@@ -597,8 +597,8 @@ bool SystemSolver::solveByGauss(const LinEq& eq1, const LinEq& eq2,
     // ── Check for singular matrix (zero on diagonal) ─────────────
     for (int i = 0; i < 3; ++i) {
         if (mat[i][i].isZero()) {
-            result.steps.logNote("Pivote cero en diagonal: sistema singular", M);
-            result.error = "Sistema singular (sin solucion unica)";
+            result.steps.logNote("Zero pivot on diagonal: singular system", M);
+            result.error = "Singular system (no unique solution)";
             return false;
         }
     }
@@ -619,7 +619,7 @@ bool SystemSolver::solveByGauss(const LinEq& eq1, const LinEq& eq2,
             SymPoly lhs = SymPoly::fromTerm(SymTerm::variable(vars[r], 1, 1, 1));
             SymPoly rhs = SymPoly::fromConstant(sol[r]);
             result.steps.log(
-                "Sustitucion hacia atras: " + std::string(1, vars[r]) +
+                "Back substitution: " + std::string(1, vars[r]) +
                 " = " + std::to_string(sol[r].num) +
                 (sol[r].den != 1 ? "/" + std::to_string(sol[r].den) : ""),
                 SymEquation(lhs, rhs), M);
@@ -648,10 +648,11 @@ NLSystemResult SystemSolver::solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
     NLSystemResult result;
     result.var1 = var1;
     result.var2 = var2;
+    result.numVars = 2;
     result.methodUsed = SystemMethod::Resultant;
 
     if (!f1 || !f2) {
-        result.error = "Ecuacion nula";
+        result.error = "Null equation";
         return result;
     }
 
@@ -660,74 +661,80 @@ NLSystemResult SystemSolver::solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
     f2 = SymSimplify::simplify(f2, arena);
 
     result.steps.logNote(
-        "Sistema no lineal 2x2: eliminar " + std::string(1, var2) +
-        " via resultante de Sylvester", MethodId::General);
+        "Eliminating " + std::string(1, var2) +
+        " by constructing the Sylvester matrix from both equations.",
+        MethodId::General);
     result.steps.logNote(
-        "Ec1: " + f1->toString() + " = 0", MethodId::General);
+        "Eq1: " + f1->toString() + " = 0", MethodId::General);
     result.steps.logNote(
-        "Ec2: " + f2->toString() + " = 0", MethodId::General);
+        "Eq2: " + f2->toString() + " = 0", MethodId::General);
 
     // ── Step 2: Collect as univariate polynomials in var2 ──────────
     UniPoly P = collectAsUniPoly(f1, var2, arena);
     UniPoly Q = collectAsUniPoly(f2, var2, arena);
 
     if (P.isZero() || Q.isZero()) {
-        result.error = "No se pudo extraer estructura polinomial en " +
+        result.error = "Could not extract polynomial structure in " +
                        std::string(1, var2);
         return result;
     }
 
     result.steps.logNote(
-        "Grado de Ec1 en " + std::string(1, var2) + ": " +
-        std::to_string(P.degree()), MethodId::General);
+        "Eq1 is degree " + std::to_string(P.degree()) +
+        " in " + std::string(1, var2) + ".",
+        MethodId::General);
     result.steps.logNote(
-        "Grado de Ec2 en " + std::string(1, var2) + ": " +
-        std::to_string(Q.degree()), MethodId::General);
+        "Eq2 is degree " + std::to_string(Q.degree()) +
+        " in " + std::string(1, var2) + ".",
+        MethodId::General);
 
     // Degree safety check
     int totalDeg = P.degree() + Q.degree();
     if (totalDeg > 12) {
-        result.error = "Grado total > 12: sistema demasiado complejo";
+        result.error = "Total degree > 12: system too complex";
         return result;
     }
 
     // ── Step 3: Compute Sylvester resultant ────────────────────────
     result.steps.logNote(
-        "Construyendo matriz de Sylvester " +
-        std::to_string(totalDeg) + "x" + std::to_string(totalDeg),
+        "Constructing the " + std::to_string(totalDeg) + "\u00D7" +
+        std::to_string(totalDeg) +
+        " Sylvester matrix to compute the resultant.",
         MethodId::General);
 
     SymExpr* R = sylvesterResultant(P, Q, arena);
 
     if (!R) {
-        result.error = "Error al calcular la resultante";
+        result.error = "Error computing the resultant";
         return result;
     }
 
     R = SymSimplify::simplify(R, arena);
 
     result.steps.logNote(
-        "Resultante R(" + std::string(1, var1) + ") = " + R->toString(),
+        "The resultant eliminates " + std::string(1, var2) +
+        ", giving R(" + std::string(1, var1) + ") = " + R->toString() + ".",
         MethodId::General);
 
     // Check if resultant is zero (equations are not independent)
     if (R->type == SymExprType::Num) {
         auto* num = static_cast<SymNum*>(R);
         if (num->_coeff.isZero()) {
-            result.error = "Resultante identicamente cero: ecuaciones no independientes";
+            result.error = "Resultant identically zero: equations are not independent";
             return result;
         }
     }
 
     // ── Step 4: Solve R(var1) = 0 ──────────────────────────────────
     result.steps.logNote(
-        "Resolver R(" + std::string(1, var1) + ") = 0",
+        "Solving R(" + std::string(1, var1) + ") = 0 for " +
+        std::string(1, var1) + ".",
         MethodId::General);
 
     // Check that R actually contains var1
     if (!R->containsVar(var1)) {
         // R is a constant — if non-zero, system is inconsistent
-        result.error = "Sistema incompatible (resultante constante no nula)";
+        result.error = "Incompatible system (constant non-zero resultant)";
         return result;
     }
 
@@ -736,14 +743,15 @@ NLSystemResult SystemSolver::solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
     OmniResult omniRes = omni.solve(R, zeroExpr, var1, arena);
 
     if (!omniRes.ok || omniRes.solutions.empty()) {
-        result.error = "No se encontraron soluciones para " +
+        result.error = "No solutions found for " +
                        std::string(1, var1);
         return result;
     }
 
     result.steps.logNote(
-        "Soluciones para " + std::string(1, var1) + ": " +
-        std::to_string(omniRes.solutions.size()), MethodId::General);
+        "Found " + std::to_string(omniRes.solutions.size()) +
+        " value(s) for " + std::string(1, var1) + ".",
+        MethodId::General);
 
     // ── Step 5: Back-substitution ──────────────────────────────────
     // For each solution of var1, substitute into f1 → solve for var2
@@ -760,15 +768,16 @@ NLSystemResult SystemSolver::solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
         }
 
         result.steps.logNote(
-            "Sustituir " + std::string(1, var1) + " = " +
-            xVal->toString() + " en Ec1", MethodId::General);
+            "Back-substituting " + std::string(1, var1) + " = " +
+            xVal->toString() + " into Eq1 to find " +
+            std::string(1, var2) + ".", MethodId::General);
 
         // Substitute var1 = xVal into f1 → get equation in var2 only
         SymExpr* f1_sub = substituteVar(f1, var1, xVal, arena);
         f1_sub = SymSimplify::simplify(f1_sub, arena);
 
         result.steps.logNote(
-            "Ec1 sustituida: " + f1_sub->toString() + " = 0",
+            "After substitution: " + f1_sub->toString() + " = 0.",
             MethodId::General);
 
         // Solve the substituted equation for var2
@@ -779,8 +788,8 @@ NLSystemResult SystemSolver::solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
                 if (num->_coeff.isZero()) {
                     // Identity 0=0 → var2 is free (skip or note)
                     result.steps.logNote(
-                        "Identidad 0=0: " + std::string(1, var2) +
-                        " es libre", MethodId::General);
+                        "Identity 0=0: " + std::string(1, var2) +
+                        " is free", MethodId::General);
                 }
             }
             // Try with f2 instead
@@ -824,10 +833,10 @@ NLSystemResult SystemSolver::solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
             }
 
             result.steps.logNote(
-                "Solucion: (" + std::string(1, var1) + ", " +
+                "\u2714 Solution: (" + std::string(1, var1) + ", " +
                 std::string(1, var2) + ") = (" +
                 pair.exprX->toString() + ", " +
-                pair.exprY->toString() + ")", MethodId::General);
+                pair.exprY->toString() + ").", MethodId::General);
 
             result.solutions.push_back(pair);
         }
@@ -835,7 +844,216 @@ NLSystemResult SystemSolver::solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
 
     result.ok = !result.solutions.empty();
     if (!result.ok) {
-        result.error = "Ninguna solucion valida tras sustitucion regresiva";
+        result.error = "No valid solutions after back-substitution";
+    }
+
+    return result;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// solveNonlinear3x3 — Cascaded Sylvester elimination for 3×3 systems
+//
+// Pipeline:
+//   1. Eliminate var3 between (f1, f2) → R12(var1, var2) = 0
+//   2. Eliminate var3 between (f1, f3) → R13(var1, var2) = 0
+//   3. Solve {R12=0, R13=0} via solveNonlinear2x2
+//   4. Back-substitute each (var1, var2) → solve f1 for var3
+// ════════════════════════════════════════════════════════════════════
+
+NLSystemResult SystemSolver::solveNonlinear3x3(
+    SymExpr* f1, SymExpr* f2, SymExpr* f3,
+    char var1, char var2, char var3,
+    SymExprArena& arena)
+{
+    NLSystemResult result;
+    result.var1     = var1;
+    result.var2     = var2;
+    result.var3     = var3;
+    result.numVars  = 3;
+    result.methodUsed = SystemMethod::Resultant;
+
+    if (!f1 || !f2 || !f3) {
+        result.error = "Null equation";
+        return result;
+    }
+
+    // ── Step 1: Simplify all three equations ───────────────────────
+    f1 = SymSimplify::simplify(f1, arena);
+    f2 = SymSimplify::simplify(f2, arena);
+    f3 = SymSimplify::simplify(f3, arena);
+
+    result.steps.logNote(
+        "Nonlinear system 3\u00D73: eliminating " + std::string(1, var3) +
+        " by cascaded Sylvester resultants.", MethodId::General);
+    result.steps.logNote(
+        "Eq1: " + f1->toString() + " = 0", MethodId::General);
+    result.steps.logNote(
+        "Eq2: " + f2->toString() + " = 0", MethodId::General);
+    result.steps.logNote(
+        "Eq3: " + f3->toString() + " = 0", MethodId::General);
+
+    // ── Step 2: Collect as univariate in var3 ──────────────────────
+    UniPoly P1 = collectAsUniPoly(f1, var3, arena);
+    UniPoly P2 = collectAsUniPoly(f2, var3, arena);
+    UniPoly P3 = collectAsUniPoly(f3, var3, arena);
+
+    if (P1.isZero() || P2.isZero() || P3.isZero()) {
+        result.error = "Could not extract polynomial structure in " +
+                       std::string(1, var3);
+        return result;
+    }
+
+    // Degree safety
+    int d12 = P1.degree() + P2.degree();
+    int d13 = P1.degree() + P3.degree();
+    if (d12 > 12 || d13 > 12) {
+        result.error = "Total degree too high for Sylvester (" +
+                       std::to_string(d12) + ", " + std::to_string(d13) + ")";
+        return result;
+    }
+
+    // ── Step 3: Resultant R12 = Res(f1, f2, var3) ─────────────────
+    result.steps.logNote(
+        "Constructing " + std::to_string(d12) + "\u00D7" +
+        std::to_string(d12) +
+        " Sylvester matrix for Eq1 and Eq2.", MethodId::General);
+
+    SymExpr* R12 = sylvesterResultant(P1, P2, arena);
+    if (!R12) {
+        result.error = "Error computing the resultant R12";
+        return result;
+    }
+    R12 = SymSimplify::simplify(R12, arena);
+
+    result.steps.logNote(
+        "R12(" + std::string(1, var1) + "," + std::string(1, var2) +
+        ") = " + R12->toString(), MethodId::General);
+
+    // ── Step 4: Resultant R13 = Res(f1, f3, var3) ─────────────────
+    result.steps.logNote(
+        "Constructing " + std::to_string(d13) + "\u00D7" +
+        std::to_string(d13) +
+        " Sylvester matrix for Eq1 and Eq3.", MethodId::General);
+
+    SymExpr* R13 = sylvesterResultant(P1, P3, arena);
+    if (!R13) {
+        result.error = "Error computing the resultant R13";
+        return result;
+    }
+    R13 = SymSimplify::simplify(R13, arena);
+
+    result.steps.logNote(
+        "R13(" + std::string(1, var1) + "," + std::string(1, var2) +
+        ") = " + R13->toString(), MethodId::General);
+
+    // ── Step 5: Solve {R12=0, R13=0} as 2×2 nonlinear ─────────────
+    result.steps.logNote(
+        "Solving the reduced 2\u00D72 system {R12=0, R13=0} for (" +
+        std::string(1, var1) + ", " + std::string(1, var2) + ").",
+        MethodId::General);
+
+    NLSystemResult sub2x2 = solveNonlinear2x2(R12, R13, var1, var2, arena);
+
+    if (!sub2x2.ok || sub2x2.solutions.empty()) {
+        result.error = sub2x2.error.empty()
+            ? "No solutions for the reduced 2\u00D72 system"
+            : sub2x2.error;
+        return result;
+    }
+
+    result.steps.logNote(
+        "Found " + std::to_string(sub2x2.solutions.size()) +
+        " candidate(s) for (" + std::string(1, var1) + ", " +
+        std::string(1, var2) + ").", MethodId::General);
+
+    // ── Step 6: Back-substitute to find var3 ───────────────────────
+    OmniSolver omni;
+    SymExpr* zeroExpr = symInt(arena, 0);
+
+    for (const auto& sol2 : sub2x2.solutions) {
+        SymExpr* xVal = sol2.exprX;
+        SymExpr* yVal = sol2.exprY;
+        if (!xVal || !yVal) continue;
+
+        result.steps.logNote(
+            "Back-substituting " + std::string(1, var1) + " = " +
+            xVal->toString() + ", " + std::string(1, var2) + " = " +
+            yVal->toString() + " into Eq1 to find " +
+            std::string(1, var3) + ".", MethodId::General);
+
+        // Substitute both var1 and var2 into f1
+        SymExpr* f1_sub = substituteVar(f1, var1, xVal, arena);
+        f1_sub = substituteVar(f1_sub, var2, yVal, arena);
+        f1_sub = SymSimplify::simplify(f1_sub, arena);
+
+        // Check if f1_sub still contains var3
+        if (!f1_sub->containsVar(var3)) {
+            // Try f2 instead
+            SymExpr* f2_sub = substituteVar(f2, var1, xVal, arena);
+            f2_sub = substituteVar(f2_sub, var2, yVal, arena);
+            f2_sub = SymSimplify::simplify(f2_sub, arena);
+            if (f2_sub->containsVar(var3)) {
+                f1_sub = f2_sub;
+            } else {
+                // Try f3
+                SymExpr* f3_sub = substituteVar(f3, var1, xVal, arena);
+                f3_sub = substituteVar(f3_sub, var2, yVal, arena);
+                f3_sub = SymSimplify::simplify(f3_sub, arena);
+                if (f3_sub->containsVar(var3)) {
+                    f1_sub = f3_sub;
+                } else {
+                    continue;  // Can't solve for var3
+                }
+            }
+        }
+
+        OmniResult zRes = omni.solve(f1_sub, zeroExpr, var3, arena);
+
+        if (!zRes.ok || zRes.solutions.empty()) {
+            // Try f2 or f3 as fallback
+            SymExpr* f2_sub = substituteVar(f2, var1, xVal, arena);
+            f2_sub = substituteVar(f2_sub, var2, yVal, arena);
+            f2_sub = SymSimplify::simplify(f2_sub, arena);
+            if (f2_sub->containsVar(var3)) {
+                zRes = omni.solve(f2_sub, zeroExpr, var3, arena);
+            }
+        }
+
+        if (!zRes.ok) continue;
+
+        // Build NLSolution triplets
+        for (const auto& zSol : zRes.solutions) {
+            NLSolution triplet;
+            triplet.exprX = xVal;
+            triplet.exprY = yVal;
+            triplet.numX  = sol2.numX;
+            triplet.numY  = sol2.numY;
+            triplet.numZ  = zSol.numeric;
+            triplet.isExact = sol2.isExact && zSol.isExact;
+
+            if (zSol.symbolic) {
+                triplet.exprZ = zSol.symbolic;
+            } else if (zSol.isExact) {
+                triplet.exprZ = symNum(arena, zSol.exact);
+            } else {
+                triplet.exprZ = symNum(arena,
+                    vpam::ExactVal::fromDouble(zSol.numeric));
+            }
+
+            result.steps.logNote(
+                "\u2714 Solution: (" + std::string(1, var1) + ", " +
+                std::string(1, var2) + ", " + std::string(1, var3) +
+                ") = (" + triplet.exprX->toString() + ", " +
+                triplet.exprY->toString() + ", " +
+                triplet.exprZ->toString() + ").", MethodId::General);
+
+            result.solutions.push_back(triplet);
+        }
+    }
+
+    result.ok = !result.solutions.empty();
+    if (!result.ok) {
+        result.error = "No valid solutions after back-substitution";
     }
 
     return result;

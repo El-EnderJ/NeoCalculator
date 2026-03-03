@@ -25,10 +25,10 @@ namespace cas {
 
 const char* equationClassName(EquationClass c) {
     switch (c) {
-        case EquationClass::Polynomial:          return "Polinomial";
-        case EquationClass::SimpleInverse:       return "Funcion inversa simple";
-        case EquationClass::MixedTranscendental: return "Transcendental mixta";
-        default: return "Desconocida";
+        case EquationClass::Polynomial:          return "Polynomial";
+        case EquationClass::SimpleInverse:       return "Simple inverse";
+        case EquationClass::MixedTranscendental: return "Mixed transcendental";
+        default: return "Unknown";
     }
 }
 
@@ -218,22 +218,17 @@ OmniResult OmniSolver::solveExpr(SymExpr* f, char var, SymExprArena& arena) {
     result.variable = var;
 
     if (!f) {
-        result.error = "Expresion nula";
+        result.error = "Null expression";
         return result;
     }
 
     // Step 0: Simplify the expression first (Phase 3 multi-pass)
     f = SymSimplify::simplify(f, arena);
 
-    // Step 0b: Log the expression
-    result.steps.logNote(
-        "Resolver: " + f->toString() + " = 0",
-        MethodId::General);
-
     // Step 1: Try analytic isolation (var appears exactly once)
     if (countVar(f, var) == 1) {
         result.steps.logNote(
-            "Variable aparece una sola vez → aislamiento analitico",
+            "Variable appears exactly once: attempting analytic isolation.",
             MethodId::General);
         if (solveAnalytic(f, var, arena, result))
             return result;
@@ -242,10 +237,6 @@ OmniResult OmniSolver::solveExpr(SymExpr* f, char var, SymExprArena& arena) {
     // Step 2: Classify
     EquationClass cls = classify(f, var);
     result.classification = cls;
-
-    result.steps.logNote(
-        "Clasificacion: " + std::string(equationClassName(cls)),
-        MethodId::General);
 
     // Step 3: Dispatch
     bool solved = false;
@@ -271,10 +262,6 @@ OmniResult OmniSolver::solveExpr(SymExpr* f, char var, SymExprArena& arena) {
 
 bool OmniSolver::solvePolynomial(SymExpr* f, char var, SymExprArena& /*arena*/,
                                   OmniResult& result) {
-    result.steps.logNote(
-        "Via polinomial: convirtiendo a SymPoly",
-        MethodId::General);
-
     // Convert SymExpr (known polynomial) to SymPoly
     SymPoly poly = f->toSymPoly(var);
 
@@ -285,14 +272,29 @@ bool OmniSolver::solvePolynomial(SymExpr* f, char var, SymExprArena& /*arena*/,
     SingleSolver solver;
     SolveResult sres = solver.solve(eq, var);
 
-    // Copy steps
+    // Copy steps preserving StepKind (Transform, Annotation, Result, etc.)
     for (const auto& step : sres.steps.steps()) {
-        result.steps.log(step.description, step.snapshot, step.method);
+        result.steps.copyStep(step);
     }
 
     if (!sres.ok) {
         result.error = sres.error;
         return false;
+    }
+
+    // Propagate complex roots from SingleSolver
+    if (sres.hasComplexRoots) {
+        result.hasComplexRoots = true;
+        result.complexReal     = sres.complexReal;
+        result.complexImagMag  = sres.complexImagMag;
+        // ok=true but no real solutions — display will show complex roots
+        return true;
+    }
+
+    // Handle count==0 with ok==true (identity: 0=0)
+    if (sres.count == 0) {
+        // No real solutions and no complex roots — identity or degenerate
+        return true;
     }
 
     // Convert SolveResult solutions to OmniSolution
@@ -349,7 +351,7 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
     if (!funcPart) {
         // Can't decompose — fall back to Newton
         result.steps.logNote(
-            "Inversa: no se pudo descomponer la expresion, usando Newton-Raphson",
+            "Inverse: could not decompose expression, using Newton-Raphson",
             MethodId::General);
         return solveNewton(f, var, arena, result);
     }
@@ -364,7 +366,7 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
         SymExpr* arg = func->argument;
 
         result.steps.logNote(
-            "Inversa: " + std::string(symFuncName(func->kind)) +
+            "Inverse: " + std::string(symFuncName(func->kind)) +
             "(arg) = " + rhs->toString(),
             MethodId::General);
 
@@ -372,7 +374,7 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
         SymExpr* inverted = applyInverse(func->kind, rhs, arena);
         if (!inverted) {
             result.steps.logNote(
-                "Inversa: funcion no invertible, usando Newton-Raphson",
+                "Inverse: function not invertible, using Newton-Raphson",
                 MethodId::Newton);
             return solveNewton(f, var, arena, result);
         }
@@ -392,7 +394,7 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
             result.solutions.push_back(sol);
 
             result.steps.logNote(
-                "Solucion: " + std::string(1, var) + " = " + inverted->toString(),
+                "Solution: " + std::string(1, var) + " = " + inverted->toString(),
                 MethodId::General);
 
             return true;
@@ -423,7 +425,7 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
                 result.solutions.push_back(sol);
 
                 result.steps.logNote(
-                    "Solucion: " + std::string(1, var) + " = " + sol_expr->toString(),
+                    "Solution: " + std::string(1, var) + " = " + sol_expr->toString(),
                     MethodId::General);
                 return true;
             }
@@ -450,8 +452,8 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
             double numericVal = sol_expr->evaluate(0.0);
 
             result.steps.logNote(
-                "Inversa: " + std::string(1, var) + "^n = " + rhs->toString() +
-                " → " + std::string(1, var) + " = " + sol_expr->toString(),
+                "Inverse: " + std::string(1, var) + "^n = " + rhs->toString() +
+                " -> " + std::string(1, var) + " = " + sol_expr->toString(),
                 MethodId::General);
 
             OmniSolution sol;
@@ -476,7 +478,7 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
                     result.solutions.push_back(sol2);
 
                     result.steps.logNote(
-                        "Segunda solucion (exponente par): " +
+                        "Second solution (even exponent): " +
                         std::string(1, var) + " = " + sol2.symbolic->toString(),
                         MethodId::General);
                 }
@@ -497,7 +499,7 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
             sol_expr = SymSimplify::simplify(sol_expr, arena);
 
             result.steps.logNote(
-                "Inversa exponencial: a^x = c → x = ln(c)/ln(a)",
+                "Exponential inverse: a^x = c -> x = ln(c)/ln(a)",
                 MethodId::General);
 
             OmniSolution sol;
@@ -509,7 +511,7 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
             result.solutions.push_back(sol);
 
             result.steps.logNote(
-                "Solucion: " + std::string(1, var) + " = " + sol_expr->toString(),
+                "Solution: " + std::string(1, var) + " = " + sol_expr->toString(),
                 MethodId::General);
             return true;
         }
@@ -526,11 +528,17 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
 bool OmniSolver::solveNewton(SymExpr* f, char var, SymExprArena& arena,
                               OmniResult& result) {
     result.steps.logNote(
-        "Transcendental mixta detectada → Newton-Raphson con derivada exacta",
+        "No symbolic solution found. Switching to numerical approximation "
+        "via Newton-Raphson method.",
+        MethodId::Newton);
+
+    result.steps.logNote(
+        "Using 16 initial seeds distributed across [-100, 100] "
+        "to find all real roots.",
         MethodId::Newton);
 
     NewtonResult nr = HybridNewton::solve(f, var, arena,
-                                           &result.steps, 4);
+                                           &result.steps, 8);
 
     if (!nr.ok) {
         result.error = nr.error;
@@ -635,7 +643,7 @@ SymExpr* OmniSolver::isolateVar(SymExpr* expr, SymExpr* rhs, char var,
         if (varIdx < 0) return nullptr;
 
         // rhs = rhs - (sum of non-var terms)
-        log.logNote("Aislar suma: mover terminos constantes al otro lado",
+        log.logNote("Isolate sum: move constant terms to the other side",
                     MethodId::General);
         SymExpr* newRhs = rhs;
         for (uint16_t i = 0; i < add->count; ++i) {
@@ -661,7 +669,7 @@ SymExpr* OmniSolver::isolateVar(SymExpr* expr, SymExpr* rhs, char var,
         if (varIdx < 0) return nullptr;
 
         // rhs = rhs / (product of non-var factors)
-        log.logNote("Aislar producto: dividir por factores constantes",
+        log.logNote("Isolate product: divide by constant factors",
                     MethodId::General);
         SymExpr* newRhs = rhs;
         for (uint16_t i = 0; i < mul->count; ++i) {
@@ -709,7 +717,7 @@ SymExpr* OmniSolver::isolateVar(SymExpr* expr, SymExpr* rhs, char var,
         auto* fn = static_cast<SymFunc*>(expr);
         SymExpr* inv = applyInverse(fn->kind, rhs, arena);
         if (!inv) {
-            log.logNote("Funcion no invertible: " +
+            log.logNote("Non-invertible function: " +
                         std::string(symFuncName(fn->kind)), MethodId::General);
             return nullptr;
         }
@@ -732,14 +740,14 @@ SymExpr* OmniSolver::isolateVar(SymExpr* expr, SymExpr* rhs, char var,
 
 bool OmniSolver::solveAnalytic(SymExpr* f, char var, SymExprArena& arena,
                                 OmniResult& result) {
-    result.steps.logNote("Intentando aislamiento analitico", MethodId::General);
+    result.steps.logNote("Attempting analytic isolation", MethodId::General);
 
     // Start: f(x) = 0  →  isolate var with rhs = 0
     SymExpr* zero = symInt(arena, 0);
     SymExpr* sol  = isolateVar(f, zero, var, arena, result.steps, 0);
 
     if (!sol) {
-        result.steps.logNote("Aislamiento analitico no logrado",
+        result.steps.logNote("Analytic isolation not achieved",
                              MethodId::General);
         return false;
     }
@@ -748,7 +756,7 @@ bool OmniSolver::solveAnalytic(SymExpr* f, char var, SymExprArena& arena,
     sol = SymSimplify::simplify(sol, arena);
 
     result.steps.logNote(
-        "Solucion analitica: " + std::string(1, var) + " = " + sol->toString(),
+        "Analytic solution: " + std::string(1, var) + " = " + sol->toString(),
         MethodId::General);
 
     // Build OmniSolution

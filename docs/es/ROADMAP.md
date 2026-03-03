@@ -1,6 +1,6 @@
 ﻿# NumOS — Project Roadmap
 
-> **Última actualización:** Febrero 2026
+> **Última actualización:** Marzo 2026
 >
 > Registro histórico y plan de futuro de NumOS. Cada fase construye sobre la anterior hasta alcanzar una calculadora científica open-source que rivalice con las mejores del mercado.
 
@@ -15,8 +15,8 @@
 | **Fase 3** | Launcher 3.0, SerialBridge y Documentación | ✅ Completo | 100% |
 | **Fase 4** | Migración a LVGL 9.x — HW Bring-Up ESP32-S3 | ✅ Completo | 100% |
 | **Fase 5** | CAS-Lite Engine + EquationsApp | ✅ Completo | 100% |
-| **CAS Elite** | Pro-CAS: BigNum, DAG, Derivadas, Integrales, CalculusApp, IntegralApp | ✅ **Completo** | 100% |
-| **Fase 6** | Apps Científicas Completas + Settings | 🔲 Planificado | 0% |
+| **CAS Elite** | Pro-CAS: BigNum, DAG, Derivadas, Integrales, CalculusApp unificada, SettingsApp | ✅ **Completo** | 100% |
+| **Fase 6** | Apps Científicas Completas | 🔲 Planificado | 0% |
 | **Fase 7** | Matrices + Complejos + Bases | 🔲 Planificado | 0% |
 | **Fase 8** | Hardware Final + Conectividad + Scripting | 🔲 Planificado | 0% |
 
@@ -38,6 +38,9 @@
 | **Feb 2026** | **CalculusApp: derivadas simbólicas con Natural Display y pasos** |
 | **Feb 2026** | **IntegralApp: integrales Slagle (tabla/u-sub/partes), +C, pasos** |
 | **Feb 2026** | **Producción activa: RAM 29.0% · Flash 18.5% · tests desactivados** |
+| **Mar 2026** | **CalculusApp unificada: derivadas + integrales en app única con pestañas d/dx ↔ ∫dx** |
+| **Mar 2026** | **SettingsApp: raíces complejas, precisión decimal, modo angular** |
+| **Mar 2026** | **Producción activa: RAM 28.8% · Flash 19.3% · tests desactivados** |
 
 ---
 
@@ -178,12 +181,12 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 | Recurso | Usado | Total | % |
 |:--------|------:|------:|:-:|
-| RAM (data+bss) | 94 948 B | 327 680 B | **29.0%** |
-| Flash (program) | 1 215 025 B | 6 553 600 B | **18.5%** |
+| RAM (data+bss) | 94 512 B | 327 680 B | **28.8%** |
+| Flash (program) | 1 263 109 B | 6 553 600 B | **19.3%** |
 
 ---
 
-## Fase CAS Elite — Pro-CAS Engine + CalculusApp + IntegralApp (Completo)
+## Fase CAS Elite — Pro-CAS Engine + CalculusApp Unificada (Completo)
 
 > *Objetivo: Evolución CAS-Lite → Pro-CAS. Motor simbólico completo con derivadas, integrales, simplificación multi-pass y resolución de ecuaciones no lineales. Ver [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) para el desglose de las 6 fases internas.*
 
@@ -199,13 +202,15 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [x] **Fase 6B**: IntegralApp — Integrales Slagle (tabla/u-sub/partes), +C, ∫, pasos
 - [x] **Fase 6B**: SymIntegrate — Slagle heurístico: tabla directa, linealidad, u-sustitución, partes LIATE
 - [x] **Fase 6B**: SymExprToAST — Bridge SymExpr → MathAST con `convertIntegral()` (+C)
+- [x] **Fase 7**: **CalculusApp unificada** — Derivadas + Integrales en app única con pestañas d/dx ↔ ∫dx
+- [x] **Fase 7**: **SettingsApp** — Raíces complejas, precisión decimal, modo angular
 
-### Build Stats (Pro-CAS — producción)
+### Build Stats (Producción — Marzo 2026)
 
 | Recurso | Usado | Total | % |
 |:--------|------:|------:|:-:|
-| RAM | 94 948 B | 327 680 B | **29.0%** |
-| Flash | 1 215 025 B | 6 553 600 B | **18.5%** |
+| RAM | 94 512 B | 327 680 B | **28.8%** |
+| Flash | 1 263 109 B | 6 553 600 B | **19.3%** |
 
 ---
 
@@ -244,8 +249,10 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [ ] Scroll vertical de filas, anchura fija de columnas
 - [ ] Sincronizada con la función activa en GrapherApp
 
-### 6.6 Settings App
-- [ ] Modo angular: DEG / RAD / GRA (con indicador en barra de estado)
+### 6.6 Settings App ✅ Completo
+- [x] Toggle raíces complejas (ON/OFF)
+- [x] Selector de precisión decimal (6/8/10/12)
+- [x] Visualización de modo angular (informativo)
 - [ ] Brillo de pantalla (PWM si BL reconectado a GPIO OUTPUT)
 - [ ] Formato numérico: decimal fijo / científico / engineering
 - [ ] Reset de fábrica: borrar todas las variables, restaurar configuración
@@ -381,4 +388,4 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 *NumOS — Open-source scientific calculator OS for ESP32-S3.*
 *Cada commit es un paso hacia la mejor calculadora científica del mundo.*
 
-*Última actualización: Febrero 2026*
+*Última actualización: Marzo 2026*

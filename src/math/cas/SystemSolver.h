@@ -105,8 +105,10 @@ struct SystemResult {
 struct NLSolution {
     SymExpr* exprX = nullptr;  ///< Symbolic solution for var1 (arena)
     SymExpr* exprY = nullptr;  ///< Symbolic solution for var2 (arena)
+    SymExpr* exprZ = nullptr;  ///< Symbolic solution for var3 (arena, 3×3 only)
     double   numX  = 0.0;     ///< Numeric value of var1
     double   numY  = 0.0;     ///< Numeric value of var2
+    double   numZ  = 0.0;     ///< Numeric value of var3
     bool     isExact = false; ///< True if solutions are exact SymNum
 };
 
@@ -118,6 +120,8 @@ struct NLSystemResult {
     std::vector<NLSolution> solutions;
     char          var1 = 'x';
     char          var2 = 'y';
+    char          var3 = 'z';
+    int           numVars = 2;     ///< 2 or 3
     bool          ok    = false;
     std::string   error;
     SystemMethod  methodUsed = SystemMethod::Resultant;
@@ -162,6 +166,16 @@ public:
     /// @param arena Arena for all intermediate allocations
     NLSystemResult solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
                                      char var1, char var2,
+                                     SymExprArena& arena);
+
+    /// Solve a nonlinear 3×3 system via cascaded Sylvester elimination.
+    /// Pipeline:
+    ///   1. Eliminate var3 between (eq1,eq2) → R12(var1,var2) = 0
+    ///   2. Eliminate var3 between (eq1,eq3) → R13(var1,var2) = 0
+    ///   3. Solve {R12=0, R13=0} as nonlinear 2×2
+    ///   4. Back-substitute to find var3
+    NLSystemResult solveNonlinear3x3(SymExpr* f1, SymExpr* f2, SymExpr* f3,
+                                     char var1, char var2, char var3,
                                      SymExprArena& arena);
 
 private:

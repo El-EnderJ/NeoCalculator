@@ -1,25 +1,32 @@
 /**
- * CalculusApp.h — Symbolic Calculus App for NumOS.
+ * CalculusApp.h — Unified Symbolic Calculus App for NumOS.
  *
- * Phase 6: Derivative App & Production Polish.
+ * Phase 4: Unified Calculus (Derivatives + Integrals) in one app.
  *
  * LVGL-native app with states:
  *   INPUT → COMPUTING → RESULT → STEPS
  *
+ * Modes (selectable via tabs):
+ *   DERIVATIVE — d/dx pipeline through SymDiff
+ *   INTEGRAL   — ∫dx pipeline through SymIntegrate
+ *
  * Pipeline:
- *   MathAST → ASTFlattener → SymExpr → SymDiff::diff() →
+ *   MathAST → ASTFlattener → SymExpr →
+ *     [SymDiff::diff() | SymIntegrate::integrate()] →
  *   SymSimplify::simplify() → SymExprToAST → MathCanvas display
  *
  * Features:
- *   - Full symbolic differentiation of polynomials & transcendentals
+ *   - Full symbolic differentiation (17+ rules, chain/product/quotient)
+ *   - Full symbolic integration (table, linearity, u-sub, parts/LIATE)
+ *   - Tab-based mode switching (d/dx ↔ ∫dx) via F1/F2 or GRAPH key
  *   - Automatic simplification (0+x→x, 1·x→x, x^1→x, etc.)
- *   - 2D rendering of derivative result via MathCanvas
- *   - Step logger showing differentiation rules applied
+ *   - 2D rendering of result via MathCanvas (VPAM)
+ *   - Step logger showing rules applied
  *   - Function key support (sin, cos, tan, ln, log, √, π, e)
  *   - Dynamic input height adapting to expression content
  *   - PSRAM arena-based memory (no heap fragmentation)
  *
- * Part of: NumOS Pro-CAS — Phase 6 (Calculus & Production Polish)
+ * Part of: NumOS Pro-CAS — Phase 4 (Unified Calculus App)
  */
 
 #pragma once
@@ -29,6 +36,7 @@
 #include "../math/CursorController.h"
 #include "../math/cas/ASTFlattener.h"
 #include "../math/cas/SymDiff.h"
+#include "../math/cas/SymIntegrate.h"
 #include "../math/cas/SymSimplify.h"
 #include "../math/cas/SymExprToAST.h"
 #include "../math/cas/SymExprArena.h"
@@ -51,17 +59,27 @@ public:
     bool isActive() const { return _scr != nullptr; }
 
 private:
-    // ── States ───────────────────────────────────────────────────────
+    // ── App states ───────────────────────────────────────────────────
     enum class State : uint8_t {
-        EDITING,    ///< Expression input
+        EDITING,    ///< Expression input with mode tabs
         COMPUTING,  ///< Computing (spinner)
-        RESULT,     ///< Derivative result display
+        RESULT,     ///< Result display (derivative or antiderivative)
         STEPS       ///< Step-by-step view
+    };
+
+    // ── Calculus mode ────────────────────────────────────────────────
+    enum class CalcMode : uint8_t {
+        DERIVATIVE, ///< d/dx mode (orange accent)
+        INTEGRAL    ///< ∫dx mode (purple accent)
     };
 
     // ── LVGL widgets ─────────────────────────────────────────────────
     lv_obj_t*       _scr;
     ui::StatusBar   _statusBar;
+
+    // Mode tabs
+    lv_obj_t*       _tabDerivative;  ///< "d/dx" tab button
+    lv_obj_t*       _tabIntegral;    ///< "∫dx" tab button
 
     // INPUT state
     lv_obj_t*       _inputContainer;
@@ -80,9 +98,9 @@ private:
     // RESULT state
     lv_obj_t*       _resultContainer;
     lv_obj_t*       _resultTitle;
-    lv_obj_t*       _resultLabel;    ///< "f'(x) =" label
+    lv_obj_t*       _resultLabel;    ///< "f'(x) =" or "F(x) =" label
     lv_obj_t*       _resultHint;
-    vpam::MathCanvas   _resultCanvas;  ///< Rendered derivative
+    vpam::MathCanvas   _resultCanvas;  ///< Rendered result
     vpam::NodePtr      _resultNode;
     vpam::NodeRow*     _resultRow;
 
@@ -96,14 +114,16 @@ private:
     lv_obj_t*       _stepsContainer;
 
     // ── App state ────────────────────────────────────────────────────
-    State   _state;
-    int     _stepScroll;
-    char    _variable;        ///< Variable to differentiate w.r.t. (default: 'x')
+    State    _state;
+    CalcMode _calcMode;       ///< Current mode (derivative or integral)
+    int      _stepScroll;
+    char     _variable;       ///< Variable (default: 'x')
 
     // ── CAS arena & results ──────────────────────────────────────────
     cas::SymExprArena  _arena;
-    cas::CASStepLogger _diffSteps;
-    cas::SymExpr*      _derivExpr;  ///< Simplified derivative (arena-owned)
+    cas::CASStepLogger _casSteps;
+    cas::SymExpr*      _resultExpr;   ///< Simplified result (arena-owned)
+    bool               _integralFound; ///< True if closed-form integral found
 
     // ── UI creation / state management ───────────────────────────────
     void createUI();
@@ -113,13 +133,20 @@ private:
     void showSteps();
     void hideAllContainers();
 
+    // ── Mode tab management ──────────────────────────────────────────
+    void setMode(CalcMode mode);
+    void updateTabStyles();
+    uint32_t accentColor() const;
+
     // ── Key handlers per state ───────────────────────────────────────
     void handleKeyInput(const KeyEvent& ev);
     void handleKeyResult(const KeyEvent& ev);
     void handleKeySteps(const KeyEvent& ev);
 
-    // ── Differentiation logic ────────────────────────────────────────
-    void computeDerivative();
+    // ── Computation ──────────────────────────────────────────────────
+    void computeResult();
+    void computeDerivative(cas::SymExpr* expr);
+    void computeIntegral(cas::SymExpr* expr);
     void buildResultDisplay();
     void buildStepsDisplay();
 

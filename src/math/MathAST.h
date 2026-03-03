@@ -93,8 +93,9 @@ enum class FuncKind : uint8_t {
 // ConstKind — Tipo de constante algebraica
 // ════════════════════════════════════════════════════════════════════════════
 enum class ConstKind : uint8_t {
-    Pi,   // π
-    E,    // e (Euler)
+    Pi,    // π
+    E,     // e (Euler)
+    Imag,  // i (imaginary unit)
 };
 
 // ════════════════════════════════════════════════════════════════════════════

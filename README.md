@@ -17,8 +17,8 @@
 [![Language](https://img.shields.io/badge/Language-C%2B%2B17-blue?logo=cplusplus&logoColor=white)](https://en.cppreference.com/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Pro--CAS%20Production-brightgreen)](#estado-del-proyecto)
-[![RAM](https://img.shields.io/badge/RAM-29%25%20%E2%80%94%2094.9%20KB-informational)](#build-stats)
-[![Flash](https://img.shields.io/badge/Flash-18.5%25%20%E2%80%94%201.21%20MB-informational)](#build-stats)
+[![RAM](https://img.shields.io/badge/RAM-28.8%25%20%E2%80%94%2094.5%20KB-informational)](#build-stats)
+[![Flash](https://img.shields.io/badge/Flash-19.3%25%20%E2%80%94%201.26%20MB-informational)](#build-stats)
 
 <br>
 
@@ -71,11 +71,10 @@
 |:---------------|:------------|
 | **Pro-CAS Engine** | Motor CAS completo: solver ecuaciones, derivadas e integrales simbólicas, DAG hash-consed, simplificador multi-pass, pasos en PSRAM |
 | **EquationsApp** | Resuelve lineales, cuadráticas y sistemas 2×2 (lineales + no lineales via resultante Sylvester) |
-| **CalculusApp** | Derivadas simbólicas con 17 reglas, simplificación automática y pasos detallados |
-| **IntegralApp** | Integrales simbólicas (Slagle): tabla, linealidad, u-sub, partes (LIATE), resultado +C |
+| **CalculusApp** | App unificada de cálculo: derivadas simbólicas (17 reglas) + integrales simbólicas (Slagle), cambio de modo por pestañas d/dx ↔ ∫dx, simplificación automática y pasos detallados |
 | **Natural Display** | Fracciones reales, raíces, potencias, cursores 2D — renderizado matemático como en papel |
 | **Graficadora y=f(x)** | Plotter en tiempo real con zoom, pan y tabla de valores |
-| **53 Tests Unitarios CAS** | Suite completa de tests para el Pro-CAS, activable/desactivable vía flag de compilación |
+| **85+ Tests Unitarios CAS** | Suite completa de tests para el Pro-CAS, activable/desactivable vía flag de compilación |
 | **PSRAMAllocator** | CAS usa `PSRAMAllocator<T>` para aislar uso de memoria en los 8 MB PSRAM OPI |
 | **Variables A-Z + Ans** | Persistencia en LittleFS — 216 bytes en `/vars.dat` |
 | **SerialBridge** | Control completo de la calculadora desde PC vía Serial Monitor sin hardware físico |
@@ -110,12 +109,15 @@
 │  │  │       Pasos detallados en PSRAM · Natural Display            │ │  │
 │  │  └──────────────────────────────────────────────────────────────┘ │  │
 │  │  ┌──────────────────────────────────────────────────────────────┐ │  │
-│  │  │   CalculusApp ★ Pro-CAS    │    IntegralApp ★ Pro-CAS       │ │  │
-│  │  │   Derivadas simbólicas     │    Integrales simbólicas       │ │  │
-│  │  │   17 reglas · Simplif.     │    Tabla·Lineal·U-sub·Partes  │ │  │
-│  │  │   Pasos · Natural Display  │    +C · ∫ · Natural Display   │ │  │
+│  │  │   CalculusApp ★ Pro-CAS  (Unificada: d/dx + ∫dx)            │ │  │
+│  │  │   Derivadas: 17 reglas · Simplificación · Pasos             │ │  │
+│  │  │   Integrales: Tabla · Linealidad · U-sub · Partes (LIATE)   │ │  │
+│  │  │   Cambio de modo por pestañas · +C · Natural Display        │ │  │
 │  │  └──────────────────────────────────────────────────────────────┘ │  │
-│  │  [ Sequences · Regression · Table · Probability · Settings ]      │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐ │  │
+│  │  │   SettingsApp — Raíces complejas · Precisión · Modo angular │ │  │
+│  │  └──────────────────────────────────────────────────────────────┘ │  │
+│  │  [ Sequences · Regression · Table · Probability ]                 │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                          │
 │  ┌──────────────────────────┐  ┌─────────────────────────────────────┐  │
@@ -193,7 +195,7 @@ Entrada del usuario (CalculusApp):
 ### Pipeline CAS (Integrales)
 
 ```
-Entrada del usuario (IntegralApp):
+Entrada del usuario (CalculusApp, modo ∫dx):
   "x · cos(x)"
            │
            ▼
@@ -403,8 +405,8 @@ numOS/
 │   │   ├── CalculationApp.cpp/.h     # Calculadora Natural V.P.A.M.
 │   │   ├── GrapherApp.cpp/.h         # Graficadora y=f(x)
 │   │   ├── EquationsApp.cpp/.h       # Pro-CAS — Solver ecuaciones
-│   │   ├── CalculusApp.cpp/.h        # Pro-CAS — Derivadas simbólicas
-│   │   └── IntegralApp.cpp/.h        # Pro-CAS — Integrales simbólicas
+│   │   ├── CalculusApp.cpp/.h        # Pro-CAS — Derivadas + Integrales simbólicas (unificada)
+│   │   └── SettingsApp.cpp/.h        # Configuración: raíces complejas, precisión, modo angular
 │   ├── display/
 │   │   └── DisplayDriver.cpp/.h      # TFT_eSPI FSPI + LVGL init + DMA flush
 │   ├── input/
@@ -475,8 +477,8 @@ numOS/
 
 | Recurso | Usado | Total | Porcentaje |
 |:--------|------:|------:|:----------:|
-| **RAM** (data + bss) | 94 948 B | 327 680 B | **29.0 %** |
-| **Flash** (program storage) | 1 215 025 B | 6 553 600 B | **18.5 %** |
+| **RAM** (data + bss) | 94 512 B | 327 680 B | **28.8 %** |
+| **Flash** (program storage) | 1 263 109 B | 6 553 600 B | **19.3 %** |
 
 **Flash ahorrado vs modo tests:** −39 444 B al desactivar `-DCAS_RUN_TESTS`.
 
@@ -517,8 +519,8 @@ Problemas descubiertos y resueltos durante el bring-up. **Esenciales** para cual
 | **Fase 3** | Launcher 3.0, SerialBridge, CalculationApp historial, GrapherApp zoom/pan | ✅ Completo |
 | **Fase 4** | LVGL 9.x — HW bring-up ESP32-S3, DMA, splash screen animado, launcer iconos | ✅ Completo |
 | **Fase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI | ✅ Completo |
-| **CAS Elite** | Pro-CAS: BigNum, DAG hash-consed, SymDiff 17 reglas, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver, CalculusApp + IntegralApp | ✅ **Completo** |
-| **Fase 6** | Statistics, Regression, Sequences, Probability, Settings App | 🔲 Planificado |
+| **CAS Elite** | Pro-CAS: BigNum, DAG hash-consed, SymDiff 17 reglas, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver, CalculusApp unificada (d/dx + ∫dx), SettingsApp | ✅ **Completo** |
+| **Fase 6** | Statistics, Regression, Sequences, Probability | 🔲 Planificado |
 | **Fase 7** | Matrices, números complejos, base conversions | 🔲 Planificado |
 | **Fase 8** | Teclado físico, PCB propia, batería recargable, carcasa 3D, WiFi OTA | 🔲 Planificado |
 
@@ -596,7 +598,7 @@ NumOS es un proyecto open-source que aspira a crecer en comunidad. ¡Las contrib
 | **Statistics App** | Media, mediana, moda, desviación estándar, listas de datos |
 | **Regression App** | Regresión lineal/cuadrática con coeficiente R² |
 | **Sequences App** | Sucesiones aritméticas y geométricas, término N, suma parcial |
-| **Settings App** | Modo angular DEG/RAD/GRA, brillo, reset de fábrica |
+| **Settings App** | ~~Modo angular DEG/RAD/GRA, brillo, reset de fábrica~~ ✅ Hecho — pendiente: brillo PWM, reset fábrica |
 | **CAS avanzado** | ~~Derivadas e integrales simbólicas~~ ✅ Hecho — pendiente: integrales definidas, series |
 | **Matrices** | Editor de matrices, determinante, inversa, multiplicación |
 | **Teclado físico** | ✅ Conflicto GPIO 4/5 resuelto — driver `Keyboard` 5×10 implementado (Fase 7) |
@@ -616,6 +618,6 @@ Este proyecto está bajo la licencia **MIT**. Ver [LICENSE](LICENSE) para más d
 
 **NumOS — La mejor calculadora científica open-source para ESP32-S3**
 
-*Última actualización: Febrero 2026*
+*Última actualización: Marzo 2026*
 
 </div>

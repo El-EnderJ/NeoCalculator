@@ -58,6 +58,10 @@ static const uint16_t KEY_DEBOUNCE_MS         = 20;   // ms de anti-rebote
 static const uint16_t KEY_AUTOREPEAT_DELAY_MS = 500;  // ms antes del autorepeat
 static const uint16_t KEY_AUTOREPEAT_RATE_MS  =  80;  // ms entre REPEAT events
 
+// ── CAS settings ────────────────────────────────────────────────────────────
+extern bool setting_complex_enabled;   // true = show complex roots, false = "No real solutions"
+extern int  setting_decimal_precision;  // number of decimal digits (6, 8, 10, 12)
+
 // ── Matriz legacy 6×8 (reservada / compatibilidad con KeyMatrix.h) ───────────
 // Filas: INPUT_PULLUP.  Columnas: OUTPUT activo-LOW.
 // Solo usado por la clase KeyMatrix; no conectado en el hardware actual.

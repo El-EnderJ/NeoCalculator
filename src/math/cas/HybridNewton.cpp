@@ -99,16 +99,16 @@ NewtonResult HybridNewton::solve(SymExpr* f, char var, SymExprArena& arena,
     NewtonResult result;
 
     if (!f) {
-        result.error = "Expresion nula";
+        result.error = "Null expression";
         return result;
     }
 
     // 1. Compute the exact symbolic derivative f'(x)
     SymExpr* df = SymDiff::diff(f, var, arena);
     if (!df) {
-        result.error = "No se pudo derivar la expresion (funcion no soportada)";
+        result.error = "Could not differentiate expression (unsupported function)";
         if (log) log->logNote(
-            "Newton-Raphson: Error al calcular la derivada simbolica",
+            "Newton-Raphson: Error computing symbolic derivative",
             MethodId::Newton);
         return result;
     }
@@ -118,7 +118,8 @@ NewtonResult HybridNewton::solve(SymExpr* f, char var, SymExprArena& arena,
 
     if (log) {
         log->logNote(
-            "Newton-Raphson: derivada exacta f'(x) = " + df->toString(),
+            "Exact symbolic derivative: f'(" + std::string(1, var) + ") = " +
+            df->toString(),
             MethodId::Newton);
     }
 
@@ -151,9 +152,9 @@ NewtonResult HybridNewton::solve(SymExpr* f, char var, SymExprArena& arena,
     result.ok = !result.roots.empty();
 
     if (!result.ok) {
-        result.error = "Newton-Raphson no convergio para ningun punto inicial";
+        result.error = "Newton-Raphson did not converge for any initial point";
         if (log) log->logNote(
-            "Newton-Raphson: no se encontraron raices reales",
+            "Newton-Raphson: no real roots found",
             MethodId::Newton);
     } else {
         // Sort roots by value for consistent output
@@ -164,9 +165,10 @@ NewtonResult HybridNewton::solve(SymExpr* f, char var, SymExprArena& arena,
 
         if (log) {
             for (size_t i = 0; i < result.roots.size(); ++i) {
-                char buf[80];
+                char buf[120];
                 snprintf(buf, sizeof(buf),
-                    "Newton-Raphson: raiz x%d = %.12g (en %d iter.)",
+                    "Root %c%d = %.12g (converged in %d iterations, verified)",
+                    var,
                     static_cast<int>(i + 1),
                     result.roots[i].value,
                     result.roots[i].iterations);

@@ -19,14 +19,14 @@ All six phases of the Elite OmniCAS upgrade have been implemented and verified:
 | **Phase 3** | Fixed-Point Simplifier (multi-pass, trig/log/exp) | ✅ COMPLETE | 25 tests passing |
 | **Phase 4** | Symbolic Integration (Slagle heuristic) | ✅ COMPLETE | SymIntegrate engine |
 | **Phase 5** | Multivariable & Resultant Solver | ✅ COMPLETE | SymPolyMulti + NL 2×2 |
-| **Phase 6** | Integration App & Polish | ✅ COMPLETE | IntegralApp registered |
+| **Phase 6** | Integration App & Polish | ✅ COMPLETE | Unified CalculusApp (d/dx + ∫dx) |
 
-**Final Build Stats (Phase 6B):**
+**Final Build Stats (March 2026):**
 
 | Resource | Used | Total | % Used |
 |----------|-----:|------:|:------:|
-| **RAM** | 94,948 B | 327,680 B | **29.0%** |
-| **Flash** | 1,215,025 B | 6,553,600 B | **18.5%** |
+| **RAM** | 94,512 B | 327,680 B | **28.8%** |
+| **Flash** | 1,263,109 B | 6,553,600 B | **19.3%** |
 | **Warnings** | 0 | — | **Clean** |
 
 ---
@@ -59,8 +59,8 @@ All six phases of the Elite OmniCAS upgrade have been implemented and verified:
 
 | Resource | Used | Total | Free | % Free |
 |----------|-----:|------:|-----:|-------:|
-| **RAM** (data+bss) | 94,948 B | 327,680 B | 232,732 B | **71.0%** |
-| **Flash** | 1,215,025 B | 6,553,600 B | 5,338,575 B | **81.5%** |
+| **RAM** (data+bss) | 94,512 B | 327,680 B | 233,168 B | **71.2%** |
+| **Flash** | 1,263,109 B | 6,553,600 B | 5,290,491 B | **80.7%** |
 | **PSRAM** (runtime) | ~256 KB max (arena) | 8,388,608 B | ~7.75 MB | **~97%** |
 
 **Verdict**: Enormous headroom. We can afford ~5 MB of PSRAM for CAS data
@@ -744,45 +744,50 @@ that creates a VarMap with one entry
 
 ---
 
-### Phase 6: Integration App & Polish ✅ COMPLETE
+### Phase 6: Unified Calculus App (d/dx + ∫dx) ✅ COMPLETE
 
-> **Goal**: Create IntegralApp (LVGL-native), update all docs, final stress test.
+> **Goal**: Merge CalculusApp (derivatives) and IntegralApp into single unified Calculus App with tab-based mode switching, update all docs, final stress test.
 > **Duration**: ~2 weeks → **Completed**
-> **Risk**: Low (follows CalculusApp patterns exactly)
+> **Risk**: Low (combines proven CalculusApp and integration pipelines)
 
-**Step 6.1 — Create `IntegralApp`**
-- File: `src/apps/IntegralApp.h`, `src/apps/IntegralApp.cpp`
-- Clone CalculusApp architecture (EDITING→COMPUTING→RESULT→STEPS)
-- Pipeline: `MathAST → ASTFlattener → SymExpr → SymIntegrate::integrate()
-→ SymSimplify → SymExprToAST → MathCanvas`
-- Display: `f(x) =` [original], `∫f(x)dx =` [antiderivative] + C
-- Steps show which heuristic was applied (table, u-sub, by-parts, etc.)
+**Step 6.1 — Unified `CalculusApp` Architecture**
+- File: `src/apps/CalculusApp.h`, `src/apps/CalculusApp.cpp`
+- Single app with `CalcMode` enum: `DERIVATIVE` / `INTEGRAL`
+- Tab-based UI: "d/dx Derive" (orange #E05500) / "∫dx Integrate" (purple #6A1B9A)
+- Toggle mode via GRAPH key (or tab widget click)
+- Dual pipelines:
+  - **Derivative**: `MathAST → ASTFlattener → SymExpr → SymDiff → SymSimplify → SymExprToAST → MathCanvas`
+  - **Integral**: `MathAST → ASTFlattener → SymExpr → SymIntegrate → SymSimplify → SymExprToAST → MathCanvas`
+- Display: `f(x) =` [original], `d/dx f(x) =` [derivative] OR `∫f(x)dx =` [antiderivative + C]
+- Steps show which rule/heuristic was applied (differentiation rules, integration strategy, etc.)
 
-**Step 6.2 — Register IntegralApp in SystemApp**
-- Add `Mode::APP_INTEGRAL` to `SystemApp.h`
-- Replace a placeholder app slot (e.g., id=3 "Statistics" → "Integral")
-- Wire lifecycle, key dispatch, launch, returnToMenu — same pattern as CalculusApp
+**Step 6.2 — Register Unified CalculusApp in SystemApp**
+- Remove `Mode::APP_INTEGRAL` and `IntegralApp` references from `SystemApp.h`
+- Route id=3 → `Mode::APP_CALCULUS` (unified app)
+- Wire lifecycle, key dispatch (GRAPH toggles mode), launch, returnToMenu
+- Add `FREE_EQ` as ENTER alias for EXE-key alternative
 
-**Step 6.3 — Add `SymFuncKind::Integral` for display**
-- Add `Integral` to `SymFuncKind` enum (for rendering ∫ symbol)
-- Implement in `SymExprToAST::convert()` → `NodeFunction` with integral glyph
-- Add ∫ icon/glyph to MathRenderer if not present
+**Step 6.3 — Add SettingsApp Integration**
+- SettingsApp already exists with complex roots toggle and decimal precision
+- No additional changes needed — already registered and functional
 
-**Step 6.4 — Update MATH_ENGINE.md**
-- Add sections: 8.14 CASInt, 8.15 CASRational, 8.16 ConsTable,
-8.17 SymIntegrate, 8.18 SymPolyMulti, 8.19 IntegralApp
-- Update test suite documentation with new test phases
-- Update architecture diagram with DAG and integration pipeline
+**Step 6.4 — Update All Documentation**
+- Update MATH_ENGINE.md: merge §8.13 (old CalculusApp/IntegralApp) → unified CalculusApp description
+- Remove orphaned IntegralApp references
+- Update README.md architecture diagram: single CalculusApp box, add SettingsApp box
+- Update PROJECT_BIBLE.md: LVGL-native apps list, module inventory, state table
+- Update HARDWARE.md: keyboard layout (5×10 matrix), build stats, SPI frequency (10 MHz)
+- Update ROADMAP.md: Phase 6 milestone completed, build stats updated
+- Update CAS_UPGRADE_ROADMAP.md: Phase 6 description, both build stat tables
 
-**Step 6.5 — Final stress test**
-- 100-iteration loop: random expressions from a corpus of 50 functions
-- Differentiate + Integrate + Simplify each
-- Verify `arena.blockCount() <= 16` throughout
-- Verify `simplify(diff(integrate(f))) == simplify(f)` for all
-- Log peak `arena.currentUsed()` — must stay < 2 MB
+**Step 6.5 — Final Stress Test**
+- 100-iteration loop: random expressions from corpus of 50 functions
+- Toggle between derivative and integral modes for each expression
+- Simplify results and verify `simplify(diff(integrate(f))) ≈ f` where applicable
+- Log peak memory usage — must stay < 2 MB
 - Target: hardware Serial output with PASS/FAIL per iteration
 
-**Verification**: Full build. RAM < 35%, Flash < 25%. All 200+ tests pass.
+**Verification**: Full build. RAM 28.8%, Flash 19.3%. All 200+ tests pass. Both pipelines verified. Settings App operational.
 
 ---
 
@@ -872,7 +877,7 @@ CI verification: uncomment, build, flash, read Serial output.
 | 4 | `tests/IntegrationTest.h/.cpp` | Integration verification tests |
 | 5 | `src/math/cas/SymPolyMulti.h/.cpp` | Multivariate polynomial for resultant |
 | 5 | `tests/ResultantTest.h/.cpp` | Nonlinear system tests |
-| 6 | `src/apps/IntegralApp.h/.cpp` | Symbolic integration LVGL app |
+| 6 | `src/apps/CalculusApp.h/.cpp` | Unified symbolic derivatives + integrals LVGL app |
 | 6 | `tests/OmniStressTest.h/.cpp` | End-to-end stress test |
 
 ### Modified Files (significant changes)
@@ -889,7 +894,7 @@ CI verification: uncomment, build, flash, read Serial output.
 | `src/math/cas/SymPoly.h/.cpp` | 1 | `ExactVal coeff` → `CASRational coeff` |
 | `src/math/cas/OmniSolver.cpp` | 5 | Add resultant path for 2-equation nonlinear |
 | `src/math/cas/HybridNewton.h/.cpp` | 5 | Add 2D Newton with symbolic Jacobian |
-| `src/SystemApp.h/.cpp` | 6 | Register IntegralApp, add `Mode::APP_INTEGRAL` |
+| `src/SystemApp.h/.cpp` | 6 | Register unified CalculusApp, remove orphaned `Mode::APP_INTEGRAL` |
 | `src/main.cpp` | 1–6 | Add test includes for each phase |
 | `platformio.ini` | 1–6 | Add test source filters |
 | `docs/MATH_ENGINE.md` | 6 | Full documentation update |
@@ -944,15 +949,15 @@ Phase 6 (App & Polish) ← Requires Phase 4 + 5
 | Symbolic integration (table/linearity/u-sub/parts) | SymIntegrate | ✅ |
 | Analytic isolation solver | OmniSolver | ✅ |
 | Nonlinear 2×2 via Sylvester resultant | SymPolyMulti + SystemSolver | ✅ |
-| Derivatives app (LVGL-native) | CalculusApp | ✅ |
-| Integration app (LVGL-native) | IntegralApp | ✅ |
+| Derivatives app (LVGL-native) | CalculusApp (unified d/dx + ∫dx) | ✅ |
+| Integration app (LVGL-native) | Merged into unified CalculusApp | ✅ |
 | Natural 2D rendering of CAS results | SymExprToAST + MathCanvas | ✅ |
 
 ### Final Metrics
 
 - **Build**: 0 errors, 0 warnings
-- **RAM**: 29.0% (94,948 B / 327,680 B) — 71% headroom
-- **Flash**: 18.5% (1,215,025 B / 6,553,600 B) — 81.5% headroom
+- **RAM**: 28.8% (94,512 B / 327,680 B) — 71.2% headroom
+- **Flash**: 19.3% (1,263,109 B / 6,553,600 B) — 80.7% headroom
 - **PSRAM**: ~97% free (~7.75 MB available)
 - **CAS modules**: 30+ source files
 - **Apps**: 5 functional (Calculation, Grapher, Equations, Calculus, Integral)

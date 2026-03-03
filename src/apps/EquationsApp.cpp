@@ -54,11 +54,9 @@ static constexpr int ROW_GAP   = 3;    // Gap between rows
 
 const char* EquationsApp::TEMPLATE_LABELS[NUM_TEMPLATES] = {
     "Empty",
-    "x + y = 0",
-    "x\xC2\xB2 + x + 1 = 0",        // x² + x + 1 = 0 (UTF-8)
-    "x + y + z = 0",
-    "x\xC2\xB3 + x\xC2\xB2 + x + 1 = 0",   // x³ + x² + x + 1 = 0
-    "ax\xC2\xB2 + bx + c = 0",       // ax² + bx + c = 0
+    "Polynomial: ax" "\xC2\xB2" "+bx+c=0",
+    "Exponential: a" "\xC2\xB7" "e" "\xCB\xA3" "+b=0",
+    "Logarithmic: ln(x)+a=0",
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -291,7 +289,7 @@ void EquationsApp::createUI() {
     // TEMPLATE overlay
     // ─────────────────────────────────────────────────────────────────
     _templateOverlay = lv_obj_create(_screen);
-    lv_obj_set_size(_templateOverlay, 260, 190);
+    lv_obj_set_size(_templateOverlay, 260, 150);
     lv_obj_align(_templateOverlay, LV_ALIGN_CENTER, 0, 10);
     lv_obj_set_style_bg_color(_templateOverlay, lv_color_hex(COL_BG_HEX), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_templateOverlay, LV_OPA_COVER, LV_PART_MAIN);
@@ -966,77 +964,37 @@ vpam::NodePtr EquationsApp::buildTemplateAST(int templateIdx) {
         case 0:  // Empty
             break;
 
-        case 1:  // x + y = 0
-            r->appendChild(makeVariable('x'));
-            r->appendChild(makeOperator(OpKind::Add));
-            r->appendChild(makeVariable('y'));
-            r->appendChild(makeVariable('='));
-            r->appendChild(makeNumber("0"));
-            break;
-
-        case 2:  // x² + x + 1 = 0
+        case 1:  // Polynomial: ax² + bx + c = 0
+            r->appendChild(makeVariable('a'));
             r->appendChild(makePower(makeVariable('x'), makeNumber("2")));
             r->appendChild(makeOperator(OpKind::Add));
+            r->appendChild(makeVariable('b'));
             r->appendChild(makeVariable('x'));
             r->appendChild(makeOperator(OpKind::Add));
-            r->appendChild(makeNumber("1"));
+            r->appendChild(makeVariable('c'));
             r->appendChild(makeVariable('='));
             r->appendChild(makeNumber("0"));
             break;
 
-        case 3:  // x + y + z = 0
-            r->appendChild(makeVariable('x'));
+        case 2: { // Exponential: a·e^x + b = 0
+            r->appendChild(makeVariable('a'));
+            r->appendChild(makePower(
+                makeConstant(ConstKind::E), makeVariable('x')));
             r->appendChild(makeOperator(OpKind::Add));
-            r->appendChild(makeVariable('y'));
-            r->appendChild(makeOperator(OpKind::Add));
-            r->appendChild(makeVariable('z'));
+            r->appendChild(makeVariable('b'));
             r->appendChild(makeVariable('='));
             r->appendChild(makeNumber("0"));
-            break;
-
-        case 4:  // x³ + x² + x + 1 = 0
-            r->appendChild(makePower(makeVariable('x'), makeNumber("3")));
-            r->appendChild(makeOperator(OpKind::Add));
-            r->appendChild(makePower(makeVariable('x'), makeNumber("2")));
-            r->appendChild(makeOperator(OpKind::Add));
-            r->appendChild(makeVariable('x'));
-            r->appendChild(makeOperator(OpKind::Add));
-            r->appendChild(makeNumber("1"));
-            r->appendChild(makeVariable('='));
-            r->appendChild(makeNumber("0"));
-            break;
-
-        case 5: { // ax² + bx + c = 0
-            // Build: a·x² + b·x + c = 0
-            // "a" as variable, then x²
-            auto axSq = makeRow();
-            auto* axSqR = static_cast<NodeRow*>(axSq.get());
-            axSqR->appendChild(makeVariable('a'));
-            r->appendChild(makePower(std::move(axSq), makeNumber("2")));
-            // Actually, let me simplify: we can't easily represent "ax²" with
-            // implicit multiplication in the AST. Let's use distinct nodes.
-            // Reset and rebuild properly:
-            // We'll just do: a × x² + b × x + c = 0
             break;
         }
-    }
 
-    // Template 5 special handling — rebuild from scratch
-    if (templateIdx == 5) {
-        row = makeRow();
-        auto* r5 = static_cast<NodeRow*>(row.get());
-        // a*x^2
-        r5->appendChild(makeVariable('a'));
-        r5->appendChild(makePower(makeVariable('x'), makeNumber("2")));
-        r5->appendChild(makeOperator(OpKind::Add));
-        // b*x
-        r5->appendChild(makeVariable('b'));
-        r5->appendChild(makeVariable('x'));
-        r5->appendChild(makeOperator(OpKind::Add));
-        // c
-        r5->appendChild(makeVariable('c'));
-        r5->appendChild(makeVariable('='));
-        r5->appendChild(makeNumber("0"));
+        case 3: { // Logarithmic: ln(x) + a = 0
+            r->appendChild(makeFunction(FuncKind::Ln, makeVariable('x')));
+            r->appendChild(makeOperator(OpKind::Add));
+            r->appendChild(makeVariable('a'));
+            r->appendChild(makeVariable('='));
+            r->appendChild(makeNumber("0"));
+            break;
+        }
     }
 
     return row;
@@ -1319,7 +1277,44 @@ void EquationsApp::solveSystem() {
         return;
     }
 
-    // ── Linear path failed, no nonlinear fallback for 3×3 ──────────
+    // ── Linear path failed, nonlinear fallback for 3×3 ────────────
+    if (numEqs == 3) {
+        _arena.reset();
+        flattener.setArena(&_arena);
+
+        cas::SymExpr* exprs[3] = {nullptr, nullptr, nullptr};
+        bool exprOk = true;
+        for (int i = 0; i < 3; ++i) {
+            NodePtr lhs, rhs;
+            splitAtEquals(_eqRowData[i], lhs, rhs);
+
+            cas::SymExpr* lhsExpr = flattener.flattenToExpr(lhs.get());
+            cas::SymExpr* rhsExpr = flattener.flattenToExpr(rhs.get());
+
+            if (!lhsExpr || !rhsExpr) {
+                exprOk = false;
+                break;
+            }
+
+            exprs[i] = symAdd(_arena, lhsExpr, symNeg(_arena, rhsExpr));
+        }
+
+        if (exprOk) {
+            cas::SystemSolver sysSolver;
+            _nlResult = sysSolver.solveNonlinear3x3(
+                exprs[0], exprs[1], exprs[2], 'x', 'y', 'z', _arena);
+            _isNLSolve = true;
+
+            if (!_nlResult.ok) {
+                _statusBar.setTitle(_nlResult.error.empty()
+                                        ? "No solution" : "Error");
+                _statusBar.update();
+            }
+            showResult();
+            return;
+        }
+    }
+
     if (!_systemResult.ok) {
         _statusBar.setTitle(_systemResult.error.empty()
                                 ? "No solution" : "Error");
@@ -1348,6 +1343,98 @@ void EquationsApp::buildResultDisplay() {
             lv_label_set_text(_resultTitle,
                 _omniResult.error.empty() ? "No real solution"
                                           : _omniResult.error.c_str());
+            goto addHint;
+        }
+
+        // Handle complex roots (negative discriminant)
+        if (_omniResult.hasComplexRoots) {
+            lv_label_set_text(_resultTitle, "Complex roots:");
+
+            const auto& re = _omniResult.complexReal;
+            const auto& im = _omniResult.complexImagMag;
+
+            // Helper: append ExactVal nodes from SymToAST into a row
+            auto appendExactNodes = [](NodeRow* r, const vpam::ExactVal& val) {
+                NodePtr node = cas::SymToAST::fromExactVal(val);
+                if (node->type() == NodeType::Row) {
+                    auto* vr = static_cast<NodeRow*>(node.get());
+                    while (vr->childCount() > 0)
+                        r->appendChild(vr->removeChild(0));
+                } else {
+                    r->appendChild(std::move(node));
+                }
+            };
+
+            // Root 1: x₁ = re + im·𝑖
+            {
+                auto row = makeRow();
+                auto* r = static_cast<NodeRow*>(row.get());
+                r->appendChild(makeVariable(_omniResult.variable));
+                r->appendChild(makeNumber("1"));
+                r->appendChild(makeVariable('='));
+
+                // Real part
+                appendExactNodes(r, re);
+
+                // + operator
+                r->appendChild(makeOperator(OpKind::Add));
+
+                // Imaginary magnitude (rendered as fraction/radical)
+                appendExactNodes(r, im);
+
+                // Italic 'i' — mathematical constant style
+                r->appendChild(makeConstant(ConstKind::Imag));
+
+                _resultNode[0] = std::move(row);
+                _resultRow[0]  = static_cast<NodeRow*>(_resultNode[0].get());
+
+                lv_obj_set_pos(_resultCanvas[0].obj(), PAD + 20, 28);
+                lv_obj_set_size(_resultCanvas[0].obj(), SCREEN_W - 2 * PAD - 20, 38);
+                lv_obj_remove_flag(_resultCanvas[0].obj(), LV_OBJ_FLAG_HIDDEN);
+                _resultCanvas[0].setExpression(_resultRow[0], nullptr);
+                _resultRow[0]->calculateLayout(_resultCanvas[0].normalMetrics());
+                _resultCanvas[0].invalidate();
+                ++_resultCount;
+            }
+
+            // Root 2: x₂ = re - im·𝑖
+            {
+                auto row = makeRow();
+                auto* r = static_cast<NodeRow*>(row.get());
+                r->appendChild(makeVariable(_omniResult.variable));
+                r->appendChild(makeNumber("2"));
+                r->appendChild(makeVariable('='));
+
+                // Real part
+                appendExactNodes(r, re);
+
+                // - operator
+                r->appendChild(makeOperator(OpKind::Sub));
+
+                // Imaginary magnitude
+                appendExactNodes(r, im);
+
+                // Italic 'i'
+                r->appendChild(makeConstant(ConstKind::Imag));
+
+                _resultNode[1] = std::move(row);
+                _resultRow[1]  = static_cast<NodeRow*>(_resultNode[1].get());
+
+                lv_obj_set_pos(_resultCanvas[1].obj(), PAD + 20, 72);
+                lv_obj_set_size(_resultCanvas[1].obj(), SCREEN_W - 2 * PAD - 20, 38);
+                lv_obj_remove_flag(_resultCanvas[1].obj(), LV_OBJ_FLAG_HIDDEN);
+                _resultCanvas[1].setExpression(_resultRow[1], nullptr);
+                _resultRow[1]->calculateLayout(_resultCanvas[1].normalMetrics());
+                _resultCanvas[1].invalidate();
+                ++_resultCount;
+            }
+
+            goto addHint;
+        }
+
+        // Handle ok=true but no solutions (identity 0=0)
+        if (_omniResult.solutions.empty()) {
+            lv_label_set_text(_resultTitle, "Identity: infinite solutions");
             goto addHint;
         }
 
@@ -1431,21 +1518,17 @@ void EquationsApp::buildResultDisplay() {
         lv_label_set_text(_resultTitle, "System solutions:");
 
         int numSols = static_cast<int>(_nlResult.solutions.size());
-        if (numSols > MAX_RESULTS / 2) numSols = MAX_RESULTS / 2;
+        int varsPerSol = _nlResult.numVars;   // 2 or 3
+        int maxSols = MAX_RESULTS / varsPerSol;
+        if (numSols > maxSols) numSols = maxSols;
 
-        for (int i = 0; i < numSols && _resultCount + 1 < MAX_RESULTS; ++i) {
+        for (int i = 0; i < numSols && _resultCount + (varsPerSol - 1) < MAX_RESULTS; ++i) {
             const auto& sol = _nlResult.solutions[i];
 
-            // Row for x_i
-            {
-                auto row = makeRow();
-                auto* r = static_cast<NodeRow*>(row.get());
-                r->appendChild(makeVariable(_nlResult.var1));
-                if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
-                r->appendChild(makeVariable('='));
-
-                if (sol.exprX) {
-                    NodePtr valNode = cas::SymExprToAST::convert(sol.exprX);
+            // Helper: append expr or numeric fallback
+            auto appendSolNode = [](NodeRow* r, cas::SymExpr* expr, double num) {
+                if (expr) {
+                    NodePtr valNode = cas::SymExprToAST::convert(expr);
                     if (valNode->type() == NodeType::Row) {
                         auto* vr = static_cast<NodeRow*>(valNode.get());
                         while (vr->childCount() > 0)
@@ -1455,9 +1538,19 @@ void EquationsApp::buildResultDisplay() {
                     }
                 } else {
                     char buf[32];
-                    snprintf(buf, sizeof(buf), "%.10g", sol.numX);
+                    snprintf(buf, sizeof(buf), "%.10g", num);
                     r->appendChild(makeNumber(buf));
                 }
+            };
+
+            // Row for var1 (x)
+            {
+                auto row = makeRow();
+                auto* r = static_cast<NodeRow*>(row.get());
+                r->appendChild(makeVariable(_nlResult.var1));
+                if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
+                r->appendChild(makeVariable('='));
+                appendSolNode(r, sol.exprX, sol.numX);
 
                 int idx = _resultCount;
                 _resultNode[idx] = std::move(row);
@@ -1473,28 +1566,37 @@ void EquationsApp::buildResultDisplay() {
                 ++_resultCount;
             }
 
-            // Row for y_i
+            // Row for var2 (y)
             {
                 auto row = makeRow();
                 auto* r = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(_nlResult.var2));
                 if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
                 r->appendChild(makeVariable('='));
+                appendSolNode(r, sol.exprY, sol.numY);
 
-                if (sol.exprY) {
-                    NodePtr valNode = cas::SymExprToAST::convert(sol.exprY);
-                    if (valNode->type() == NodeType::Row) {
-                        auto* vr = static_cast<NodeRow*>(valNode.get());
-                        while (vr->childCount() > 0)
-                            r->appendChild(vr->removeChild(0));
-                    } else {
-                        r->appendChild(std::move(valNode));
-                    }
-                } else {
-                    char buf[32];
-                    snprintf(buf, sizeof(buf), "%.10g", sol.numY);
-                    r->appendChild(makeNumber(buf));
-                }
+                int idx = _resultCount;
+                _resultNode[idx] = std::move(row);
+                _resultRow[idx] = static_cast<NodeRow*>(_resultNode[idx].get());
+
+                int y = 28 + idx * 30;
+                lv_obj_set_pos(_resultCanvas[idx].obj(), PAD + 20, y);
+                lv_obj_set_size(_resultCanvas[idx].obj(), SCREEN_W - 2 * PAD - 20, 26);
+                lv_obj_remove_flag(_resultCanvas[idx].obj(), LV_OBJ_FLAG_HIDDEN);
+                _resultCanvas[idx].setExpression(_resultRow[idx], nullptr);
+                _resultRow[idx]->calculateLayout(_resultCanvas[idx].normalMetrics());
+                _resultCanvas[idx].invalidate();
+                ++_resultCount;
+            }
+
+            // Row for var3 (z) — only for 3×3 systems
+            if (varsPerSol >= 3 && _resultCount < MAX_RESULTS) {
+                auto row = makeRow();
+                auto* r = static_cast<NodeRow*>(row.get());
+                r->appendChild(makeVariable(_nlResult.var3));
+                if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
+                r->appendChild(makeVariable('='));
+                appendSolNode(r, sol.exprZ, sol.numZ);
 
                 int idx = _resultCount;
                 _resultNode[idx] = std::move(row);
@@ -1568,6 +1670,14 @@ addHint:
 // ════════════════════════════════════════════════════════════════════════════
 
 void EquationsApp::buildStepsDisplay() {
+    // ── Destroy existing step canvases BEFORE cleaning container ────
+    for (int i = 0; i < _stepCanvasCount; ++i) {
+        _stepCanvas[i].destroy();
+        _stepNode[i].reset();
+        _stepRow[i] = nullptr;
+    }
+    _stepCanvasCount = 0;
+
     lv_obj_clean(_stepsContainer);
 
     const cas::CASStepLogger& log = _isOmniSolve
@@ -1587,27 +1697,140 @@ void EquationsApp::buildStepsDisplay() {
     for (size_t i = 0; i < steps.size(); ++i) {
         const auto& step = steps[i];
 
+        // Choose color based on step kind
+        uint32_t descColor = COL_DESC_HEX;
+        if (step.kind == cas::StepKind::Result || step.kind == cas::StepKind::ComplexResult)
+            descColor = COL_ACCENT_HEX;
+
         char buf[200];
-        snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
-                 step.description.c_str());
+
+        // For ComplexResult with available data, show short label instead
+        // of the linear text equation — VPAM canvases will render below.
+        if (step.kind == cas::StepKind::ComplexResult
+            && _isOmniSolve && _omniResult.hasComplexRoots) {
+            snprintf(buf, sizeof(buf), "%d. Complex conjugate roots:", (int)(i + 1));
+        } else {
+            snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
+                     step.description.c_str());
+        }
 
         lv_obj_t* descLbl = lv_label_create(_stepsContainer);
         lv_label_set_text(descLbl, buf);
         lv_obj_set_width(descLbl, SCREEN_W - 2 * PAD - 8);
         lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
         lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12, LV_PART_MAIN);
-        lv_obj_set_style_text_color(descLbl, lv_color_hex(COL_DESC_HEX), LV_PART_MAIN);
+        lv_obj_set_style_text_color(descLbl, lv_color_hex(descColor), LV_PART_MAIN);
 
-        std::string eqText = step.snapshot.toString();
-        if (!eqText.empty() && eqText != "0") {
-            std::string full = "   " + eqText;
-            lv_obj_t* eqLbl = lv_label_create(_stepsContainer);
-            lv_label_set_text(eqLbl, full.c_str());
-            lv_obj_set_width(eqLbl, SCREEN_W - 2 * PAD - 8);
-            lv_label_set_long_mode(eqLbl, LV_LABEL_LONG_WRAP);
-            lv_obj_set_style_text_font(eqLbl, &lv_font_montserrat_14, LV_PART_MAIN);
-            lv_obj_set_style_text_color(eqLbl, lv_color_hex(COL_STEP_HEX), LV_PART_MAIN);
+        // ── VPAM render for equation snapshots (Transform / Result) ──
+        if ((step.kind == cas::StepKind::Transform || step.kind == cas::StepKind::Result)
+            && _stepCanvasCount < MAX_STEP_CANVASES)
+        {
+            std::string eqText = step.snapshot.toString();
+            if (!eqText.empty() && eqText != "0" && eqText != "0 = 0") {
+                int ci = _stepCanvasCount;
+
+                // Convert SymEquation → MathAST NodeRow for VPAM rendering
+                _stepNode[ci] = cas::SymToAST::fromSymEquation(step.snapshot);
+                _stepRow[ci]  = static_cast<vpam::NodeRow*>(_stepNode[ci].get());
+
+                _stepCanvas[ci].create(_stepsContainer);
+                _stepCanvas[ci].setExpression(_stepRow[ci], nullptr);
+                _stepRow[ci]->calculateLayout(_stepCanvas[ci].normalMetrics());
+
+                // Size the canvas to fit the expression
+                int16_t w = _stepRow[ci]->layout().width + 24;   // padding
+                int16_t h = _stepRow[ci]->layout().ascent + _stepRow[ci]->layout().descent + 6;
+                if (w > SCREEN_W - 2 * PAD) w = SCREEN_W - 2 * PAD;
+                if (h < 20) h = 20;
+                lv_obj_set_size(_stepCanvas[ci].obj(), w, h);
+
+                _stepCanvas[ci].invalidate();
+                ++_stepCanvasCount;
+            }
         }
+
+        // ── VPAM render for ComplexResult: two roots as MathCanvas ──
+        if (step.kind == cas::StepKind::ComplexResult
+            && _isOmniSolve && _omniResult.hasComplexRoots
+            && _stepCanvasCount + 1 < MAX_STEP_CANVASES)
+        {
+            using namespace vpam;
+            const auto& re = _omniResult.complexReal;
+            const auto& im = _omniResult.complexImagMag;
+            char var = _omniResult.variable;
+
+            auto appendExactVPAM = [](NodeRow* r, const ExactVal& val) {
+                NodePtr node = cas::SymToAST::fromExactVal(val);
+                if (node->type() == NodeType::Row) {
+                    auto* vr = static_cast<NodeRow*>(node.get());
+                    while (vr->childCount() > 0)
+                        r->appendChild(vr->removeChild(0));
+                } else {
+                    r->appendChild(std::move(node));
+                }
+            };
+
+            // Root 1: x₁ = re + im·i
+            {
+                int ci = _stepCanvasCount;
+                auto row = makeRow();
+                auto* r = static_cast<NodeRow*>(row.get());
+                r->appendChild(makeVariable(var));
+                r->appendChild(makeNumber("1"));
+                r->appendChild(makeVariable('='));
+                appendExactVPAM(r, re);
+                r->appendChild(makeOperator(OpKind::Add));
+                appendExactVPAM(r, im);
+                r->appendChild(makeConstant(ConstKind::Imag));
+
+                _stepNode[ci] = std::move(row);
+                _stepRow[ci]  = static_cast<NodeRow*>(_stepNode[ci].get());
+
+                _stepCanvas[ci].create(_stepsContainer);
+                _stepCanvas[ci].setExpression(_stepRow[ci], nullptr);
+                _stepRow[ci]->calculateLayout(_stepCanvas[ci].normalMetrics());
+
+                int16_t w = _stepRow[ci]->layout().width + 24;
+                int16_t h = _stepRow[ci]->layout().ascent +
+                            _stepRow[ci]->layout().descent + 6;
+                if (w > SCREEN_W - 2 * PAD) w = SCREEN_W - 2 * PAD;
+                if (h < 20) h = 20;
+                lv_obj_set_size(_stepCanvas[ci].obj(), w, h);
+                _stepCanvas[ci].invalidate();
+                ++_stepCanvasCount;
+            }
+
+            // Root 2: x₂ = re - im·i
+            if (_stepCanvasCount < MAX_STEP_CANVASES) {
+                int ci = _stepCanvasCount;
+                auto row = makeRow();
+                auto* r = static_cast<NodeRow*>(row.get());
+                r->appendChild(makeVariable(var));
+                r->appendChild(makeNumber("2"));
+                r->appendChild(makeVariable('='));
+                appendExactVPAM(r, re);
+                r->appendChild(makeOperator(OpKind::Sub));
+                appendExactVPAM(r, im);
+                r->appendChild(makeConstant(ConstKind::Imag));
+
+                _stepNode[ci] = std::move(row);
+                _stepRow[ci]  = static_cast<NodeRow*>(_stepNode[ci].get());
+
+                _stepCanvas[ci].create(_stepsContainer);
+                _stepCanvas[ci].setExpression(_stepRow[ci], nullptr);
+                _stepRow[ci]->calculateLayout(_stepCanvas[ci].normalMetrics());
+
+                int16_t w = _stepRow[ci]->layout().width + 24;
+                int16_t h = _stepRow[ci]->layout().ascent +
+                            _stepRow[ci]->layout().descent + 6;
+                if (w > SCREEN_W - 2 * PAD) w = SCREEN_W - 2 * PAD;
+                if (h < 20) h = 20;
+                lv_obj_set_size(_stepCanvas[ci].obj(), w, h);
+                _stepCanvas[ci].invalidate();
+                ++_stepCanvasCount;
+            }
+        }
+        // Annotation steps: text-only, no equation line
     }
 
     lv_obj_t* hintLbl = lv_label_create(_stepsContainer);

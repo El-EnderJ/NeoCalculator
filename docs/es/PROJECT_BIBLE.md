@@ -4,7 +4,7 @@
 >
 > **Plataforma**: ESP32-S3 N16R8 CAM · **UI**: LVGL 9.5
 > **Lenguaje**: C++17 · **Pro-CAS Engine**: Producción activa
-> **Última actualización**: Febrero 2026
+> **Última actualización**: Marzo 2026
 
 ---
 
@@ -69,12 +69,12 @@
 │  │  Pipeline: MathAST → ASTFlattener → Solver → SymToAST           │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │  CalculusApp (Pro-CAS)    │   IntegralApp (Pro-CAS)             │  │
-│  │  Derivadas simbólicas     │   Integrales simbólicas             │  │
-│  │  17 reglas · Steps        │   Slagle · +C · ∫ · Steps          │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│  [ Sequences · Statistics · Regression · Table · Probability ]         │
-│  [ Settings · Python (placeholder) ]                                   │
+│  │  CalculusApp (Pro-CAS)  — Unificada: d/dx + ∫dx             │  │
+│  │  Cambio de modo por pestañas · Derivadas + Integrales         │  │
+│  │  17 reglas · Slagle · Steps · +C · Natural Display          │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  [ SettingsApp · Sequences · Statistics · Regression ]         │
+│  [ Table · Probability · Python (placeholder) ]                │
 └────────────────────────────────────────────────────────────────────────┘
        │                       │                        │
        ▼                       ▼                        ▼
@@ -84,7 +84,7 @@
 │ Tokenizer   │   │ CASInt / CASRational   │   │ DisplayDriver         │
 │ Parser      │   │ SymExpr DAG (consed)   │   │ (TFT_eSPI FSPI)       │
 │ Evaluator   │   │ SymDiff (17 reglas)    │   │ lvglFlushCb DMA       │
-│ ExprNode    │   │ SymIntegrate (Slagle)  │   │ KeyMatrix 6×8         │
+│ ExprNode    │   │ SymIntegrate (Slagle)  │   │ KeyMatrix 5×10         │
 │ MathAST     │   │ SymSimplify (8-pass)   │   │ SerialBridge          │
 │ VarContext  │   │ OmniSolver / Solvers   │   │ LvglKeypad (indev)    │
 │ EqSolver    │   │ CASStepLogger          │   │ LittleFS              │
@@ -143,7 +143,7 @@ void handleKey(KeyCode key);   // Procesar input del usuario
 void update();                 // Tick periódico (~60 fps)
 ```
 
-**Apps LVGL-nativas**: `CalculationApp`, `GrapherApp`, `EquationsApp`, `CalculusApp`, `IntegralApp`, `MainMenu` → `g_lvglActive = true`.  
+**Apps LVGL-nativas**: `CalculationApp`, `GrapherApp`, `EquationsApp`, `CalculusApp`, `SettingsApp`, `MainMenu` → `g_lvglActive = true`.  
 **Apps TFT-directas**: pendientes de implementación completa → `g_lvglActive = false`.
 
 ### 2.4 EquationsApp — Flujo Interno
@@ -344,10 +344,10 @@ Sin esto, la PSRAM acumula allocations entre sesiones de la app.
 | `CalculationApp` | `apps/CalculationApp.cpp/.h` | ✅ | Natural VPAM, historial 32, variables |
 | `GrapherApp` | `apps/GrapherApp.cpp/.h` | ✅ | y=f(x), zoom, pan, tabla (UI base) |
 | `EquationsApp` | `apps/EquationsApp.cpp/.h` | ✅ | Pro-CAS: 1-var, 2×2, pasos PSRAM |
-| `CalculusApp` | `apps/CalculusApp.cpp/.h` | ✅ | Pro-CAS: derivadas simbólicas, 17 reglas, pasos |
-| `IntegralApp` | `apps/IntegralApp.cpp/.h` | ✅ | Pro-CAS: integrales Slagle, +C, pasos |
+| `CalculusApp` | `apps/CalculusApp.cpp/.h` | ✅ | Pro-CAS: derivadas (d/dx) + integrales (∫dx) unificadas, pestañas, pasos |
+| `SettingsApp` | `apps/SettingsApp.cpp/.h` | ✅ | Configuración: raíces complejas, precisión, modo angular |
 | Sequences, Statistics, Regression | — | 🔲 | Pendiente Fase 6 |
-| Table, Probability, Settings | — | 🔲 | Pendiente Fase 6 |
+| Table, Probability | — | 🔲 | Pendiente Fase 6 |
 | Python | — | 🔲 | Placeholder (Lua futuro) |
 
 ### UI
@@ -448,21 +448,20 @@ buf1 = ps_malloc(6400);
 - ✅ GrapherApp — y=f(x) zoom/pan
 - ✅ **Pro-CAS Engine** — SymExpr DAG, CASInt, CASRational, SymDiff, SymIntegrate, SymSimplify, OmniSolver, SymPolyMulti
 - ✅ **EquationsApp** — 4 estados, modos 1-var y 2×2 (lineal + NL), pasos PSRAM
-- ✅ **CalculusApp** — Derivadas simbólicas con 17 reglas, simplificación, pasos
-- ✅ **IntegralApp** — Integrales Slagle (tabla/u-sub/partes), +C, pasos
-- ✅ **53 tests CAS** — todos passing (desactivados en producción)
+- ✅ **CalculusApp** — Unificada: derivadas simbólicas (17 reglas) + integrales (Slagle), pestañas d/dx ↔ ∫dx, simplificación, pasos
+- ✅ **SettingsApp** — Toggle raíces complejas, selector precisión decimal, modo angular
+- ✅ **85+ tests CAS** — todos passing (desactivados en producción)
 
 ### Build Stats
 
 | Recurso | Usado | Total | % |
 |:--------|------:|------:|:-:|
-| RAM | 94 948 B | 327 680 B | **29.0%** |
-| Flash | 1 215 025 B | 6 553 600 B | **18.5%** |
+| RAM | 94 512 B | 327 680 B | **28.8%** |
+| Flash | 1 263 109 B | 6 553 600 B | **19.3%** |
 
 ### Pendiente
 
-- ⏳ Teclado físico — resolver conflicto GPIO 4/5 (TFT DC/RST vs ROW3/ROW4)
-- ⏳ 5 apps con lógica: Statistics, Regression, Sequences, Table, Probability, Settings
+- ⏳ 5 apps con lógica: Statistics, Regression, Sequences, Table, Probability
 - ⏳ CAS avanzado: integrales definidas, matrices, números complejos
 - ⏳ PCB propia, batería, carcasa 3D, WiFi OTA
 
@@ -600,4 +599,4 @@ steps.add(StepType::INFO, "Método de Cardano (grado 3)");
 ---
 
 *NumOS — Open-source scientific calculator OS for ESP32-S3 N16R8.*
-*Documentación maestra — última actualización: Febrero 2026*
+*Documentación maestra — última actualización: Marzo 2026*

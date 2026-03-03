@@ -1,15 +1,20 @@
 /**
- * CASStepLogger.h — Step-by-step logging engine for CAS-Lite solvers.
+ * CASStepLogger.h — Step-by-step logging engine for CAS solvers.
  *
  * Each algebraic manipulation is recorded as a CASStep containing:
- *   · description  — Human-readable explanation (in Spanish)
- *   · snapshot      — SymEquation state after this step
+ *   · kind         — StepKind: Transform (with equation), Annotation (text-only),
+ *                     Result (final answer), ComplexResult (complex roots)
+ *   · description  — Human-readable explanation
+ *   · snapshot      — SymEquation state after this step (only for Transform/Result)
  *   · methodId      — Solver method that generated this step
+ *
+ * StepKind eliminates the "0 = 0" display bug: Annotation steps never
+ * render an equation, so the default SymEquation is never shown.
  *
  * All steps are stored in PSRAM via PSRAMAllocator to free internal
  * SRAM for LVGL and real-time tasks.
  *
- * Part of: NumOS CAS-Lite — Phase C (SingleSolver + Steps)
+ * Part of: NumOS CAS-S3-ULTRA — Phase C+
  */
 
 #pragma once
@@ -37,19 +42,33 @@ enum class MethodId : uint8_t {
 };
 
 // ════════════════════════════════════════════════════════════════════
+// StepKind — Structural classification of a step
+// ════════════════════════════════════════════════════════════════════
+
+enum class StepKind : uint8_t {
+    Transform     = 0,   ///< Algebraic manipulation — has equation snapshot
+    Annotation    = 1,   ///< Text-only note — NO equation snapshot rendered
+    Result        = 2,   ///< Final real result — has equation snapshot
+    ComplexResult = 3,   ///< Complex root result — description contains text form
+};
+
+// ════════════════════════════════════════════════════════════════════
 // CASStep — A single algebraic manipulation step
 // ════════════════════════════════════════════════════════════════════
 
 struct CASStep {
-    std::string  description;   // "Moviendo constantes al lado derecho"
-    SymEquation  snapshot;      // Equation state after this step
+    std::string  description;   // Human-readable step description
+    SymEquation  snapshot;      // Equation state (only meaningful for Transform/Result)
     MethodId     method;        // Which solver phase generated this
+    StepKind     kind;          // Structural type of step
 
     CASStep()
-        : description(), snapshot(), method(MethodId::General) {}
+        : description(), snapshot(), method(MethodId::General),
+          kind(StepKind::Transform) {}
 
-    CASStep(const std::string& desc, const SymEquation& snap, MethodId m)
-        : description(desc), snapshot(snap), method(m) {}
+    CASStep(const std::string& desc, const SymEquation& snap,
+            MethodId m, StepKind k = StepKind::Transform)
+        : description(desc), snapshot(snap), method(m), kind(k) {}
 };
 
 // PSRAM-allocated step vector
@@ -63,13 +82,27 @@ class CASStepLogger {
 public:
     CASStepLogger();
 
-    /// Add a step with description, equation snapshot, and method.
+    /// Add a transform step with description, equation snapshot, and method.
     void log(const std::string& description,
              const SymEquation& snapshot,
              MethodId method = MethodId::General);
 
-    /// Add a step with just a text message (no equation snapshot).
+    /// Add an annotation step (text-only, NO equation rendered).
     void logNote(const std::string& note, MethodId method = MethodId::General);
+
+    /// Add a result step (final answer with equation snapshot).
+    void logResult(const std::string& description,
+                   const SymEquation& snapshot,
+                   MethodId method = MethodId::General);
+
+    /// Add a complex result step (text description only, no SymEquation).
+    void logComplex(const std::string& description,
+                    MethodId method = MethodId::Quadratic);
+
+    /// Copy a step preserving its original StepKind.
+    /// Used by OmniSolver to relay steps from SingleSolver without losing
+    /// the kind (Transform, Annotation, Result, ComplexResult).
+    void copyStep(const CASStep& step);
 
     /// Access all recorded steps.
     const StepVec& steps() const { return _steps; }

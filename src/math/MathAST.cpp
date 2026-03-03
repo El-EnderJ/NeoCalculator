@@ -585,8 +585,9 @@ NodeConstant::NodeConstant(ConstKind kind)
 
 const char* NodeConstant::symbol() const {
     switch (_kind) {
-        case ConstKind::Pi: return "\xcf\x80";         // π (U+03C0)
-        case ConstKind::E:  return "\xf0\x9d\x91\x92"; // 𝑒 (U+1D452, italic e)
+        case ConstKind::Pi:   return "\xcf\x80";  // π (U+03C0)
+        case ConstKind::E:    return "e";          // Euler's number (blue via drawConstant)
+        case ConstKind::Imag: return "i";          // imaginary unit (blue via drawConstant)
     }
     return "?";
 }

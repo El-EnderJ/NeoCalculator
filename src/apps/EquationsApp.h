@@ -57,7 +57,7 @@ private:
     static constexpr int MAX_RESULTS = 4;
 
     // Template definitions
-    static constexpr int NUM_TEMPLATES = 6;
+    static constexpr int NUM_TEMPLATES = 4;
     static const char* TEMPLATE_LABELS[NUM_TEMPLATES];
 
     // ── LVGL widgets ─────────────────────────────────────────────────
@@ -116,6 +116,13 @@ private:
 
     // ── STEPS state ──────────────────────────────────────────────────
     lv_obj_t*       _stepsContainer;
+
+    // Step canvas pool for VPAM equation rendering in Steps view
+    static constexpr int MAX_STEP_CANVASES = 12;
+    vpam::MathCanvas   _stepCanvas[MAX_STEP_CANVASES];
+    vpam::NodePtr      _stepNode[MAX_STEP_CANVASES];
+    vpam::NodeRow*     _stepRow[MAX_STEP_CANVASES] = {};
+    int                _stepCanvasCount = 0;
 
     // ── App state ────────────────────────────────────────────────────
     State   _state;

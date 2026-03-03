@@ -1,14 +1,15 @@
 /**
- * SymExpr.h — Generic symbolic expression tree for Pro-CAS.
+ * SymExpr.h — Immutable symbolic expression DAG for Pro-CAS.
  *
- * Represents arbitrary mathematical expressions including transcendental
- * functions (sin, cos, ln, etc.) as an arena-allocated tree. Subsumes
- * the polynomial-only SymPoly for expressions that cannot be flattened
- * to a coefficient map.
+ * Phase 2 upgrade: all nodes are now IMMUTABLE after construction.
+ * Every node carries a precomputed `_hash` enabling O(1) hash-consing
+ * via the ConsTable.  Pointer identity equals structural identity:
+ *
+ *     if (a == b)  →  same mathematical expression (guaranteed)
  *
  * Node hierarchy (all arena-allocated, no individual free):
- *   SymExpr          — abstract base
- *   ├── SymNum       — exact numeric literal (ExactVal)
+ *   SymExpr          — abstract base (immutable, hashed)
+ *   ├── SymNum       — exact numeric literal (CASRational + metadata)
  *   ├── SymVar       — variable ('x', 'y', etc.)
  *   ├── SymNeg       — unary negation -(expr)
  *   ├── SymAdd       — n-ary sum:     a + b + c + ...
@@ -17,19 +18,23 @@
  *   └── SymFunc      — named function: sin(arg), cos(arg), ln(arg), ...
  *
  * All nodes carry:
- *   · evaluate(varValues) → double   (numeric evaluation)
- *   · clone(arena) → SymExpr*        (deep copy into arena)
- *   · toString() → string            (debug representation)
- *   · containsVar(char) → bool       (variable presence scan)
- *   · isPolynomial() → bool          (can convert to SymPoly?)
+ *   · _hash               → precomputed structural hash (size_t)
+ *   · evaluate(varVal)     → double
+ *   · clone(arena)         → SymExpr*  (deep copy — bypasses cons)
+ *   · toString()           → string    (debug representation)
+ *   · containsVar(char)    → bool
+ *   · isPolynomial()       → bool
+ *   · toSymPoly(char var)  → SymPoly
  *
- * Conversion:
- *   · toSymPoly(char var) → SymPoly  (only valid when isPolynomial())
+ * Comparison:
+ *   · operator==   → pointer identity only (O(1))
+ *   · operator!=   → pointer identity only (O(1))
  *
  * Memory: ALL nodes live in a SymExprArena (PSRAM bump allocator).
- *         No destructors needed — the arena bulk-frees on reset().
+ *         No destructors — the arena bulk-frees on reset().
+ *         ConsTable deduplicates structurally-identical nodes.
  *
- * Part of: NumOS Pro-CAS — Phase 1 (Data Structure Overhaul)
+ * Part of: NumOS Pro-CAS — Phase 2 (Immutable DAG & Hash-Consing)
  */
 
 #pragma once
@@ -37,8 +42,11 @@
 #include <cstdint>
 #include <cmath>
 #include <string>
+#include <algorithm>       // std::sort for canonical ordering
 #include "SymExprArena.h"
-#include "SymPoly.h"        // SymPoly, SymTerm, ExactVal
+#include "SymPoly.h"
+#include "CASRational.h"
+#include "ConsTable.h"
 #include "../ExactVal.h"
 
 namespace cas {
@@ -56,14 +64,15 @@ enum class SymFuncKind : uint8_t {
     ArcTan,    // arctan(x)
     Ln,        // ln(x)  — natural log
     Log10,     // log(x) — base-10 log
-    Exp,       // e^x    — natural exponential (syntactic sugar)
+    Exp,       // e^x    — natural exponential
     Abs,       // |x|
+    Integral,  // ∫f(x)dx — unevaluated integral
 };
 
 const char* symFuncName(SymFuncKind kind);
 
 // ════════════════════════════════════════════════════════════════════
-// SymExpr — Abstract base for symbolic expression nodes
+// SymExpr — Abstract base for symbolic expression nodes (IMMUTABLE)
 // ════════════════════════════════════════════════════════════════════
 
 enum class SymExprType : uint8_t {
@@ -79,240 +88,402 @@ enum class SymExprType : uint8_t {
 class SymExpr {
 public:
     const SymExprType type;
+    const size_t      _hash;    // Precomputed structural hash
 
-    /// Numeric evaluation. `varVal` is the value for the primary variable.
-    /// For multi-variable support, extend to a map in the future.
+    /// Pointer identity == structural identity (via hash-consing).
+    bool operator==(const SymExpr& other) const { return this == &other; }
+    bool operator!=(const SymExpr& other) const { return this != &other; }
+
+    /// Numeric evaluation.
     virtual double evaluate(double varVal) const = 0;
 
-    /// Deep-copy this subtree into the given arena.
+    /// Deep-copy this subtree into the given arena (bypasses cons).
     virtual SymExpr* clone(SymExprArena& arena) const = 0;
 
-    /// Human-readable debug string (e.g., "(3*x^2 + sin(x))").
+    /// Human-readable debug string.
     virtual std::string toString() const = 0;
 
     /// Does this subtree contain variable `v`?
     virtual bool containsVar(char v) const = 0;
 
     /// Can this entire subtree be represented as a SymPoly?
-    /// True if it uses only Num, Var, Neg, Add, Mul, and Pow with
-    /// integer-constant exponents.
     virtual bool isPolynomial() const = 0;
 
     /// Convert to SymPoly (only valid when isPolynomial() returns true).
-    /// Caller provides the expected variable name.
     SymPoly toSymPoly(char var) const;
 
 protected:
-    explicit SymExpr(SymExprType t) : type(t) {}
+    explicit SymExpr(SymExprType t, size_t hash)
+        : type(t), _hash(hash) {}
 
-    // No virtual destructor — arena handles deallocation.
-    // Prevent accidental delete via protected non-virtual dtor.
     ~SymExpr() = default;
 };
 
 // ════════════════════════════════════════════════════════════════════
-// SymNum — Exact numeric constant
+// SymNum — Exact numeric constant (IMMUTABLE)
 // ════════════════════════════════════════════════════════════════════
 
 class SymNum : public SymExpr {
 public:
-    vpam::ExactVal val;
+    const CASRational _coeff;
+    const int64_t     _outer;
+    const int64_t     _inner;
+    const int8_t      _piMul;
+    const int8_t      _eMul;
 
+    // ── Construct from CASRational (pure rational, no metadata) ──
+    explicit SymNum(const CASRational& c)
+        : SymExpr(SymExprType::Num, computeHashStatic(c, 1, 1, 0, 0)),
+          _coeff(c), _outer(1), _inner(1), _piMul(0), _eMul(0) {}
+
+    // ── Construct from CASRational + full metadata ──
+    SymNum(const CASRational& c, int64_t outer, int64_t inner,
+           int8_t piMul, int8_t eMul)
+        : SymExpr(SymExprType::Num, computeHashStatic(c, outer, inner, piMul, eMul)),
+          _coeff(c), _outer(outer), _inner(inner), _piMul(piMul), _eMul(eMul) {}
+
+    // ── Construct from legacy ExactVal (bridge) ──
     explicit SymNum(const vpam::ExactVal& v)
-        : SymExpr(SymExprType::Num), val(v) {}
+        : SymExpr(SymExprType::Num,
+            computeHashStatic(
+                v.ok ? CASRational(v.num, v.den) : CASRational::makeError(),
+                v.outer, v.inner, v.piMul, v.eMul)),
+          _coeff(v.ok ? CASRational(v.num, v.den) : CASRational::makeError()),
+          _outer(v.outer), _inner(v.inner),
+          _piMul(v.piMul), _eMul(v.eMul) {}
+
+    // ── Convert back to legacy ExactVal ──
+    vpam::ExactVal toExactVal() const {
+        vpam::ExactVal ev = _coeff.toExactVal();
+        ev.outer = _outer;
+        ev.inner = _inner;
+        ev.piMul = _piMul;
+        ev.eMul  = _eMul;
+        return ev;
+    }
+
+    // ── Metadata queries ──
+    bool hasPi()      const { return _piMul != 0; }
+    bool hasE()       const { return _eMul != 0; }
+    bool hasRadical() const { return _inner > 1; }
+    bool isPureRational() const { return !hasPi() && !hasE() && !hasRadical(); }
 
     double      evaluate(double) const override;
     SymExpr*    clone(SymExprArena& arena) const override;
     std::string toString() const override;
     bool        containsVar(char) const override { return false; }
     bool        isPolynomial() const override { return true; }
+
+    // ── Static hash computation ──
+    static size_t computeHashStatic(const CASRational& c,
+                                     int64_t outer, int64_t inner,
+                                     int8_t piMul, int8_t eMul)
+    {
+        size_t h = hashMix(0x01);
+        h = hashCombine(h, hashMix(static_cast<size_t>(c.num().toInt64())));
+        h = hashCombine(h, hashMix(static_cast<size_t>(c.den().toInt64())));
+        h = hashCombine(h, hashMix(static_cast<size_t>(outer)));
+        h = hashCombine(h, hashMix(static_cast<size_t>(inner)));
+        h = hashCombine(h, hashMix(static_cast<size_t>(piMul)));
+        h = hashCombine(h, hashMix(static_cast<size_t>(eMul)));
+        return h;
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
-// SymVar — Variable reference
+// SymVar — Variable reference (IMMUTABLE)
 // ════════════════════════════════════════════════════════════════════
 
 class SymVar : public SymExpr {
 public:
-    char name;
+    const char name;
 
     explicit SymVar(char n)
-        : SymExpr(SymExprType::Var), name(n) {}
+        : SymExpr(SymExprType::Var, computeHashStatic(n)), name(n) {}
 
     double      evaluate(double varVal) const override;
     SymExpr*    clone(SymExprArena& arena) const override;
     std::string toString() const override;
     bool        containsVar(char v) const override { return name == v; }
     bool        isPolynomial() const override { return true; }
+
+    static size_t computeHashStatic(char n) {
+        return hashCombine(hashMix(0x02), hashMix(static_cast<size_t>(n)));
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
-// SymNeg — Unary negation: -(child)
+// SymNeg — Unary negation: -(child)  (IMMUTABLE)
 // ════════════════════════════════════════════════════════════════════
 
 class SymNeg : public SymExpr {
 public:
-    SymExpr* child;
+    SymExpr* const child;
 
     explicit SymNeg(SymExpr* c)
-        : SymExpr(SymExprType::Neg), child(c) {}
+        : SymExpr(SymExprType::Neg, computeHashStatic(c)), child(c) {}
 
     double      evaluate(double varVal) const override;
     SymExpr*    clone(SymExprArena& arena) const override;
     std::string toString() const override;
     bool        containsVar(char v) const override;
     bool        isPolynomial() const override;
+
+    static size_t computeHashStatic(const SymExpr* c) {
+        return hashCombine(hashMix(0x03), c ? c->_hash : 0);
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
-// SymAdd — N-ary sum: terms[0] + terms[1] + ... + terms[n-1]
+// SymAdd — N-ary sum (IMMUTABLE)
 //
-// The terms array is arena-allocated (pointer + count).
+// Children array is arena-allocated (pointer + count), both const.
+// Terms are canonically sorted by hash for commutative dedup.
 // ════════════════════════════════════════════════════════════════════
 
 class SymAdd : public SymExpr {
 public:
-    SymExpr** terms;     // Arena-allocated array of pointers
-    uint16_t  count;
+    SymExpr* const* const terms;
+    const uint16_t        count;
 
-    SymAdd(SymExpr** t, uint16_t n)
-        : SymExpr(SymExprType::Add), terms(t), count(n) {}
+    SymAdd(SymExpr* const* t, uint16_t n)
+        : SymExpr(SymExprType::Add, computeHashStatic(t, n)),
+          terms(t), count(n) {}
 
     double      evaluate(double varVal) const override;
     SymExpr*    clone(SymExprArena& arena) const override;
     std::string toString() const override;
     bool        containsVar(char v) const override;
     bool        isPolynomial() const override;
+
+    static size_t computeHashStatic(SymExpr* const* t, uint16_t n) {
+        // Commutative hash: order-independent
+        size_t h = hashMix(0x04);
+        for (uint16_t i = 0; i < n; ++i) {
+            h = hashCombineCommutative(h, t[i] ? t[i]->_hash : 0);
+        }
+        h = hashCombine(h, hashMix(static_cast<size_t>(n)));
+        return h;
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
-// SymMul — N-ary product: factors[0] · factors[1] · ... · factors[n-1]
+// SymMul — N-ary product (IMMUTABLE)
 // ════════════════════════════════════════════════════════════════════
 
 class SymMul : public SymExpr {
 public:
-    SymExpr** factors;   // Arena-allocated array of pointers
-    uint16_t  count;
+    SymExpr* const* const factors;
+    const uint16_t        count;
 
-    SymMul(SymExpr** f, uint16_t n)
-        : SymExpr(SymExprType::Mul), factors(f), count(n) {}
+    SymMul(SymExpr* const* f, uint16_t n)
+        : SymExpr(SymExprType::Mul, computeHashStatic(f, n)),
+          factors(f), count(n) {}
 
     double      evaluate(double varVal) const override;
     SymExpr*    clone(SymExprArena& arena) const override;
     std::string toString() const override;
     bool        containsVar(char v) const override;
     bool        isPolynomial() const override;
+
+    static size_t computeHashStatic(SymExpr* const* f, uint16_t n) {
+        size_t h = hashMix(0x05);
+        for (uint16_t i = 0; i < n; ++i) {
+            h = hashCombineCommutative(h, f[i] ? f[i]->_hash : 0);
+        }
+        h = hashCombine(h, hashMix(static_cast<size_t>(n)));
+        return h;
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
-// SymPow — Binary power: base ^ exponent
+// SymPow — Binary power: base ^ exponent  (IMMUTABLE)
 // ════════════════════════════════════════════════════════════════════
 
 class SymPow : public SymExpr {
 public:
-    SymExpr* base;
-    SymExpr* exponent;
+    SymExpr* const base;
+    SymExpr* const exponent;
 
     SymPow(SymExpr* b, SymExpr* e)
-        : SymExpr(SymExprType::Pow), base(b), exponent(e) {}
+        : SymExpr(SymExprType::Pow, computeHashStatic(b, e)),
+          base(b), exponent(e) {}
 
     double      evaluate(double varVal) const override;
     SymExpr*    clone(SymExprArena& arena) const override;
     std::string toString() const override;
     bool        containsVar(char v) const override;
     bool        isPolynomial() const override;
+
+    static size_t computeHashStatic(const SymExpr* b, const SymExpr* e) {
+        size_t h = hashMix(0x06);
+        h = hashCombine(h, b ? b->_hash : 0);
+        h = hashCombine(h, e ? e->_hash : 0);
+        return h;
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
-// SymFunc — Named mathematical function: kind(argument)
+// SymFunc — Named mathematical function: kind(argument)  (IMMUTABLE)
 // ════════════════════════════════════════════════════════════════════
 
 class SymFunc : public SymExpr {
 public:
-    SymFuncKind kind;
-    SymExpr*    argument;
+    const SymFuncKind kind;
+    SymExpr* const    argument;
 
     SymFunc(SymFuncKind k, SymExpr* arg)
-        : SymExpr(SymExprType::Func), kind(k), argument(arg) {}
+        : SymExpr(SymExprType::Func, computeHashStatic(k, arg)),
+          kind(k), argument(arg) {}
 
     double      evaluate(double varVal) const override;
     SymExpr*    clone(SymExprArena& arena) const override;
     std::string toString() const override;
     bool        containsVar(char v) const override;
     bool        isPolynomial() const override { return false; }
+
+    static size_t computeHashStatic(SymFuncKind k, const SymExpr* arg) {
+        size_t h = hashMix(0x07);
+        h = hashCombine(h, hashMix(static_cast<size_t>(k)));
+        h = hashCombine(h, arg ? arg->_hash : 0);
+        return h;
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
-// Arena helper factories — convenient node creation
+// Canonical ordering comparator
+//
+// Defines the total order for commutative children (Add terms,
+// Mul factors).  Constants (Num) sort LAST so that the canonical
+// form of  x + 1  is always  [x, 1]  never  [1, x].
+// Within the same category, sort by hash for deterministic order.
 // ════════════════════════════════════════════════════════════════════
 
-/// Create a numeric constant node
-inline SymNum* symNum(SymExprArena& a, const vpam::ExactVal& v) {
-    return a.create<SymNum>(v);
+inline bool symCanonicalLess(const SymExpr* a, const SymExpr* b) {
+    bool aNum = (a->type == SymExprType::Num);
+    bool bNum = (b->type == SymExprType::Num);
+    if (aNum != bNum) return bNum;  // non-Nums before Nums
+    return a->_hash < b->_hash;
 }
 
-/// Integer constant shorthand
-inline SymNum* symInt(SymExprArena& a, int64_t n) {
-    return a.create<SymNum>(vpam::ExactVal::fromInt(n));
+// ════════════════════════════════════════════════════════════════════
+// Cons-based arena helper factories — with hash-consing dedup
+//
+// All factories route through ConsTable::getOrCreate() to guarantee
+// that structurally-identical nodes share the same pointer.
+// ════════════════════════════════════════════════════════════════════
+
+/// Create a numeric constant from CASRational (cons'd)
+inline SymExpr* symNum(SymExprArena& a, const CASRational& c) {
+    auto* node = a.create<SymNum>(c);
+    return a.consTable().getOrCreate(node);
 }
 
-/// Fraction constant shorthand
-inline SymNum* symFrac(SymExprArena& a, int64_t num, int64_t den) {
-    return a.create<SymNum>(vpam::ExactVal::fromFrac(num, den));
+/// Create a numeric constant from legacy ExactVal (cons'd)
+inline SymExpr* symNum(SymExprArena& a, const vpam::ExactVal& v) {
+    auto* node = a.create<SymNum>(v);
+    return a.consTable().getOrCreate(node);
 }
 
-/// Variable node
-inline SymVar* symVar(SymExprArena& a, char name) {
-    return a.create<SymVar>(name);
+/// Integer constant shorthand (cons'd)
+inline SymExpr* symInt(SymExprArena& a, int64_t n) {
+    auto* node = a.create<SymNum>(CASRational::fromInt(n));
+    return a.consTable().getOrCreate(node);
 }
 
-/// Negation node
-inline SymNeg* symNeg(SymExprArena& a, SymExpr* child) {
-    return a.create<SymNeg>(child);
+/// Fraction constant shorthand (cons'd)
+inline SymExpr* symFrac(SymExprArena& a, int64_t num, int64_t den) {
+    auto* node = a.create<SymNum>(CASRational::fromFrac(num, den));
+    return a.consTable().getOrCreate(node);
 }
 
-/// Binary addition (2 terms)
-inline SymAdd* symAdd(SymExprArena& a, SymExpr* lhs, SymExpr* rhs) {
+/// Variable node (cons'd)
+inline SymExpr* symVar(SymExprArena& a, char name) {
+    auto* node = a.create<SymVar>(name);
+    return a.consTable().getOrCreate(node);
+}
+
+/// Negation node (cons'd)
+inline SymExpr* symNeg(SymExprArena& a, SymExpr* child) {
+    auto* node = a.create<SymNeg>(child);
+    return a.consTable().getOrCreate(node);
+}
+
+/// Binary addition (2 terms, cons'd with canonical sort)
+inline SymExpr* symAdd(SymExprArena& a, SymExpr* lhs, SymExpr* rhs) {
     auto** arr = static_cast<SymExpr**>(a.allocRaw(2 * sizeof(SymExpr*)));
     arr[0] = lhs;
     arr[1] = rhs;
-    return a.create<SymAdd>(arr, 2);
+    // Canonical sort: non-Nums before Nums, then by hash
+    if (symCanonicalLess(arr[1], arr[0])) std::swap(arr[0], arr[1]);
+    auto* node = a.create<SymAdd>(const_cast<SymExpr* const*>(arr), static_cast<uint16_t>(2));
+    return a.consTable().getOrCreate(node);
 }
 
-/// Ternary addition (3 terms)
-inline SymAdd* symAdd3(SymExprArena& a, SymExpr* t0, SymExpr* t1, SymExpr* t2) {
+/// Ternary addition (3 terms, cons'd with canonical sort)
+inline SymExpr* symAdd3(SymExprArena& a, SymExpr* t0, SymExpr* t1, SymExpr* t2) {
     auto** arr = static_cast<SymExpr**>(a.allocRaw(3 * sizeof(SymExpr*)));
     arr[0] = t0;
     arr[1] = t1;
     arr[2] = t2;
-    return a.create<SymAdd>(arr, 3);
+    std::sort(arr, arr + 3, [](SymExpr* x, SymExpr* y) {
+        return symCanonicalLess(x, y);
+    });
+    auto* node = a.create<SymAdd>(const_cast<SymExpr* const*>(arr), static_cast<uint16_t>(3));
+    return a.consTable().getOrCreate(node);
 }
 
-/// Binary multiplication (2 factors)
-inline SymMul* symMul(SymExprArena& a, SymExpr* lhs, SymExpr* rhs) {
+/// N-ary addition from pre-allocated array (cons'd with canonical sort)
+inline SymExpr* symAddN(SymExprArena& a, SymExpr** arr, uint16_t count) {
+    std::sort(arr, arr + count, [](SymExpr* x, SymExpr* y) {
+        return symCanonicalLess(x, y);
+    });
+    auto* node = a.create<SymAdd>(const_cast<SymExpr* const*>(arr), count);
+    return a.consTable().getOrCreate(node);
+}
+
+/// Binary multiplication (2 factors, cons'd with canonical sort)
+inline SymExpr* symMul(SymExprArena& a, SymExpr* lhs, SymExpr* rhs) {
     auto** arr = static_cast<SymExpr**>(a.allocRaw(2 * sizeof(SymExpr*)));
     arr[0] = lhs;
     arr[1] = rhs;
-    return a.create<SymMul>(arr, 2);
+    if (symCanonicalLess(arr[1], arr[0])) std::swap(arr[0], arr[1]);
+    auto* node = a.create<SymMul>(const_cast<SymExpr* const*>(arr), static_cast<uint16_t>(2));
+    return a.consTable().getOrCreate(node);
 }
 
-/// Ternary multiplication (3 factors)
-inline SymMul* symMul3(SymExprArena& a, SymExpr* f0, SymExpr* f1, SymExpr* f2) {
+/// Ternary multiplication (3 factors, cons'd with canonical sort)
+inline SymExpr* symMul3(SymExprArena& a, SymExpr* f0, SymExpr* f1, SymExpr* f2) {
     auto** arr = static_cast<SymExpr**>(a.allocRaw(3 * sizeof(SymExpr*)));
     arr[0] = f0;
     arr[1] = f1;
     arr[2] = f2;
-    return a.create<SymMul>(arr, 3);
+    std::sort(arr, arr + 3, [](SymExpr* x, SymExpr* y) {
+        return symCanonicalLess(x, y);
+    });
+    auto* node = a.create<SymMul>(const_cast<SymExpr* const*>(arr), static_cast<uint16_t>(3));
+    return a.consTable().getOrCreate(node);
 }
 
-/// Power node
-inline SymPow* symPow(SymExprArena& a, SymExpr* base, SymExpr* exp) {
-    return a.create<SymPow>(base, exp);
+/// N-ary multiplication from pre-allocated array (cons'd with canonical sort)
+inline SymExpr* symMulN(SymExprArena& a, SymExpr** arr, uint16_t count) {
+    std::sort(arr, arr + count, [](SymExpr* x, SymExpr* y) {
+        return symCanonicalLess(x, y);
+    });
+    auto* node = a.create<SymMul>(const_cast<SymExpr* const*>(arr), count);
+    return a.consTable().getOrCreate(node);
 }
 
-/// Function node
-inline SymFunc* symFunc(SymExprArena& a, SymFuncKind kind, SymExpr* arg) {
-    return a.create<SymFunc>(kind, arg);
+/// Power node (cons'd)
+inline SymExpr* symPow(SymExprArena& a, SymExpr* base, SymExpr* exp) {
+    auto* node = a.create<SymPow>(base, exp);
+    return a.consTable().getOrCreate(node);
+}
+
+/// Function node (cons'd)
+inline SymExpr* symFunc(SymExprArena& a, SymFuncKind kind, SymExpr* arg) {
+    auto* node = a.create<SymFunc>(kind, arg);
+    return a.consTable().getOrCreate(node);
 }
 
 } // namespace cas

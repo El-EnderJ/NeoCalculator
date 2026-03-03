@@ -17,6 +17,9 @@
  */
 
 #include "SystemSolver.h"
+#include "SymPolyMulti.h"
+#include "OmniSolver.h"
+#include "SymSimplify.h"
 #include <cmath>
 #include <cstdlib>
 
@@ -627,6 +630,215 @@ bool SystemSolver::solveByGauss(const LinEq& eq1, const LinEq& eq2,
     result.solutions[1] = sol[1];
     result.solutions[2] = sol[2];
     return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// solveNonlinear2x2 — Sylvester resultant elimination for 2×2 systems
+//
+// Pipeline:
+//   1. View f1, f2 as polynomials in var2 (y)
+//   2. Compute Sylvester resultant → R(var1) = 0
+//   3. Solve R(var1) via OmniSolver
+//   4. Back-substitute each var1 solution → solve for var2
+// ════════════════════════════════════════════════════════════════════
+
+NLSystemResult SystemSolver::solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
+                                                char var1, char var2,
+                                                SymExprArena& arena) {
+    NLSystemResult result;
+    result.var1 = var1;
+    result.var2 = var2;
+    result.methodUsed = SystemMethod::Resultant;
+
+    if (!f1 || !f2) {
+        result.error = "Ecuacion nula";
+        return result;
+    }
+
+    // ── Step 1: Simplify both equations ────────────────────────────
+    f1 = SymSimplify::simplify(f1, arena);
+    f2 = SymSimplify::simplify(f2, arena);
+
+    result.steps.logNote(
+        "Sistema no lineal 2x2: eliminar " + std::string(1, var2) +
+        " via resultante de Sylvester", MethodId::General);
+    result.steps.logNote(
+        "Ec1: " + f1->toString() + " = 0", MethodId::General);
+    result.steps.logNote(
+        "Ec2: " + f2->toString() + " = 0", MethodId::General);
+
+    // ── Step 2: Collect as univariate polynomials in var2 ──────────
+    UniPoly P = collectAsUniPoly(f1, var2, arena);
+    UniPoly Q = collectAsUniPoly(f2, var2, arena);
+
+    if (P.isZero() || Q.isZero()) {
+        result.error = "No se pudo extraer estructura polinomial en " +
+                       std::string(1, var2);
+        return result;
+    }
+
+    result.steps.logNote(
+        "Grado de Ec1 en " + std::string(1, var2) + ": " +
+        std::to_string(P.degree()), MethodId::General);
+    result.steps.logNote(
+        "Grado de Ec2 en " + std::string(1, var2) + ": " +
+        std::to_string(Q.degree()), MethodId::General);
+
+    // Degree safety check
+    int totalDeg = P.degree() + Q.degree();
+    if (totalDeg > 12) {
+        result.error = "Grado total > 12: sistema demasiado complejo";
+        return result;
+    }
+
+    // ── Step 3: Compute Sylvester resultant ────────────────────────
+    result.steps.logNote(
+        "Construyendo matriz de Sylvester " +
+        std::to_string(totalDeg) + "x" + std::to_string(totalDeg),
+        MethodId::General);
+
+    SymExpr* R = sylvesterResultant(P, Q, arena);
+
+    if (!R) {
+        result.error = "Error al calcular la resultante";
+        return result;
+    }
+
+    R = SymSimplify::simplify(R, arena);
+
+    result.steps.logNote(
+        "Resultante R(" + std::string(1, var1) + ") = " + R->toString(),
+        MethodId::General);
+
+    // Check if resultant is zero (equations are not independent)
+    if (R->type == SymExprType::Num) {
+        auto* num = static_cast<SymNum*>(R);
+        if (num->_coeff.isZero()) {
+            result.error = "Resultante identicamente cero: ecuaciones no independientes";
+            return result;
+        }
+    }
+
+    // ── Step 4: Solve R(var1) = 0 ──────────────────────────────────
+    result.steps.logNote(
+        "Resolver R(" + std::string(1, var1) + ") = 0",
+        MethodId::General);
+
+    // Check that R actually contains var1
+    if (!R->containsVar(var1)) {
+        // R is a constant — if non-zero, system is inconsistent
+        result.error = "Sistema incompatible (resultante constante no nula)";
+        return result;
+    }
+
+    OmniSolver omni;
+    SymExpr* zeroExpr = symInt(arena, 0);
+    OmniResult omniRes = omni.solve(R, zeroExpr, var1, arena);
+
+    if (!omniRes.ok || omniRes.solutions.empty()) {
+        result.error = "No se encontraron soluciones para " +
+                       std::string(1, var1);
+        return result;
+    }
+
+    result.steps.logNote(
+        "Soluciones para " + std::string(1, var1) + ": " +
+        std::to_string(omniRes.solutions.size()), MethodId::General);
+
+    // ── Step 5: Back-substitution ──────────────────────────────────
+    // For each solution of var1, substitute into f1 → solve for var2
+    for (const auto& xSol : omniRes.solutions) {
+        // Build the substitution value as a SymExpr
+        SymExpr* xVal = nullptr;
+        if (xSol.symbolic) {
+            xVal = xSol.symbolic;
+        } else if (xSol.isExact) {
+            xVal = symNum(arena, xSol.exact);
+        } else {
+            // Use numeric approximation as a SymNum
+            xVal = symNum(arena, vpam::ExactVal::fromDouble(xSol.numeric));
+        }
+
+        result.steps.logNote(
+            "Sustituir " + std::string(1, var1) + " = " +
+            xVal->toString() + " en Ec1", MethodId::General);
+
+        // Substitute var1 = xVal into f1 → get equation in var2 only
+        SymExpr* f1_sub = substituteVar(f1, var1, xVal, arena);
+        f1_sub = SymSimplify::simplify(f1_sub, arena);
+
+        result.steps.logNote(
+            "Ec1 sustituida: " + f1_sub->toString() + " = 0",
+            MethodId::General);
+
+        // Solve the substituted equation for var2
+        if (!f1_sub->containsVar(var2)) {
+            // f1_sub is a constant — check if it's zero
+            if (f1_sub->type == SymExprType::Num) {
+                auto* num = static_cast<SymNum*>(f1_sub);
+                if (num->_coeff.isZero()) {
+                    // Identity 0=0 → var2 is free (skip or note)
+                    result.steps.logNote(
+                        "Identidad 0=0: " + std::string(1, var2) +
+                        " es libre", MethodId::General);
+                }
+            }
+            // Try with f2 instead
+            SymExpr* f2_sub = substituteVar(f2, var1, xVal, arena);
+            f2_sub = SymSimplify::simplify(f2_sub, arena);
+            if (f2_sub->containsVar(var2)) {
+                f1_sub = f2_sub;
+            } else {
+                continue;  // Can't solve for var2 — skip this x solution
+            }
+        }
+
+        OmniResult yRes = omni.solve(f1_sub, zeroExpr, var2, arena);
+
+        if (!yRes.ok || yRes.solutions.empty()) {
+            // Try with f2
+            SymExpr* f2_sub = substituteVar(f2, var1, xVal, arena);
+            f2_sub = SymSimplify::simplify(f2_sub, arena);
+            if (f2_sub->containsVar(var2)) {
+                yRes = omni.solve(f2_sub, zeroExpr, var2, arena);
+            }
+        }
+
+        if (!yRes.ok) continue;
+
+        // Build NLSolution pairs
+        for (const auto& ySol : yRes.solutions) {
+            NLSolution pair;
+            pair.exprX = xVal;
+            pair.exprY = ySol.symbolic;
+            pair.numX  = xSol.numeric;
+            pair.numY  = ySol.numeric;
+            pair.isExact = xSol.isExact && ySol.isExact;
+
+            if (ySol.symbolic) {
+                pair.exprY = ySol.symbolic;
+            } else if (ySol.isExact) {
+                pair.exprY = symNum(arena, ySol.exact);
+            } else {
+                pair.exprY = symNum(arena, vpam::ExactVal::fromDouble(ySol.numeric));
+            }
+
+            result.steps.logNote(
+                "Solucion: (" + std::string(1, var1) + ", " +
+                std::string(1, var2) + ") = (" +
+                pair.exprX->toString() + ", " +
+                pair.exprY->toString() + ")", MethodId::General);
+
+            result.solutions.push_back(pair);
+        }
+    }
+
+    result.ok = !result.solutions.empty();
+    if (!result.ok) {
+        result.error = "Ninguna solucion valida tras sustitucion regresiva";
+    }
+
+    return result;
 }
 
 } // namespace cas

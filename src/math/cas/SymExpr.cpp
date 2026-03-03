@@ -1,10 +1,13 @@
 /**
- * SymExpr.cpp — Implementation of generic symbolic expression tree.
+ * SymExpr.cpp — Implementation of immutable symbolic expression DAG.
  *
  * Implements evaluate(), clone(), toString(), containsVar(),
  * isPolynomial(), and toSymPoly() for all 7 concrete SymExpr types.
  *
- * Part of: NumOS Pro-CAS — Phase 1 (Data Structure Overhaul)
+ * Phase 2: all members are const.  clone() bypasses ConsTable
+ * (creates a deep copy without dedup — useful for cross-arena cloning).
+ *
+ * Part of: NumOS Pro-CAS — Phase 2 (Immutable DAG & Hash-Consing)
  */
 
 #include "SymExpr.h"
@@ -28,8 +31,9 @@ const char* symFuncName(SymFuncKind kind) {
         case SymFuncKind::Ln:     return "ln";
         case SymFuncKind::Log10:  return "log";
         case SymFuncKind::Exp:    return "exp";
-        case SymFuncKind::Abs:    return "abs";
-        default:                  return "?";
+        case SymFuncKind::Abs:      return "abs";
+        case SymFuncKind::Integral: return "integral";
+        default:                    return "?";
     }
 }
 
@@ -38,7 +42,6 @@ const char* symFuncName(SymFuncKind kind) {
 // ════════════════════════════════════════════════════════════════════
 
 static std::string dblToStr(double v) {
-    // Integers print without decimal
     if (v == static_cast<int64_t>(v) && std::abs(v) < 1e15) {
         char buf[24];
         snprintf(buf, sizeof(buf), "%lld", (long long)static_cast<int64_t>(v));
@@ -50,53 +53,56 @@ static std::string dblToStr(double v) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// SymNum — Exact numeric constant
+// SymNum — Exact numeric constant (CASRational + metadata)
 // ════════════════════════════════════════════════════════════════════
 
 double SymNum::evaluate(double) const {
-    return val.toDouble();
+    vpam::ExactVal ev = toExactVal();
+    return ev.toDouble();
 }
 
 SymExpr* SymNum::clone(SymExprArena& arena) const {
-    return arena.create<SymNum>(val);
+    return arena.create<SymNum>(_coeff, _outer, _inner, _piMul, _eMul);
 }
 
 std::string SymNum::toString() const {
-    if (val.hasPi()) {
-        if (val.num == 1 && val.den == 1) return "pi";
-        if (val.num == -1 && val.den == 1) return "-pi";
+    vpam::ExactVal ev = toExactVal();
+
+    if (ev.hasPi()) {
+        if (ev.num == 1 && ev.den == 1) return "pi";
+        if (ev.num == -1 && ev.den == 1) return "-pi";
         char buf[48];
         snprintf(buf, sizeof(buf), "(%lld/%lld)*pi",
-                 (long long)val.num, (long long)val.den);
+                 (long long)ev.num, (long long)ev.den);
         return buf;
     }
-    if (val.hasE()) {
-        if (val.num == 1 && val.den == 1) return "e";
-        if (val.num == -1 && val.den == 1) return "-e";
+    if (ev.hasE()) {
+        if (ev.num == 1 && ev.den == 1) return "e";
+        if (ev.num == -1 && ev.den == 1) return "-e";
         char buf[48];
         snprintf(buf, sizeof(buf), "(%lld/%lld)*e",
-                 (long long)val.num, (long long)val.den);
+                 (long long)ev.num, (long long)ev.den);
         return buf;
     }
-    if (val.hasRadical()) {
+    if (ev.hasRadical()) {
         char buf[64];
-        if (val.outer == 1 && val.num == 1 && val.den == 1) {
-            snprintf(buf, sizeof(buf), "sqrt(%lld)", (long long)val.inner);
+        if (ev.outer == 1 && ev.num == 1 && ev.den == 1) {
+            snprintf(buf, sizeof(buf), "sqrt(%lld)", (long long)ev.inner);
         } else {
             snprintf(buf, sizeof(buf), "(%lld/%lld)*%lld*sqrt(%lld)",
-                     (long long)val.num, (long long)val.den,
-                     (long long)val.outer, (long long)val.inner);
+                     (long long)ev.num, (long long)ev.den,
+                     (long long)ev.outer, (long long)ev.inner);
         }
         return buf;
     }
-    if (val.den == 1) {
+    if (ev.den == 1) {
         char buf[24];
-        snprintf(buf, sizeof(buf), "%lld", (long long)val.num);
+        snprintf(buf, sizeof(buf), "%lld", (long long)ev.num);
         return buf;
     }
     char buf[48];
     snprintf(buf, sizeof(buf), "(%lld/%lld)",
-             (long long)val.num, (long long)val.den);
+             (long long)ev.num, (long long)ev.den);
     return buf;
 }
 
@@ -156,7 +162,7 @@ SymExpr* SymAdd::clone(SymExprArena& arena) const {
         arena.allocRaw(count * sizeof(SymExpr*)));
     for (uint16_t i = 0; i < count; ++i)
         arr[i] = terms[i]->clone(arena);
-    return arena.create<SymAdd>(arr, count);
+    return arena.create<SymAdd>(const_cast<SymExpr* const*>(arr), count);
 }
 
 std::string SymAdd::toString() const {
@@ -198,7 +204,7 @@ SymExpr* SymMul::clone(SymExprArena& arena) const {
         arena.allocRaw(count * sizeof(SymExpr*)));
     for (uint16_t i = 0; i < count; ++i)
         arr[i] = factors[i]->clone(arena);
-    return arena.create<SymMul>(arr, count);
+    return arena.create<SymMul>(const_cast<SymExpr* const*>(arr), count);
 }
 
 std::string SymMul::toString() const {
@@ -248,16 +254,14 @@ bool SymPow::containsVar(char v) const {
 }
 
 bool SymPow::isPolynomial() const {
-    // Polynomial only if:
-    // 1. Base is polynomial
-    // 2. Exponent is a non-negative integer constant
     if (!base->isPolynomial()) return false;
     if (exponent->type != SymExprType::Num) return false;
 
-    const auto& ev = static_cast<const SymNum*>(exponent)->val;
-    if (!ev.isInteger()) return false;
-    if (ev.num < 0) return false;       // Negative exponents → rational, not polynomial
-    if (ev.num > 10) return false;       // Cap to avoid combinatorial explosion
+    const auto* sn = static_cast<const SymNum*>(exponent);
+    if (!sn->isPureRational() || !sn->_coeff.isInteger()) return false;
+    int64_t exp = sn->_coeff.toInt64();
+    if (exp < 0) return false;
+    if (exp > 10) return false;
     return true;
 }
 
@@ -298,29 +302,22 @@ bool SymFunc::containsVar(char v) const {
 
 // ════════════════════════════════════════════════════════════════════
 // toSymPoly() — Convert polynomial SymExpr tree → SymPoly
-//
-// Recursive descent: each node returns a SymPoly, combined via
-// SymPoly arithmetic. Only valid when isPolynomial() == true.
 // ════════════════════════════════════════════════════════════════════
 
 static SymPoly exprToPolyImpl(const SymExpr* expr, char var) {
     switch (expr->type) {
-        // ── SymNum → constant SymPoly ───────────────────────────────
         case SymExprType::Num: {
             const auto* n = static_cast<const SymNum*>(expr);
-            return SymPoly::fromConstant(n->val);
+            return SymPoly::fromConstant(n->toExactVal());
         }
 
-        // ── SymVar → 1·var^1 ────────────────────────────────────────
         case SymExprType::Var: {
             const auto* v = static_cast<const SymVar*>(expr);
             SymPoly p(var);
             if (v->name == var) {
                 p.terms().push_back(
-                    SymTerm::variable(var, 1, 1, 1));  // 1·var^1
+                    SymTerm::variable(var, 1, 1, 1));
             } else {
-                // Different variable — treat as unknown constant
-                // (univariate limitation: only primary var is symbolic)
                 p.terms().push_back(
                     SymTerm::variable(v->name, 1, 1, 1));
             }
@@ -328,13 +325,11 @@ static SymPoly exprToPolyImpl(const SymExpr* expr, char var) {
             return p;
         }
 
-        // ── SymNeg → negate the sub-polynomial ──────────────────────
         case SymExprType::Neg: {
             const auto* neg = static_cast<const SymNeg*>(expr);
             return exprToPolyImpl(neg->child, var).negate();
         }
 
-        // ── SymAdd → sum of sub-polynomials ─────────────────────────
         case SymExprType::Add: {
             const auto* add = static_cast<const SymAdd*>(expr);
             if (add->count == 0)
@@ -346,7 +341,6 @@ static SymPoly exprToPolyImpl(const SymExpr* expr, char var) {
             return result;
         }
 
-        // ── SymMul → product of sub-polynomials ─────────────────────
         case SymExprType::Mul: {
             const auto* mul = static_cast<const SymMul*>(expr);
             if (mul->count == 0)
@@ -358,13 +352,11 @@ static SymPoly exprToPolyImpl(const SymExpr* expr, char var) {
             return result;
         }
 
-        // ── SymPow → repeated multiplication ────────────────────────
         case SymExprType::Pow: {
             const auto* pw = static_cast<const SymPow*>(expr);
             SymPoly basePoly = exprToPolyImpl(pw->base, var);
-            // Exponent must be non-negative integer (guaranteed by isPolynomial)
             const auto* expNum = static_cast<const SymNum*>(pw->exponent);
-            int16_t exp = static_cast<int16_t>(expNum->val.num);
+            int16_t exp = static_cast<int16_t>(expNum->_coeff.toInt64());
             if (exp == 0)
                 return SymPoly::fromConstant(vpam::ExactVal::fromInt(1));
             if (exp == 1)
@@ -376,7 +368,6 @@ static SymPoly exprToPolyImpl(const SymExpr* expr, char var) {
             return result;
         }
 
-        // ── SymFunc → should not reach here if isPolynomial() ───────
         case SymExprType::Func:
         default:
             return SymPoly::fromConstant(vpam::ExactVal::fromInt(0));

@@ -136,7 +136,7 @@ private:
     static constexpr int16_t PADDING_RIGHT  = 8;    ///< Margen derecho
     static constexpr int16_t CURSOR_WIDTH   = 2;    ///< Grosor del cursor (px)
     static constexpr int16_t CURSOR_PAD     = 1;    ///< Extensión vertical del cursor
-    static constexpr uint32_t BLINK_PERIOD  = 530;  ///< Medio-período de parpadeo (ms)
+    static constexpr uint32_t BLINK_PERIOD  = 500;  ///< Half-period for cursor blink (ms)
     static constexpr uint32_t EMPTY_COLOR   = 0xD1D1D1;  ///< Color del placeholder
     static constexpr uint32_t CURSOR_COLOR  = 0x4A90D9;  ///< Color del cursor (azul)
     static constexpr int16_t  EMPTY_SIZE    = 8;    ///< Tamaño del cuadrado placeholder

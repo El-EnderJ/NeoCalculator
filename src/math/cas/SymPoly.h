@@ -23,7 +23,8 @@
 #include <vector>
 #include <string>
 #include "PSRAMAllocator.h"
-#include "../ExactVal.h"
+#include "CASRational.h"    // CASRational, CASInt
+#include "../ExactVal.h"    // vpam::ExactVal (legacy bridge)
 
 namespace cas {
 
@@ -32,16 +33,20 @@ namespace cas {
 // ════════════════════════════════════════════════════════════════════
 
 struct SymTerm {
-    vpam::ExactVal coeff;     // Exact coefficient (fraction/radical)
+    CASRational    coeff;     // Overflow-safe exact rational coefficient
     char           var;       // Variable name ('x','y','z','\0' for constant)
     int16_t        power;     // Exponent (negative = denominator, e.g., x⁻¹)
 
-    // ── Constructors ────────────────────────────────────────────────
+    // ── Constructors ──────────────────────────────────────────────────
     SymTerm();
-    SymTerm(vpam::ExactVal c, char v, int16_t p);
+    SymTerm(CASRational c, char v, int16_t p);
     
+    // Legacy bridge: construct from ExactVal (transition helper)
+    SymTerm(vpam::ExactVal c, char v, int16_t p);
+
     // Constant term (no variable): e.g., SymTerm::constant(5)
-    static SymTerm constant(vpam::ExactVal c);
+    static SymTerm constant(CASRational c);
+    static SymTerm constant(vpam::ExactVal c);  // legacy bridge
     
     // Simple variable term: e.g., SymTerm::variable('x', 3, 2) = 3x²
     static SymTerm variable(char v, int64_t coeffNum, int64_t coeffDen = 1, int16_t p = 1);
@@ -78,8 +83,9 @@ public:
     SymPoly& operator=(SymPoly&& other) noexcept;
 
     // ── Factory helpers ─────────────────────────────────────────────
-    // Create from a single constant: e.g., SymPoly::fromConstant(5)
-    static SymPoly fromConstant(vpam::ExactVal c);
+    // Create from a single constant: e.g., SymPoly::fromConstant(CASRational(5))
+    static SymPoly fromConstant(CASRational c);
+    static SymPoly fromConstant(vpam::ExactVal c);  // legacy bridge
 
     // Create from a single term
     static SymPoly fromTerm(const SymTerm& t);
@@ -100,23 +106,30 @@ public:
     bool isConstant() const;   // Only constant terms remain
     int16_t degree()  const;   // Highest power (0 if constant/empty)
 
-    // Return the coefficient for a specific power (ExactVal::fromInt(0) if absent)
-    vpam::ExactVal coeffAt(int16_t power) const;
+    // Return the coefficient for a specific power (CASRational::zero() if absent)
+    CASRational coeffAt(int16_t power) const;
+
+    // Legacy bridge: return ExactVal coefficient for a specific power
+    vpam::ExactVal coeffAtExact(int16_t power) const;
 
     // ── Arithmetic (return new SymPoly) ─────────────────────────────
     SymPoly add(const SymPoly& rhs) const;
     SymPoly sub(const SymPoly& rhs) const;
     SymPoly negate() const;
 
-    // Multiply every term by a scalar ExactVal
+    // Multiply every term by a CASRational scalar
+    SymPoly mulScalar(const CASRational& scalar) const;
+
+    // Legacy bridge: multiply by ExactVal scalar
     SymPoly mulScalar(const vpam::ExactVal& scalar) const;
 
     // Multiply two polynomials (FOIL / distribution)
-    // e.g., (x+2)(x-3) → x² - x - 6
     SymPoly mul(const SymPoly& rhs) const;
 
-    // Divide every term by a scalar ExactVal (distribution)
-    // e.g., (2x + 4) / 2 → x + 2
+    // Divide every term by a CASRational scalar
+    SymPoly divScalar(const CASRational& scalar) const;
+
+    // Legacy bridge: divide by ExactVal scalar
     SymPoly divScalar(const vpam::ExactVal& scalar) const;
 
     // ── Display ─────────────────────────────────────────────────────

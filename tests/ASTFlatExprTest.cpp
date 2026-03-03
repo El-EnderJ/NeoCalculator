@@ -406,8 +406,8 @@ void runASTFlatExprTests() {
         check("T12 3x+5 poly ok", res.ok);
         check("T12 3x+5 NOT transcendental", !res.transcendental);
         check("T12 3x+5 exprTree == null", res.exprTree == nullptr);
-        check("T12 3x+5 x coeff == 3", res.poly.coeffAt(1).num == 3);
-        check("T12 3x+5 const == 5", res.poly.coeffAt(0).num == 5);
+        check("T12 3x+5 x coeff == 3", res.poly.coeffAtExact(1).num == 3);
+        check("T12 3x+5 const == 5", res.poly.coeffAtExact(0).num == 5);
     }
 
     // ── Test 13: Preserve polynomial path (sin without arena) ───
@@ -668,8 +668,8 @@ void runASTFlatExprTests() {
         check("T22 5x-7 poly ok", res.ok);
         check("T22 5x-7 NOT transcendental", !res.transcendental);
         check("T22 5x-7 exprTree == null", res.exprTree == nullptr);
-        check("T22 5x-7 x coeff == 5", res.poly.coeffAt(1).num == 5);
-        check("T22 5x-7 const == -7", res.poly.coeffAt(0).num == -7);
+        check("T22 5x-7 x coeff == 5", res.poly.coeffAtExact(1).num == 5);
+        check("T22 5x-7 const == -7", res.poly.coeffAtExact(0).num == -7);
 
         arena.reset();
     }

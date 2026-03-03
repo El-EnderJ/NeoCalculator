@@ -84,6 +84,8 @@ private:
     TFT_eSPI    _tft;
     TFT_eSprite _sprite;
     bool        _useSprite;
+    bool        _dmaEnabled  = false;  ///< true si initDMA() tuvo éxito
+    bool        _dmaPending  = false;  ///< true si hay un DMA en vuelo
     #endif
 
     /** Puntero al display LVGL creado por initLvgl() */

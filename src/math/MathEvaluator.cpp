@@ -87,17 +87,34 @@ ExactVal ExactVal::fromInt(int64_t n) {
 }
 
 ExactVal ExactVal::fromDouble(double val) {
-    // Si es un entero exacto, usar eso
+    // NaN / Inf guard
+    if (std::isnan(val) || std::isinf(val)) {
+        return makeError("Math ERROR");
+    }
+
+    // If the absolute value exceeds safe int64_t range (~9.2e18),
+    // store as an approximate double — prevents undefined behaviour
+    // from static_cast<int64_t> on values like 1e100.
+    if (std::abs(val) >= 9.0e18) {
+        ExactVal v;
+        v.num = 0; v.den = 1; v.outer = 1; v.inner = 1;
+        v.approximate = true;
+        v.approxVal   = val;
+        v.ok = true;
+        return v;
+    }
+
+    // If it's an exact integer, use that
     if (val == std::floor(val) && std::abs(val) < 1e15) {
         return fromInt(static_cast<int64_t>(val));
     }
 
-    // Convertir decimal a fracción con denominador potencia de 10
-    // Limitar a 10 dígitos decimales para evitar overflow
+    // Convert decimal to fraction with denominator as power of 10
+    // Limit to 10 decimal digits to avoid overflow
     double abs_val = std::abs(val);
     int64_t sign = (val < 0) ? -1 : 1;
 
-    // Encontrar cuántos decimales hay (máx 10)
+    // Find how many decimal digits (max 10)
     int decimals = 0;
     double temp = abs_val;
     int64_t denom = 1;
@@ -105,6 +122,8 @@ ExactVal ExactVal::fromDouble(double val) {
         temp *= 10.0;
         denom *= 10;
         decimals++;
+        // Safety: if denom * 10 would overflow or temp > int64_t range, stop
+        if (denom > 1000000000LL || temp >= 9.0e18) break;
     }
 
     int64_t numer = static_cast<int64_t>(std::round(temp)) * sign;
@@ -148,6 +167,7 @@ ExactVal ExactVal::makeError(const std::string& msg) {
 
 double ExactVal::toDouble() const {
     if (!ok) return std::numeric_limits<double>::quiet_NaN();
+    if (approximate) return approxVal;
     double rational = static_cast<double>(num) / static_cast<double>(den);
     double radPart = (inner <= 1) ? static_cast<double>(outer)
                                   : outer * std::sqrt(static_cast<double>(inner));
@@ -221,6 +241,10 @@ ExactVal exactAdd(const ExactVal& a, const ExactVal& b) {
     if (!checkOk(a, b))
         return ExactVal::makeError(a.ok ? b.error : a.error);
 
+    // If either operand is an approximate large double, use double arithmetic
+    if (a.approximate || b.approximate)
+        return ExactVal::fromDouble(a.toDouble() + b.toDouble());
+
     // Si ambos son racionales puros (sin radical, sin constantes)
     if (a.isRational() && b.isRational()) {
         // a.num/a.den + b.num/b.den
@@ -278,6 +302,10 @@ ExactVal exactMul(const ExactVal& a, const ExactVal& b) {
     if (!checkOk(a, b))
         return ExactVal::makeError(a.ok ? b.error : a.error);
 
+    // If either operand is an approximate large double, use double arithmetic
+    if (a.approximate || b.approximate)
+        return ExactVal::fromDouble(a.toDouble() * b.toDouble());
+
     ExactVal result;
     result.num   = a.num * b.num;
     result.den   = a.den * b.den;
@@ -310,6 +338,10 @@ ExactVal exactDiv(const ExactVal& a, const ExactVal& b) {
         return ExactVal::makeError("Math ERROR");
     }
 
+    // If either operand is an approximate large double, use double arithmetic
+    if (a.approximate || b.approximate)
+        return ExactVal::fromDouble(a.toDouble() / b.toDouble());
+
     // Invertir b: (b.num/b.den * b.outer√b.inner)⁻¹
     // Si b es racional: invertir → den/num
     if (b.isRational()) {
@@ -329,6 +361,7 @@ ExactVal exactDiv(const ExactVal& a, const ExactVal& b) {
 
 ExactVal exactNeg(const ExactVal& a) {
     if (!a.ok) return a;
+    if (a.approximate) return ExactVal::fromDouble(-a.approxVal);
     ExactVal result = a;
     result.num = -result.num;
     return result;
@@ -994,6 +1027,44 @@ NodePtr MathEvaluator::resultToAST(const ExactVal& val) {
         return errorToAST(val.error);
     }
 
+    // ── Approximate (large) values: display as scientific notation ──
+    if (val.approximate) {
+        auto row = makeRow();
+        auto* rowPtr = static_cast<NodeRow*>(row.get());
+        double d = val.approxVal;
+        if (d < 0) {
+            rowPtr->appendChild(makeOperator(OpKind::Sub));
+            d = -d;
+        }
+        // Format in scientific notation: e.g. "1×10" with exponent
+        if (d == 0.0) {
+            rowPtr->appendChild(makeNumber("0"));
+        } else {
+            int exponent = static_cast<int>(std::floor(std::log10(d)));
+            double mantissa = d / std::pow(10.0, exponent);
+            // Round mantissa to 10 significant digits
+            char mbuf[32];
+            snprintf(mbuf, sizeof(mbuf), "%.10g", mantissa);
+            // Remove trailing zeros after decimal
+            std::string ms(mbuf);
+
+            if (std::abs(mantissa - 1.0) < 1e-12) {
+                // Pure power of 10: show "10^exp"
+            } else {
+                rowPtr->appendChild(makeNumber(ms));
+                rowPtr->appendChild(makeOperator(OpKind::Mul));
+            }
+            // 10^exponent as power node
+            auto base10 = makeNumber("10");
+            auto expRow = makeRow();
+            static_cast<NodeRow*>(expRow.get())->appendChild(
+                makeNumber(std::to_string(exponent))
+            );
+            rowPtr->appendChild(makePower(std::move(base10), std::move(expRow)));
+        }
+        return row;
+    }
+
     auto row = makeRow();
     auto* rowPtr = static_cast<NodeRow*>(row.get());
 
@@ -1100,6 +1171,9 @@ NodePtr MathEvaluator::resultToAST(const ExactVal& val) {
 NodePtr MathEvaluator::resultToPeriodicAST(const ExactVal& val) {
     if (!val.ok) return errorToAST(val.error);
 
+    // Approximate values: delegate to symbolic (scientific notation)
+    if (val.approximate) return resultToAST(val);
+
     auto row = makeRow();
     auto* rowPtr = static_cast<NodeRow*>(row.get());
 
@@ -1192,6 +1266,9 @@ NodePtr MathEvaluator::resultToPeriodicAST(const ExactVal& val) {
 NodePtr MathEvaluator::resultToExtendedAST(const ExactVal& val, int maxDigits) {
     if (!val.ok) return errorToAST(val.error);
 
+    // Approximate values: delegate to symbolic (scientific notation)
+    if (val.approximate) return resultToAST(val);
+
     auto row = makeRow();
     auto* rowPtr = static_cast<NodeRow*>(row.get());
 
@@ -1257,6 +1334,11 @@ NodePtr MathEvaluator::resultToExtendedAST(const ExactVal& val, int maxDigits) {
 NodePtr MathEvaluator::resultToDecimalAST(const ExactVal& val, int precision) {
     if (!val.ok) {
         return errorToAST(val.error);
+    }
+
+    // Approximate values: delegate to symbolic (scientific notation)
+    if (val.approximate) {
+        return resultToAST(val);
     }
 
     double d = val.toDouble();

@@ -12,7 +12,8 @@
 #endif
 #include <vector>
 #include "display/DisplayDriver.h"
-#include "input/KeyMatrix.h"
+#include "input/KeyMatrix.h"   // legacy — mantenido para compatibilidad
+#include "drivers/Keyboard.h"   // nuevo driver 5×10
 #include "math/Tokenizer.h"
 #include "math/Parser.h"
 #include "math/Evaluator.h"
@@ -26,6 +27,8 @@
 #include "apps/CalculationApp.h"
 #include "apps/GrapherApp.h"
 #include "apps/EquationsApp.h"
+#include "apps/CalculusApp.h"
+#include "apps/IntegralApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -44,6 +47,8 @@ enum class Mode : uint8_t {
     APP_STATISTICS,    // Statistics (placeholder)
     APP_PROBABILITY,   // Probability distribution (placeholder)
     APP_EQUATIONS,     // Equation solver
+    APP_CALCULUS,      // Calculus (derivatives)
+    APP_INTEGRAL,      // Integral (antiderivatives)
     APP_SEQUENCE,      // Sequence solver (placeholder)
     APP_REGRESSION,    // Regression analysis (placeholder)
     APP_PYTHON,        // Python shell (placeholder)
@@ -54,7 +59,7 @@ enum class Mode : uint8_t {
 
 class SystemApp {
 public:
-    SystemApp(DisplayDriver &display, KeyMatrix &keypad);
+    SystemApp(DisplayDriver &display, Keyboard &keypad);
 
     void begin();
     void update();
@@ -78,7 +83,7 @@ public:
 
 private:
     DisplayDriver &_display;
-    KeyMatrix &_keypad;
+    Keyboard &_keypad;
 
     // Legacy MainMenu object (kept for compatibility)
     MainMenu _mainMenu;
@@ -87,6 +92,8 @@ private:
     CalculationApp* _calcApp;
     GrapherApp*     _grapherApp;
     EquationsApp*   _equationsApp;
+    CalculusApp*    _calculusApp;
+    IntegralApp*    _integralApp;
 
     // Math Engine
     Tokenizer _tokenizer;

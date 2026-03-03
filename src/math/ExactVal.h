@@ -33,6 +33,13 @@ struct ExactVal {
     bool ok    = true;    ///< false si hubo error de evaluación
     std::string error;    ///< Mensaje de error ("Math ERROR", etc.)
 
+    // ── Large-value support ──────────────────────────────────────────
+    // When a result exceeds int64_t range (e.g. 10^100), the value is
+    // stored as a double approximation.  All display paths check this
+    // flag and format using scientific notation instead of int64_t fields.
+    bool   approximate = false;   ///< true → use approxVal instead of num/den
+    double approxVal   = 0.0;     ///< double value when approximate==true
+
     // ── Constructores de conveniencia ────────────────────────────────────
 
     /// Valor racional puro: n/d
@@ -59,25 +66,25 @@ struct ExactVal {
     // ── Consultas ────────────────────────────────────────────────────────
 
     /// ¿Es una fracción pura (sin radical, sin π, sin e)?
-    bool isRational() const { return ok && inner == 1 && piMul == 0 && eMul == 0; }
+    bool isRational() const { return ok && !approximate && inner == 1 && piMul == 0 && eMul == 0; }
 
     /// ¿Es un entero (fracción con den=1, sin radical, sin constantes)?
-    bool isInteger() const { return ok && inner == 1 && den == 1 && piMul == 0 && eMul == 0; }
+    bool isInteger() const { return ok && !approximate && inner == 1 && den == 1 && piMul == 0 && eMul == 0; }
 
     /// ¿Tiene parte radical?
-    bool hasRadical() const { return ok && inner > 1; }
+    bool hasRadical() const { return ok && !approximate && inner > 1; }
 
     /// ¿Tiene multiplicador de π?
-    bool hasPi() const { return ok && piMul != 0; }
+    bool hasPi() const { return ok && !approximate && piMul != 0; }
 
     /// ¿Tiene multiplicador de e?
-    bool hasE() const { return ok && eMul != 0; }
+    bool hasE() const { return ok && !approximate && eMul != 0; }
 
     /// ¿Tiene alguna constante (π o e)?
     bool hasConstant() const { return hasPi() || hasE(); }
 
     /// ¿Es exactamente cero?
-    bool isZero() const { return ok && num == 0 && (inner == 1 || outer == 0); }
+    bool isZero() const { return ok && !approximate && num == 0 && (inner == 1 || outer == 0); }
 
     /// ¿Es un resultado irracional (π, e, radical no perfecto)?
     bool isIrrational() const { return ok && (hasRadical() || hasPi() || hasE()); }

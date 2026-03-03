@@ -25,13 +25,15 @@ extern bool g_lvglActive;
 // ═════════════════════════════════════════════════
 // Constructor
 // ═════════════════════════════════════════════════
-SystemApp::SystemApp(DisplayDriver &display, KeyMatrix &keypad)
+SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
     : _display(display),
       _keypad(keypad),
       _mainMenu(display),
       _calcApp(nullptr),
       _grapherApp(nullptr),
       _equationsApp(nullptr),
+      _calculusApp(nullptr),
+      _integralApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -65,10 +67,10 @@ void SystemApp::begin() {
         if (vpam::VariableManager::instance().loadFromFlash()) {
             Serial.println("[SYSTEM] LittleFS OK, variables loaded");
         } else {
-            Serial.println("[SYSTEM] LittleFS OK, vars.dat no existe (primer boot)");
+            Serial.println("[SYSTEM] LittleFS OK, vars.dat not found (first boot)");
         }
     } else {
-        Serial.println("[SYSTEM] LittleFS FAIL (continuando sin persistencia)");
+        Serial.println("[SYSTEM] LittleFS FAIL (continuing without persistence)");
     }
 
     // ── Create CalculationApp (LVGL-native VPAM) ──
@@ -82,6 +84,14 @@ void SystemApp::begin() {
     // ── Create EquationsApp (LVGL-native CAS-Lite) ──
     _equationsApp = new EquationsApp();
     _equationsApp->begin();
+
+    // ── Create CalculusApp (LVGL-native Derivatives) ──
+    _calculusApp = new CalculusApp();
+    _calculusApp->begin();
+
+    // ── Create IntegralApp (LVGL-native Integration) ──
+    _integralApp = new IntegralApp();
+    _integralApp->begin();
 
     // ── Load apps & go to menu ──
     initApps();
@@ -112,14 +122,13 @@ void SystemApp::initApps() {
     _apps.clear();
     _apps.emplace_back(0, "Calculation",  icon_Calculation);
     _apps.emplace_back(1, "Grapher",      icon_Grapher);
-    _apps.emplace_back(2, "Table",        icon_Finance);  // Placeholder icon
-    _apps.emplace_back(3, "Statistics",   icon_Statistics);
+    _apps.emplace_back(2, "Equations",    icon_Equations);
+    _apps.emplace_back(3, "Calculus",     icon_Elements);
     _apps.emplace_back(4, "Probability",  icon_Distributions);
-    _apps.emplace_back(5, "Solver",       icon_Equations);
-    _apps.emplace_back(6, "Sequence",     icon_Sequences);
-    _apps.emplace_back(7, "Regression",   icon_Regression);
-    _apps.emplace_back(8, "Python",       icon_Python);
-    _apps.emplace_back(9, "Settings",     icon_Settings);
+    _apps.emplace_back(5, "Sequence",     icon_Sequences);
+    _apps.emplace_back(6, "Regression",   icon_Regression);
+    _apps.emplace_back(7, "Python",       icon_Python);
+    _apps.emplace_back(8, "Settings",     icon_Settings);
 }
 
 
@@ -137,7 +146,13 @@ void SystemApp::update() {
     // CalculationApp es ahora LVGL-native: LVGL maneja su renderizado
     // via lv_timer_handler() en main.cpp. No se llama render().
     if (_mode == Mode::APP_CALCULATION) {
-        // LVGL se encarga del renderizado del MathCanvas
+        // LVGL handles CalculationApp rendering
+    } else if (_mode == Mode::APP_CALCULUS) {
+        // LVGL handles CalculusApp rendering
+    } else if (_mode == Mode::APP_INTEGRAL) {
+        // LVGL handles IntegralApp rendering
+    } else if (_mode == Mode::APP_EQUATIONS) {
+        // LVGL handles EquationsApp rendering
     } else if (_mode == Mode::APP_GRAPHER && _grapherApp) {
         _grapherApp->render();
     } else if (_mode == Mode::MENU) {
@@ -163,13 +178,14 @@ void SystemApp::render() {
     switch (_mode) {
         case Mode::MENU:            /* LVGL maneja el menú — no-op */   break;
         case Mode::APP_CALCULATION: break;  // Handled in update() via _calcApp
+        case Mode::APP_CALCULUS:    break;  // LVGL-native — no-op
+        case Mode::APP_INTEGRAL:   break;  // LVGL-native — no-op
+        case Mode::APP_EQUATIONS:   break;  // LVGL-native — no-op
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
         // All placeholder apps
-        case Mode::APP_TABLE:
         case Mode::APP_STATISTICS:
         case Mode::APP_PROBABILITY:
-        case Mode::APP_EQUATIONS:
         case Mode::APP_SEQUENCE:
         case Mode::APP_REGRESSION:
         case Mode::APP_PYTHON:
@@ -293,24 +309,33 @@ void SystemApp::handleKey(const KeyEvent &ev) {
     // Only act on PRESS and REPEAT (no duplicate processing)
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
-    auto& km = vpam::KeyboardManager::instance();
-
-    // ── SHIFT + AC → Apagado del sistema (desde cualquier modo) ──
-    // Verificar ANTES de pasar el SHIFT al KeyboardManager
-    if (km.isShift() && ev.code == KeyCode::AC) {
-        km.reset();
-        _shiftActive = false;
-        powerOff();
-        return;   // No se ejecutará: el sistema entra en deep sleep
+    // Debug: log key events de teclado físico (row>=0) para detectar ghosts.
+    // Eventos de SerialBridge (row=-1) ya se logean en SerialBridge.cpp.
+    if (ev.row >= 0) {
+        Serial.printf("[KEY-HW] code=%d action=%d row=%d col=%d\n",
+                      (int)ev.code, (int)ev.action, ev.row, ev.col);
     }
 
-    // ── SHIFT/ALPHA gestión global (CalculationApp tiene su propia) ──
-    if (ev.code == KeyCode::SHIFT && _mode != Mode::APP_CALCULATION) {
+    auto& km = vpam::KeyboardManager::instance();
+
+    // ── SHIFT + AC → Apagado del sistema (DESACTIVADO mientras USB conectado) ──
+    // Deep sleep deshabilitado temporalmente: con cable USB conectado
+    // el sistema debe permanecer encendido al 100%.
+    if (km.isShift() && ev.code == KeyCode::AC) {
+        Serial.println("[SYSTEM] SHIFT+AC detected — deep sleep DISABLED (USB mode)");
+        km.reset();
+        _shiftActive = false;
+        // powerOff();  // ← deshabilitado
+        return;
+    }
+
+    // ── SHIFT/ALPHA gestión global (CalculationApp y CalculusApp tienen su propia) ──
+    if (ev.code == KeyCode::SHIFT && _mode != Mode::APP_CALCULATION && _mode != Mode::APP_CALCULUS && _mode != Mode::APP_INTEGRAL) {
         _shiftActive = !_shiftActive;
         km.pressShift();
         return;
     }
-    if (ev.code == KeyCode::ALPHA && _mode != Mode::APP_CALCULATION) {
+    if (ev.code == KeyCode::ALPHA && _mode != Mode::APP_CALCULATION && _mode != Mode::APP_CALCULUS && _mode != Mode::APP_INTEGRAL) {
         _alphaActive = !_alphaActive;
         km.pressAlpha();
         return;
@@ -341,9 +366,27 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _equationsApp->handleKey(ev);
             }
             break;
+        case Mode::APP_CALCULUS:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_calculusApp) {
+                _calculusApp->handleKey(ev);
+            }
+            break;
+        case Mode::APP_INTEGRAL:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_integralApp) {
+                _integralApp->handleKey(ev);
+            }
+            break;
         // All placeholder apps share generic handler
         case Mode::APP_PYTHON:
         case Mode::APP_STATISTICS:
+        case Mode::APP_TABLE:
+        case Mode::APP_PROBABILITY:
+        case Mode::APP_SEQUENCE:
+        case Mode::APP_REGRESSION:
         case Mode::APP_SETTINGS:
             handleKeyApp(ev);
             break;
@@ -356,9 +399,47 @@ void SystemApp::handleKey(const KeyEvent &ev) {
 // Al pulsar ENTER, la card enfocada emite LV_EVENT_CLICKED → launchApp().
 // ═════════════════════════════════════════════════
 void SystemApp::handleKeyMenu(const KeyEvent &ev) {
-    // Una pulsación = pushed + released para que LVGL lo trate como un click
-    LvglKeypad::pushKey(ev.code, true);
-    LvglKeypad::pushKey(ev.code, false);
+    // Mantener siempre el grupo de foco conectado al indev en modo menú.
+    if (LvglKeypad::indev() && _mainMenu.group()) {
+        lv_indev_set_group(LvglKeypad::indev(), _mainMenu.group());
+    }
+    g_lvglActive = true;
+
+    // Navegación 2D explícita del launcher (sin gridnav).
+    switch (ev.code) {
+        case KeyCode::UP:
+            if (_mainMenu.moveFocusByDelta(0, -1)) {
+                Serial.printf("[GUI] Focus move: UP\n");
+            }
+            break;
+        case KeyCode::DOWN:
+            if (_mainMenu.moveFocusByDelta(0, 1)) {
+                Serial.printf("[GUI] Focus move: DOWN\n");
+            }
+            break;
+        case KeyCode::LEFT:
+            if (_mainMenu.moveFocusByDelta(-1, 0)) {
+                Serial.printf("[GUI] Focus move: LEFT\n");
+            }
+            break;
+        case KeyCode::RIGHT:
+            if (_mainMenu.moveFocusByDelta(1, 0)) {
+                Serial.printf("[GUI] Focus move: RIGHT\n");
+            }
+            break;
+        case KeyCode::ENTER:
+        case KeyCode::AC:
+        case KeyCode::DEL:
+        case KeyCode::F1:
+        case KeyCode::F2:
+            Serial.printf("[GUI] Evento enviado a LVGL: Code %d (mode=MENU)\n", (int)ev.code);
+            LvglKeypad::pushKey(ev.code, true);
+            LvglKeypad::pushKey(ev.code, false);
+            break;
+        default:
+            // Ignorar en launcher teclas no navegacionales.
+            break;
+    }
 }
 
 
@@ -366,16 +447,25 @@ void SystemApp::handleKeyMenu(const KeyEvent &ev) {
 // launchApp() — Lanza una app por ID desde el launcher LVGL
 // ═════════════════════════════════════════════════
 void SystemApp::launchApp(int id) {
+    // Ensure LVGL layout is finalized before switching screens.
+    // Prevents crashes when launching from a card that was scrolled off-screen.
+    lv_obj_update_layout(lv_scr_act());
+
     if (id == 0) {
         // CalculationApp es LVGL-native: LVGL sigue activo
         g_lvglActive = true;
         switchApp(id);
         if (_calcApp) _calcApp->load();
-    } else if (id == 5) {
-        // EquationsApp es LVGL-native: LVGL sigue activo
+    } else if (id == 2) {
+        // EquationsApp es LVGL-native: ecuaciones y sistemas
         g_lvglActive = true;
         switchApp(id);
         if (_equationsApp) _equationsApp->load();
+    } else if (id == 3) {
+        // Calculus (IntegralApp) es LVGL-native: integrales + derivadas
+        g_lvglActive = true;
+        switchApp(id);
+        if (_integralApp) _integralApp->load();
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -396,6 +486,16 @@ void SystemApp::returnToMenu() {
         _equationsApp->end();
         _equationsApp->begin();
     }
+    // Si venimos de la CalculusApp (LVGL-native)
+    if (_mode == Mode::APP_CALCULUS && _calculusApp) {
+        _calculusApp->end();
+        _calculusApp->begin();
+    }
+    // Si venimos de la IntegralApp (LVGL-native)
+    if (_mode == Mode::APP_INTEGRAL && _integralApp) {
+        _integralApp->end();
+        _integralApp->begin();
+    }
 
     _mode    = Mode::MENU;
     _redraw  = false;
@@ -408,14 +508,13 @@ void SystemApp::switchApp(int id) {
     switch (id) {
         case 0: _mode = Mode::APP_CALCULATION; break;
         case 1: _mode = Mode::APP_GRAPHER;     break;
-        case 2: _mode = Mode::APP_TABLE;       break;
-        case 3: _mode = Mode::APP_STATISTICS;  break;
+        case 2: _mode = Mode::APP_EQUATIONS;   break;   // Equations (pure equation solving)
+        case 3: _mode = Mode::APP_INTEGRAL;    break;   // Calculus (integrals + derivatives)
         case 4: _mode = Mode::APP_PROBABILITY; break;
-        case 5: _mode = Mode::APP_EQUATIONS;   break;
-        case 6: _mode = Mode::APP_SEQUENCE;    break;
-        case 7: _mode = Mode::APP_REGRESSION;  break;
-        case 8: _mode = Mode::APP_PYTHON;      break;
-        case 9: _mode = Mode::APP_SETTINGS;    break;
+        case 5: _mode = Mode::APP_SEQUENCE;    break;
+        case 6: _mode = Mode::APP_REGRESSION;  break;
+        case 7: _mode = Mode::APP_PYTHON;      break;
+        case 8: _mode = Mode::APP_SETTINGS;    break;
         default: _mode = Mode::MENU;           break;
     }
     _redraw = true;
@@ -435,14 +534,12 @@ void SystemApp::renderAppView() {
     String appName = "App";
     for (int i = 0; i < (int)_apps.size(); i++) {
         // Find the matching app to get its name
-        if ((_mode == Mode::APP_TABLE       && _apps[i].id == 2) ||
-            (_mode == Mode::APP_STATISTICS  && _apps[i].id == 3) ||
+        if ((_mode == Mode::APP_STATISTICS  && _apps[i].id == 3) ||
             (_mode == Mode::APP_PROBABILITY && _apps[i].id == 4) ||
-            (_mode == Mode::APP_EQUATIONS   && _apps[i].id == 5) ||
-            (_mode == Mode::APP_SEQUENCE    && _apps[i].id == 6) ||
-            (_mode == Mode::APP_REGRESSION  && _apps[i].id == 7) ||
-            (_mode == Mode::APP_PYTHON      && _apps[i].id == 8) ||
-            (_mode == Mode::APP_SETTINGS    && _apps[i].id == 9)) {
+            (_mode == Mode::APP_SEQUENCE    && _apps[i].id == 5) ||
+            (_mode == Mode::APP_REGRESSION  && _apps[i].id == 6) ||
+            (_mode == Mode::APP_PYTHON      && _apps[i].id == 7) ||
+            (_mode == Mode::APP_SETTINGS    && _apps[i].id == 8)) {
             appName = _apps[i].name;
             break;
         }
@@ -459,13 +556,13 @@ void SystemApp::renderAppView() {
 
     tft.setTextSize(1);
     tft.setTextColor(COLOR_TEXT_LIGHT, COLOR_BACKGROUND);
-    String sub = "Proximamente";
+    String sub = "Coming Soon";
     int sw = tft.textWidth(sub);
     tft.drawString(sub, (320 - sw) / 2, 120);
 
     // Hint at bottom
     tft.setTextColor(COLOR_PRIMARY, COLOR_BACKGROUND);
-    String hint = "Pulsa MODE para volver";
+    String hint = "Press MODE to go back";
     int hw = tft.textWidth(hint);
     tft.drawString(hint, (320 - hw) / 2, 220);
 }
@@ -551,7 +648,13 @@ void SystemApp::renderGraphMode() {
 //   5. Entra en deep sleep
 // ═════════════════════════════════════════════════
 void SystemApp::powerOff() {
-    Serial.println("[SYSTEM] Apagando...");
+    // ── Deep sleep completamente DESACTIVADO en modo USB/Debug ──
+    // Mientras el cable USB esté conectado, el sistema debe permanecer 100% operativo.
+    // Para reactivar: descomentar el bloque de abajo.
+    Serial.println("[SYSTEM] powerOff() called — IGNORED (USB mode active)");
+    return;
+
+    /*  // === DEEP SLEEP ORIGINAL (desactivado) ===
 
     // Asegurar que LVGL está activo para renderizar el fade
     g_lvglActive = true;
@@ -596,4 +699,5 @@ void SystemApp::powerOff() {
     esp_deep_sleep_start();
 
     // No se ejecuta nada después de aquí
+    */   // === FIN DEEP SLEEP ORIGINAL ===
 }

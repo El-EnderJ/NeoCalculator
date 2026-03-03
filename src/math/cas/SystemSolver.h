@@ -20,9 +20,12 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 #include "CASStepLogger.h"
 #include "SymEquation.h"
 #include "SymPoly.h"
+#include "SymExpr.h"
+#include "SymExprArena.h"
 #include "../ExactVal.h"
 
 namespace cas {
@@ -78,6 +81,7 @@ enum class SystemMethod : uint8_t {
     Substitution = 0,
     Reduction    = 1,
     Gauss        = 2,
+    Resultant    = 3,   ///< Sylvester resultant elimination (nonlinear)
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -92,6 +96,32 @@ struct SystemResult {
     std::string    error;
     SystemMethod   methodUsed = SystemMethod::Substitution;
     CASStepLogger  steps;
+};
+
+// ════════════════════════════════════════════════════════════════════
+// NLSolution — A single (x, y) solution pair for nonlinear systems
+// ════════════════════════════════════════════════════════════════════
+
+struct NLSolution {
+    SymExpr* exprX = nullptr;  ///< Symbolic solution for var1 (arena)
+    SymExpr* exprY = nullptr;  ///< Symbolic solution for var2 (arena)
+    double   numX  = 0.0;     ///< Numeric value of var1
+    double   numY  = 0.0;     ///< Numeric value of var2
+    bool     isExact = false; ///< True if solutions are exact SymNum
+};
+
+// ════════════════════════════════════════════════════════════════════
+// NLSystemResult — Return value for nonlinear 2×2 system solver
+// ════════════════════════════════════════════════════════════════════
+
+struct NLSystemResult {
+    std::vector<NLSolution> solutions;
+    char          var1 = 'x';
+    char          var2 = 'y';
+    bool          ok    = false;
+    std::string   error;
+    SystemMethod  methodUsed = SystemMethod::Resultant;
+    CASStepLogger steps;
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -115,6 +145,24 @@ public:
     /// Analyze a 2×2 system and choose the best method.
     /// Exposed for testing.
     SystemMethod analyzeAndChoose(const LinEq& eq1, const LinEq& eq2);
+
+    /// Solve a nonlinear 2×2 system via Sylvester resultant elimination.
+    /// Both equations must be in f(x,y)=0 form (SymExpr trees).
+    ///
+    /// Pipeline:
+    ///   1. Collect both exprs as UniPoly in var2 (y)
+    ///   2. Compute Sylvester resultant → R(var1) = 0
+    ///   3. Solve R(var1) via OmniSolver for var1
+    ///   4. Back-substitute var1 into eq1 or eq2 → solve for var2
+    ///
+    /// @param f1    First equation (f1 = 0), arena-allocated
+    /// @param f2    Second equation (f2 = 0), arena-allocated
+    /// @param var1  First variable (e.g. 'x')
+    /// @param var2  Second variable to eliminate (e.g. 'y')
+    /// @param arena Arena for all intermediate allocations
+    NLSystemResult solveNonlinear2x2(SymExpr* f1, SymExpr* f2,
+                                     char var1, char var2,
+                                     SymExprArena& arena);
 
 private:
     // ── 2x2 solver methods ──────────────────────────────────────────

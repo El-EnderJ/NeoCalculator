@@ -65,7 +65,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     {  0, "Calculation",  0xFF8000,   0xFFBB66 },   // Orange
     {  1, "Grapher",      0x50B849,   0x8ED888 },   // Green
     {  2, "Equations",    0x1565C0,   0x5E9CE0 },   // Blue
-    {  3, "Statistics",   0xE91E63,   0xF06898 },   // Pink
+    {  3, "Calculus",     0x6A1B9A,   0xAB60D0 },   // Purple
     {  4, "Regression",   0xBF360C,   0xE07040 },   // Brown-red
     {  5, "Sequences",    0x7B1FA2,   0xAB60D0 },   // Purple
     {  6, "Python",       0xF57F17,   0xFAAF50 },   // Amber
@@ -79,7 +79,7 @@ const int MainMenu::APP_COUNT =
 // ═══════════════════════════════════════════════════════════════════════════════
 // Transition properties (animated with overshoot on focus)
 // ═══════════════════════════════════════════════════════════════════════════════
-static const lv_style_prop_t _transProps[] = {
+static const lv_style_prop_t _transProps[] = { // kept for future use
     LV_STYLE_BORDER_WIDTH,
     LV_STYLE_BORDER_COLOR,
     LV_STYLE_BORDER_OPA,
@@ -118,6 +118,66 @@ void MainMenu::load() {
     }
 }
 
+bool MainMenu::moveFocusByDelta(int dCol, int dRow) {
+    if (!_group || !_grid) return false;
+
+    int currentId = focusedCardId();
+    if (currentId < 0) {
+        if (_firstCard) {
+            lv_group_focus_obj(_firstCard);
+            return true;
+        }
+        return false;
+    }
+
+    const int cols = 3;
+    int col = currentId % cols;
+    int row = currentId / cols;
+    int maxRow = (APP_COUNT - 1) / cols;
+
+    int targetCol = col + dCol;
+    int targetRow = row + dRow;
+
+    // Horizontal wrap-around
+    if (targetCol < 0)    { targetCol = cols - 1; targetRow--; }
+    if (targetCol >= cols) { targetCol = 0;        targetRow++; }
+
+    // Vertical wrap-around
+    if (targetRow < 0)       targetRow = maxRow;
+    if (targetRow > maxRow)  targetRow = 0;
+
+    int targetId = targetRow * cols + targetCol;
+    // Clamp to valid range (last row may be incomplete)
+    if (targetId >= APP_COUNT) targetId = APP_COUNT - 1;
+    if (targetId < 0)         targetId = 0;
+
+    lv_obj_t* target = cardById(targetId);
+    if (!target) return false;
+
+    lv_group_focus_obj(target);
+    return true;
+}
+
+lv_obj_t* MainMenu::cardById(int appId) const {
+    if (!_grid) return nullptr;
+
+    uint32_t count = lv_obj_get_child_count(_grid);
+    for (uint32_t i = 0; i < count; ++i) {
+        lv_obj_t* child = lv_obj_get_child(_grid, i);
+        if (!child) continue;
+        int id = static_cast<int>(reinterpret_cast<intptr_t>(lv_obj_get_user_data(child)));
+        if (id == appId) return child;
+    }
+    return nullptr;
+}
+
+int MainMenu::focusedCardId() const {
+    if (!_group) return -1;
+    lv_obj_t* focused = lv_group_get_focused(_group);
+    if (!focused) return -1;
+    return static_cast<int>(reinterpret_cast<intptr_t>(lv_obj_get_user_data(focused)));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // create()
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -131,11 +191,16 @@ void MainMenu::create() {
     lv_obj_clear_flag(_screen, LV_OBJ_FLAG_SCROLLABLE);
 
     _group = lv_group_create();
+    lv_group_set_wrap(_group, true);   // Wrap-around: last→first, first→last
 
     buildStatusBar();
     buildGrid();
 
-    if (_grid) lv_group_focus_obj(_grid);
+    // Focus the first card so the blue selection border is visible on boot
+    if (_firstCard) {
+        lv_group_focus_obj(_firstCard);
+        Serial.printf("[GUI] Initial focus on first card: %p\n", (void*)_firstCard);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -217,16 +282,22 @@ void MainMenu::buildGrid() {
     lv_obj_set_layout(_grid, LV_LAYOUT_GRID);
     lv_obj_set_grid_dsc_array(_grid, col_dsc, row_dsc);
 
-    lv_gridnav_add(_grid, static_cast<lv_gridnav_ctrl_t>(
-        LV_GRIDNAV_CTRL_ROLLOVER | LV_GRIDNAV_CTRL_SCROLL_FIRST));
-
-    lv_group_add_obj(_group, _grid);
+    // NOTE: lv_gridnav removed — each card is added individually to _group.
+    // Standard LVGL group navigation moves focus directly on cards, which
+    // reliably triggers LV_STATE_FOCUSED and _styleCardFocused (blue border).
 
     // Dot-grid background callback
     lv_obj_add_event_cb(_grid, onGridDraw, LV_EVENT_DRAW_MAIN_END, nullptr);
 
+    // Scroll optimisation: disable shadow rendering while scrolling to
+    // prevent the FPS from dropping below ~15 on 10-card layouts.
+    lv_obj_add_event_cb(_grid, onScrollBegin, LV_EVENT_SCROLL_BEGIN, this);
+    lv_obj_add_event_cb(_grid, onScrollEnd,   LV_EVENT_SCROLL_END,   this);
+
+    _firstCard = nullptr;
     for (int i = 0; i < APP_COUNT; ++i) {
-        buildCard(_grid, APPS[i], i % 3, i / 3);
+        lv_obj_t* card = buildCard(_grid, APPS[i], i % 3, i / 3);
+        if (i == 0) _firstCard = card;   // Remember first for initial focus
     }
 }
 
@@ -259,7 +330,12 @@ lv_obj_t* MainMenu::buildCard(lv_obj_t* parent,
 
     lv_obj_set_user_data(card,
         reinterpret_cast<void*>(static_cast<intptr_t>(app.id)));
-    lv_obj_add_event_cb(card, onCardEvent, LV_EVENT_CLICKED, this);
+    lv_obj_add_event_cb(card, onCardEvent,   LV_EVENT_CLICKED, this);
+
+    // Add to navigation group so LVGL focus moves to this card on arrow keys
+    lv_group_add_obj(_group, card);
+    // Log when this card gains focus
+    lv_obj_add_event_cb(card, onCardFocused, LV_EVENT_FOCUSED, nullptr);
 
     // ── Geometric vector icon ───────────────────────────────────────────
     createAppIcon(card, app);
@@ -406,11 +482,15 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             break;
         }
         case 3: {
-            // Statistics: three vertical bars (bar chart)
-            int bw = 5;
-            drawRect(cx - 10, cy + 8, cx - 10 + bw, cy - 2,  2, white, LV_OPA_COVER);
-            drawRect(cx - 2,  cy + 8, cx - 2 + bw,  cy - 10, 2, light, LV_OPA_90);
-            drawRect(cx + 6,  cy + 8, cx + 6 + bw,  cy - 5,  2, white, LV_OPA_COVER);
+            // Integral: stylised integral symbol ∫
+            // Vertical stroke
+            drawLine(cx, cy - 12, cx, cy + 10, 3, white, LV_OPA_COVER);
+            // Top hook (right curl)
+            drawLine(cx, cy - 12, cx + 5, cy - 14, 2, white, LV_OPA_COVER);
+            // Bottom hook (left curl)
+            drawLine(cx, cy + 10, cx - 5, cy + 12, 2, white, LV_OPA_COVER);
+            // Small "dx" text hint
+            drawRect(cx + 7, cy + 2, cx + 13, cy + 6, 1, light, LV_OPA_80);
             break;
         }
         case 4: {
@@ -479,11 +559,11 @@ void MainMenu::onIconDraw(lv_event_t* e) {
 
 void MainMenu::initStyles() {
 
-    // ── Transition: 250 ms overshoot (elastic pop) ──────────────────────
+    // ── Transition: simple 150 ms linear (overshoot removed for stability) ──
     lv_style_transition_dsc_init(&_transCard,
         _transProps,
-        lv_anim_path_overshoot,
-        250,          // duration ms
+        lv_anim_path_linear,
+        150,          // duration ms
         0,            // delay
         nullptr);
 
@@ -512,32 +592,22 @@ void MainMenu::initStyles() {
     lv_style_set_shadow_color(&_styleCard,  lv_color_hex(0x000000));
     lv_style_set_shadow_ofs_y(&_styleCard,  3);
     lv_style_set_shadow_spread(&_styleCard, 2);
-    // Base scale 100 % (256)
-    lv_style_set_transform_scale_x(&_styleCard, 256);
-    lv_style_set_transform_scale_y(&_styleCard, 256);
-    // Transition → overshoot animates BOTH in and out
+    // No base scale (no transform layers needed)
+    // Transition for border/shadow only
     lv_style_set_transition(&_styleCard, &_transCard);
 
-    // ── Card (focused): blue glow + 1.05× ──────────────────────────────
+    // ── Card (focused): blue border only — transparent background ───────
+    // Keep focus cue minimal and stable: no shadow, no transforms, no tint.
     lv_style_init(&_styleCardFocused);
-    lv_style_set_border_width(&_styleCardFocused, 2);
+    lv_style_set_border_width(&_styleCardFocused, 3);
     lv_style_set_border_color(&_styleCardFocused, lv_color_hex(COL_FOCUS_BORDER));
     lv_style_set_border_opa(&_styleCardFocused,   LV_OPA_COVER);
-    // Intense blue shadow (req #3)
-    lv_style_set_shadow_width(&_styleCardFocused,  20);
-    lv_style_set_shadow_opa(&_styleCardFocused,    LV_OPA_40);
-    lv_style_set_shadow_color(&_styleCardFocused,  lv_color_hex(COL_FOCUS_BORDER));
-    lv_style_set_shadow_spread(&_styleCardFocused, 3);
-    // Scale 1.05× (req #4: 256 × 1.05 = 268.8 ≈ 269)
-    lv_style_set_transform_scale_x(&_styleCardFocused, 269);
-    lv_style_set_transform_scale_y(&_styleCardFocused, 269);
+    lv_style_set_bg_opa(&_styleCardFocused,       LV_OPA_TRANSP);
 
     // ── Card (pressed) ──────────────────────────────────────────────────
     lv_style_init(&_styleCardPressed);
     lv_style_set_bg_color(&_styleCardPressed, lv_color_hex(0xE8E8E8));
-    // Scale 97 % (256 × 0.97 ≈ 248) — satisfying click feel
-    lv_style_set_transform_scale_x(&_styleCardPressed, 248);
-    lv_style_set_transform_scale_y(&_styleCardPressed, 248);
+    // Scale transform removed for stability (re-add after navigation works)
 
     // ── Icon box ────────────────────────────────────────────────────────
     lv_style_init(&_styleIconBox);
@@ -558,7 +628,61 @@ void MainMenu::initStyles() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// onScrollBegin() / onScrollEnd() — Shadow kill-switch during scrolling
+//
+// With the default _styleCard (shadow_width=12, LV_OPA_10) and each icon box
+// (shadow_width=10, LV_OPA_30), LVGL must allocate temporary draw layers for
+// every card visible on-screen during each flush strip.  On a 32 KB buffer
+// (≈51 lines) this means ≈5 strips × 10 shadows = ~50 layer allocs per frame,
+// easily dragging FPS from 30 to <10 during inertial scroll.
+//
+// Strategy: on SCROLL_BEGIN we set shadow_opa = LV_OPA_TRANSP directly on each
+// card object and its first child (the icon box) — this overrides the style
+// shadow without touching _styleCard.  SCROLL_END restores original values and
+// invalidates the grid so the next frame draws with full quality.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+void MainMenu::onScrollBegin(lv_event_t* e) {
+    MainMenu* self = static_cast<MainMenu*>(lv_event_get_user_data(e));
+    if (!self || !self->_grid) return;
+
+    uint32_t count = lv_obj_get_child_count(self->_grid);
+    for (uint32_t i = 0; i < count; ++i) {
+        lv_obj_t* card = lv_obj_get_child(self->_grid, i);
+        if (!card) continue;
+        lv_obj_set_style_shadow_opa(card, LV_OPA_TRANSP, LV_PART_MAIN);
+
+        // First child of every card is the icon box (see buildCard → createAppIcon)
+        if (lv_obj_get_child_count(card) > 0) {
+            lv_obj_t* iconBox = lv_obj_get_child(card, 0);
+            if (iconBox) lv_obj_set_style_shadow_opa(iconBox, LV_OPA_TRANSP, 0);
+        }
+    }
+}
+
+void MainMenu::onScrollEnd(lv_event_t* e) {
+    MainMenu* self = static_cast<MainMenu*>(lv_event_get_user_data(e));
+    if (!self || !self->_grid) return;
+
+    uint32_t count = lv_obj_get_child_count(self->_grid);
+    for (uint32_t i = 0; i < count; ++i) {
+        lv_obj_t* card = lv_obj_get_child(self->_grid, i);
+        if (!card) continue;
+        lv_obj_set_style_shadow_opa(card, LV_OPA_10, LV_PART_MAIN);   // Restore card diffuse shadow
+
+        if (lv_obj_get_child_count(card) > 0) {
+            lv_obj_t* iconBox = lv_obj_get_child(card, 0);
+            if (iconBox) lv_obj_set_style_shadow_opa(iconBox, LV_OPA_30, 0);  // Restore icon tinted shadow
+        }
+    }
+    lv_obj_invalidate(self->_grid);   // Force redraw with full quality
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // onGridDraw() — Dot-grid pattern: 1 px #D1D1D1 dots, 20 px spacing
+//
+// Optimisation: only iterate dots whose row/column falls within the current
+// LVGL clip area, avoiding hundreds of no-op lv_draw_rect calls per strip.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void MainMenu::onGridDraw(lv_event_t* e) {
@@ -567,6 +691,9 @@ void MainMenu::onGridDraw(lv_event_t* e) {
 
     lv_area_t objArea;
     lv_obj_get_coords(obj, &objArea);
+
+    // Get LVGL clip area — only dots within this rect will be rendered
+    const lv_area_t& clip = layer->_clip_area;
 
     lv_draw_rect_dsc_t dsc;
     lv_draw_rect_dsc_init(&dsc);
@@ -582,11 +709,32 @@ void MainMenu::onGridDraw(lv_event_t* e) {
     int y0 = objArea.y1;
     int contentH = GRID_H + 120;
 
-    for (int dy = DOT_SPACING / 2; dy < contentH; dy += DOT_SPACING) {
+    // Compute the first dot row/col that intersects the clip area
+    int firstDy = DOT_SPACING / 2;
+    int firstDx = DOT_SPACING / 2;
+
+    // Clamp Y iteration to clip area
+    int clipTop    = clip.y1 - y0 + scrollY;
+    int clipBottom = clip.y2 - y0 + scrollY;
+    // Start from the first dot row at or after clipTop
+    int startDy = ((clipTop - firstDy) / DOT_SPACING) * DOT_SPACING + firstDy;
+    if (startDy < firstDy) startDy = firstDy;
+    int endDy = clipBottom + DOT_SPACING;  // one extra for safety
+    if (endDy > contentH) endDy = contentH;
+
+    // Clamp X iteration to clip area
+    int clipLeft  = clip.x1 - x0;
+    int clipRight = clip.x2 - x0;
+    int startDx = ((clipLeft - firstDx) / DOT_SPACING) * DOT_SPACING + firstDx;
+    if (startDx < firstDx) startDx = firstDx;
+    int endDx = clipRight + DOT_SPACING;
+    if (endDx > SCREEN_W) endDx = SCREEN_W;
+
+    for (int dy = startDy; dy < endDy; dy += DOT_SPACING) {
         int screenY = y0 + dy - scrollY;
         if (screenY + DOT_SIZE < objArea.y1 || screenY > objArea.y2) continue;
 
-        for (int dx = DOT_SPACING / 2; dx < SCREEN_W; dx += DOT_SPACING) {
+        for (int dx = startDx; dx < endDx; dx += DOT_SPACING) {
             lv_area_t dot;
             dot.x1 = x0 + dx;
             dot.y1 = screenY;
@@ -612,4 +760,18 @@ void MainMenu::onCardEvent(lv_event_t* e) {
     if (self && self->_launchCb) {
         self->_launchCb(appId);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// onCardFocused — log focus changes
+// ═══════════════════════════════════════════════════════════════════════════════
+void MainMenu::onCardFocused(lv_event_t* e) {
+    lv_obj_t* card = lv_event_get_target_obj(e);
+    int appId = static_cast<int>(
+                    reinterpret_cast<intptr_t>(lv_obj_get_user_data(card)));
+    Serial.printf("[GUI] Card focused: %p (app_id=%d)\n",
+                  (void*)card, appId);
+
+    // Auto-scroll the grid so the focused card is always visible
+    lv_obj_scroll_to_view(card, LV_ANIM_ON);
 }

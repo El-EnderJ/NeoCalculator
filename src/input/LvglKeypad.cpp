@@ -23,15 +23,24 @@ void LvglKeypad::init() {
 // ── pushKey() ───────────────────────────────────────────────────────────────
 void LvglKeypad::pushKey(KeyCode code, bool pressed) {
     uint32_t lk = toLvKey(code);
-    if (lk == 0) return; // Tecla sin mapping LVGL → ignorar
+    if (lk == 0) {
+        Serial.printf("[LVGL-KEY] code=%d -> NO LV_KEY mapping, ignorado\n", (int)code);
+        return;
+    }
 
     uint8_t nextHead = ((_head + 1) & (QUEUE_SIZE - 1));
-    if (nextHead == _tail) return; // Buffer lleno → descartamos (tecla perdida)
+    if (nextHead == _tail) {
+        Serial.println("[LVGL-KEY] WARN: buffer lleno, tecla perdida!");
+        return;
+    }
 
     _queue[_head].lvKey = lk;
     _queue[_head].state = pressed ? LV_INDEV_STATE_PRESSED
                                   : LV_INDEV_STATE_RELEASED;
     _head = nextHead;
+
+    Serial.printf("[LVGL-KEY] pushKey: lv_key=%lu %s (queue: h=%d t=%d)\n",
+                  (unsigned long)lk, pressed ? "PRESS" : "RELEASE", _head, _tail);
 }
 
 // ── readCb() ────────────────────────────────────────────────────────────────
@@ -46,6 +55,11 @@ void LvglKeypad::readCb(lv_indev_t* /*indev*/, lv_indev_data_t* data) {
         _currentKey   = _queue[_tail].lvKey;
         _currentState = _queue[_tail].state;
         _tail = ((_tail + 1) & (QUEUE_SIZE - 1));
+
+        Serial.printf("[LVGL-KEY] readCb: lv_key=%lu state=%s (remain=%d)\n",
+                      (unsigned long)_currentKey,
+                      _currentState == LV_INDEV_STATE_PRESSED ? "PRESS" : "REL",
+                      (_head >= _tail) ? (_head - _tail) : (QUEUE_SIZE - _tail + _head));
     } else {
         // Sin eventos nuevos → tecla liberada (para evitar repetición no deseada)
         _currentState = LV_INDEV_STATE_RELEASED;

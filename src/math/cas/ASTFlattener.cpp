@@ -374,7 +374,7 @@ FlattenResult ASTFlattener::flattenFraction(const vpam::NodeFraction* node) {
 
     // Case 1: Denominator is a constant → distribute division
     if (den.isConstant()) {
-        vpam::ExactVal denVal = den.coeffAt(0);
+        vpam::ExactVal denVal = den.coeffAtExact(0);
         if (denVal.isZero()) {
             return FlattenResult::fail("Division by zero");
         }
@@ -387,7 +387,7 @@ FlattenResult ASTFlattener::flattenFraction(const vpam::NodeFraction* node) {
         const SymTerm& denTerm = den.terms()[0];
         // Create the reciprocal: (1/coeff) · var^(-power)
         vpam::ExactVal recipCoeff = vpam::exactDiv(
-            vpam::ExactVal::fromInt(1), denTerm.coeff);
+            vpam::ExactVal::fromInt(1), denTerm.coeff.toExactVal());
 
         // Multiply numerator by (1/coeff)
         SymPoly scaled = num.mulScalar(recipCoeff);
@@ -450,7 +450,7 @@ FlattenResult ASTFlattener::flattenPower(const vpam::NodePower* node) {
             "Variable exponent (not a polynomial)");
     }
 
-    vpam::ExactVal expVal = expPoly.coeffAt(0);
+    vpam::ExactVal expVal = expPoly.coeffAtExact(0);
 
     // Must be a rational number with den=1 (integer)
     if (expVal.den != 1 || expVal.hasRadical() || expVal.hasConstant()) {
@@ -472,7 +472,7 @@ FlattenResult ASTFlattener::flattenPower(const vpam::NodePower* node) {
 
     // Handle base = single constant → compute ExactVal power directly
     if (basePoly.isConstant()) {
-        vpam::ExactVal baseVal = basePoly.coeffAt(0);
+        vpam::ExactVal baseVal = basePoly.coeffAtExact(0);
         vpam::ExactVal result = vpam::exactPow(baseVal, expVal);
         if (!result.ok) {
             return FlattenResult::fail("Power computation error");
@@ -486,7 +486,11 @@ FlattenResult ASTFlattener::flattenPower(const vpam::NodePower* node) {
         if (basePoly.terms().size() == 1) {
             const SymTerm& bt = basePoly.terms()[0];
             SymTerm result;
-            result.coeff = vpam::exactPow(bt.coeff, expVal);
+            result.coeff = CASRational::fromFrac(1, 1);  // start
+            vpam::ExactVal btCoeffEv = bt.coeff.toExactVal();
+            vpam::ExactVal resultEv = vpam::exactPow(btCoeffEv, expVal);
+            result.coeff = resultEv.ok ? CASRational(resultEv.num, resultEv.den)
+                                       : CASRational::makeError();
             result.var   = bt.var;
             result.power = static_cast<int16_t>(bt.power * exp);
             result.simplifyCoeff();
@@ -550,7 +554,7 @@ FlattenResult ASTFlattener::flattenRoot(const vpam::NodeRoot* node) {
             "Square root of variable expression");
     }
 
-    vpam::ExactVal radVal = radPoly.coeffAt(0);
+    vpam::ExactVal radVal = radPoly.coeffAtExact(0);
 
     // For now, only handle square root (no degree or degree=2)
     if (node->hasDegree()) {
@@ -564,7 +568,7 @@ FlattenResult ASTFlattener::flattenRoot(const vpam::NodeRoot* node) {
             return FlattenResult::needsNumeric(
                 "Non-constant root degree");
         }
-        vpam::ExactVal degVal = degResult.poly.coeffAt(0);
+        vpam::ExactVal degVal = degResult.poly.coeffAtExact(0);
         if (degVal.num != 2 || degVal.den != 1) {
             if (_arena) {
                 SymExpr* expr = flattenRootToExpr(node);
@@ -847,13 +851,13 @@ SymExpr* ASTFlattener::flattenRowToExpr(const vpam::NodeRow* row) {
         }
     }
 
-    // Build n-ary SymAdd
+    // Build n-ary SymAdd (cons'd with canonical sort)
     uint16_t cnt = static_cast<uint16_t>(finalTerms.size());
     auto** arr = static_cast<SymExpr**>(
         _arena->allocRaw(cnt * sizeof(SymExpr*)));
     if (!arr) return nullptr;
     for (uint16_t k = 0; k < cnt; ++k) arr[k] = finalTerms[k];
-    return _arena->create<SymAdd>(arr, cnt);
+    return symAddN(*_arena, arr, cnt);
 }
 
 // ────────────────────────────────────────────────────────────────────

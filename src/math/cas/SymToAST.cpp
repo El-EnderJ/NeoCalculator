@@ -127,10 +127,10 @@ NodePtr renderTermAbs(const cas::SymTerm& term) {
 
     // Constant term → just the absolute value
     if (term.isConstant()) {
-        return renderExactValAbs(term.coeff);
+        return renderExactValAbs(term.coeff.toExactVal());
     }
 
-    ExactVal absCoeff = term.coeff;
+    ExactVal absCoeff = term.coeff.toExactVal();
     if (absCoeff.num < 0) absCoeff.num = -absCoeff.num;
 
     bool coeffIsOne = absCoeff.isInteger() && absCoeff.num == 1;
@@ -232,7 +232,7 @@ NodePtr SymToAST::fromExactVal(const ExactVal& val) {
 NodePtr SymToAST::fromSymTerm(const SymTerm& term) {
     if (term.isZero()) return makeNumber("0");
 
-    bool negative = (term.coeff.num < 0);
+    bool negative = term.coeff.isNegative();
 
     if (negative) {
         auto row = makeRow();
@@ -258,7 +258,7 @@ NodePtr SymToAST::fromSymPoly(const SymPoly& poly) {
     for (const auto& t : poly.terms()) {
         if (t.isZero()) continue;
 
-        bool neg = (t.coeff.num < 0);
+        bool neg = t.coeff.isNegative();
 
         if (first) {
             // First term: include negative sign if needed

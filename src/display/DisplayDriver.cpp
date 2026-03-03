@@ -19,7 +19,7 @@ DisplayDriver::DisplayDriver() : _tft(), _sprite(&_tft), _useSprite(false), _lvD
 }
 
 void DisplayDriver::begin() {
-    Serial.println("[TFT] Iniciando...");
+    Serial.println("[TFT] Initializing...");
 
     // BL está conectado físicamente a 3.3V → NO tocar GPIO 45.
     // Si lo configuramos como OUTPUT LOW crearíamos un cortocircuito.
@@ -39,6 +39,13 @@ void DisplayDriver::begin() {
 
     // Limpiar GRAM con negro puro (0x0000) → elimina ruido IPS residual
     _tft.fillScreen(0x0000);
+
+    // ── DMA ─────────────────────────────────────────────────────────────
+    // TFT_eSPI pushPixelsDMA crashea en ESP32-S3 (StoreProhibited en
+    // EXCVADDR=0x30).  Dejamos DMA desactivado; pushColors ya usa el
+    // FIFO SPI hardware, y a 40 MHz + 32 KB buffers el rendimiento
+    // es suficiente para scroll fluido sin tearing.
+    _dmaEnabled = false;
 
     _useSprite = false;
     Serial.println("[TFT] OK");
@@ -78,6 +85,20 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
  * dibujado. Los píxeles están en formato RGB565 (16 bpp) en pxMap.
  * Usamos startWrite/pushColors/endWrite para la transferencia SPI en bloque.
  */
+/**
+ * lvglFlushCb — Envía píxeles al panel vía DMA no-bloqueante.
+ *
+ * Flujo con doble buffer:
+ *  1. Si hay un DMA anterior en vuelo, esperar a que termine (dmaWait)
+ *     y cerrar la transacción SPI previa (endWrite).
+ *  2. Abrir nueva transacción (startWrite), fijar ventana GRAM.
+ *  3. Lanzar pushPixelsDMA — copia píxeles al buffer DMA interno de
+ *     TFT_eSPI (con byte-swap) y arranca la transferencia GDMA.
+ *  4. Llamar flush_ready INMEDIATAMENTE: LVGL puede renderizar la
+ *     siguiente dirty-area al OTRO buffer mientras el DMA envía éste.
+ *
+ * Fallback: si DMA no está habilitado, usa pushColors bloqueante.
+ */
 void DisplayDriver::lvglFlushCb(lv_display_t* disp,
                                 const lv_area_t* area,
                                 uint8_t* pxMap) {
@@ -90,17 +111,33 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
     const uint32_t w = lv_area_get_width(area);
     const uint32_t h = lv_area_get_height(area);
 
-    self->_tft.startWrite();
-    self->_tft.setAddrWindow(area->x1, area->y1, w, h);
-    // pushColors espera uint16_t*; swap=true convierte de little-endian (ESP32)
-    // a big-endian (ILI9341 SPI wire format).
-    self->_tft.pushColors(reinterpret_cast<uint16_t*>(pxMap),
-                          static_cast<uint32_t>(w * h),
-                          true);
-    self->_tft.endWrite();
+    if (self->_dmaEnabled) {
+        // ── Ruta DMA no-bloqueante ──────────────────────────────────
+        // Completar el DMA anterior (si lo hay)
+        if (self->_dmaPending) {
+            self->_tft.dmaWait();
+            self->_tft.endWrite();
+            self->_dmaPending = false;
+        }
 
-    // Notifica a LVGL que el flush terminó y el buffer puede reutilizarse.
-    lv_display_flush_ready(disp);
+        self->_tft.startWrite();
+        self->_tft.setAddrWindow(area->x1, area->y1, w, h);
+        self->_tft.pushPixelsDMA(reinterpret_cast<uint16_t*>(pxMap),
+                                 static_cast<uint32_t>(w * h));
+        self->_dmaPending = true;
+
+        // LVGL puede usar el otro buffer mientras el DMA corre.
+        lv_display_flush_ready(disp);
+    } else {
+        // ── Ruta bloqueante (fallback) ─────────────────────────────
+        self->_tft.startWrite();
+        self->_tft.setAddrWindow(area->x1, area->y1, w, h);
+        self->_tft.pushColors(reinterpret_cast<uint16_t*>(pxMap),
+                              static_cast<uint32_t>(w * h),
+                              true);   // swap RGB565 LE→BE
+        self->_tft.endWrite();
+        lv_display_flush_ready(disp);
+    }
 }
 
 void DisplayDriver::pushFrame() {

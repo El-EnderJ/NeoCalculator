@@ -14,14 +14,30 @@ SerialBridge::SerialBridge()
 
 void SerialBridge::begin() {
     Serial.println("[SerialBridge] PC keyboard bridge active.");
-    Serial.println("[SerialBridge] Controles (minusculas!):");
-    Serial.println("  w/a/s/d = Flechas    z = OK/Enter");
-    Serial.println("  x = DEL   c = AC     h = HOME");
-    Serial.println("  0-9 +-*/. ^()        f = FRAC");
-    Serial.println("  r = SQRT  R = nthROOT  S = SHIFT");
-    Serial.println("  g = GRAPH  t = SIN   y = VAR_Y");
-    Serial.println("[SerialBridge] NOTA: Usa MINUSCULAS (desactiva CapsLock)");
-    Serial.println("[SerialBridge] Escribe un caracter y pulsa Enter.");
+    Serial.println("┌───────────────────────────────────────────────┐");
+    Serial.println("│         NumOS Serial Keyboard Map             │");
+    Serial.println("├──────────────┬────────────────────────────────┤");
+    Serial.println("[│  0-9 . + - * /  │  Digits & operators        │");
+    Serial.println("│  = or u           │  EQUALS symbol (not EXE)  │");
+    Serial.println("│  Enter (\\r/\\n)  │  EXE / OK                 │");
+    Serial.println("│  Backspace/Del   │  DEL (erase char)         │");
+    Serial.println("│  c  or  Esc      │  AC  (all clear)          │");
+    Serial.println("│  p  or  ^        │  POW (exponent)           │");
+    Serial.println("│  x               │  VAR_X                    │");
+    Serial.println("│  y               │  VAR_Y                    │");
+    Serial.println("│  f               │  FRAC (fraction)          │");
+    Serial.println("│  r               │  SQRT (square root)       │");
+    Serial.println("│  R (shift+r)     │  nthROOT (SHIFT+SQRT)     │");
+    Serial.println("│  n               │  STEPS (step-by-step)     │");
+    Serial.println("│  ( )             │  Parentheses              │");
+    Serial.println("│  w a s d         │  UP LEFT DOWN RIGHT       │");
+    Serial.println("│  S (shift+s)     │  SHIFT modifier           │");
+    Serial.println("│  A (shift+a)     │  ALPHA modifier           │");
+    Serial.println("│  h               │  MODE / HOME              │");
+    Serial.println("│  g               │  GRAPH                    │");
+    Serial.println("│  t               │  SIN                      │");
+    Serial.println("└──────────────┴────────────────────────────────┘");
+    Serial.println("[SerialBridge] Type a key and press Enter.");
 }
 
 // ── Circular buffer helpers ──
@@ -80,27 +96,30 @@ void SerialBridge::processChar(int ch) {
     static unsigned long lastEnterMs = 0;
     if (ch == '\r' || ch == '\n') {
         unsigned long now = millis();
-        if (now - lastEnterMs < 50) return; // Skip duplicate
+        if (now - lastEnterMs < 50) return; // Skip duplicate \r\n pair
         lastEnterMs = now;
-        // Enter por si solo NO genera ENTER — usa 'z' para OK.
-        // Esto evita enter accidentales al enviar comandos.
+        push(KeyCode::ENTER, "ENTER (PC-Enter)");
         return;
     }
 
     switch (ch) {
         // ── Navigation (WASD) ──
         case 'w': case 'W': push(KeyCode::UP,    "UP");    break;
-        case 's':           push(KeyCode::DOWN,  "DOWN");  break;
-        case 'a': case 'A': push(KeyCode::LEFT,  "LEFT");  break;
+        case 'a':           push(KeyCode::LEFT,  "LEFT");  break;
         case 'd': case 'D': push(KeyCode::RIGHT, "RIGHT"); break;
+        case 's':           push(KeyCode::DOWN,  "DOWN");  break;
+
+        // ── Modifiers ──
+        case 'S':  push(KeyCode::SHIFT, "SHIFT"); break;
+        case 'A':  push(KeyCode::ALPHA, "ALPHA"); break;
 
         // ── Actions ──
-        case 'z': case 'Z': push(KeyCode::ENTER, "ENTER"); break;
         case 8:             // Backspace (ASCII 8)
         case 127:           // Delete (ASCII 127)
-        case 'x': case 'X': push(KeyCode::DEL,   "DEL");   break;
+            push(KeyCode::DEL, "DEL"); break;
+        case 0x1B:          // Escape
+        case 'c':           push(KeyCode::AC,    "AC");        break;
         case 'h': case 'H': push(KeyCode::MODE,  "MODE/HOME"); break;
-        case 'c': case 'C': push(KeyCode::AC,    "AC");    break;
 
         // ── Digits ──
         case '0': push(KeyCode::NUM_0, "0"); break;
@@ -119,19 +138,24 @@ void SerialBridge::processChar(int ch) {
         case '-': push(KeyCode::SUB, "-"); break;
         case '*': push(KeyCode::MUL, "*"); break;
         case '/': push(KeyCode::DIV, "/"); break;
-        case '^': push(KeyCode::POW, "^"); break;
         case '.': push(KeyCode::DOT, "."); break;
         case '(': push(KeyCode::LPAREN, "("); break;
         case ')': push(KeyCode::RPAREN, ")"); break;
 
-        // ── Special function keys ──
-        case 'f': case 'F':
-            // Fraction: emit SHIFT then DIV (SHIFT+DIV triggers fraction in CalculationApp)
-            push(KeyCode::SHIFT, "SHIFT");
-            push(KeyCode::DIV,   "DIV (=FRAC)");
-            break;
+        // ── Power: 'p' or '^' ──
+        case 'p': case '^': push(KeyCode::POW, "POW"); break;
 
-        case 'S':  push(KeyCode::SHIFT, "SHIFT"); break;
+        // ── Equals symbol (for equations, NOT EXE) ──
+        case '=': push(KeyCode::FREE_EQ, "="); break;
+
+        // ── Fraction ──
+        case 'f': push(KeyCode::DIV, "DIV (FRAC)"); break;
+
+        // ── Variables ──
+        case 'x': push(KeyCode::VAR_X, "VAR_X"); break;
+        case 'y': push(KeyCode::VAR_Y, "VAR_Y"); break;
+
+        // ── Functions ──
         case 'g':  push(KeyCode::GRAPH, "GRAPH"); break;
         case 't':  push(KeyCode::SIN,   "SIN");   break;
 
@@ -142,8 +166,14 @@ void SerialBridge::processChar(int ch) {
             push(KeyCode::SQRT,  "SQRT (=nthROOT)");
             break;
 
-        // ── Variables ──
-        case 'y':  push(KeyCode::VAR_Y, "VAR_Y"); break;
+        // ── Steps ──
+        case 'n':  push(KeyCode::SHOW_STEPS, "STEPS"); break;
+
+        // ── Equals (for equations, NOT EXE) ──
+        case 'u':  push(KeyCode::FREE_EQ, "= (FREE_EQ)"); break;
+
+        // ── Misc (uppercase C = AC too) ──
+        case 'C':  push(KeyCode::AC, "AC"); break;
 
         // Ignore everything else silently
         default: break;

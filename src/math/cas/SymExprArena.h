@@ -25,9 +25,12 @@
 #include <new>           // placement new
 #include <type_traits>   // std::aligned_storage, alignment_of
 #include <utility>       // std::forward
+#include <vector>
+#include "ConsTable.h"    // Hash-consing dedup table
 
 #ifdef ARDUINO
   #include <esp_heap_caps.h>
+  #include <mbedtls/bignum.h>   // mbedtls_mpi_free for BigInt cleanup
 #endif
 
 namespace cas {
@@ -39,7 +42,7 @@ namespace cas {
 class SymExprArena {
 public:
     static constexpr size_t DEFAULT_BLOCK_SIZE = 65536;  // 64 KB
-    static constexpr size_t MAX_BLOCKS         = 4;      // 256 KB max total
+    static constexpr size_t MAX_BLOCKS         = 16;     // 1 MB max total
     static constexpr size_t ALIGNMENT          = alignof(std::max_align_t);
 
     // ── Construction / Destruction ──────────────────────────────────
@@ -87,12 +90,34 @@ public:
         return new (mem) T(std::forward<Args>(args)...);
     }
 
-    // ── Reset (bulk free) ───────────────────────────────────────────
+    // ── BigInt registry ─────────────────────────────────────────────
+
+    /// Register an mbedtls_mpi pointer so the arena frees it on reset.
+    /// CASInt calls this when promoting to BigInt.
+    void registerBigInt([[maybe_unused]] void* mpi) {
+#ifdef ARDUINO
+        _bigIntRegistry.push_back(static_cast<mbedtls_mpi*>(mpi));
+#endif
+    }
+
+    // ── ConsTable accessor ────────────────────────────────────────
+
+    /// Access the companion hash-consing table.
+    ConsTable& consTable() { return _consTable; }
+    const ConsTable& consTable() const { return _consTable; }
+
+    // ── Reset (bulk free) ─────────────────────────────────────────
 
     /// Reset the arena — all previously allocated nodes become invalid.
-    /// Does NOT free the underlying blocks (reuse for next solve cycle).
+    /// Clears the ConsTable, frees BigInt mpis, then reclaims arena blocks.
     void reset() {
-        // Keep only the first block, release extras
+        // 1. Clear the hash-consing table
+        _consTable.clear();
+
+        // 2. Free all registered mbedtls_mpi allocations
+        freeBigInts();
+
+        // 3. Keep only the first block, release extras
         for (size_t i = 1; i < _numBlocks; ++i) {
             freeBlock(_blocks[i]);
             _blocks[i] = nullptr;
@@ -117,6 +142,12 @@ private:
     void*  _blocks[MAX_BLOCKS];
     size_t _numBlocks;
     size_t _offset;      // offset within current (last) block
+
+    ConsTable _consTable;  // Hash-consing dedup table (Phase 2)
+
+#ifdef ARDUINO
+    std::vector<mbedtls_mpi*> _bigIntRegistry;  // BigInt lifecycle tracking
+#endif
 
     bool allocateBlock() {
         if (_numBlocks >= MAX_BLOCKS) return false;
@@ -147,7 +178,19 @@ private:
 #endif
     }
 
+    /// Free all registered BigInt mpis.
+    void freeBigInts() {
+#ifdef ARDUINO
+        for (auto* mpi : _bigIntRegistry) {
+            if (mpi) mbedtls_mpi_free(mpi);
+        }
+        _bigIntRegistry.clear();
+#endif
+    }
+
     void freeAll() {
+        _consTable.clear();
+        freeBigInts();
         for (size_t i = 0; i < _numBlocks; ++i) {
             freeBlock(_blocks[i]);
             _blocks[i] = nullptr;

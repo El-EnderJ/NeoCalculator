@@ -6,7 +6,7 @@
 
 ### Open-Source Scientific Graphing Calculator OS
 
-**ESP32-S3 N16R8 · ILI9341 IPS 320×240 · LVGL 9.x · CAS-Lite Engine · Natural Display V.P.A.M.**
+**ESP32-S3 N16R8 · ILI9341 IPS 320×240 · LVGL 9.x · Pro-CAS Engine · Natural Display V.P.A.M.**
 
 <br>
 
@@ -16,9 +16,9 @@
 [![Framework](https://img.shields.io/badge/Framework-Arduino-teal?logo=arduino&logoColor=white)](https://www.arduino.cc/)
 [![Language](https://img.shields.io/badge/Language-C%2B%2B17-blue?logo=cplusplus&logoColor=white)](https://en.cppreference.com/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-CAS--Lite%20Production-brightgreen)](#estado-del-proyecto)
+[![Status](https://img.shields.io/badge/Status-Pro--CAS%20Production-brightgreen)](#estado-del-proyecto)
 [![RAM](https://img.shields.io/badge/RAM-29%25%20%E2%80%94%2094.9%20KB-informational)](#build-stats)
-[![Flash](https://img.shields.io/badge/Flash-17.1%25%20%E2%80%94%201.07%20MB-informational)](#build-stats)
+[![Flash](https://img.shields.io/badge/Flash-18.5%25%20%E2%80%94%201.21%20MB-informational)](#build-stats)
 
 <br>
 
@@ -36,7 +36,7 @@
 1. [¿Qué es NumOS?](#qué-es-numos)
 2. [Características Destacadas](#características-destacadas)
 3. [Arquitectura del Sistema](#arquitectura-del-sistema)
-4. [CAS-Lite Engine](#cas-lite-engine)
+4. [Pro-CAS Engine](#pro-cas-engine)
 5. [Hardware](#hardware)
 6. [Inicio Rápido](#inicio-rápido)
 7. [Manual de Usuario — EquationsApp](#manual-de-usuario--equationsapp)
@@ -57,7 +57,7 @@
 
 **NumOS incorpora:**
 
-- **Motor CAS-Lite propio** — Álgebra simbólica nativa: polinomios simbólicos con aritmética exacta `Rational`, resolución cuadrática analítica con pasos detallados, sistemas 2×2 con eliminación gaussiana simbólica, todo en PSRAM con allocator personalizado STL-compatible.
+- **Motor Pro-CAS completo** — Álgebra simbólica avanzada: DAG inmutable con hash-consing (`ConsTable`), aritmética bignum overflow-safe (`CASInt`/`CASRational`), simplificador multi-pass con punto fijo, derivación simbólica (17 reglas), integración simbólica (Slagle heurístico), solver de ecuaciones y sistemas no lineales via resultante de Sylvester. Todo en PSRAM con allocator STL-compatible.
 - **Natural Display V.P.A.M.** — Las fórmulas se renderizan como en papel: fracciones apiladas reales, raíces con símbolo √, superíndices genuinos, navegación 2D con cursor inteligente estructural.
 - **Interfaz moderna LVGL 9.x** — Transiciones fluidas, splash screen animado, launcher estilo NumWorks con iconos y grid 3×N, apps con estados múltiples y ciclo de vida limpio.
 - **Motor matemático propio** — Pipeline completo: Tokenizador → Parser Shunting-Yard → Evaluador RPN + AST visual, implementado en C++17 desde cero.
@@ -69,11 +69,13 @@
 
 | Característica | Descripción |
 |:---------------|:------------|
-| **CAS-Lite Engine** | Resolución analítica de ecuaciones polinomiales con pasos simbólicos detallados en PSRAM |
-| **EquationsApp** | Resuelve lineales, cuadráticas y sistemas 2×2 con discriminante, fórmula cuadrática y eliminación gaussiana |
+| **Pro-CAS Engine** | Motor CAS completo: solver ecuaciones, derivadas e integrales simbólicas, DAG hash-consed, simplificador multi-pass, pasos en PSRAM |
+| **EquationsApp** | Resuelve lineales, cuadráticas y sistemas 2×2 (lineales + no lineales via resultante Sylvester) |
+| **CalculusApp** | Derivadas simbólicas con 17 reglas, simplificación automática y pasos detallados |
+| **IntegralApp** | Integrales simbólicas (Slagle): tabla, linealidad, u-sub, partes (LIATE), resultado +C |
 | **Natural Display** | Fracciones reales, raíces, potencias, cursores 2D — renderizado matemático como en papel |
 | **Graficadora y=f(x)** | Plotter en tiempo real con zoom, pan y tabla de valores |
-| **53 Tests Unitarios CAS** | Suite completa de tests para el CAS-Lite, activable/desactivable vía flag de compilación |
+| **53 Tests Unitarios CAS** | Suite completa de tests para el Pro-CAS, activable/desactivable vía flag de compilación |
 | **PSRAMAllocator** | CAS usa `PSRAMAllocator<T>` para aislar uso de memoria en los 8 MB PSRAM OPI |
 | **Variables A-Z + Ans** | Persistencia en LittleFS — 216 bytes en `/vars.dat` |
 | **SerialBridge** | Control completo de la calculadora desde PC vía Serial Monitor sin hardware físico |
@@ -102,25 +104,33 @@
 │  │  │  Grid    │  │  Historial 32    │  │  Tabla de valores      │  │  │
 │  │  └──────────┘  └──────────────────┘  └────────────────────────┘  │  │
 │  │  ┌──────────────────────────────────────────────────────────────┐ │  │
-│  │  │              EquationsApp  ★ CAS-Lite                        │ │  │
-│  │  │       Lineal · Cuadrática · Sistema 2×2                      │ │  │
-│  │  │       Discriminante · Fórmula cuadrática · Gauss             │ │  │
+│  │  │              EquationsApp  ★ Pro-CAS                         │ │  │
+│  │  │       Lineal · Cuadrática · Sistema 2×2 (lineal + NL)       │ │  │
+│  │  │       Discriminante · Fórmula cuadrática · Gauss ·Resultant │ │  │
 │  │  │       Pasos detallados en PSRAM · Natural Display            │ │  │
 │  │  └──────────────────────────────────────────────────────────────┘ │  │
-│  │  [ Sequences · Statistics · Regression · Table · Probability ]    │  │
-│  │  [ Settings · Python (placeholder) ]                              │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐ │  │
+│  │  │   CalculusApp ★ Pro-CAS    │    IntegralApp ★ Pro-CAS       │ │  │
+│  │  │   Derivadas simbólicas     │    Integrales simbólicas       │ │  │
+│  │  │   17 reglas · Simplif.     │    Tabla·Lineal·U-sub·Partes  │ │  │
+│  │  │   Pasos · Natural Display  │    +C · ∫ · Natural Display   │ │  │
+│  │  └──────────────────────────────────────────────────────────────┘ │  │
+│  │  [ Sequences · Regression · Table · Probability · Settings ]      │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                          │
 │  ┌──────────────────────────┐  ┌─────────────────────────────────────┐  │
-│  │      Math Engine         │  │       CAS-Lite Engine  ★ NUEVO     │  │
+│  │      Math Engine         │  │       Pro-CAS Engine  ★ COMPLETO   │  │
 │  │                          │  │                                     │  │
-│  │  Tokenizer               │  │  PSRAMAllocator<T>                  │  │
-│  │  Parser (Shunting-Yard)  │  │  SymPoly (polinomios simbólicos)    │  │
-│  │  Evaluator (RPN)         │  │  ASTFlattener (AST → SymPoly)       │  │
-│  │  ExprNode (AST visual)   │  │  SingleSolver (lineal/cuadrática)   │  │
-│  │  VariableContext A-Z     │  │  SystemSolver (2×2 gaussiana)       │  │
-│  │  EquationSolver (N-R)    │  │  CASStepLogger (steps en PSRAM)     │  │
-│  └──────────────────────────┘  │  SymToAST (CAS → Natural Display)   │  │
+│  │  Tokenizer               │  │  CASInt / CASRational (BigNum)      │  │
+│  │  Parser (Shunting-Yard)  │  │  SymExpr DAG (hash-consed)          │  │
+│  │  Evaluator (RPN)         │  │  ConsTable (dedup PSRAM)             │  │
+│  │  ExprNode (AST visual)   │  │  SymSimplify (8-pass fixed-point)   │  │
+│  │  VariableContext A-Z     │  │  SymDiff (17 reglas derivación)     │  │
+│  │  EquationSolver (N-R)    │  │  SymIntegrate (Slagle heurístico)  │  │
+│  └──────────────────────────┘  │  OmniSolver (aislamiento analítico) │  │
+│                                │  SymPolyMulti (resultante Sylvester)│  │
+│                                │  CASStepLogger (pasos en PSRAM)     │  │
+│                                │  SymExprToAST (CAS → Natural Disp.) │  │
 │                                └─────────────────────────────────────┘  │
 │  ┌──────────────────────────┐  ┌─────────────────────────────────────┐  │
 │  │     Display Layer        │  │          Input Layer                │  │
@@ -140,55 +150,91 @@
 
 ---
 
-## CAS-Lite Engine
+## Pro-CAS Engine
 
-El **CAS-Lite** (Computer Algebra System Lite) es el motor de álgebra simbólica propio de NumOS. Fue diseñado con tres principios: funcionar completamente en PSRAM para no afectar la RAM interna, producir pasos legibles por el usuario, e integrarse con el Natural Display existente a través del bridge `SymToAST`.
+El **Pro-CAS** (Computer Algebra System) es el motor de álgebra simbólica completo de NumOS. Evolución del CAS-Lite original, implementa un DAG inmutable con hash-consing, aritmética bignum overflow-safe, simplificación multi-pass con punto fijo, derivación simbólica, integración simbólica (Slagle), y resolución de sistemas no lineales via resultante de Sylvester. Toda la memoria CAS vive en PSRAM.
 
-### Pipeline CAS
+### Pipeline CAS (Derivadas)
 
 ```
-Entrada del usuario (EquationsApp):
-  "x^2 - 5x + 6 = 0"
+Entrada del usuario (CalculusApp):
+  "x^3 + sin(x)"
            │
            ▼
   ┌──────────────────┐
-  │   Math Engine    │  ExprNode AST visual
-  │  (Parser+Tokens) │  ─────────────────►  [x², -5x, +6]  |  [0]
+  │   Math Engine    │  MathAST visual (VPAM)
+  │  (Parser+Tokens) │  ─────────────────►
   └──────────────────┘
            │
            ▼
   ┌──────────────────┐
-  │  ASTFlattener    │  MathAST → SymPoly
-  │                  │  ─────────────────►  SymPoly{ x²:1, x:-5, 1:6 }
+  │  ASTFlattener    │  MathAST → SymExpr DAG (hash-consed)
   └──────────────────┘
            │
            ▼
   ┌──────────────────┐
-  │  SingleSolver    │  grado 2 → fórmula cuadrática analítica
-  │                  │  ─────────────────►  x₁=2, x₂=3  +  pasos PSRAM
+  │    SymDiff       │  d/dx → 3x² + cos(x)
   └──────────────────┘
            │
            ▼
   ┌──────────────────┐
-  │    SymToAST      │  SolveResult → ExprNode
-  │                  │  ─────────────────►  Natural Display:  x₁ = 2
+  │  SymSimplify     │  8-pass fixed-point simplification
   └──────────────────┘
            │
            ▼
-  EquationsApp renderiza resultado + pantalla de pasos detallados
+  ┌──────────────────┐
+  │  SymExprToAST    │  SymExpr → MathAST Natural Display
+  └──────────────────┘
+           │
+           ▼
+  MathCanvas renderiza: 3x² + cos(x)
 ```
 
-### Componentes CAS
+### Pipeline CAS (Integrales)
+
+```
+Entrada del usuario (IntegralApp):
+  "x · cos(x)"
+           │
+           ▼
+  ASTFlattener → SymExpr DAG
+           │
+           ▼
+  ┌──────────────────┐
+  │  SymIntegrate    │  Estrategias: tabla → linealidad →
+  │  (Slagle)        │  u-sustitución → partes (LIATE)
+  └──────────────────┘
+           │
+           ▼
+  SymSimplify → SymExprToAST::convertIntegral()
+           │
+           ▼
+  MathCanvas renderiza: x·sin(x) + cos(x) + C
+```
+
+### Componentes Pro-CAS
 
 | Módulo | Archivo | Responsabilidad |
 |:-------|:--------|:----------------|
-| `PSRAMAllocator<T>` | `cas/PSRAMAllocator.h` | STL allocator que redirige `allocate`/`deallocate` a `ps_malloc`/`ps_free`. Aísla toda la memoria CAS en los 8 MB PSRAM OPI. |
-| `SymPoly` | `cas/SymPoly.h/.cpp` | Polinomio simbólico en variable única. Coeficientes `Rational` (fracción exacta `p/q`). Soporta suma, resta, multiplicación, derivación, evaluación numérica. |
-| `ASTFlattener` | `cas/ASTFlattener.h/.cpp` | Recorre el `ExprNode` AST visual y lo convierte en un `SymPoly`. Detecta grado, variable principal, constantes π y e. |
-| `SingleSolver` | `cas/SingleSolver.h/.cpp` | Resuelve ecuaciones polinomiales: grado 1 → lineal directa; grado 2 → fórmula cuadrática analítica con discriminante; grado ≥ 3 → Newton-Raphson numérico. Genera `CASStep` detallados. |
-| `SystemSolver` | `cas/SystemSolver.h/.cpp` | Resuelve sistemas 2×2 lineales por eliminación gaussiana simbólica. Detecta sistemas indeterminados e incompatibles. |
-| `CASStepLogger` | `cas/CASStepLogger.h/.cpp` | Acumula pasos en `StepVec` (`std::vector<CASStep, PSRAMAllocator>`). Cada `CASStep` tiene tipo (INFO / FORMULA / RESULT / ERROR) y texto. `.clear()` libera PSRAM. |
-| `SymToAST` | `cas/SymToAST.h/.cpp` | Bridge inverso: convierte `SolveResult` (raíces `Rational`) en `ExprNode` para renderizado Natural Display en la `EquationsApp`. |
+| `CASInt` | `cas/CASInt.h` | BigInt híbrido: `int64_t` fast-path + `mbedtls_mpi` en overflow |
+| `CASRational` | `cas/CASRational.h/.cpp` | Fracción exacta overflow-safe (num/den con auto-GCD) |
+| `PSRAMAllocator<T>` | `cas/PSRAMAllocator.h` | STL allocator → `ps_malloc`/`ps_free` para PSRAM |
+| `SymExpr` DAG | `cas/SymExpr.h/.cpp` | Árbol simbólico inmutable con hash (`_hash`) y peso (`_weight`) |
+| `ConsTable` | `cas/ConsTable.h` | Tabla hash-consing PSRAM: dedup de nodos idénticos |
+| `SymExprArena` | `cas/SymExprArena.h` | Bump allocator PSRAM (16 blocks × 64 KB) + ConsTable integrado |
+| `ASTFlattener` | `cas/ASTFlattener.h/.cpp` | MathAST (VPAM) → SymExpr DAG con hash-consing |
+| `SymDiff` | `cas/SymDiff.h/.cpp` | Derivación simbólica: 17 reglas (cadena, producto, cociente, trig, exp, log) |
+| `SymIntegrate` | `cas/SymIntegrate.h/.cpp` | Integración Slagle: tabla, linealidad, u-sustitución, partes (LIATE) |
+| `SymSimplify` | `cas/SymSimplify.h/.cpp` | Simplificador multi-pass (8 iteraciones, fixed-point, trig/log/exp) |
+| `SymPoly` | `cas/SymPoly.h/.cpp` | Polinomio simbólico univariable con coeficientes `CASRational` |
+| `SymPolyMulti` | `cas/SymPolyMulti.h/.cpp` | Polinomio multivariable + resultante de Sylvester |
+| `SingleSolver` | `cas/SingleSolver.h/.cpp` | Ecuación 1 var: lineal / cuadrática / N-R |
+| `SystemSolver` | `cas/SystemSolver.h/.cpp` | Sistema 2×2: gaussiana + no lineal (resultante) |
+| `OmniSolver` | `cas/OmniSolver.h/.cpp` | Aislamiento analítico de variable: inversas, raíces, trig |
+| `HybridNewton` | `cas/HybridNewton.h/.cpp` | Newton-Raphson con Jacobiana simbólica |
+| `CASStepLogger` | `cas/CASStepLogger.h/.cpp` | `StepVec` en PSRAM — pasos detallados (INFO/FORMULA/RESULT/ERROR) |
+| `SymToAST` | `cas/SymToAST.h/.cpp` | Bridge: `SolveResult` → MathAST Natural Display |
+| `SymExprToAST` | `cas/SymExprToAST.h/.cpp` | Bridge: `SymExpr` → MathAST. Incluye `convertIntegral()` (+C) |
 
 ### Tests CAS — 53 unitarios
 
@@ -217,7 +263,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 | **Pantalla** | ILI9341 IPS TFT 3.2" — 320×240 px — SPI @ 10 MHz |
 | **Bus SPI** | FSPI (SPI2): MOSI=13, SCLK=12, CS=10, DC=4, RST=5 |
 | **Backlight** | GPIO 45 — cableado fijo a 3.3V (`pinMode(45, INPUT)`) |
-| **Teclado** | Matriz 6×8 = 48 teclas — Filas: GPIO 1–6 · Cols: GPIO 38–42, 47, 48, 21 |
+| **Teclado** | Matriz 5×10 (3 cols cableadas) — Filas OUTPUT: GPIO 1,2,41,42,40 · Cols INPUT_PULLUP: GPIO 6,7,8… |
 | **Almacenamiento** | LittleFS en partición dedicada — variables A-Z persistentes |
 | **USB** | USB-CDC nativo del S3 — 115 200 baud |
 
@@ -230,24 +276,21 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 | MOSI | 13 | FSPI Data In |
 | SCLK | 12 | FSPI Clock |
 | CS | 10 | Chip Select (activo LOW) |
-| DC | **4** | Data/Command ⚠ Conflicto ROW 3 |
-| RST | **5** | Reset ⚠ Conflicto ROW 4 |
+| DC | **4** | Data/Command |
+| RST | **5** | Reset |
 | BL | 45 | Cableado fijo a 3.3V — siempre INPUT |
 
-#### Teclado Matricial 6×8
+#### Teclado Matricial 5×10 (driver `Keyboard`, Fase 7)
 
-| Fila | GPIO | Columna | GPIO |
-|:-----|:----:|:--------|:----:|
-| ROW 0 | 1 | COL 0 | 38 |
-| ROW 1 | 2 | COL 1 | 39 |
-| ROW 2 | 3 | COL 2 | 40 |
-| ROW 3 | **4** ⚠ TFT DC | COL 3 | 41 |
-| ROW 4 | **5** ⚠ TFT RST | COL 4 | 42 |
-| ROW 5 | 6 | COL 5 | 47 |
-| — | — | COL 6 | 48 |
-| — | — | COL 7 | 21 |
+| Fila | GPIO | Rol | Columna | GPIO | Rol |
+|:-----|:----:|:----|:--------|:----:|:----|
+| ROW 0 | 1 | OUTPUT | COL 0 | 6 | INPUT_PULLUP |
+| ROW 1 | 2 | OUTPUT | COL 1 | 7 | INPUT_PULLUP |
+| ROW 2 | 41 | OUTPUT | COL 2 | 8 | INPUT_PULLUP |
+| ROW 3 | 42 | OUTPUT | COL 3–9 | 3,15,16,17,18,21,47 | no cableadas aún |
+| ROW 4 | 40 | OUTPUT | — | — | — |
 
-> ⚠️ **Conflicto crítico**: GPIO 4 (TFT_DC) y GPIO 5 (TFT_RST) coinciden con ROW3/ROW4. **Reasignar estas filas del teclado a GPIOs libres antes de soldar.**
+> ✅ **Conflicto GPIO 4/5 resuelto (2026-03-02)**: C0 y C1 del teclado reasignados de GPIO 4/5 (`TFT_DC`/`TFT_RST`) a GPIO 6/7. Las tres columnas actualmente cableadas usan GPIO 6, 7 y 8, sin conflicto con la pantalla.
 
 ---
 
@@ -296,7 +339,7 @@ Con el Serial Monitor abierto, escribe caracteres para controlar la calculadora:
 
 ## Manual de Usuario — EquationsApp
 
-La **EquationsApp** resuelve ecuaciones polinomiales de una variable y sistemas de 2 ecuaciones lineales con 2 incógnitas, mostrando los pasos de resolución completos usando el motor CAS-Lite.
+La **EquationsApp** resuelve ecuaciones polinomiales de una variable y sistemas de 2 ecuaciones con 2 incógnitas (lineales y no lineales), mostrando los pasos de resolución completos usando el motor Pro-CAS.
 
 ### Acceso
 
@@ -359,7 +402,9 @@ numOS/
 │   ├── apps/
 │   │   ├── CalculationApp.cpp/.h     # Calculadora Natural V.P.A.M.
 │   │   ├── GrapherApp.cpp/.h         # Graficadora y=f(x)
-│   │   └── EquationsApp.cpp/.h       # ★ NUEVO: CAS-Lite — Solver ecuaciones
+│   │   ├── EquationsApp.cpp/.h       # Pro-CAS — Solver ecuaciones
+│   │   ├── CalculusApp.cpp/.h        # Pro-CAS — Derivadas simbólicas
+│   │   └── IntegralApp.cpp/.h        # Pro-CAS — Integrales simbólicas
 │   ├── display/
 │   │   └── DisplayDriver.cpp/.h      # TFT_eSPI FSPI + LVGL init + DMA flush
 │   ├── input/
@@ -372,30 +417,48 @@ numOS/
 │   │   ├── Parser.cpp/.h             # Shunting-Yard → RPN / AST visual
 │   │   ├── Evaluator.cpp/.h          # Evaluador numérico RPN
 │   │   ├── ExprNode.h                # Árbol de expresión (Natural Display)
+│   │   ├── MathAST.h                 # V.P.A.M. tree: NodeRow/NodeFrac/NodePow..
+│   │   ├── CursorController.h/.cpp   # Cursor de edición para MathAST
 │   │   ├── EquationSolver.cpp/.h     # Newton-Raphson numérico
 │   │   ├── VariableContext.cpp/.h    # Variables A-Z + Ans
+│   │   ├── VariableManager.h/.cpp    # Gestión ExactVal persistente
 │   │   ├── StepLogger.cpp/.h         # Logger de pasos del parser
-│   │   └── cas/                      # ★ CAS-Lite Engine completo
+│   │   └── cas/                      # ★ Pro-CAS Engine completo
+│   │       ├── CASInt.h              # BigInt híbrido (int64+mbedtls_mpi)
+│   │       ├── CASRational.h/.cpp    # Fracción exacta overflow-safe
+│   │       ├── ConsTable.h           # Hash-consing PSRAM (dedup)
 │   │       ├── PSRAMAllocator.h      # STL allocator para PSRAM OPI
-│   │       ├── SymPoly.h/.cpp        # Polinomio simbólico (Rational)
-│   │       ├── ASTFlattener.h/.cpp   # ExprNode AST → SymPoly
+│   │       ├── SymExpr.h/.cpp        # DAG inmutable con hash + weight
+│   │       ├── SymExprArena.h        # Bump allocator + ConsTable
+│   │       ├── SymDiff.h/.cpp        # Derivación simbólica (17 reglas)
+│   │       ├── SymIntegrate.h/.cpp   # Integración Slagle (tabla/u-sub/partes)
+│   │       ├── SymSimplify.h/.cpp    # Simplificador fixed-point (8 passes)
+│   │       ├── SymPoly.h/.cpp        # Polinomio simbólico univariable
+│   │       ├── SymPolyMulti.h/.cpp   # Polinomio multivariable + resultante
+│   │       ├── ASTFlattener.h/.cpp   # MathAST → SymExpr DAG
 │   │       ├── SingleSolver.h/.cpp   # Solver lineal + cuadrático analítico
-│   │       ├── SystemSolver.h/.cpp   # Sistema 2×2 eliminación gaussiana
+│   │       ├── SystemSolver.h/.cpp   # Sistema 2×2 (lineal + NL resultante)
+│   │       ├── OmniSolver.h/.cpp     # Aislamiento analítico de variable
+│   │       ├── HybridNewton.h/.cpp   # Newton-Raphson con Jacobiana simbólica
 │   │       ├── CASStepLogger.h/.cpp  # Steps en PSRAM (StepVec)
-│   │       └── SymToAST.h/.cpp       # SolveResult → ExprNode visual
+│   │       ├── SymToAST.h/.cpp       # SolveResult → MathAST visual
+│   │       └── SymExprToAST.h/.cpp   # SymExpr → MathAST (+C, ∫)
 │   └── ui/
 │       ├── MainMenu.cpp/.h           # Launcher LVGL grid 3×N
+│       ├── MathRenderer.h/.cpp       # Renderizador 2D MathCanvas
+│       ├── StatusBar.h/.cpp          # Barra de estado LVGL
 │       ├── GraphView.cpp/.h          # Widget de graficado
 │       ├── Icons.h                   # Bitmaps de iconos de apps
 │       └── Theme.h                   # Paleta de colores y constantes UI
 ├── tests/
-│   ├── CASTest.h/.cpp                # ★ 53 tests unitarios CAS-Lite
+│   ├── CASTest.h/.cpp                # Tests unitarios CAS
 │   ├── HardwareTest.cpp              # Test TFT + teclado físico
 │   └── TokenizerTest_temp.cpp        # Test Tokenizer
 ├── docs/
+│   ├── CAS_UPGRADE_ROADMAP.md        # ★ Roadmap CAS Elite (6 fases, completo)
 │   ├── ROADMAP.md                    # Historial de fases + plan futuro
 │   ├── PROJECT_BIBLE.md              # Arquitectura maestra del software
-│   ├── MATH_ENGINE.md                # Motor matemático y CAS-Lite en detalle
+│   ├── MATH_ENGINE.md                # Motor matemático y Pro-CAS en detalle
 │   ├── HARDWARE.md                   # Pinout, wiring y bring-up ESP32-S3
 │   ├── CONSTRUCCION.md               # Guía de montaje físico
 │   └── DIMENSIONES_DISEÑO.md         # Especificaciones 3D del chasis
@@ -412,8 +475,8 @@ numOS/
 
 | Recurso | Usado | Total | Porcentaje |
 |:--------|------:|------:|:----------:|
-| **RAM** (data + bss) | 94 920 B | 327 680 B | **29.0 %** |
-| **Flash** (program storage) | 1 118 121 B | 6 553 600 B | **17.1 %** |
+| **RAM** (data + bss) | 94 948 B | 327 680 B | **29.0 %** |
+| **Flash** (program storage) | 1 215 025 B | 6 553 600 B | **18.5 %** |
 
 **Flash ahorrado vs modo tests:** −39 444 B al desactivar `-DCAS_RUN_TESTS`.
 
@@ -453,9 +516,10 @@ Problemas descubiertos y resueltos durante el bring-up. **Esenciales** para cual
 | **Fase 2** | Natural Display V.P.A.M. — fracciones, raíces, potencias, cursor 2D inteligente | ✅ Completo |
 | **Fase 3** | Launcher 3.0, SerialBridge, CalculationApp historial, GrapherApp zoom/pan | ✅ Completo |
 | **Fase 4** | LVGL 9.x — HW bring-up ESP32-S3, DMA, splash screen animado, launcer iconos | ✅ Completo |
-| **Fase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI | ✅ **Completo** |
+| **Fase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI | ✅ Completo |
+| **CAS Elite** | Pro-CAS: BigNum, DAG hash-consed, SymDiff 17 reglas, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver, CalculusApp + IntegralApp | ✅ **Completo** |
 | **Fase 6** | Statistics, Regression, Sequences, Probability, Settings App | 🔲 Planificado |
-| **Fase 7** | CAS avanzado: derivadas, integrales, matrices, números complejos, base conversions | 🔲 Planificado |
+| **Fase 7** | Matrices, números complejos, base conversions | 🔲 Planificado |
 | **Fase 8** | Teclado físico, PCB propia, batería recargable, carcasa 3D, WiFi OTA | 🔲 Planificado |
 
 ---
@@ -481,7 +545,9 @@ Problemas descubiertos y resueltos durante el bring-up. **Esenciales** para cual
 |:---------------|:---------:|:--------:|:-------------:|:-----------:|
 | Open Source | ✅ MIT | ✅ MIT | ❌ | ❌ |
 | Natural Display | ✅ | ✅ | ✅ | ✅ |
-| CAS Simbólico | ✅ Lite | ✅ SymPy | ❌ | ✅ |
+| CAS Simbólico | ✅ Pro | ✅ SymPy | ❌ | ✅ |
+| Derivadas simbólicas | ✅ | ✅ | ❌ | ✅ |
+| Integrales simbólicas | ✅ | ✅ | ❌ | ✅ |
 | Pasos de resolución | ✅ | ❌ | ❌ | ✅ |
 | Graficadora color | ✅ | ✅ | ✅ | ✅ |
 | Multi-función gráfica | 🔲 | ✅ | ✅ | ✅ |
@@ -504,7 +570,8 @@ Problemas descubiertos y resueltos durante el bring-up. **Esenciales** para cual
 |:----------|:------------|
 | [ROADMAP.md](docs/ROADMAP.md) | Historial completo de fases, hitos y plan detallado de futuro |
 | [PROJECT_BIBLE.md](docs/PROJECT_BIBLE.md) | Arquitectura maestra, módulos, convenciones de código y guías de desarrollo |
-| [MATH_ENGINE.md](docs/MATH_ENGINE.md) | Motor matemático + CAS-Lite: diseño, algoritmos, pipeline y ejemplos |
+| [CAS_UPGRADE_ROADMAP.md](docs/CAS_UPGRADE_ROADMAP.md) | Roadmap completo de las 6 fases del upgrade CAS Elite |
+| [MATH_ENGINE.md](docs/MATH_ENGINE.md) | Motor matemático + Pro-CAS: diseño, algoritmos, pipeline y ejemplos |
 | [HARDWARE.md](docs/HARDWARE.md) | Pinout ESP32-S3, wiring completo, bugs críticos y notas de bring-up |
 | [CONSTRUCCION.md](docs/CONSTRUCCION.md) | Guía de montaje físico, impresión 3D y test de hardware |
 | [DIMENSIONES_DISEÑO.md](docs/DIMENSIONES_DISEÑO.md) | Especificaciones dimensionales para el chasis 3D |
@@ -530,9 +597,9 @@ NumOS es un proyecto open-source que aspira a crecer en comunidad. ¡Las contrib
 | **Regression App** | Regresión lineal/cuadrática con coeficiente R² |
 | **Sequences App** | Sucesiones aritméticas y geométricas, término N, suma parcial |
 | **Settings App** | Modo angular DEG/RAD/GRA, brillo, reset de fábrica |
-| **CAS avanzado** | Derivadas simbólicas, integrales definidas, simplificación |
+| **CAS avanzado** | ~~Derivadas e integrales simbólicas~~ ✅ Hecho — pendiente: integrales definidas, series |
 | **Matrices** | Editor de matrices, determinante, inversa, multiplicación |
-| **Teclado físico** | Resolver conflicto GPIO 4/5, integrar KeyMatrix → LvglKeypad |
+| **Teclado físico** | ✅ Conflicto GPIO 4/5 resuelto — driver `Keyboard` 5×10 implementado (Fase 7) |
 | **PCB propia** | Esquema KiCad con ESP32-S3 integrado + cargador TP4056 |
 
 ---

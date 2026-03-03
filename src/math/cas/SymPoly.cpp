@@ -19,19 +19,27 @@ namespace cas {
 // ════════════════════════════════════════════════════════════════════
 
 SymTerm::SymTerm()
-    : coeff(vpam::ExactVal::fromInt(0)), var('\0'), power(0) {}
+    : coeff(CASRational::zero()), var('\0'), power(0) {}
 
+SymTerm::SymTerm(CASRational c, char v, int16_t p)
+    : coeff(c), var(v), power(p) {}
+
+// Legacy bridge constructor
 SymTerm::SymTerm(vpam::ExactVal c, char v, int16_t p)
-    : coeff(c), var(v), power(p) {
-    simplifyCoeff();
-}
+    : coeff(c.ok ? CASRational(c.num, c.den) : CASRational::makeError()),
+      var(v), power(p) {}
 
-SymTerm SymTerm::constant(vpam::ExactVal c) {
+SymTerm SymTerm::constant(CASRational c) {
     return SymTerm(c, '\0', 0);
 }
 
+SymTerm SymTerm::constant(vpam::ExactVal c) {
+    return SymTerm(c.ok ? CASRational(c.num, c.den) : CASRational::makeError(),
+                   '\0', 0);
+}
+
 SymTerm SymTerm::variable(char v, int64_t coeffNum, int64_t coeffDen, int16_t p) {
-    return SymTerm(vpam::ExactVal::fromFrac(coeffNum, coeffDen), v, p);
+    return SymTerm(CASRational::fromFrac(coeffNum, coeffDen), v, p);
 }
 
 bool SymTerm::isConstant() const {
@@ -50,13 +58,12 @@ bool SymTerm::isLikeTerm(const SymTerm& other) const {
 }
 
 void SymTerm::negate() {
-    coeff = vpam::exactNeg(coeff);
-    simplifyCoeff();
+    coeff = CASRational::neg(coeff);
 }
 
 void SymTerm::simplifyCoeff() {
-    coeff.simplify();
-    coeff.simplifyRadical();
+    // CASRational is always normalized — no-op.
+    // Kept for API compatibility during transition.
 }
 
 std::string SymTerm::toString() const {
@@ -65,31 +72,23 @@ std::string SymTerm::toString() const {
     // Handle zero
     if (coeff.isZero()) return "0";
 
+    // Convert to ExactVal for display (uses legacy rendering)
+    vpam::ExactVal ev = coeff.toExactVal();
+
     // Determine sign and absolute coefficient
-    bool negative = coeff.num < 0;
-    int64_t absNum = negative ? -coeff.num : coeff.num;
-    int64_t den = coeff.den;
+    bool negative = ev.num < 0;
+    int64_t absNum = negative ? -ev.num : ev.num;
+    int64_t den = ev.den;
 
     // Coefficient part
-    bool isOne = (absNum == 1 && den == 1 && coeff.outer == 1 &&
-                  coeff.inner == 1 && coeff.piMul == 0 && coeff.eMul == 0);
+    bool isUnitCoeff = (absNum == 1 && den == 1);
 
     if (negative) result += "-";
 
     // For constants or non-unit coefficients, print the number
-    if (isConstant() || !isOne) {
+    if (isConstant() || !isUnitCoeff) {
         if (den == 1) {
-            if (coeff.outer != 1 || coeff.inner != 1) {
-                // Radical form
-                if (coeff.outer != 1)
-                    result += std::to_string(absNum * coeff.outer);
-                else
-                    result += std::to_string(absNum);
-                if (coeff.inner > 1)
-                    result += "√" + std::to_string(coeff.inner);
-            } else {
-                result += std::to_string(absNum);
-            }
+            result += std::to_string(absNum);
         } else {
             // Fraction
             result += "(" + std::to_string(absNum) + "/" + std::to_string(den) + ")";
@@ -147,11 +146,16 @@ SymPoly& SymPoly::operator=(SymPoly&& other) noexcept {
 
 // ── Factory helpers ────────────────────────────────────────────────
 
-SymPoly SymPoly::fromConstant(vpam::ExactVal c) {
+SymPoly SymPoly::fromConstant(CASRational c) {
     SymPoly p;
     p._terms.push_back(SymTerm::constant(c));
     p.normalize();
     return p;
+}
+
+SymPoly SymPoly::fromConstant(vpam::ExactVal c) {
+    return fromConstant(c.ok ? CASRational(c.num, c.den)
+                             : CASRational::makeError());
 }
 
 SymPoly SymPoly::fromTerm(const SymTerm& t) {
@@ -195,9 +199,8 @@ void SymPoly::normalize() {
         SymTerm acc = _terms[i];
         size_t j = i + 1;
         while (j < _terms.size() && acc.isLikeTerm(_terms[j])) {
-            // Add coefficients
-            acc.coeff = vpam::exactAdd(acc.coeff, _terms[j].coeff);
-            acc.simplifyCoeff();  // GCD after each add to prevent overflow
+            // Add coefficients using CASRational
+            acc.coeff = CASRational::add(acc.coeff, _terms[j].coeff);
             ++j;
         }
         merged.push_back(acc);
@@ -242,13 +245,17 @@ int16_t SymPoly::degree() const {
     return maxPow;
 }
 
-vpam::ExactVal SymPoly::coeffAt(int16_t power) const {
+vpam::ExactVal SymPoly::coeffAtExact(int16_t power) const {
+    return coeffAt(power).toExactVal();
+}
+
+CASRational SymPoly::coeffAt(int16_t power) const {
     for (auto& t : _terms) {
         // Match: same power, and handle constants correctly
         if (power == 0 && t.isConstant()) return t.coeff;
         if (!t.isConstant() && t.power == power) return t.coeff;
     }
-    return vpam::ExactVal::fromInt(0);
+    return CASRational::zero();
 }
 
 // ── Arithmetic ─────────────────────────────────────────────────────
@@ -293,7 +300,7 @@ SymPoly SymPoly::negate() const {
     return result;
 }
 
-SymPoly SymPoly::mulScalar(const vpam::ExactVal& scalar) const {
+SymPoly SymPoly::mulScalar(const CASRational& scalar) const {
     if (scalar.isZero()) {
         return SymPoly(_var);  // zero polynomial
     }
@@ -303,8 +310,7 @@ SymPoly SymPoly::mulScalar(const vpam::ExactVal& scalar) const {
 
     for (auto& t : _terms) {
         SymTerm scaled = t;
-        scaled.coeff = vpam::exactMul(scaled.coeff, scalar);
-        scaled.simplifyCoeff();  // GCD after multiply
+        scaled.coeff = CASRational::mul(scaled.coeff, scalar);
         result._terms.push_back(scaled);
     }
 
@@ -312,9 +318,13 @@ SymPoly SymPoly::mulScalar(const vpam::ExactVal& scalar) const {
     return result;
 }
 
+SymPoly SymPoly::mulScalar(const vpam::ExactVal& scalar) const {
+    return mulScalar(scalar.ok ? CASRational(scalar.num, scalar.den)
+                               : CASRational::makeError());
+}
+
 SymPoly SymPoly::mul(const SymPoly& rhs) const {
     // (a₁ + a₂ + ...) × (b₁ + b₂ + ...) = Σᵢ Σⱼ aᵢ·bⱼ
-    // Each pair of terms: coeff₁·coeff₂ · var^(p₁+p₂)
     if (isZero() || rhs.isZero()) {
         return SymPoly(_var);
     }
@@ -325,8 +335,7 @@ SymPoly SymPoly::mul(const SymPoly& rhs) const {
     for (auto& a : _terms) {
         for (auto& b : rhs._terms) {
             SymTerm product;
-            product.coeff = vpam::exactMul(a.coeff, b.coeff);
-            product.simplifyCoeff();  // GCD after multiply
+            product.coeff = CASRational::mul(a.coeff, b.coeff);
 
             // Determine variable and power
             if (a.isConstant() && b.isConstant()) {
@@ -352,8 +361,7 @@ SymPoly SymPoly::mul(const SymPoly& rhs) const {
     return result;
 }
 
-SymPoly SymPoly::divScalar(const vpam::ExactVal& scalar) const {
-    // Division by zero → return error polynomial (empty with flag)
+SymPoly SymPoly::divScalar(const CASRational& scalar) const {
     if (scalar.isZero()) {
         return SymPoly(_var);  // returns zero/empty poly
     }
@@ -361,16 +369,19 @@ SymPoly SymPoly::divScalar(const vpam::ExactVal& scalar) const {
     SymPoly result(_var);
     result._terms.reserve(_terms.size());
 
-    // Distribute: (ax^n + bx^m + ...) / k = (a/k)x^n + (b/k)x^m + ...
     for (auto& t : _terms) {
         SymTerm divided = t;
-        divided.coeff = vpam::exactDiv(divided.coeff, scalar);
-        divided.simplifyCoeff();  // GCD after division
+        divided.coeff = CASRational::div(divided.coeff, scalar);
         result._terms.push_back(divided);
     }
 
     result.normalize();
     return result;
+}
+
+SymPoly SymPoly::divScalar(const vpam::ExactVal& scalar) const {
+    return divScalar(scalar.ok ? CASRational(scalar.num, scalar.den)
+                               : CASRational::makeError());
 }
 
 // ── Display ────────────────────────────────────────────────────────
@@ -392,7 +403,7 @@ std::string SymPoly::toString() const {
             result += termStr;
         } else {
             // Subsequent terms: add + or - separator
-            if (t.coeff.num < 0) {
+            if (t.coeff.isNegative()) {
                 // Term already has minus sign from toString()
                 result += " " + termStr;
             } else {

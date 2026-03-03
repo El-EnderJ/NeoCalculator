@@ -146,7 +146,7 @@
    Solo los que NumOS usa activamente.
  *====================*/
 
-#define LV_USE_ARC          0
+#define LV_USE_ARC          1
 #define LV_USE_BAR          0
 #define LV_USE_BTN          1   /* Botones del grid de apps */
 #define LV_USE_BTNMATRIX    0
@@ -166,7 +166,7 @@
 #define LV_USE_SLIDER       0
 #define LV_USE_SPAN         0
 #define LV_USE_SPINBOX      0
-#define LV_USE_SPINNER      0
+#define LV_USE_SPINNER      1
 #define LV_USE_SWITCH       0
 #define LV_USE_TABLE        0
 #define LV_USE_TABVIEW      0
@@ -219,6 +219,19 @@
 /** Screenshot / monkey test — deshabilitados en producción */
 #define LV_USE_SNAPSHOT     0
 #define LV_USE_MONKEY       0
+
+/*====================
+   PERFORMANCE MONITOR
+   Muestra FPS y CPU% en una esquina de la pantalla.
+   Desactivar tras verificar el rendimiento (poner a 0).
+ *====================*/
+#define LV_USE_SYSMON            1
+#if LV_USE_SYSMON
+  #define LV_USE_PERF_MONITOR    1
+  #if LV_USE_PERF_MONITOR
+    #define LV_USE_PERF_MONITOR_POS  LV_ALIGN_BOTTOM_RIGHT
+  #endif
+#endif
 
 #endif /* LV_CONF_H */
 #endif /* Enable/Disable content */

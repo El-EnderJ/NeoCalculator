@@ -46,7 +46,7 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable) {
 
     if (deg <= 0) {
         // Constant equation (e.g., 5 = 0 → no variable terms)
-        ExactVal constVal = normalized.lhs.coeffAt(0);
+        ExactVal constVal = normalized.lhs.coeffAtExact(0);
         if (constVal.isZero()) {
             result.steps.logNote("Identidad: 0 = 0 (infinitas soluciones)", MethodId::General);
             result.ok    = true;
@@ -104,8 +104,8 @@ SymEquation SingleSolver::normalize(const SymEquation& eq, CASStepLogger& log) {
 bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& result) {
     const SymPoly& f = eq.lhs;   // f(x) = ax + b = 0
 
-    ExactVal a = f.coeffAt(1);   // coefficient of x
-    ExactVal b = f.coeffAt(0);   // constant term
+    ExactVal a = f.coeffAtExact(1);   // coefficient of x
+    ExactVal b = f.coeffAtExact(0);   // constant term
 
     // Should not happen, but guard
     if (a.isZero()) {
@@ -155,9 +155,9 @@ bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& res
 bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& result) {
     const SymPoly& f = eq.lhs;
 
-    ExactVal a = f.coeffAt(2);   // x² coefficient
-    ExactVal b = f.coeffAt(1);   // x  coefficient
-    ExactVal c = f.coeffAt(0);   // constant
+    ExactVal a = f.coeffAtExact(2);   // x² coefficient
+    ExactVal b = f.coeffAtExact(1);   // x  coefficient
+    ExactVal c = f.coeffAtExact(0);   // constant
 
     if (a.isZero()) {
         result.error = "Coeficiente cuadratico es cero";

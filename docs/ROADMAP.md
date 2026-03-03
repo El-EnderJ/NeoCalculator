@@ -1,359 +1,384 @@
-﻿# NumOS — Project Roadmap
+# NumOS — Project Roadmap
 
-> **Última actualización:** Febrero 2026
+> **Last update:** February 2026
 >
-> Registro histórico y plan de futuro de NumOS. Cada fase construye sobre la anterior hasta alcanzar una calculadora científica open-source que rivalice con las mejores del mercado.
+> Historical record and future plan for NumOS. Each phase builds upon the previous one until achieving an open-source scientific calculator that rivals the best on the market.
 
 ---
 
-## Progreso General
+## General Progress
 
-| Fase | Descripción | Estado | % |
+| Phase | Description | Status | % |
 |:-----|:------------|:------:|:-:|
-| **Fase 1** | Cimientos — Math Engine y Drivers | ✅ Completo | 100% |
-| **Fase 2** | Natural Display V.P.A.M. y Navegación 2D | ✅ Completo | 100% |
-| **Fase 3** | Launcher 3.0, SerialBridge y Documentación | ✅ Completo | 100% |
-| **Fase 4** | Migración a LVGL 9.x — HW Bring-Up ESP32-S3 | ✅ Completo | 100% |
-| **Fase 5** | CAS-Lite Engine + EquationsApp | ✅ **Completo** | 100% |
-| **Fase 6** | Apps Científicas Completas + Settings | 🔲 Planificado | 0% |
-| **Fase 7** | CAS Avanzado + Matrices + Complejos | 🔲 Planificado | 0% |
-| **Fase 8** | Hardware Final + Conectividad + Scripting | 🔲 Planificado | 0% |
+| **Phase 1** | Foundations — Math Engine and Drivers | ✅ Complete | 100% |
+| **Phase 2** | Natural Display V.P.A.M. and 2D Navigation | ✅ Complete | 100% |
+| **Phase 3** | Launcher 3.0, SerialBridge and Documentation | ✅ Complete | 100% |
+| **Phase 4** | Migration to LVGL 9.x — HW Bring-Up ESP32-S3 | ✅ Complete | 100% |
+| **Phase 5** | CAS-Lite Engine + EquationsApp | ✅ Complete | 100% |
+| **CAS Elite** | Pro-CAS: BigNum, DAG, Derivatives, Integrals, CalculusApp, IntegralApp | ✅ **Complete** | 100% |
+| **Phase 6** | Complete Scientific Apps + Settings | 🔲 Planned | 0% |
+| **Phase 7** | Matrices + Complex + Bases | 🔲 Planned | 0% |
+| **Phase 8** | Final Hardware + Connectivity + Scripting | 🔲 Planned | 0% |
 
 ---
 
-## Historial de Hitos
+## Milestone History
 
-| Fecha | Hito |
+| Date | Milestone |
 |:------|:-----|
-| Nov 2025 | Primer cálculo numérico correcto en terminal serie |
-| Dic 2025 | Natural Display con fracciones reales apiladas en pantalla TFT |
-| Ene 2026 | Launcher 3.0 con 10 apps registradas y scroll vertical |
-| Feb 2026 | HW bring-up completo: 6 bugs críticos ESP32-S3 resueltos |
-| Feb 2026 | LVGL 9.x operativo — Launcher con iconos en ILI9341 IPS |
-| Feb 2026 | Splash screen animado + SerialBridge + LittleFS en producción |
-| **Feb 2026** | **CAS-Lite Engine completo: SymPoly · SingleSolver · SystemSolver · 53 tests** |
-| **Feb 2026** | **EquationsApp UI: lineal, cuadrática, sistema 2×2 con pasos en PSRAM** |
-| **Feb 2026** | **Producción activa: RAM 29.0% · Flash 17.1% · tests desactivados** |
+| Nov 2025 | First correct numerical calculation in serial terminal |
+| Dec 2025 | Natural Display with stacked real fractions on TFT screen |
+| Jan 2026 | Launcher 3.0 with 10 registered apps and vertical scroll |
+| Feb 2026 | Complete HW bring-up: 6 critical ESP32-S3 bugs resolved |
+| Feb 2026 | LVGL 9.x operational — Launcher with icons on ILI9341 IPS |
+| Feb 2026 | Animated splash screen + SerialBridge + LittleFS in production |
+| **Feb 2026** | **Complete CAS-Lite Engine: SymPoly · SingleSolver · SystemSolver · 53 tests** |
+| **Feb 2026** | **EquationsApp UI: linear, quadratic, 2×2 system with steps in PSRAM** |
+| **Feb 2026** | **Pro-CAS Engine: CASInt, CASRational, SymExpr DAG, ConsTable, SymDiff (17 rules), SymIntegrate (Slagle), SymSimplify 8-pass, OmniSolver, SymPolyMulti (resultant)** |
+| **Feb 2026** | **CalculusApp: symbolic derivatives with Natural Display and steps** |
+| **Feb 2026** | **IntegralApp: Slagle integrals (table/u-sub/parts), +C, steps** |
+| **Feb 2026** | **Active production: RAM 29.0% · Flash 18.5% · tests disabled** |
 
 ---
 
-## Fase 1 — La Base (Completo)
+## Phase 1 — The Foundation (Complete)
 
-> *Objetivo: Un sistema que evalúa expresiones matemáticas y las muestra en pantalla.*
+> *Objective: A system that evaluates mathematical expressions and displays them on screen.*
 
-### Motor Matemático
-- [x] **Tokenizer** (`Tokenizer.cpp`): String → lista de `Token` — números, operadores, funciones, paréntesis, variables.
-- [x] **Parser Shunting-Yard** (`Parser.cpp`): Genera Notación Polaca Inversa (RPN) para evaluación numérica eficiente.
-- [x] **Evaluador RPN** (`Evaluator.cpp`): Calcula el resultado numérico (`double`) con pila. Trigonometría, logarítmos, exponencial, constantes π y e.
-- [x] **VariableContext** (`VariableContext.cpp`): Variables `A-Z` y `Ans`. Lectura/escritura O(1). Persistencia LittleFS.
-- [x] **StepLogger** (`StepLogger.cpp`): Registro de pasos del parser para depuración.
+### Math Engine
+- [x] **Tokenizer** (`Tokenizer.cpp`): String → list of `Token` — numbers, operators, functions, parentheses, variables.
+- [x] **Shunting-Yard Parser** (`Parser.cpp`): Generates Reverse Polish Notation (RPN) for efficient numerical evaluation.
+- [x] **RPN Evaluator** (`Evaluator.cpp`): Calculates the numerical result (`double`) with a stack. Trigonometry, logarithms, exponential, constants π and e.
+- [x] **VariableContext** (`VariableContext.cpp`): Variables `A-Z` and `Ans`. O(1) read/write. LittleFS persistence.
+- [x] **StepLogger** (`StepLogger.cpp`): Parser step logging for debugging.
 
-### Drivers de Bajo Nivel
-- [x] **DisplayDriver**: Wrapper TFT_eSPI con doble buffer DMA e inicialización LVGL.
-- [x] **KeyMatrix**: Escaneo matricial 6×8 — debounce 20 ms, autorepeat 500 ms, soporte SHIFT/ALPHA.
-- [x] **Config.h**: Pinout centralizado para ESP32-S3 N16R8 CAM.
+### Low-Level Drivers
+- [x] **DisplayDriver**: TFT_eSPI wrapper with double DMA buffer and LVGL initialization.
+- [x] **KeyMatrix**: 6×8 matrix scanning — 20 ms debounce, 500 ms autorepeat, SHIFT/ALPHA support.
+- [x] **Config.h**: Centralized pinout for ESP32-S3 N16R8 CAM.
 
 ---
 
-## Fase 2 — Natural Display V.P.A.M. (Completo)
+## Phase 2 — Natural Display V.P.A.M. (Complete)
 
-> *Objetivo: Las expresiones se renderizan exactamente como en una calculadora física moderna.*
+> *Objective: Expressions are rendered exactly like on a modern physical calculator.*
 
-### Árbol de Expresión Visual (AST)
-- [x] **ExprNode** (`ExprNode.h`): Árbol dinámico — nodos `TEXT`, `FRACTION`, `ROOT`, `POWER`.
-- [x] **Medición recursiva** `measure()`: Cada nodo calcula ancho y alto en píxeles de forma recursiva.
-- [x] **Renderizado recursivo** `draw()`: Dibuja cada nodo en posición relativa correcta al bloque padre.
+### Visual Expression Tree (AST)
+- [x] **ExprNode** (`ExprNode.h`): Dynamic tree — `TEXT`, `FRACTION`, `ROOT`, `POWER` nodes.
+- [x] **Recursive measurement** `measure()`: Each node recursively calculates width and height in pixels.
+- [x] **Recursive rendering** `draw()`: Draws each node in correct relative position to the parent block.
 
-### Navegación 2D y Edición
-- [x] **Cursor inteligente**: `RIGHT` al final del numerador salta al denominador. `UP/DOWN` en potencia entra/sale del superíndice.
-- [x] **Borrado atómico**: `DEL` destruye estructuras complejas (fracciones, raíces, funciones) como bloque único.
+### 2D Navigation and Editing
+- [x] **Smart cursor**: `RIGHT` at the end of the numerator jumps to the denominator. `UP/DOWN` in power enters/exits the superscript.
+- [x] **Atomic deletion**: `DEL` destroys complex structures (fractions, roots, functions) as a single block.
 
 ### CalculationApp
-- [x] **Historial de 32 entradas** con scroll vertical.
-- [x] **Copia de resultados**: `UP` copia resultado o expresión al editor activo.
-- [x] **Soporte variables** A-Z + `Ans`. Evaluación completa de expresiones.
+- [x] **32-entry history** with vertical scroll.
+- [x] **Copy results**: `UP` copies result or expression to the active editor.
+- [x] **Variable support** A-Z + `Ans`. Full expression evaluation.
 
 ---
 
-## Fase 3 — Launcher 3.0 e Integración (Completo)
+## Phase 3 — Launcher 3.0 and Integration (Complete)
 
-> *Objetivo: Sistema de apps completo con launcher, navegación y herramientas de debugging.*
+> *Objective: Complete app system with launcher, navigation, and debugging tools.*
 
-### Launcher y SystemApp
-- [x] **Grid 3 columnas**: Launcher de iconos inspirado en NumWorks/Casio fx-CG.
-- [x] **Scroll vertical**: Menú sincronizado — icono seleccionado siempre visible.
-- [x] **10 Apps registradas**: Calculation, Equations, Sequences, Grapher, Regression, Statistics, Table, Probability, Python, Settings.
-- [x] **Dispatcher de eventos**: `SystemApp::injectKey()` enruta a MENU o APP activa. `KeyCode::MODE` interceptado — siempre retorna al menú.
+### Launcher and SystemApp
+- [x] **3-column grid**: Icon launcher inspired by NumWorks/Casio fx-CG.
+- [x] **Vertical scroll**: Synchronized menu — selected icon always visible.
+- [x] **10 Registered apps**: Calculation, Equations, Sequences, Grapher, Regression, Statistics, Table, Probability, Python, Settings.
+- [x] **Event dispatcher**: `SystemApp::injectKey()` routes to MENU or active APP. `KeyCode::MODE` intercepted — always returns to the menu.
 
-### Serial Bridge y Teclado Virtual
-- [x] **SerialBridge**: Teclado virtual PC vía Serial Monitor — WASD, z/x/c/h, dígitos, operadores.
-- [x] **LvglKeypad**: Adaptador LVGL 9.x `indev` tipo `LV_INDEV_TYPE_KEYPAD`.
-- [x] **Heartbeat**: Ping serial cada 5 s, eco inmediato de cada byte recibido.
+### Serial Bridge and Virtual Keyboard
+- [x] **SerialBridge**: PC virtual keyboard via Serial Monitor — WASD, z/x/c/h, digits, operators.
+- [x] **LvglKeypad**: LVGL 9.x `indev` adapter of type `LV_INDEV_TYPE_KEYPAD`.
+- [x] **Heartbeat**: Serial ping every 5 s, immediate echo of each received byte.
 
 ---
 
-## Fase 4 — LVGL 9.x: Revolución Visual (Completo)
+## Phase 4 — LVGL 9.x: Visual Revolution (Complete)
 
-> *Objetivo: Abandonar el renderizado directo y adoptar LVGL para una UI de nivel profesional.*
+> *Objective: Abandon direct rendering and adopt LVGL for a professional-grade UI.*
 
 ### HW Bring-Up ESP32-S3 N16R8 CAM
 
-| Fix | Problema | Solución Aplicada |
+| Fix | Problem | Applied Solution |
 |:----|:---------|:------------------|
-| ① | Crash `Illegal instruction` en boot | `board_build.arduino.memory_type = qio_opi` + `flash_mode = qio` |
-| ② | Crash en `TFT_eSPI::begin()` addr `0x10` | `-DUSE_FSPI_PORT` → `SPI_PORT=2` → `REG_SPI_BASE(2)=0x60024000` |
-| ③ | Líneas y artefactos en pantalla | `SPI_FREQUENCY=10000000` (10 MHz) |
-| ④ | LVGL pantalla siempre negra | `heap_caps_malloc(DMA+8BIT)` — jamás `ps_malloc` para buffers LVGL |
-| ⑤ | GPIO 45 BL cortocircuito | `pinMode(45, INPUT)` — pin cableado fijo a 3.3V |
-| ⑥ | Serial CDC perdido en boot | `while(!Serial && t0<3000)` + `monitor_rts=0` |
+| ① | `Illegal instruction` crash on boot | `board_build.arduino.memory_type = qio_opi` + `flash_mode = qio` |
+| ② | Crash in `TFT_eSPI::begin()` addr `0x10` | `-DUSE_FSPI_PORT` → `SPI_PORT=2` → `REG_SPI_BASE(2)=0x60024000` |
+| ③ | Lines and artifacts on screen | `SPI_FREQUENCY=10000000` (10 MHz) |
+| ④ | LVGL screen always black | `heap_caps_malloc(DMA+8BIT)` — never `ps_malloc` for LVGL buffers |
+| ⑤ | GPIO 45 BL short circuit | `pinMode(45, INPUT)` — pin hardwired to 3.3V |
+| ⑥ | Serial CDC lost on boot | `while(!Serial && t0<3000)` + `monitor_rts=0` |
 
 ### LVGL
-- [x] `lv_conf.h`: `LV_MEM_CUSTOM=1` (PSRAM), `LV_TICK_CUSTOM=1`, `LV_COLOR_DEPTH=16`, fuentes Montserrat 12/14/20.
-- [x] **SplashScreen animado**: Fade-in logo + versión con `lv_anim_t` ease_in_out.
-- [x] **MainMenu LVGL**: Grid 3×N con scroll, highlight selección, navegación por teclado.
-- [x] **LittleFS**: Variables persistentes con `formatOnFail`.
+- [x] `lv_conf.h`: `LV_MEM_CUSTOM=1` (PSRAM), `LV_TICK_CUSTOM=1`, `LV_COLOR_DEPTH=16`, Montserrat 12/14/20 fonts.
+- [x] **Animated SplashScreen**: Fade-in logo + version with `lv_anim_t` ease_in_out.
+- [x] **MainMenu LVGL**: 3×N grid with scroll, selection highlight, keyboard navigation.
+- [x] **LittleFS**: Persistent variables with `formatOnFail`.
 
 ---
 
-## Fase 5 — CAS-Lite Engine + EquationsApp (Completo)
+## Phase 5 — CAS-Lite Engine + EquationsApp (Complete)
 
-> *Objetivo: Álgebra simbólica nativa con pasos detallados. La primera calculadora open-source ESP32-S3 con CAS propio en PSRAM.*
+> *Objective: Native symbolic algebra with detailed steps. The first open-source ESP32-S3 calculator with its own CAS in PSRAM.*
 
-### CAS-Lite Engine — Álgebra Simbólica
+### CAS-Lite Engine — Symbolic Algebra
 
 - [x] **PSRAMAllocator\<T\>** (`cas/PSRAMAllocator.h`)
-  Allocator STL-compatible que redirige `allocate`/`deallocate` a `ps_malloc`/`ps_free`. Todo el CAS vive en los 8 MB PSRAM OPI, sin presión sobre la RAM interna.
+  STL-compatible allocator that redirects `allocate`/`deallocate` to `ps_malloc`/`ps_free`. The entire CAS lives in the 8 MB PSRAM OPI, without pressure on internal RAM.
 
 - [x] **SymPoly** (`cas/SymPoly.h/.cpp`)
-  Polinomio simbólico en variable única. Coeficientes `Rational` (fracción exacta `p/q`). Operaciones: suma, resta, multiplicación, derivación simbólica, evaluación numérica, normalización.
+  Symbolic polynomial in a single variable. `Rational` coefficients (exact fraction `p/q`). Operations: addition, subtraction, multiplication, symbolic derivation, numerical evaluation, normalization.
 
 - [x] **ASTFlattener** (`cas/ASTFlattener.h/.cpp`)
-  Recorre el `ExprNode` AST visual y lo convierte en un `SymPoly`. Soporta potencias enteras, constantes π/e, y coeficientes racionales anidados.
+  Traverses the `ExprNode` visual AST and converts it into a `SymPoly`. Supports integer powers, π/e constants, and nested rational coefficients.
 
 - [x] **SingleSolver** (`cas/SingleSolver.h/.cpp`)
-  - Grado 1 → `x = -b/a` (solución directa)
-  - Grado 2 → fórmula cuadrática analítica con discriminante Δ = b² - 4ac
-  - Grado ≥ 3 → Newton-Raphson numérico (semilla adaptativa)
-  - Genera pasos detallados: normalización, cálculo Δ, aplicación fórmula, resultados
+  - Degree 1 → `x = -b/a` (direct solution)
+  - Degree 2 → analytical quadratic formula with discriminant Δ = b² - 4ac
+  - Degree ≥ 3 → Numerical Newton-Raphson (adaptive seed)
+  - Generates detailed steps: normalization, Δ calculation, formula application, results
 
 - [x] **SystemSolver** (`cas/SystemSolver.h/.cpp`)
-  Sistemas 2×2 lineales por eliminación gaussiana simbólica. Detecta automáticamente sistemas indeterminados (∞ soluciones) e incompatibles (sin solución).
+  2×2 linear systems by symbolic Gaussian elimination. Automatically detects indeterminate (∞ solutions) and incompatible (no solution) systems.
 
 - [x] **CASStepLogger** (`cas/CASStepLogger.h/.cpp`)
-  `StepVec = std::vector<CASStep, PSRAMAllocator<CASStep>>`. Tipos: INFO · FORMULA · RESULT · ERROR. `.clear()` libera la memoria PSRAM al salir de la app.
+  `StepVec = std::vector<CASStep, PSRAMAllocator<CASStep>>`. Types: INFO · FORMULA · RESULT · ERROR. `.clear()` frees PSRAM memory upon exiting the app.
 
 - [x] **SymToAST** (`cas/SymToAST.h/.cpp`)
-  Bridge inverso: convierte resultados `Rational` del CAS en nodos `ExprNode` para renderizado Natural Display en la EquationsApp.
+  Reverse bridge: converts CAS `Rational` results into `ExprNode` nodes for Natural Display rendering in the EquationsApp.
 
-### Tests CAS — 53 Unitarios
+### CAS Tests — 53 Unit Tests
 
-| Grupo | Tests | Qué valida |
+| Group | Tests | What it validates |
 |:------|:-----:|:-----------|
-| **Fase A** — Fundamentos | 1–18 | `Rational` (aritmética exacta, simplificación, MCD). `SymPoly` (suma, resta, mul, derivación, evaluación). |
-| **Fase B** — ASTFlattener | 19–32 | Conversión AST → SymPoly para polinomios, constantes, potencias, funciones. |
-| **Fase C** — SingleSolver | 33–44 | Lineal (1 solución), cuadrática (2 raíces reales, raíz doble, Δ < 0), con pasos. |
-| **Fase D** — SystemSolver | 45–53 | Sistema determinado, indeterminado (∞ sol.), incompatible (sin sol.). |
+| **Phase A** — Fundamentals | 1–18 | `Rational` (exact arithmetic, simplification, GCD). `SymPoly` (add, sub, mul, diff, eval). |
+| **Phase B** — ASTFlattener | 19–32 | AST → SymPoly conversion for polynomials, constants, powers, functions. |
+| **Phase C** — SingleSolver | 33–44 | Linear (1 solution), quadratic (2 real roots, double root, Δ < 0), with steps. |
+| **Phase D** — SystemSolver | 45–53 | Determinate, indeterminate (∞ sol.), incompatible (no sol.) system. |
 
 ```ini
-# platformio.ini — activar tests:
+# platformio.ini — activate tests:
 build_flags      = ... -DCAS_RUN_TESTS
 build_src_filter = +<*> +<../tests/CASTest.cpp>
 ```
 
 ### EquationsApp
 
-- [x] **UI LVGL nativa** — 4 estados: `SELECT` → `EQ_INPUT` → `RESULT` → `STEPS`
-- [x] **Modo 1 — Ecuación (1 var)**: Lineal y cuadrática con discriminante y fórmula cuadrática
-- [x] **Modo 2 — Sistema 2×2**: Eliminación gaussiana, detección indeterminado/incompatible
-- [x] **Pantalla de pasos**: `KeyCode::SHOW_STEPS` (R2C6) activa pasos desde resultado
-- [x] **Natural Display en resultados**: x₁=2, x₂=3 renderizados como expresiones visuales
-- [x] **Gestión de memoria**: `end()` llama `.clear()` en `StepVec` — sin fugas en PSRAM
-- [x] **Registro en SystemApp**: App id=5, `g_lvglActive=true`, lifecycle correcto
+- [x] **Native LVGL UI** — 4 states: `SELECT` → `EQ_INPUT` → `RESULT` → `STEPS`
+- [x] **Mode 1 — Equation (1 var)**: Linear and quadratic with discriminant and quadratic formula
+- [x] **Mode 2 — 2×2 System**: Gaussian elimination, indeterminate/incompatible detection
+- [x] **Steps screen**: `KeyCode::SHOW_STEPS` (R2C6) activates steps from result
+- [x] **Natural Display in results**: x₁=2, x₂=3 rendered as visual expressions
+- [x] **Memory management**: `end()` calls `.clear()` on `StepVec` — no memory leaks in PSRAM
+- [x] **SystemApp Registration**: App id=5, `g_lvglActive=true`, correct lifecycle
 
-### Build Stats (Producción — tests desactivados)
+### Build Stats (Production — tests disabled)
 
-| Recurso | Usado | Total | % |
+| Resource | Used | Total | % |
 |:--------|------:|------:|:-:|
-| RAM (data+bss) | 94 920 B | 327 680 B | **29.0%** |
-| Flash (program) | 1 118 121 B | 6 553 600 B | **17.1%** |
+| RAM (data+bss) | 94 948 B | 327 680 B | **29.0%** |
+| Flash (program) | 1 215 025 B | 6 553 600 B | **18.5%** |
 
 ---
 
-## Fase 6 — Apps Científicas Completas (Planificado)
+## CAS Elite Phase — Pro-CAS Engine + CalculusApp + IntegralApp (Complete)
 
-> *Objetivo: NumOS se convierte en una calculadora científica completa para uso académico real, superando a la Casio fx-991EX en funcionalidades.*
+> *Objective: CAS-Lite → Pro-CAS evolution. Full symbolic engine with derivatives, integrals, multi-pass simplification, and non-linear equation solving. See [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) for the breakdown of the 6 internal phases.*
+
+### Pro-CAS Engine — 6 Completed Phases
+
+- [x] **Phase 0**: Research & Planning — SymExpr DAG design, hash-consing, bignum arithmetic
+- [x] **Phase 1**: CASInt + CASRational — Hybrid BigInt (int64+mbedtls_mpi), overflow-safe fraction
+- [x] **Phase 2**: SymExpr DAG + ConsTable + Arena — Immutable tree with hash-consing in PSRAM
+- [x] **Phase 3**: SymSimplify + SymDiff — Fixed-point simplifier (8 passes), 17-rule derivation
+- [x] **Phase 4**: ASTFlattener v2 + OmniSolver + HybridNewton — MathAST→SymExpr, advanced solver
+- [x] **Phase 5**: SymPolyMulti + SystemSolver NL — Sylvester resultant, non-linear systems
+- [x] **Phase 6A**: CalculusApp — Symbolic derivatives with Natural Display and detailed steps
+- [x] **Phase 6B**: IntegralApp — Slagle integrals (table/u-sub/parts), +C, ∫, steps
+- [x] **Phase 6B**: SymIntegrate — Heuristic Slagle: direct table, linearity, u-substitution, LIATE parts
+- [x] **Phase 6B**: SymExprToAST — Bridge SymExpr → MathAST with `convertIntegral()` (+C)
+
+### Build Stats (Pro-CAS — production)
+
+| Resource | Used | Total | % |
+|:--------|------:|------:|:-:|
+| RAM | 94 948 B | 327 680 B | **29.0%** |
+| Flash | 1 215 025 B | 6 553 600 B | **18.5%** |
+
+---
+
+## Phase 6 — Complete Scientific Apps (Planned)
+
+> *Objective: NumOS becomes a complete scientific calculator for real academic use, surpassing the Casio fx-991EX in features.*
 
 ### 6.1 Statistics App
-- [ ] Introducción de listas de datos (hasta 200 elementos con scroll)
-- [ ] Media aritmética, mediana, moda, rango
-- [ ] Varianza y desviación estándar (población σ y muestra s)
-- [ ] Histograma y diagrama de caja en pantalla
-- [ ] Percentiles y cuartiles Q1/Q2/Q3
+- [ ] Introduction of data lists (up to 200 elements with scroll)
+- [ ] Arithmetic mean, median, mode, range
+- [ ] Variance and standard deviation (population σ and sample s)
+- [ ] Histogram and box plot on screen
+- [ ] Percentiles and quartiles Q1/Q2/Q3
 
 ### 6.2 Regression App
-- [ ] Regresión lineal (a + bx) con coeficiente R² y ecuación de la recta
-- [ ] Regresión cuadrática (a + bx + cx²)
-- [ ] Regresión logarítmica y exponencial
-- [ ] Scatter plot con curva ajustada superpuesta en graficadora
+- [ ] Linear regression (a + bx) with R² coefficient and line equation
+- [ ] Quadratic regression (a + bx + cx²)
+- [ ] Logarithmic and exponential regression
+- [ ] Scatter plot with superimposed fitted curve in grapher
 
 ### 6.3 Sequences App
-- [ ] Sucesiones aritméticas: primer término, razón, término N, suma parcial SN
-- [ ] Sucesiones geométricas: primer término, razón, término N, suma N
-- [ ] Verificación automática del tipo (aritmética / geométrica / ninguna)
-- [ ] Tabla scrollable de primeros N términos
+- [ ] Arithmetic sequences: first term, common difference, Nth term, partial sum SN
+- [ ] Geometric sequences: first term, common ratio, Nth term, sum N
+- [ ] Automatic type verification (arithmetic / geometric / neither)
+- [ ] Scrollable table of first N terms
 
 ### 6.4 Probability App
-- [ ] Combinaciones nCr y permutaciones nPr
-- [ ] Factorial n! (hasta 20!)
-- [ ] Distribución binomial: P(X=k), P(X≤k)
-- [ ] Distribución normal: densidad, acumulada Φ(z), inversa
-- [ ] Distribución de Poisson: P(X=k)
+- [ ] Combinations nCr and permutations nPr
+- [ ] Factorial n! (up to 20!)
+- [ ] Binomial distribution: P(X=k), P(X≤k)
+- [ ] Normal distribution: density, cumulative Φ(z), inverse
+- [ ] Poisson distribution: P(X=k)
 
-### 6.5 Table App (ampliación de GrapherApp)
-- [ ] Tabla x/f(x) con paso configurable (Δx)
-- [ ] Scroll vertical de filas, anchura fija de columnas
-- [ ] Sincronizada con la función activa en GrapherApp
+### 6.5 Table App (GrapherApp expansion)
+- [ ] x/f(x) table with configurable step (Δx)
+- [ ] Vertical scroll of rows, fixed column width
+- [ ] Synchronized with the active function in GrapherApp
 
 ### 6.6 Settings App
-- [ ] Modo angular: DEG / RAD / GRA (con indicador en barra de estado)
-- [ ] Brillo de pantalla (PWM si BL reconectado a GPIO OUTPUT)
-- [ ] Formato numérico: decimal fijo / científico / engineering
-- [ ] Reset de fábrica: borrar todas las variables, restaurar configuración
-- [ ] Información del sistema: versión firmware, RAM libre, Flash libre
+- [ ] Angle mode: DEG / RAD / GRA (with indicator in status bar)
+- [ ] Screen brightness (PWM if BL reconnected to GPIO OUTPUT)
+- [ ] Number format: fixed decimal / scientific / engineering
+- [ ] Factory reset: delete all variables, restore configuration
+- [ ] System information: firmware version, free RAM, free Flash
 
-### 6.7 EquationsApp — Ampliaciones
-- [ ] Ecuaciones cúbicas (grado 3) con método de Cardano analítico
-- [ ] Sistema 3×3 por eliminación gaussiana extendida
-- [ ] Visualización de raíces en la graficadora integrada
-- [ ] Modo ecuación paramétrica
-
----
-
-## Fase 7 — CAS Avanzado + Álgebra Lineal (Planificado)
-
-> *Objetivo: Alcanzar la paridad con el CAS de la HP Prime G2 y la NumWorks.*
-
-### 7.1 Cálculo Simbólico
-- [ ] Derivada simbólica de polinomios: d/dx(xⁿ) = n·xⁿ⁻¹
-- [ ] Derivada de funciones elementales: sin, cos, exp, ln, sqrt
-- [ ] Regla de la cadena y del producto
-- [ ] Integral indefinida de polinomios (antiderivada)
-- [ ] Integral definida numérica de alta precisión (Gauss-Legendre)
-- [ ] Visualización: área sombreada bajo la curva en graficadora
-
-### 7.2 Simplificación Algebraica
-- [ ] Reducción de términos semejantes: 2x + x → 3x
-- [ ] Factorización de polinomios: x² - 5x + 6 → (x-2)(x-3)
-- [ ] Expansión de productos notables
-- [ ] Cancelación en fracciones algebraicas
-
-### 7.3 Matrices
-- [ ] Editor de matrices m×n con navegación 2D en pantalla
-- [ ] Operaciones: suma, resta, multiplicación, transpuesta
-- [ ] Determinante 2×2 y 3×3
-- [ ] Inversa por Gauss-Jordan
-- [ ] Resolución del sistema Ax = b por matrices
-- [ ] Valores propios para matrices 2×2
-
-### 7.4 Números Complejos
-- [ ] Modo complejo activable en Settings
-- [ ] Entrada forma rectangular (a+bi) y polar (r∠θ)
-- [ ] Operaciones básicas: +, -, ×, ÷, conjugado, módulo, argumento
-- [ ] Plano de Argand (visualización gráfica en GrapherApp)
-
-### 7.5 Álgebra de Bases y Conversión de Unidades
-- [ ] Conversor DEC / HEX / BIN / OCT integrado
-- [ ] Operaciones aritméticas en base arbitraria n
-- [ ] Conversor de unidades: longitud, masa, temperatura, velocidad, energía
+### 6.7 EquationsApp — Expansions
+- [ ] Cubic equations (degree 3) with analytical Cardano's method
+- [ ] 3×3 system by extended Gaussian elimination
+- [ ] Visualization of roots in the integrated grapher
+- [ ] Parametric equation mode
 
 ---
 
-## Fase 8 — Hardware Final + Conectividad + Scripting (Planificado)
+## Phase 7 — Matrices + Complex + Bases (Planned)
 
-> *Objetivo: NumOS se convierte en un producto físico completo, portable, autónomo y conectado.*
+> *Objective: Achieve parity with the HP Prime G2 and NumWorks CAS.*
 
-### 8.1 Teclado Físico — Resolución del Conflicto GPIO
-- [ ] Reasignar ROW3 (GPIO 4) y ROW4 (GPIO 5) a GPIOs libres (propuesta: GPIO 15, 16)
-- [ ] Actualizar `Config.h` con nuevas asignaciones
-- [ ] Integrar `KeyMatrix::scan()` → `LvglKeypad::pushKey()` en tiempo real
-- [ ] Test completo de 48 teclas con `HardwareTest.cpp`
-- [ ] Overlay visual SHIFT/ALPHA en barra de estado (capa activa)
-- [ ] Funciones secundarias (teclas amarillas/rojas) mapeadas a `KeyCode::SHIFT_X`
+### 7.1 Advanced Simplification and Factorization
+- [ ] Reduction of like terms: 2x + x → 3x
+- [ ] Polynomial factorization: x² - 5x + 6 → (x-2)(x-3)
+- [ ] Expansion of notable products
+- [ ] Cancellation in algebraic fractions
+- [ ] High-precision numerical definite integral (Gauss-Legendre)
+- [ ] Visualization: shaded area under the curve in grapher
+- [ ] Taylor / Maclaurin series
 
-### 8.2 PCB Propia
-- [ ] Esquemático completo en KiCad con ESP32-S3 WROOM integrado
-- [ ] Conector FPC/ZIF para pantalla ILI9341
-- [ ] Conector JST-PH 2 pines para batería LiPo
-- [ ] TP4056 con carga USB-C + boost converter MT3608 (3.7V → 5V)
-- [ ] Test points JTAG + SWD para depuración
-- [ ] Trazado PCB 2 capas, form factor calculadora (≈85×165mm)
+### 7.2 Matrices
+- [ ] m×n matrix editor with 2D navigation on screen
+- [ ] Operations: addition, subtraction, multiplication, transpose
+- [ ] 2×2 and 3×3 determinant
+- [ ] Inverse by Gauss-Jordan
+- [ ] Resolution of the Ax = b system by matrices
+- [ ] Eigenvalues for 2×2 matrices
 
-### 8.3 Batería y Gestión de Energía
-- [ ] LiPo 1000–2000 mAh (según volumen del chasis)
-- [ ] TP4056: carga vía USB-C, indicador LED
-- [ ] Monitor nivel batería por ADC (GPIO libre) con conversión al porcentaje
-- [ ] Indicador gráfico en barra de estado (icono batería animado)
-- [ ] Modo bajo consumo: reducir LVGL refresh rate + bajar frecuencia CPU
-- [ ] Deep sleep con wake-up por tecla ON/OFF dedicada
+### 7.3 Complex Numbers
+- [ ] Complex mode activatable in Settings
+- [ ] Rectangular form (a+bi) and polar form (r∠θ) input
+- [ ] Basic operations: +, -, ×, ÷, conjugate, modulus, argument
+- [ ] Argand plane (graphical visualization in GrapherApp)
 
-### 8.4 Carcasa 3D
-- [ ] Diseño en FreeCAD o Fusion 360 siguiendo dimensiones de `DIMENSIONES_DISEÑO.md`
-- [ ] Material: PLA o PETG, colores negro mate / gris
-- [ ] Ventana de pantalla con bisel y protección de cristal acrílico
-- [ ] Soporte para membrana de teclado o botones táctiles
-- [ ] Tapa trasera con tornillos M2 y compartimento batería accesible
+### 7.4 Base Algebra and Unit Conversion
+- [ ] Integrated DEC / HEX / BIN / OCT converter
+- [ ] Arithmetic operations in arbitrary base n
+- [ ] Unit converter: length, mass, temperature, speed, energy
 
-### 8.5 Conectividad WiFi
-- [ ] **WebBridge**: servidor HTTP embebido en el ESP32-S3 para transferir programas/scripts desde el PC
-- [ ] **OTA (Over The Air)**: actualización de firmware sin cables desde el navegador
-- [ ] **Sincronización de variables**: backup y restore de `/vars.dat` vía WiFi
-- [ ] **NTP**: sincronización de hora para reloj interno y registro de tiempo
+---
+
+## Phase 8 — Final Hardware + Connectivity + Scripting (Planned)
+
+> *Objective: NumOS becomes a complete, portable, autonomous, and connected physical product.*
+
+### 8.1 Physical Keyboard — GPIO Conflict Resolution
+- [ ] Reassign ROW3 (GPIO 4) and ROW4 (GPIO 5) to free GPIOs (proposal: GPIO 15, 16)
+- [ ] Update `Config.h` with new assignments
+- [ ] Integrate `KeyMatrix::scan()` → `LvglKeypad::pushKey()` in real time
+- [ ] Complete 48-key test with `HardwareTest.cpp`
+- [ ] SHIFT/ALPHA visual overlay in status bar (active layer)
+- [ ] Secondary functions (yellow/red keys) mapped to `KeyCode::SHIFT_X`
+
+### 8.2 Custom PCB
+- [ ] Complete schematic in KiCad with integrated ESP32-S3 WROOM
+- [ ] FPC/ZIF connector for ILI9341 screen
+- [ ] 2-pin JST-PH connector for LiPo battery
+- [ ] TP4056 with USB-C charging + MT3608 boost converter (3.7V → 5V)
+- [ ] JTAG + SWD test points for debugging
+- [ ] 2-layer PCB layout, calculator form factor (≈85×165mm)
+
+### 8.3 Battery and Power Management
+- [ ] 1000–2000 mAh LiPo (depending on chassis volume)
+- [ ] TP4056: USB-C charging, LED indicator
+- [ ] Battery level monitor by ADC (free GPIO) with percentage conversion
+- [ ] Graphical indicator in status bar (animated battery icon)
+- [ ] Low power mode: reduce LVGL refresh rate + lower CPU frequency
+- [ ] Deep sleep with wake-up by dedicated ON/OFF key
+
+### 8.4 3D Case
+- [ ] Design in FreeCAD or Fusion 360 following dimensions in `DIMENSIONES_DISEÑO.md`
+- [ ] Material: PLA or PETG, matte black / gray colors
+- [ ] Screen window with bezel and acrylic glass protection
+- [ ] Support for keyboard membrane or tactile buttons
+- [ ] Back cover with M2 screws and accessible battery compartment
+
+### 8.5 WiFi Connectivity
+- [ ] **WebBridge**: embedded HTTP server in the ESP32-S3 to transfer programs/scripts from the PC
+- [ ] **OTA (Over The Air)**: wireless firmware update from the browser
+- [ ] **Variable synchronization**: `/vars.dat` backup and restore via WiFi
+- [ ] **NTP**: time synchronization for internal clock and time logging
 
 ### 8.6 Scripting
-- [ ] **Lua embebido** (eLua / LittleLua) — lenguaje de scripting para programar la calculadora
-- [ ] Editor de scripts en pantalla con cursor 2D y resaltado de sintaxis básico
-- [ ] Acceso a todas las funciones matemáticas desde Lua
-- [ ] Scripts guardados/cargados desde LittleFS
-- [ ] Ejecución por línea (`ENTER`) o bloque completo (`SHIFT+ENTER`)
+- [ ] **Embedded Lua** (eLua / LittleLua) — scripting language to program the calculator
+- [ ] On-screen script editor with 2D cursor and basic syntax highlighting
+- [ ] Access to all mathematical functions from Lua
+- [ ] Scripts saved to/loaded from LittleFS
+- [ ] Execution by line (`ENTER`) or full block (`SHIFT+ENTER`)
 
-### 8.7 Funciones Matemáticas Adicionales
-- [ ] `log₂(x)`, `logₙ(x, b)` — logaritmo en base arbitraria
-- [ ] `ceil`, `floor`, `round`, `frac` — redondeo
-- [ ] `mod` — operador módulo para enteros
-- [ ] `gcd`, `lcm` — máximo común divisor / mínimo común múltiplo
-- [ ] Proyección angular DEG↔RAD↔GRA directa en resultado
-- [ ] `Σ` — Sumatorio sobre expresión (límite inferior/superior configurable)
-- [ ] `Π` — Productorio
-- [ ] `∫` — Integral definida numérica de alta precisión
+### 8.7 Additional Mathematical Functions
+- [ ] `log₂(x)`, `logₙ(x, b)` — logarithm in arbitrary base
+- [ ] `ceil`, `floor`, `round`, `frac` — rounding
+- [ ] `mod` — modulo operator for integers
+- [ ] `gcd`, `lcm` — greatest common divisor / least common multiple
+- [ ] Direct DEG↔RAD↔GRA angular projection in result
+- [ ] `Σ` — Summation over expression (configurable lower/upper limit)
+- [ ] `Π` — Product
+- [ ] `∫` — High-precision numerical definite integral
 
 ---
 
-## Visión a Largo Plazo — La Mejor Calculadora Open-Source del Mundo
+## Long-Term Vision — The World's Best Open-Source Calculator
 
-**NumOS aspira a demostrar que una calculadora open-source sobre hardware de 15 € puede superar en funcionalidades a calculadoras comerciales de 180 €.**
+**NumOS aims to demonstrate that a 15 € hardware open-source calculator can surpass the features of 180 € commercial calculators.**
 
-### Comparativa Objetivo
+### Objective Comparison
 
-| Calculadora | Precio | CAS | Pasos | Python | Batería | Open Source |
+| Calculator | Price | CAS | Steps | Python | Battery | Open Source |
 |:------------|:------:|:---:|:-----:|:------:|:-------:|:-----------:|
-| **NumOS (objetivo)** | **15 €** | ✅ | ✅ | ✅ | ✅ | ✅ MIT |
+| **NumOS (objective)** | **15 €** | ✅ | ✅ | ✅ | ✅ | ✅ MIT |
 | Casio fx-991EX ClassWiz | 20 € | ❌ | ❌ | ❌ | AAA | ❌ |
 | NumWorks | 79 € | ✅ | ❌ | ✅ | ✅ | ✅ MIT |
 | TI-84 Plus CE | 119 € | ❌ | ❌ | TI-BASIC | AAA | ❌ |
 | HP Prime G2 | 179 € | ✅ | ✅ | HP PPL | ✅ | ❌ |
 
-### Diferencial Único de NumOS
+### NumOS Unique Differential
 
-1. **Pasos de resolución** — Ninguna calculadora económica muestra los pasos intermedios del CAS tan claramente.
-2. **Open source total** — Todo el pipeline matemático, desde el Tokenizer hasta el CAS, es auditable, modificable y educativo.
-3. **Hardware a medida** — El proyecto controla todo: desde la PCB hasta el firmware.
-4. **Coste 10x inferior** — 15 € de hardware para capacidades de una calculadora de 180 €.
-5. **Extensible en minutos** — Añadir una nueva app = ~100 líneas de C++17; nunca toca el core.
-6. **Comunidad abierta** — Modelo de contribución libre, no dependiente de ninguna empresa.
+1. **Resolution steps** — No affordable calculator shows the intermediate steps of the CAS so clearly.
+2. **Fully open source** — The entire mathematical pipeline, from Tokenizer to CAS, is auditable, modifiable, and educational.
+3. **Custom hardware** — The project controls everything: from the PCB to the firmware.
+4. **10x lower cost** — 15 € in hardware for the capabilities of a 180 € calculator.
+5. **Extensible in minutes** — Adding a new app = ~100 lines of C++17; never touches the core.
+6. **Open community** — Free contribution model, not dependent on any company.
 
 ---
 
 *NumOS — Open-source scientific calculator OS for ESP32-S3.*
-*Cada commit es un paso hacia la mejor calculadora científica del mundo.*
+*Every commit is a step towards the best scientific calculator in the world.*
 
-*Última actualización: Febrero 2026*
+*Last update: February 2026*

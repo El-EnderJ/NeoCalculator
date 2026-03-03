@@ -879,14 +879,10 @@ void MathCanvas::drawConstant(lv_layer_t* layer, const NodeConstant* node,
 void MathCanvas::drawVariable(lv_layer_t* layer, const NodeVariable* node,
                               int16_t x, int16_t yBaseline,
                               const FontMetrics& fm, const lv_font_t* font) {
-    lv_color_t color;
-    if (node->isFunctionVar()) {
-        // x, y, z → azul distintivo
-        color = lv_color_hex(0x4A90D9);
-    } else {
-        // A-F, Ans, PreAns → negro estándar
-        color = lv_color_black();
-    }
+    // All variables render in black — x, y, z are independent variables,
+    // NOT multiplication.  Previously blue, now black to avoid confusion
+    // with the × operator.
+    lv_color_t color = lv_color_black();
 
     drawText(layer, x, yBaseline, node->label(), font, color);
 }

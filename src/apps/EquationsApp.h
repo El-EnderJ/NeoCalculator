@@ -1,18 +1,15 @@
 /**
  * EquationsApp.h — Equation Solver App for NumOS.
  *
- * LVGL-native app that allows users to:
- *   1. Select equation type: Grado 1, Grado 2, Sistema 2×2, Sistema 3×3
- *   2. Input equations using MathCanvas + CursorController (with '=' via S⇔D)
- *   3. Solve using CAS-Lite (SingleSolver / SystemSolver)
- *   4. View step-by-step solution via SHOW_STEPS key
+ * NumWorks-inspired redesign with:
+ *   - Equation list: up to 3 equation slots with live MathCanvas preview
+ *   - Template dropdown: presets (Empty, x+y=0, x²+x+1=0, etc.)
+ *   - "Add an equation" and "Solve" buttons
+ *   - Full MathCanvas editor for each equation
+ *   - OmniSolver for single equations, SystemSolver for systems
+ *   - Step-by-step display
  *
- * Lifecycle (follows CalculationApp pattern):
- *   begin() → creates LVGL screen + widgets
- *   load()  → makes the screen visible
- *   end()   → destroys LVGL screen
- *
- * Part of: NumOS CAS-Lite — Phase E (EquationsApp UI)
+ * Part of: NumOS — Equation Solver
  */
 
 #pragma once
@@ -23,7 +20,10 @@
 #include "../math/cas/ASTFlattener.h"
 #include "../math/cas/SingleSolver.h"
 #include "../math/cas/SystemSolver.h"
+#include "../math/cas/OmniSolver.h"
+#include "../math/cas/SymExprToAST.h"
 #include "../math/cas/SymToAST.h"
+#include "../math/cas/SymExprArena.h"
 #include "../ui/MathRenderer.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
@@ -34,123 +34,147 @@ public:
     EquationsApp();
     ~EquationsApp();
 
-    /// Creates the LVGL screen and base widgets.
     void begin();
-
-    /// Destroys the LVGL screen and frees resources.
     void end();
-
-    /// Loads (makes visible) the LVGL screen.
     void load();
-
-    /// Processes a key event from the system.
     void handleKey(const KeyEvent& ev);
 
-    /// Returns true if the screen is created and active.
     bool isActive() const { return _screen != nullptr; }
 
 private:
     // ── States ───────────────────────────────────────────────────────
     enum class State : uint8_t {
-        SELECT,    ///< Type selection menu
-        EQ_INPUT,  ///< Equation input (1–3 MathCanvas)
-        RESULT,    ///< Solution display
-        STEPS      ///< Step-by-step view
+        EQ_LIST,    ///< Main list: equation slots + Add + Solve
+        TEMPLATE,   ///< Template dropdown overlay
+        EDITING,    ///< Full MathCanvas editor for one equation
+        SOLVING,    ///< Solving in progress (spinner + message)
+        RESULT,     ///< Solution display
+        STEPS       ///< Step-by-step view
     };
 
-    enum class EqType : uint8_t {
-        DEGREE_1,    ///< Linear equation (ax + b = 0)
-        DEGREE_2,    ///< Quadratic equation (ax² + bx + c = 0)
-        SYSTEM_2X2,  ///< 2-variable system
-        SYSTEM_3X3   ///< 3-variable system
-    };
+    // ── Constants ────────────────────────────────────────────────────
+    static constexpr int MAX_EQS     = 3;
+    static constexpr int MAX_RESULTS = 4;
+
+    // Template definitions
+    static constexpr int NUM_TEMPLATES = 6;
+    static const char* TEMPLATE_LABELS[NUM_TEMPLATES];
 
     // ── LVGL widgets ─────────────────────────────────────────────────
     lv_obj_t*       _screen;
     ui::StatusBar   _statusBar;
 
-    // SELECT state
-    lv_obj_t*       _selectContainer;
-    lv_obj_t*       _menuLabels[4];
+    // ── EQ_LIST state ────────────────────────────────────────────────
+    lv_obj_t*       _listContainer;
+    lv_obj_t*       _eqRows[MAX_EQS];
+    lv_obj_t*       _eqLabels[MAX_EQS];       ///< "E1:", "E2:", "E3:" indicator
+    vpam::MathCanvas   _eqPreview[MAX_EQS];    ///< mini preview canvas
+    lv_obj_t*       _addRow;
+    lv_obj_t*       _addLabel;
+    lv_obj_t*       _solveRow;
+    lv_obj_t*       _solveLabel;
+    lv_obj_t*       _listHint;
 
-    // INPUT state
-    static constexpr int MAX_EQS = 3;
-    lv_obj_t*       _inputContainer;
-    lv_obj_t*       _inputTitle;
-    lv_obj_t*       _inputHint;
-    lv_obj_t*       _inputIndicators[MAX_EQS];
-    vpam::MathCanvas   _inputCanvas[MAX_EQS];
-    vpam::NodePtr      _inputNode[MAX_EQS];
-    vpam::NodeRow*     _inputRow[MAX_EQS];
-    vpam::CursorController _inputCursor[MAX_EQS];
+    // ── Equation data ────────────────────────────────────────────────
+    vpam::NodePtr      _eqNode[MAX_EQS];
+    vpam::NodeRow*     _eqRowData[MAX_EQS];
+    int                _numEquations;
 
-    // RESULT state
+    // List navigation
+    int                _listFocus;
+    // Virtual items: 0..numEq-1 = equation slots, numEq = ADD, numEq+1 = SOLVE
+
+    // ── TEMPLATE state ───────────────────────────────────────────────
+    lv_obj_t*       _templateOverlay;
+    lv_obj_t*       _templateTitle;
+    lv_obj_t*       _templateItems[NUM_TEMPLATES];
+    int             _templateFocus;
+
+    // ── EDITING state ────────────────────────────────────────────────
+    lv_obj_t*       _editContainer;
+    lv_obj_t*       _editTitle;
+    lv_obj_t*       _editHint;
+    vpam::MathCanvas   _editCanvas;
+    vpam::NodePtr      _editNode;
+    vpam::NodeRow*     _editRow;
+    vpam::CursorController _editCursor;
+    int                _editingIndex;
+
+    // ── SOLVING state ────────────────────────────────────────────────
+    lv_obj_t*       _solvingContainer;
+    lv_obj_t*       _solvingSpinner;
+    lv_obj_t*       _solvingLabel;
+
+    // ── RESULT state ─────────────────────────────────────────────────
     lv_obj_t*       _resultContainer;
     lv_obj_t*       _resultTitle;
     lv_obj_t*       _resultHint;
-    vpam::MathCanvas   _resultCanvas[MAX_EQS];
-    vpam::NodePtr      _resultNode[MAX_EQS];
-    vpam::NodeRow*     _resultRow[MAX_EQS];
+    vpam::MathCanvas   _resultCanvas[MAX_RESULTS];
+    vpam::NodePtr      _resultNode[MAX_RESULTS];
+    vpam::NodeRow*     _resultRow[MAX_RESULTS];
     int                _resultCount;
 
-    // STEPS state
+    // ── STEPS state ──────────────────────────────────────────────────
     lv_obj_t*       _stepsContainer;
 
     // ── App state ────────────────────────────────────────────────────
     State   _state;
-    EqType  _type;
-    int     _selectIndex;     ///< Selected item in SELECT menu (0–3)
-    int     _numInputs;       ///< How many equation inputs for current type
-    int     _activeInput;     ///< Which input has focus (0–2)
-    int     _stepScroll;      ///< Scroll offset in STEPS view
+    int     _stepScroll;
 
     // ── CAS results ──────────────────────────────────────────────────
-    cas::SolveResult   _singleResult;
+    cas::SymExprArena  _arena;
+    cas::OmniResult    _omniResult;
     cas::SystemResult  _systemResult;
-    bool               _isSingleEq;
+    cas::NLSystemResult _nlResult;
+    bool               _isOmniSolve;
+    bool               _isNLSolve = false;
 
     // ── UI creation / state management ───────────────────────────────
     void createUI();
-    void showSelect();
-    void showInput();
+    void showEqList();
+    void showTemplate();
+    void showEditing(int idx);
+    void showSolving();
     void showResult();
     void showSteps();
     void hideAllContainers();
 
+    // ── List focus management ────────────────────────────────────────
+    int  listItemCount() const;
+    void updateListFocus();
+
     // ── Key handlers per state ───────────────────────────────────────
-    void handleKeySelect(const KeyEvent& ev);
-    void handleKeyInput(const KeyEvent& ev);
+    void handleKeyList(const KeyEvent& ev);
+    void handleKeyTemplate(const KeyEvent& ev);
+    void handleKeyEditing(const KeyEvent& ev);
     void handleKeyResult(const KeyEvent& ev);
     void handleKeySteps(const KeyEvent& ev);
 
+    // ── Template application ─────────────────────────────────────────
+    void applyTemplate(int templateIdx, int eqSlot);
+    vpam::NodePtr buildTemplateAST(int templateIdx);
+
+    // ── Equation preview ─────────────────────────────────────────────
+    void refreshPreview(int idx);
+    void refreshAllPreviews();
+
     // ── Solving logic ────────────────────────────────────────────────
-
-    /// Run the appropriate solver on the current inputs.
     void solveEquations();
-
-    /// Build the RESULT display from solver outputs.
+    void solveOmni();
+    void solveSystem();
     void buildResultDisplay();
-
-    /// Build the STEPS display from solver step logs.
     void buildStepsDisplay();
 
-    /// Split a NodeRow at the '=' NodeVariable into LHS and RHS sub-rows.
-    /// Returns true if '=' was found; otherwise outRHS gets a "0" node.
     bool splitAtEquals(vpam::NodeRow* row,
                        vpam::NodePtr& outLHS,
                        vpam::NodePtr& outRHS);
 
-    /// Convert a SymEquation (after moveAllToLHS) to a LinEq by extracting
-    /// coefficients for the given variables.
     cas::LinEq symEquationToLinEq(const cas::SymEquation& eq,
                                   const char* vars, int numVars);
 
-    /// Reset a single equation input slot to an empty row.
-    void resetInput(int idx);
+    // ── Dynamic height ───────────────────────────────────────────────
+    void adjustEditHeight();
 
-    /// Refresh the MathCanvas display for the active input.
-    void refreshActiveInput();
-
-    /// Update the active-indicator markers (►) on input lines.
-    void updateIndicators();
+    // ── Loading messages ─────────────────────────────────────────────
+    static const char* randomSolvingMessage();
 };

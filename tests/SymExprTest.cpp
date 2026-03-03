@@ -252,7 +252,7 @@ void runSymExprTests() {
             auto poly = expr->toSymPoly('x');
             seCheck("toSymPoly(5): isConstant",
                     poly.isConstant());
-            auto c = poly.coeffAt(0);
+            auto c = poly.coeffAtExact(0);
             seCheck("toSymPoly(5): coeff(0) == 5",
                     c.num == 5 && c.den == 1);
         }
@@ -265,8 +265,8 @@ void runSymExprTests() {
             auto poly = expr->toSymPoly('x');
             seCheck("toSymPoly(3x+2): degree == 1",
                     poly.degree() == 1);
-            auto a = poly.coeffAt(1);
-            auto b = poly.coeffAt(0);
+            auto a = poly.coeffAtExact(1);
+            auto b = poly.coeffAtExact(0);
             seCheck("toSymPoly(3x+2): coeffs correct",
                     a.num == 3 && a.den == 1 &&
                     b.num == 2 && b.den == 1);

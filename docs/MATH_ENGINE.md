@@ -1,48 +1,55 @@
-# NumOS — Motor Matemático y CAS-Lite Engine
+# NumOS — Math Engine and Pro-CAS Engine
 
-> Documentación técnica completa del núcleo matemático de NumOS.
-> Cubre el pipeline de evaluación numérica (Tokenizer→Parser→Evaluator),
-> el árbol visual ExprNode, y el **CAS-Lite Engine** completo con resolución
-> algebraica exacta, gestión en PSRAM y log de pasos educativo.
+> Complete technical documentation of the NumOS mathematical core.
+> Covers the numeric evaluation pipeline (Tokenizer→Parser→Evaluator),
+> the ExprNode visual tree, and the complete **Pro-CAS Engine** with exact
+> algebraic solving, symbolic differentiation and integration, PSRAM management, and educational step logging.
 >
-> **Estado**: Motor numérico ✅ · CAS-Lite Engine ✅ · 53 tests passing ✅
+> **Status**: Numeric Engine ✅ · Pro-CAS Engine ✅ · Tests passing ✅
 
 ---
 
-## Tabla de Contenidos
+## Table of Contents
 
-1. [Pipeline General](#1-pipeline-general)
-2. [ExprNode — Árbol Visual](#2-exprnode--árbol-visual)
+1. [General Pipeline](#1-general-pipeline)
+2. [ExprNode — Visual Tree](#2-exprnode--visual-tree)
 3. [Tokenizer](#3-tokenizer)
 4. [Parser — Shunting-Yard](#4-parser--shunting-yard)
 5. [Evaluator](#5-evaluator)
 6. [VariableContext](#6-variablecontext)
-7. [EquationSolver Numérico](#7-equationsolver-numérico)
-8. [CAS-Lite Engine](#8-cas-lite-engine)
-   - 8.1 [Arquitectura y Módulos](#81-arquitectura-y-módulos)
+7. [Numeric EquationSolver](#7-numeric-equationsolver)
+8. [Pro-CAS Engine](#8-pro-cas-engine)
+   - 8.1 [Architecture and Modules](#81-architecture-and-modules)
    - 8.2 [PSRAMAllocator](#82-psramallocator)
-   - 8.3 [Rational y SymPoly](#83-rational-y-sympoly)
+   - 8.3 [Rational and SymPoly](#83-rational-and-sympoly)
    - 8.4 [ASTFlattener](#84-astflattener)
    - 8.5 [SingleSolver](#85-singlesolver)
    - 8.6 [SystemSolver](#86-systemsolver)
    - 8.7 [CASStepLogger](#87-cassteploggger)
    - 8.8 [SymToAST](#88-symtoast)
-9. [Suite de Tests CAS](#9-suite-de-tests-cas)
-10. [Extensibilidad](#10-extensibilidad)
+   - 8.9 [SymExpr — Symbolic Tree](#89-symexpr--symbolic-tree-representation-phase-3)
+   - 8.10 [SymDiff — Symbolic Differentiation](#810-symdiff--symbolic-differentiation-phase-3)
+   - 8.11 [SymSimplify — Simplifier](#811-symsimplify--algebraic-simplifier-phase-3)
+   - 8.12 [SymExprToAST — Conversion](#812-symexprtoast--conversion-to-mathast-phase-3)
+   - 8.13 [CalculusApp — Derivatives App](#813-calculusapp--derivatives-app-phase-6)
+   - 8.14 [SymIntegrate — Symbolic Integration](#814-symintegrate--symbolic-integration-phase-6b)
+   - 8.15 [IntegralApp — Integrals App](#815-integralapp--integrals-app-phase-6b)
+9. [CAS Test Suite](#9-cas-test-suite)
+10. [Extensibility](#10-extensibility)
 
 ---
 
-## 1. Pipeline General
+## 1. General Pipeline
 
 ```
- Entrada del usuario (teclas / serial)
+ User input (keys / serial)
            │
            ▼
   ┌─────────────────┐
-  │    ExprNode     │  ← Árbol visual (edición en vivo)
-  │  (AST Visual)   │     Fracciones, Raíces, Potencias, Texto
+  │    ExprNode     │  ← Visual tree (live editing)
+  │  (Visual AST)   │     Fractions, Roots, Powers, Text
   └────────┬────────┘
-           │  serialize() → string plano
+           │  serialize() → plain string
            ▼
   ┌─────────────────┐
   │   Tokenizer     │  ← "3x^2+5x-2" → [NUM:3, VAR:x, POW, NUM:2, ADD, ...]
@@ -50,22 +57,22 @@
            │
            ▼
   ┌─────────────────┐
-  │     Parser      │  ← Shunting-Yard → Cola RPN
+  │     Parser      │  ← Shunting-Yard → RPN Queue
   └────────┬────────┘
            │
            ├──────────────────────────────────────────────┐
            ▼                                              ▼
   ┌─────────────────┐                         ┌──────────────────────────┐
   │   Evaluator     │                         │     ASTFlattener         │
-  │  (numérico)     │                         │  (CAS-Lite — simbólico)  │
+  │  (numeric)      │                         │  (CAS-Lite — symbolic)   │
   │  double result  │                         │  ExprNode → SymPoly      │
   └─────────────────┘                         └────────────┬─────────────┘
                                                            │
                                               ┌────────────▼─────────────┐
                                               │   SingleSolver           │
                                               │   SystemSolver           │
-                                              │  Resultado exacto        │
-                                              │  (Rational) + pasos      │
+                                              │  Exact Result            │
+                                              │  (Rational) + steps      │
                                               └────────────┬─────────────┘
                                                            │
                                               ┌────────────▼─────────────┐
@@ -77,212 +84,224 @@
 
 ---
 
-## 2. ExprNode — Árbol Visual
+## 2. ExprNode — Visual Tree
 
-`ExprNode` representa la expresión matemática como árbol de nodos visuales. Es el puente entre el editor del usuario (CalculationApp, EquationsApp) y el motor de cálculo.
+`ExprNode` represents the mathematical expression as a tree of visual nodes. It is the bridge between the user​'s editor (CalculationApp, EquationsApp) and the compute engine.
 
-### Tipos de nodo
+### Node Types
 
-| Tipo | Descripción | Ejemplo Visual |
+| Type | Description | Visual Example |
 |:-----|:------------|:---------------|
-| `TEXT` | Número, variable, operador, función | `3`, `x`, `sin`, `+` |
-| `FRACTION` | Fracción con numerador y denominador | $\frac{a}{b}$ |
-| `ROOT` | Raíz con índice y radicando | $\sqrt[n]{x}$ |
-| `POWER` | Base con exponente elevado | $x^2$ |
-| `PAREN` | Agrupación con paréntesis | $(a+b)$ |
+| `TEXT` | Number, variable, operator, function | `3`, `x`, `sin`, `+` |
+| `FRACTION` | Fraction with numerator and denominator | $\frac{a}{b}$ |
+| `ROOT` | Root with index and radicand | $\sqrt[n]{x}$ |
+| `POWER` | Base with raised exponent | $x^2$ |
+| `PAREN` | Grouping with parentheses | $(a+b)$ |
 
-### API Clave
+### Key API
 
 ```cpp
-// Crear nodo texto (número o variable)
+// Create text node (number or variable)
 ExprNode* n = new ExprNode(ExprNodeType::TEXT, "3.14");
 
-// Árbol fracción 2/3:
+// Fraction tree 2/3:
 ExprNode* frac = new ExprNode(ExprNodeType::FRACTION);
-frac->children.push_back(new ExprNode(ExprNodeType::TEXT, "2")); // numerador
-frac->children.push_back(new ExprNode(ExprNodeType::TEXT, "3")); // denominador
+frac->children.push_back(new ExprNode(ExprNodeType::TEXT, "2")); // numerator
+frac->children.push_back(new ExprNode(ExprNodeType::TEXT, "3")); // denominator
 
-// Serialización → string evaluable
+// Serialization → evaluable string
 std::string s = frac->serialize();  // "2/3"
 
-// Destrucción recursiva
-delete frac;  // Libera hijos automáticamente
+// Recursive destruction
+delete frac;  // Frees children automatically
 ```
 
 ---
 
 ## 3. Tokenizer
 
-**Archivo**: `src/math/Tokenizer.cpp/.h`  
-**Entrada**: `std::string` con expresión matemática  
-**Salida**: `std::vector<Token>` (24 tipos de token)
+**File**: `src/math/Tokenizer.cpp/.h`  
+**Input**: `std::string` with mathematical expression  
+**Output**: `std::vector<Token>` (24 token types)
 
-### Tipos de Token principales
+### Main Token Types
 
 ```
-NUM     → número literal (double)         "3.14", "1e-5"
-VAR     → variable (letra)                x, y, A, B ... Z
+NUM     → numeric literal (double)         "3.14", "1e-5"
+VAR     → variable (letter)                x, y, A, B ... Z
 ADD / SUB / MUL / DIV / POW               + - * / ^
 LPAREN / RPAREN                           ( )
-COMMA                                     ,  (sep. args)
-SIN / COS / TAN / ASIN / ACOS / ATAN     funciones trigonométricas
-SINH / COSH / TANH                        hiperbólicas
+COMMA                                     ,  (arg separator)
+SIN / COS / TAN / ASIN / ACOS / ATAN     trigonometric functions
+SINH / COSH / TANH                        hyperbolic
 SQRT / LOG / LOG10 / EXP / ABS
-TOFRAC                                    Ans→fracción
-ANS                                       resultado anterior
+TOFRAC                                    Ans→fraction
+ANS                                       previous result
 ```
 
-### Características
+### Features
 
-- Multiplicación implícita: `3x` → `[NUM:3, MUL_IMPLICIT, VAR:x]`
-- Negación unaria: `-x` → `[NEG, VAR:x]`
-- Constantes: `π` (pi), `e` (Euler) reconocidas como literales NUM
-- Tolerante a espacios — strip antes del tokenizado
+- Implicit multiplication: `3x` → `[NUM:3, MUL_IMPLICIT, VAR:x]`
+- Unary negation: `-x` → `[NEG, VAR:x]`
+- Constants: `π` (pi), `e` (Euler) recognized as NUM literals
+- Space-tolerant — strip before tokenizing
 
 ---
 
 ## 4. Parser — Shunting-Yard
 
-**Archivo**: `src/math/Parser.cpp/.h`  
-**Entrada**: `std::vector<Token>`  
-**Salida**: `std::queue<Token>` (Reverse Polish Notation)
+**File**: `src/math/Parser.cpp/.h`  
+**Input**: `std::vector<Token>`  
+**Output**: `std::queue<Token>` (Reverse Polish Notation)
 
-### Algoritmo Shunting-Yard
+### Shunting-Yard Algorithm
 
 ```
-Para cada token t:
+For each token t:
   NUM / VAR → output queue
-  FUNCIÓN   → operator stack
-  COMMA     → pop hasta LPAREN (separa args)
-  OPERADOR  → pop operadores de mayor/igual precedencia, push t
+  FUNCTION   → operator stack
+  COMMA     → pop until LPAREN (separates args)
+  OPERATOR  → pop operators of greater/equal precedence, push t
   LPAREN    → push stack
-  RPAREN    → pop hasta LPAREN
+  RPAREN    → pop until LPAREN
 
-Al final → pop todo el stack al output
+Finally → pop entire stack to output
 ```
 
-### Tabla de precedencias
+### Precedence Table
 
-| Precedencia | Operadores |
+| Precedence | Operators |
 |:-----------:|:-----------|
-| 5 | Funciones unarias (`sin`, `cos`, `sqrt`, ...) |
-| 4 | `^` (potencia, asociatividad derecha) |
-| 3 | `*`, `/`, multiplicación implícita |
+| 5 | Unary functions (`sin`, `cos`, `sqrt`, ...) |
+| 4 | `^` (power, right associativity) |
+| 3 | `*`, `/`, implicit multiplication |
 | 2 | `+`, `-` |
-| 1 | Paréntesis |
+| 1 | Parentheses |
 
 ---
 
 ## 5. Evaluator
 
-**Archivo**: `src/math/Evaluator.cpp/.h`  
-**Entrada**: Cola RPN + `VariableContext`  
-**Salida**: `double` con resultado o `NAN` si error
+**File**: `src/math/Evaluator.cpp/.h`  
+**Input**: RPN Queue + `VariableContext`  
+**Output**: `double` with result or `NAN` if error
 
-### Proceso
+### Process
 
 ```cpp
 for (Token t : rpnQueue) {
     if (NUM)  → stack.push(t.value)
     if (VAR)  → stack.push(ctx.get(t.name))
-    if (OP)   → pop operandos, calcular, push resultado
-    if (FUN)  → pop argumento, calcular función, push resultado
+    if (OP)   → pop operands, calculate, push result
+    if (FUN)  → pop argument, calculate function, push result
 }
 return stack.top();
 ```
 
-### Modos angulares
+### Angular Modes
 
-Controlado por `AngleMode { DEG, RAD, GRA }`:
+Controlled by `AngleMode { DEG, RAD, GRA }`:
 
 ```cpp
 double toRad(double a) {
     switch (angleMode) {
         case DEG: return a * M_PI / 180.0;
-        case GRA: return a * M_PI / 200.0;   // grados centesimales
+        case GRA: return a * M_PI / 200.0;   // centesimal degrees
         case RAD: return a;
     }
 }
-// Aplicado antes de sin(), cos(), tan()
-// Aplicado inversamente en asin(), acos(), atan() (resultado → modo actual)
+// Applied before sin(), cos(), tan()
+// Applied inversely in asin(), acos(), atan() (result → current mode)
 ```
 
 ---
 
 ## 6. VariableContext
 
-**Archivo**: `src/math/VariableContext.cpp/.h`
+**File**: `src/math/VariableContext.cpp/.h`
 
-Gestiona variables `A`–`Z` y `Ans`.
+Manages variables `A`–`Z` and `Ans`.
 
-| Función | Descripción |
+| Function | Description |
 |:--------|:------------|
-| `set(char var, double val)` | Asignar variable |
-| `get(char var)` | Obtener valor (0.0 si no definida) |
-| `setAns(double v)` | Guardar último resultado |
-| `getAns()` | Obtener último resultado |
-| `saveToLittleFS()` | Persistir en `/vars.dat` |
-| `loadFromLittleFS()` | Cargar al arrancar |
+| `set(char var, double val)` | Assign variable |
+| `get(char var)` | Get value (0.0 if undefined) |
+| `setAns(double v)` | Save last result |
+| `getAns()` | Get last result |
+| `saveToLittleFS()` | Persist to `/vars.dat` |
+| `loadFromLittleFS()` | Load at startup |
 
 ---
 
-## 7. EquationSolver Numérico
+## 7. Numeric EquationSolver
 
-**Archivo**: `src/math/EquationSolver.cpp/.h`
+**File**: `src/math/EquationSolver.cpp/.h`
 
-Resuelve `f(x) = 0` numéricamente con el método de Newton-Raphson.
+Solves `f(x) = 0` numerically with Newton-Raphson method.
 
 ```
 x_{n+1} = x_n - f(x_n) / f'(x_n)
 
-Donde f'(x) ≈ (f(x+h) - f(x-h)) / (2h),  h = 1e-7
+Where f'(x) ≈ (f(x+h) - f(x-h)) / (2h),  h = 1e-7
 
-Criterio de parada: |f(x)| < 1e-10  ó  max 100 iteraciones
-Semillas probadas: x₀ ∈ {0, 1, -1, 2, -2, 5, -5, 10}
+Stop criterion: |f(x)| < 1e-10  or  max 100 iterations
+Test seeds: x₀ ∈ {0, 1, -1, 2, -2, 5, -5, 10}
 ```
 
-> **Limitación**: Encuentra una raíz real. Para álgebra exacta con todas las raíces, usar el **CAS-Lite Engine** (Sección 8).
+> **Limitation**: Finds one real root. For exact algebra with all roots, use the **Pro-CAS Engine** (Section 8).
 
 ---
 
-## 8. CAS-Lite Engine
+## 8. Pro-CAS Engine
 
-★ **Nuevo en Febrero 2026** — Motor de álgebra computacional propio diseñado para embedded. Resuelve ecuaciones polinomiales con resultado exacto (fracciones), muestra pasos al usuario, y gestiona toda su memoria en PSRAM con `PSRAMAllocator`.
+★ Complete computational algebra motor designed for embedded systems. Evolution of the original CAS-Lite. Includes polynomial equation solving with exact results, symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), multi-pass simplification, and immutable DAG with hash-consing. All CAS memory lives in PSRAM with `PSRAMAllocator`.
 
-### 8.1 Arquitectura y Módulos
+### 8.1 Architecture and Modules
 
 ```
 src/math/cas/
-├── PSRAMAllocator.h      ← Allocator STL-compatible → ps_malloc / ps_free
-├── SymPoly.h/.cpp        ← Rational (fracción exacta) + SymPoly (polinomio)
-├── ASTFlattener.h/.cpp   ← ExprNode AST → SymPoly simbólico
-├── SingleSolver.h/.cpp   ← Ecuación 1 var: lineal / cuadrática / N-R grado N
-├── SystemSolver.h/.cpp   ← Sistema 2 ecuaciones, 2 incógnitas: Gauss
+├── CASInt.h              ← Hybrid BigInt: int64 fast-path + mbedtls_mpi
+├── CASRational.h/.cpp    ← Exact fraction overflow-safe (auto-GCD)
+├── ConsTable.h           ← Hash-consing PSRAM: dedup nodes
+├── PSRAMAllocator.h      ← STL-compatible allocator → ps_malloc / ps_free
+├── SymExpr.h/.cpp        ← Immutable DAG (hash + weight)
+├── SymExprArena.h        ← Bump allocator PSRAM + ConsTable integrated
+├── SymPoly.h/.cpp        ← Rational (exact fraction) + SymPoly (polynomial)
+├── SymPolyMulti.h/.cpp   ← Multivariable polynomial + Sylvester resultant
+├── ASTFlattener.h/.cpp   ← MathAST → SymExpr DAG (hash-consed)
+├── SymDiff.h/.cpp        ← Differentiation: 17 rules (chain, product, trig, exp, log)
+├── SymIntegrate.h/.cpp   ← Slagle integration: table, linearity, u-sub, parts
+├── SymSimplify.h/.cpp    ← Fixed-point simplifier (8 passes, trig/log/exp)
+├── SingleSolver.h/.cpp   ← 1-var equation: linear / quadratic / N-R degree N
+├── SystemSolver.h/.cpp   ← 2×2 system: Gaussian + NL (resultant)
+├── OmniSolver.h/.cpp     ← Analytic variable isolation
+├── HybridNewton.h/.cpp   ← Newton-Raphson with symbolic Jacobian
 ├── CASStepLogger.h/.cpp  ← StepVec PSRAM: INFO / FORMULA / RESULT / ERROR
-└── SymToAST.h/.cpp       ← Rational / SolveResult → ExprNode Natural Display
+├── SymToAST.h/.cpp       ← SolveResult → MathAST Natural Display
+└── SymExprToAST.h/.cpp   ← SymExpr → MathAST (+C, ∫)
 ```
 
-**Pipeline completo**:
+**Complete pipeline**:
 ```
-Usuario: "3x+6=0"
+User: "3x+6=0"
   │
   ├─ splitAtEquals() → lhs="3x+6", rhs="0"
-  ├─ Parser(lhs) → ExprNode AST izquierdo
-  ├─ Parser(rhs) → ExprNode AST derecho
+  ├─ Parser(lhs) → ExprNode AST left
+  ├─ Parser(rhs) → ExprNode AST right
   │
   ├─ ASTFlattener::flatten(lhsNode, rhsNode) → SymPoly (lhs - rhs)
   │    SymPoly: { 1: 3, 0: 6 }   (3x + 6)
   │
   ├─ SingleSolver::solve(poly)
-  │    grado 1 → x = -6/3 = -2
-  │    Steps: INFO "Lineal" / FORMULA "x = -b/a" / RESULT "x = -2"
+  │    degree 1 → x = -6/3 = -2
+  │    Steps: INFO "Linear" / FORMULA "x = -b/a" / RESULT "x = -2"
   │
   └─ SymToAST() → ExprNode "x = -2"  (Natural Display)
 ```
 
 ### 8.2 PSRAMAllocator
 
-Allocator STL-compatible que redirige todas las allocations al heap PSRAM:
+STL-compatible allocator that redirects all allocations to the PSRAM heap:
 
 ```cpp
 template<typename T>
@@ -301,56 +320,56 @@ struct PSRAMAllocator {
 };
 ```
 
-Tipos que lo usan:
-- `CoeffMap` en `SymPoly` → `std::map<int, Rational, ..., PSRAMAllocator<...>>`
-- `StepVec` en `CASStepLogger` → `std::vector<CASStep, PSRAMAllocator<CASStep>>`
+Types that use it:
+- `CoeffMap` in `SymPoly` → `std::map<int, Rational, ..., PSRAMAllocator<...>>`
+- `StepVec` in `CASStepLogger` → `std::vector<CASStep, PSRAMAllocator<CASStep>>`
 
-### 8.3 Rational y SymPoly
+### 8.3 Rational and SymPoly
 
-#### `Rational` — Fracción exacta
+#### `Rational` — Exact Fraction
 
 ```cpp
 struct Rational {
-    int64_t num, den;  // den siempre > 0, reducido por GCD automáticamente
+    int64_t num, den;  // den always > 0, auto-reduced by GCD
 
-    Rational(int64_t n = 0, int64_t d = 1);  // Normaliza: Rational(6,4) → {3,2}
+    Rational(int64_t n = 0, int64_t d = 1);  // Normalizes: Rational(6,4) → {3,2}
     double   toDouble() const { return (double)num / den; }
     bool     isInteger() const { return den == 1; }
     bool     isZero()    const { return num == 0; }
 
-    // Aritmética exacta:
+    // Exact arithmetic:
     Rational operator+(Rational o) const;
     Rational operator-(Rational o) const;
     Rational operator*(Rational o) const;
-    Rational operator/(Rational o) const;  // lanza si o.num==0
+    Rational operator/(Rational o) const;  // throws if o.num==0
     bool     operator==(Rational o) const;
 };
 ```
 
-#### `SymPoly` — Polinomio simbólico
+#### `SymPoly` — Symbolic Polynomial
 
 ```cpp
 using CoeffMap = std::map<int, Rational, std::less<int>,
                           PSRAMAllocator<std::pair<const int, Rational>>>;
 
 struct SymPoly {
-    CoeffMap coeffs;   // { grado → Rational }
-    char     var;      // Variable simbólica ('x' por defecto)
+    CoeffMap coeffs;   // { degree → Rational }
+    char     var;      // Symbolic variable ('x' by default)
 
-    int      degree() const;               // Grado máximo con coef ≠ 0
-    Rational coeff(int deg) const;         // Coef en 'deg' (0 si no existe)
-    SymPoly  derivative() const;           // Derivada simbólica
-    double   evaluate(double x) const;     // Evaluación numérica (Newton-Raphson)
+    int      degree() const;               // Max degree with nonzero coeff
+    Rational coeff(int deg) const;         // Coeff at 'deg' (0 if not exists)
+    SymPoly  derivative() const;           // Symbolic derivative
+    double   evaluate(double x) const;     // Numeric evaluation (Newton-Raphson)
 
     SymPoly  operator+(const SymPoly& o) const;
     SymPoly  operator-(const SymPoly& o) const;
-    SymPoly  operator*(const Rational& r) const;  // Escalar
+    SymPoly  operator*(const Rational& r) const;  // Scalar
 };
 ```
 
-**Ejemplo**:
+**Example**:
 ```cpp
-// Representa: 3x² - 5x + 2
+// Represents: 3x² - 5x + 2
 SymPoly p;
 p.coeffs = { {2, {3,1}}, {1, {-5,1}}, {0, {2,1}} };
 p.degree();       // 2
@@ -360,50 +379,50 @@ p.evaluate(1.0);  // 3 - 5 + 2 = 0.0
 
 ### 8.4 ASTFlattener
 
-Convierte un par de `ExprNode` (lhs, rhs de la ecuación) en un único `SymPoly` representando `lhs - rhs = 0`.
+Converts a pair of `ExprNode` (lhs, rhs of equation) into a single `SymPoly` representing `lhs - rhs = 0`.
 
-**Reglas de conversión (visitación recursiva)**:
+**Conversion rules (recursive visitation)**:
 
-| Nodo ExprNode | Acción |
+| ExprNode Node | Action |
 |:--------------|:-------|
-| `TEXT` número | `SymPoly` grado 0 con valor numérico |
-| `TEXT` variable (ej. `x`) | `SymPoly` grado 1, coef 1 → `{1: 1/1}` |
-| `ADD`, `SUB` | Flattear hijos recursivamente, sumar/restar SymPolys |
-| `MUL` (escalar × poly) | Multiplicar SymPoly por Rational |
-| `MUL` (poly × poly) | Producto polinomial término a término |
-| `POW` (var^n, n integer) | `SymPoly` grado n, coef 1 |
-| `FRACTION` | Rational exacta (num/den) como SymPoly grado 0 |
-| `NEG` | Multiplicar SymPoly por `-1` |
+| `TEXT` number | `SymPoly` degree 0 with numeric value |
+| `TEXT` variable (e.g. `x`) | `SymPoly` degree 1, coeff 1 → `{1: 1/1}` |
+| `ADD`, `SUB` | Flatten children recursively, add/subtract SymPolys |
+| `MUL` (scalar × poly) | Multiply SymPoly by Rational |
+| `MUL` (poly × poly) | Polynomial product term by term |
+| `POW` (var^n, n integer) | `SymPoly` degree n, coeff 1 |
+| `FRACTION` | Exact Rational (num/den) as SymPoly degree 0 |
+| `NEG` | Multiply SymPoly by `-1` |
 
-**Ejemplo de conversión**:
+**Example conversion**:
 ```
 AST: ADD(MUL(NUM:3, POW(VAR:x, NUM:2)), SUB(MUL(NUM:5, VAR:x), NUM:2))
-Representa: 3x² + 5x - 2
+Represents: 3x² + 5x - 2
 
 ASTFlattener::visit():
-  → ADD de:
+  → ADD of:
      MUL(3, x²) → SymPoly {2: 3}
      SUB(5x, 2) → SymPoly {1: 5, 0: -2}
-  → Resultado: SymPoly {2: 3, 1: 5, 0: -2}  ✓
+  → Result: SymPoly {2: 3, 1: 5, 0: -2}  ✓
 ```
 
 ### 8.5 SingleSolver
 
-**Archivo**: `src/math/cas/SingleSolver.h/.cpp`  
-**Entrada**: `SymPoly` (ecuación igualada a 0)  
-**Salida**: `SolveResult` con `Rational` exacto + `CASStepLogger` con pasos
+**File**: `src/math/cas/SingleSolver.h/.cpp`  
+**Input**: `SymPoly` (equation set equal to 0)  
+**Output**: `SolveResult` with exact `Rational` + `CASStepLogger` with steps
 
-#### Estructura de resultado
+#### Result Structure
 
 ```cpp
 struct SolveResult {
     enum class Status {
-        OK_ONE,     // Una solución real
-        OK_TWO,     // Dos soluciones reales (cuadrática)
-        COMPLEX,    // Sin solución real (discriminante < 0)
-        INFINITE,   // Infinitas soluciones (0 = 0)
-        NONE,       // Sin solución (0 = c, c≠0)
-        ERROR       // Error interno
+        OK_ONE,     // One real solution
+        OK_TWO,     // Two real solutions (quadratic)
+        COMPLEX,    // No real solution (discriminant < 0)
+        INFINITE,   // Infinite solutions (0 = 0)
+        NONE,       // No solution (0 = c, c≠0)
+        ERROR       // Internal error
     };
     Status        status;
     Rational      root1, root2;
@@ -411,41 +430,41 @@ struct SolveResult {
 };
 ```
 
-#### Lógica por grado
+#### Logic by Degree
 
 ```
-Grado 0: coef₀ = 0? → INFINITE : NONE
+Degree 0: coeff₀ = 0? → INFINITE : NONE
 
-Grado 1: ax + b = 0
-  x = -b/a   (Rational exacto)
-  Steps generados:
-    [INFO]    "Ecuación lineal de grado 1"
+Degree 1: ax + b = 0
+  x = -b/a   (Exact Rational)
+  Steps generated:
+    [INFO]    "Linear equation degree 1"
     [FORMULA] "x = -b / a"
-    [RESULT]  "x = {valor}"
+    [RESULT]  "x = {value}"
 
-Grado 2: ax² + bx + c = 0
-  Δ = b² - 4ac  (calculado como Rational)
-  Δ < 0  → COMPLEX; steps: [INFO] "Discriminante negativo"
-  Δ = 0  → x = -b/(2a);  [FORMULA] "Raíz doble: x = -b/(2a)"
+Degree 2: ax² + bx + c = 0
+  Δ = b² - 4ac  (calculated as Rational)
+  Δ < 0  → COMPLEX; steps: [INFO] "Negative discriminant"
+  Δ = 0  → x = -b/(2a);  [FORMULA] "Double root: x = -b/(2a)"
   Δ > 0  → x₁ = (-b+√Δ)/(2a),  x₂ = (-b-√Δ)/(2a)
-           √Δ exacta si Δ es cuadrado perfecto, double sinó
-  Steps: [INFO] "Fórmula cuadrática", [FORMULA] "Δ = b²-4ac = {val}",
+           √Δ exact if Δ is perfect square, double otherwise
+  Steps: [INFO] "Quadratic formula", [FORMULA] "Δ = b²-4ac = {val}",
          [RESULT] "x₁ = {val}", [RESULT] "x₂ = {val}"
 
-Grado ≥ 3: Newton-Raphson numérico
-  Semillas: {0, 1, -1, 2, -2}
-  Criterio convergencia: |f(x)| < 1e-10, máx 100 iteraciones
-  Root → Rational{(int64_t)round(root*1e9), 1000000000} (aproximación racional)
-  Steps: [INFO] "Newton-Raphson grado N", [RESULT] "x ≈ {val}"
+Degree ≥ 3: Newton-Raphson numeric
+  Seeds: {0, 1, -1, 2, -2}
+  Convergence criterion: |f(x)| < 1e-10, max 100 iterations
+  Root → Rational{(int64_t)round(root*1e9), 1000000000} (rational approximation)
+  Steps: [INFO] "Newton-Raphson degree N", [RESULT] "x ≈ {val}"
 ```
 
 ### 8.6 SystemSolver
 
-**Archivo**: `src/math/cas/SystemSolver.h/.cpp`  
-**Entrada**: 2 expresiones de ecuación (strings), variable secundaria char  
-**Salida**: `SystemResult` con `Rational` x, y + pasos
+**File**: `src/math/cas/SystemSolver.h/.cpp`  
+**Input**: 2 equation expressions (strings), secondary variable char  
+**Output**: `SystemResult` with exact `Rational` x, y + steps
 
-#### Resultado
+#### Result
 
 ```cpp
 struct SystemResult {
@@ -456,45 +475,45 @@ struct SystemResult {
 };
 ```
 
-#### Algoritmo de Gauss 2×2
+#### Gaussian Elimination 2×2 Algorithm
 
 ```
-Sistema:
+System:
   eq1: a₁·x + b₁·y = c₁
   eq2: a₂·x + b₂·y = c₂
 
-Paso 1: Extraer coeficientes a₁, b₁, c₁, a₂, b₂, c₂
-         usando ASTFlattener (identificación de variable principal/secundaria)
+Step 1: Extract coefficients a₁, b₁, c₁, a₂, b₂, c₂
+         using ASTFlattener (identification of primary/secondary variable)
 
-Paso 2: Eliminación de x:
+Step 2: Elimination of x:
   eq1' = eq1 × a₂   →  (a₁·a₂)x + (b₁·a₂)y = c₁·a₂
   eq2' = eq2 × a₁   →  (a₁·a₂)x + (b₂·a₁)y = c₂·a₁
   eq3  = eq1' - eq2' →  (b₁·a₂ - b₂·a₁)y = c₁·a₂ - c₂·a₁
 
-Paso 3: Resolver y:
-  D = b₁·a₂ - b₂·a₁   (Rational exacto)
-  D = 0 y num≠0 → INCONSISTENT ("Sistema incompatible")
-  D = 0 y num=0 → INFINITE    ("Sistema dependiente")
+Step 3: Solve for y:
+  D = b₁·a₂ - b₂·a₁   (Exact Rational)
+  D = 0 and num≠0 → INCONSISTENT ("Inconsistent system")
+  D = 0 and num=0 → INFINITE    ("Dependent system")
   D ≠ 0         → y = (c₁·a₂ - c₂·a₁) / D
 
-Paso 4: Sustituir y en eq1 para obtener x:
+Step 4: Substitute y into eq1 to get x:
   x = (c₁ - b₁·y) / a₁
 
-Steps generados (5-7 pasos): INFO, FORMULA, INFO, INFO, RESULT×2
+Steps generated (5-7 steps): INFO, FORMULA, INFO, INFO, RESULT×2
 ```
 
 ### 8.7 CASStepLogger
 
-**Archivo**: `src/math/cas/CASStepLogger.h/.cpp`
+**File**: `src/math/cas/CASStepLogger.h/.cpp`
 
-Log de pasos del CAS con memoria en PSRAM. Se muestra al usuario en la pantalla de pasos de `EquationsApp`.
+PSRAM-based log of CAS calculation steps. Displayed to user in steps view of `EquationsApp`.
 
 ```cpp
 enum class StepType { INFO, FORMULA, RESULT, ERROR };
 
 struct CASStep {
     StepType    type;
-    std::string text;  // Texto del paso
+    std::string text;  // Step text
 };
 
 using StepVec = std::vector<CASStep, PSRAMAllocator<CASStep>>;
@@ -502,148 +521,426 @@ using StepVec = std::vector<CASStep, PSRAMAllocator<CASStep>>;
 class CASStepLogger {
 public:
     void        add(StepType type, const std::string& text);
-    void        clear();                // ← LLAMAR en EquationsApp::end()
+    void        clear();                // ← CALL in EquationsApp::end()
     size_t      count() const;
     const CASStep& get(size_t i) const;
 };
 ```
 
-**Tipos de paso y colores de renderizado en EquationsApp**:
+**Step types and rendering colors in EquationsApp**:
 
-| Tipo | Color | Uso |
+| Type | Color | Usage |
 |:-----|:------|:----|
-| `INFO` | Gris / texto secundario | Descripción del método |
-| `FORMULA` | Azul | Fórmula matemática aplicada |
-| `RESULT` | Verde | Resultado obtenido |
-| `ERROR` | Rojo | Error o caso degenerado |
+| `INFO` | Gray / secondary text | Method description |
+| `FORMULA` | Blue | Applied mathematical formula |
+| `RESULT` | Green | Result obtained |
+| `ERROR` | Red | Error or degenerate case |
 
-**Gestión de memoria**:
+**Memory management**:
 
-`SolveResult::steps` y `SystemResult::steps` contienen `CASStepLogger` con PSRAM.  
-`EquationsApp` los almacena como miembros (`_singleResult`, `_systemResult`).  
-En `EquationsApp::end()`:
+`SolveResult::steps` and `SystemResult::steps` contain `CASStepLogger` with PSRAM.  
+`EquationsApp` stores them as members (`_singleResult`, `_systemResult`).  
+In `EquationsApp::end()`:
 ```cpp
-_singleResult.steps.clear();  // ← Sin esto: leak PSRAM entre sesiones
+_singleResult.steps.clear();  // ← Without this: PSRAM leak between sessions
 _systemResult.steps.clear();
-_resultHint = nullptr;        // ← Widget LVGL ya destruido, nular puntero
+_resultHint = nullptr;        // ← LVGL widget already destroyed, null pointer
 ```
 
 ### 8.8 SymToAST
 
-**Archivo**: `src/math/cas/SymToAST.h/.cpp`
+**File**: `src/math/cas/SymToAST.h/.cpp`
 
-Convierte resultados del CAS a árboles `ExprNode` para renderizado en Natural Display.
+Converts CAS results to `ExprNode` trees for rendering in Natural Display.
 
 ```cpp
 // Rational → ExprNode
 ExprNode* SymToAST::rationalToNode(Rational r) {
     if (r.isInteger()) return textNode(std::to_string(r.num));
-    // Fracción: ExprNode FRACTION con num/den como TEXT hijos
+    // Fraction: ExprNode FRACTION with num/den as TEXT children
     ExprNode* frac = new ExprNode(ExprNodeType::FRACTION);
     frac->children.push_back(textNode(std::to_string(r.num)));
     frac->children.push_back(textNode(std::to_string(r.den)));
     return frac;
 }
 
-// SolveResult → ExprNode "x = valor"
+// SolveResult → ExprNode "x = value"
 ExprNode* SymToAST::solveResultToNode(const SolveResult& r, char varName);
 
 // SystemResult → ExprNode "x = val1, y = val2"
 ExprNode* SymToAST::systemResultToNode(const SystemResult& r, char v1, char v2);
 ```
 
-Ejemplos de output:
+Output examples:
 - `Rational{3, 1}` → `ExprNode TEXT "3"`
 - `Rational{1, 2}` → `ExprNode FRACTION [TEXT "1" / TEXT "2"]` → renders $\frac{1}{2}$
 - `SolveResult(OK_TWO, -1/3, -2)` → `"x₁ = -1/3, x₂ = -2"`
 
 ---
 
-## 9. Suite de Tests CAS
+## 8.9 SymExpr — Symbolic Tree (Phase 3)
 
-**Archivo**: `tests/CASTest.h/.cpp`  
-**Activar**: Descomentar `-DCAS_RUN_TESTS` y `+<../tests/CASTest.cpp>` en `platformio.ini`
+**Files**: `src/math/cas/SymExpr.h`, `SymExpr.cpp`
 
-```
-Fase A — SymPoly (12 tests):
-  - Rational: aritmética, normalización (6/4→3/2), división por cero
-  - SymPoly: coeficientes, grado, suma, resta, multiplicación escalar
-  - SymPoly: derivada derivation polynomial
+Arena-allocated symbolic expression tree for CAS:
 
-Fase B — ASTFlattener (15 tests):
-  - Conversión de literales numéricos y variables
-  - Expresiones lineales: ax+b, con fracciones, con negación
-  - Expresiones cuadráticas: x²+2x+1, (x+1)(x-1) = x²-1
-  - Casos degenerados: constante pura, variable con coef fraccionario
+| Type | Class | Fields |
+|------|-------|--------|
+| `Num` | `SymNum` | `ExactVal value` |
+| `Var` | `SymVar` | `char name` |
+| `Neg` | `SymNeg` | `SymExpr* child` |
+| `Add` | `SymAdd` | `SymExpr** terms`, `uint16_t count` |
+| `Mul` | `SymMul` | `SymExpr** factors`, `uint16_t count` |
+| `Pow` | `SymPow` | `SymExpr* base`, `SymExpr* exponent` |
+| `Func` | `SymFunc` | `SymFuncKind kind`, `SymExpr* argument` |
 
-Fase C — SingleSolver (16 tests):
-  - Grado 0: INFINITE / NONE
-  - Grado 1: x = entero, x = fracción, x = negativo
-  - Grado 2: discriminante 0, >0 (enteros), >0 (irracionales → double), <0
-  - Grado 2: fórmula cuadrática normalizada 2x²-5x+2=0 → x=2, x=1/2
-  - Pasos: verificar que SingleSolver genera exactamente N pasos esperados
+**Key API**:
+- `toString()` — readable textual representation
+- `evaluate(char var, double val)` — numeric evaluation
+- `isPolynomial()` — determines if polynomial
+- `toSymPoly(char var)` — converts to SymPoly if polynomial
 
-Fase D — SystemSolver (10 tests):
-  - Sistema con solución entera única
-  - Sistema con solución fraccionaria
-  - Sistema inconsistente (D=0, num≠0)
-  - Sistema dependiente (D=0, num=0)
-  - Sistema asimétrico (coeficiente cero en una ecuación)
-
-TOTAL: 53 tests — todos passing ✅
-```
-
-**Output ejemplo** (Serial Monitor, modo test):
-```
-[CAS TEST] Fase A: SymPoly.............. 12/12 OK
-[CAS TEST] Fase B: ASTFlattener......... 15/15 OK
-[CAS TEST] Fase C: SingleSolver......... 16/16 OK
-[CAS TEST] Fase D: SystemSolver......... 10/10 OK
-[CAS TEST] Total: 53/53 PASS
+**SymExprArena** (`SymExprArena.h`):
+Bump allocator PSRAM. 64KB blocks, max 4 blocks.
+```cpp
+arena.create<SymNum>(ExactVal::fromInt(5));
+arena.symVar('x');
+arena.symPow(x, arena.symInt(2));
+arena.reset();  // Frees all
+arena.currentUsed();   // bytes in use
+arena.blockCount();    // active blocks
 ```
 
 ---
 
-## 10. Extensibilidad
+## 8.10 SymDiff — Symbolic Differentiation (Phase 3)
 
-### Añadir nueva función al Evaluator
+**File**: `src/math/cas/SymDiff.h`, `SymDiff.cpp`
 
 ```cpp
-// 1. Tokenizer.h: nuevo tipo TokenType::LOG2
-// 2. Tokenizer.cpp: reconocer "log2" en el lexer
-// 3. Parser.cpp: añadir LOG2 con precedencia 5 al mapa de funciones
-// 4. Evaluator.cpp:
-case TokenType::LOG2:
-    a = stack.top(); stack.pop();
-    stack.push(std::log2(a));
-    break;
+static SymExpr* SymDiff::diff(SymExpr* expr, char var, SymExprArena& arena);
 ```
 
-### Añadir resolución de grado 3 exacto (Cardano)
+**Implemented rules**:
+
+| Rule | Input | Result |
+|------|-------|--------|
+| Constant | `d/dx(c)` | `0` |
+| Variable | `d/dx(x)` | `1` |
+| Sum | `d/dx(u+v)` | `u' + v'` |
+| Product | `d/dx(u·v)` | `u'·v + u·v'` |
+| Power | `d/dx(x^n)` | `n·x^(n-1)` |
+| Chain | `d/dx(f(g(x)))` | `f'(g(x))·g'(x)` |
+| Sine | `d/dx(sin u)` | `cos(u)·u'` |
+| Cosine | `d/dx(cos u)` | `-sin(u)·u'` |
+| Tangent | `d/dx(tan u)` | `(1/cos²(u))·u'` |
+| Exponential | `d/dx(e^u)` | `e^u·u'` |
+| Logarithm | `d/dx(ln u)` | `u'/u` |
+| Log₁₀ | `d/dx(log₁₀ u)` | `u'/(u·ln(10))` |
+| ArcSin | `d/dx(arcsin u)` | `u'/√(1-u²)` |
+| ArcCos | `d/dx(arccos u)` | `-u'/√(1-u²)` |
+| ArcTan | `d/dx(arctan u)` | `u'/(1+u²)` |
+
+---
+
+## 8.11 SymSimplify — Algebraic Simplifier (Phase 3)
+
+**File**: `src/math/cas/SymSimplify.h`, `SymSimplify.cpp`
 
 ```cpp
-// SingleSolver.cpp, rama degree() == 3:
-// 1. Normalizar: x³ + px + q = 0 (eliminar término cuadrático)
-//    → sustituir x = t - b/(3a)
-// 2. Calcular discriminante: Δ = -(4p³ + 27q²)
-// 3. Δ > 0: 3 raíces reales (método trigonométrico de Viète)
-// 4. Δ = 0: raíz doble y simple
-// 5. Δ < 0: 1 raíz real + 2 complejas conjugadas
-steps.add(StepType::INFO, "Método de Cardano");
+static SymExpr* SymSimplify::simplify(SymExpr* expr, SymExprArena& arena);
 ```
 
-### Añadir soporte a derivadas simbólicas
+**Simplification rules**:
+- `0 + x → x`, `x + 0 → x`
+- `1 · x → x`, `x · 1 → x`
+- `0 · x → 0`
+- `x^0 → 1`, `x^1 → x`
+- Double negation: `--x → x`
+- Constant folding (operations between literals)
+- Collapse unit collections (`Add([x]) → x`)
 
-El `SymPoly::derivative()` ya existe para polinomios.  
-Para funciones transcendentes, extender `ExprNode` con tipos `SIN`, `COS`, `EXP`, `LN`, y crear:
+---
+
+## 8.12 SymExprToAST — Conversion to MathAST (Phase 3)
+
+**File**: `src/math/cas/SymExprToAST.h`, `SymExprToAST.cpp`
 
 ```cpp
-ExprNode* symbolicDerivative(ExprNode* node, char var);
-// d(sin u)/dx = cos(u) * u'
-// d(e^u)/dx   = e^u * u'
-// d(ln u)/dx  = u' / u
+static vpam::NodePtr SymExprToAST::convert(const SymExpr* expr);
+```
+
+Converts a `SymExpr` tree (result of diff/simplify) back to
+`MathAST` (`NodePtr`) for 2D rendering in `MathCanvas`:
+
+| SymExpr | MathAST |
+|---------|---------|
+| `SymNum` | `NodeNumber` |
+| `SymVar` | `NodeVariable` |
+| `SymNeg` | `NodeRow` with `OpKind::Sub` |
+| `SymAdd` | `NodeRow` with operators `+/-` |
+| `SymMul` | `NodeRow` with operator `×` |
+| `SymPow` | `NodePower` |
+| `SymFunc` | `NodeFunction` |
+
+---
+
+## 8.13 CalculusApp — Derivatives App (Phase 6)
+
+**Files**: `src/apps/CalculusApp.h`, `CalculusApp.cpp`
+
+LVGL-native app for interactive symbolic differentiation.
+
+### Complete Pipeline
+
+```
+                   ┌──────────────┐
+ Keyboard ──► VPAM │ MathCanvas   │  Visual node (2D)
+                   │  (NodeRow)   │
+                   └──────┬───────┘
+                          │ ASTFlattener
+                          ▼
+                   ┌──────────────┐
+                   │  SymExpr*    │  Symbolic tree (arena)
+                   └──────┬───────┘
+                          │ SymDiff::diff()
+                          ▼
+                   ┌──────────────┐
+                   │ Raw Deriv    │  Derivative without simplifying
+                   └──────┬───────┘
+                          │ SymSimplify::simplify()
+                          ▼
+                   ┌──────────────┐
+                   │ Simplified   │  Simplified derivative
+                   └──────┬───────┘
+                          │ SymExprToAST::convert()
+                          ▼
+                   ┌──────────────┐
+                   │ MathCanvas   │  2D rendering of f'(x)
+                   └──────────────┘
+```
+
+### App States
+
+| State | Description |
+|--------|-------------|
+| `EDITING` | Expression input with MathCanvas + cursor |
+| `COMPUTING` | Spinner + random message while calculating |
+| `RESULT` | Shows f(x) and f'(x) with 2D rendering |
+| `STEPS` | Scrollable list of differentiation steps |
+
+### Supported Functions
+
+All NumOS keyboard functions: `sin`, `cos`, `tan`, `arcsin`, `arccos`,
+`arctan`, `ln`, `log`, `√`, `π`, `e`, fractions, powers, parentheses.
+
+### Controls
+
+| Key | Action |
+|--------|--------|
+| ENTER | Differentiate the expression |
+| AC | Clear / go back |
+| SHIFT+trig | Inverse functions (arcsin, etc.) |
+| SHOW_STEPS | View differentiation steps |
+| ↑/↓ | Scroll in steps view |
+
+### Memory Management
+
+- `SymExprArena _arena` as class member (not stack-local)
+- `_arena.reset()` at beginning of each computation
+- `_arena.reset()` in `end()` to cleanup PSRAM on exit
+- Result `_derivExpr` is arena-owned — valid until next reset
+
+---
+
+## 8.14 SymIntegrate — Symbolic Integration (Phase 6B)
+
+**File**: `src/math/cas/SymIntegrate.h`, `SymIntegrate.cpp`
+
+```cpp
+static const SymExpr* SymIntegrate::integrate(
+    SymExprArena& arena, const SymExpr* expr, const char* var);
+```
+
+Heuristic symbolic integration engine inspired by Slagle's algorithm.
+Returns `nullptr` if unable to find a closed form antiderivative.
+
+**Strategies (in order of application)**:
+
+| # | Strategy | Example |
+|---|----------|---------|
+| 1 | **Direct table** | ∫sin(x)dx = -cos(x), ∫eˣdx = eˣ, ∫1/x dx = ln(x) |
+| 2 | **Linearity** | ∫(af + bg)dx = a∫fdx + b∫gdx |
+| 3 | **Powers** | ∫xⁿdx = xⁿ⁺¹/(n+1) for n≠-1 |
+| 4 | **u-substitution** | ∫f(g(x))·g'(x)dx → ∫f(u)du with u=g(x) |
+| 5 | **Parts (LIATE)** | ∫u·dv = uv - ∫v·du, priority: Log > InvTrig > Alg > Trig > Exp |
+
+**Complete pipeline**:
+```
+Input: SymExpr* (expression to integrate)
+           │
+           ▼
+  ┌────────────────────┐
+  │ Direct table       │  Matches known pattern?
+  └────────┬───────────┘
+           │ no
+           ▼
+  ┌────────────────────┐
+  │ Linearity          │  Is sum/subtraction? → integrate each term
+  └────────┬───────────┘
+           │ no
+           ▼
+  ┌────────────────────┐
+  │ u-substitution     │  Has form f(g(x))·g'(x)?
+  └────────┬───────────┘
+           │ no
+           ▼
+  ┌────────────────────┐
+  │ Parts (LIATE)      │  Assign u, dv by LIATE priority
+  └────────┬───────────┘
+           │ no
+           ▼
+       nullptr  (unresolved integral → shown as ∫)
 ```
 
 ---
 
-*NumOS — Open-source scientific calculator OS for ESP32-S3 N16R8.*  
+## 8.15 IntegralApp — Integrals App (Phase 6B)
+
+**Files**: `src/apps/IntegralApp.h`, `IntegralApp.cpp`
+
+LVGL-native app for interactive symbolic integration. Parallel design to CalculusApp with purple color scheme (0x6A1B9A).
+
+### Complete Pipeline
+
+```
+                   ┌──────────────┐
+ Keyboard ──► VPAM │ MathCanvas   │  Visual node (2D)
+                   │  (NodeRow)   │
+                   └──────┬───────┘
+                          │ ASTFlattener
+                          ▼
+                   ┌──────────────┐
+                   │  SymExpr*    │  Symbolic tree (arena)
+                   └──────┬───────┘
+                          │ SymIntegrate::integrate()
+                          ▼
+                   ┌──────────────┐
+                   │ Raw Integral │  Antiderivative (or nullptr)
+                   └──────┬───────┘
+                          │ SymSimplify::simplify()
+                          ▼
+                   ┌──────────────┐
+                   │ Simplified   │  Simplified integral
+                   └──────┬───────┘
+                          │ SymExprToAST::convertIntegral()
+                          ▼
+                   ┌──────────────┐
+                   │ MathCanvas   │  2D rendering: F(x) + C
+                   └──────────────┘
+```
+
+### App States
+
+| State | Description |
+|--------|-------------|
+| `EDITING` | Expression input with MathCanvas + cursor |
+| `COMPUTING` | Spinner + random message ("Integrating...", "Finding antiderivative...") |
+| `RESULT` | Shows f(x) and F(x)+C (or ∫f(x)dx if unsolved) |
+| `STEPS` | Scrollable list of integration steps |
+
+### Two Result Branches
+
+1. **Integral Solved** (`_integralFound = true`):
+   - Label: "F(x) ="
+   - Uses `SymExprToAST::convertIntegral()` which adds `+ C` automatically
+   - Green accent on status bar
+
+2. **Integral Unsolved** (`_integralFound = false`):
+   - Label: "∫f(x)dx ="
+   - Shows original expression with ∫ symbol
+   - Orange accent on status bar
+
+### Controls
+
+| Key | Action |
+|--------|--------|
+| ENTER/EXE | Integrate the expression |
+| AC | Clear / go back |
+| SHIFT+trig | Inverse functions (arcsin, etc.) |
+| SHOW_STEPS | View integration steps |
+| ↑/↓ | Scroll in steps view |
+
+### Memory Management
+
+- `SymExprArena _arena` as class member
+- `_arena.reset()` at beginning of each computation
+- `_arena.reset()` in `end()` to cleanup PSRAM on exit
+- `_integSteps.clear()` in `end()` to free StepVec PSRAM
+- Result `_integralExpr` is arena-owned — valid until next reset
+
+---
+
+## 9. CAS Test Suite
+
+**File**: `tests/CASTest.h/.cpp`  
+**Enable**: Uncomment `-DCAS_RUN_TESTS` and `+<../tests/CASTest.cpp>` in `platformio.ini`
+
+```
+Phase A — SymPoly (12 tests):
+  - Rational: arithmetic, normalization (6/4→3/2), division by zero
+  - SymPoly: coefficients, degree, sum, subtraction, scalar multiplication
+  - SymPoly: polynomial derivative
+
+Phase B — ASTFlattener (15 tests):
+  - Conversion of numeric and variable literals
+  - Linear expressions: ax+b, with fractions, with negation
+  - Quadratic expressions: x²+2x+1, (x+1)(x-1) = x²-1
+  - Degenerate cases: pure constant, variable with fractional coeff
+
+Phase C — SingleSolver (16 tests):
+  - Degree 0: INFINITE / NONE
+  - Degree 1: x = integer, x = fraction, x = negative
+  - Degree 2: discriminant 0, >0 (integers), >0 (irrational → double), <0
+  - Degree 2: normalized quadratic formula 2x²-5x+2=0 → x=2, x=1/2
+  - Steps: verify SingleSolver generates exactly N expected steps
+
+Phase D — SystemSolver (10 tests):
+  - System with unique integer solution
+  - System with fractional solution
+  - Inconsistent system (D=0, num≠0)
+  - Dependent system (D=0, num=0)
+  - Asymmetric system (zero coefficient in one equation)
+
+Phase E — SymDiff + SymSimplify + SymExprToAST (32 tests):
+  - Derivatives of polynomials: constant, linear, quadratic, cubic
+  - Trigonometric derivatives: sin, cos, tan + chain rule
+  - Derivative of exponential, logarithm, arc functions
+  - Product rule: x·sin(x), x²·ln(x)
+  - SymSimplify: 0+x→x, 1·x→x, 0·x→0, x^0→1, x^1→x
+  - SymExprToAST: correct conversion of node types
+
+Phase F — CalculusStressTest (50 iterations):
+  - 25 distinct expressions × 2 repetitions
+  - Verify arena.reset() frees memory between iterations
+  - Verify arena blocks ≤ 4 (bounded)
+  - Verify toString() and SymExprToAST::convert() don't crash
+
+TOTAL: 85+ tests — all passing ✅
+```
+
+**Example output** (Serial Monitor, test mode):
+```
+[CAS TEST] Phase A: SymPoly.............. 12/12 OK
+[CAS TEST] Phase B: ASTFlattener......... 15/15 OK
+[CAS TEST] Phase C: SingleSolver......... 16/16 OK
+[CAS TEST] Phase D: SystemSolver......... 10/10 OK
+[CAS TEST] Phase E: SymDiff.............. 32/32 OK
+[CAS TEST] Phase F: StressTest........... 50/50 OK
+```
+
+---
+
+## 10. Extensibility
+
+*NumOS — Open-source scientific calculator OS for ESP32-S3 N16R8.*

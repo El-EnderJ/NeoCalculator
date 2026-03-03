@@ -168,9 +168,9 @@ void runCASTests() {
 
         check("(3x²+2x-5)-(x²-3x+2) has 3 terms", diff.terms().size() == 3);
         // Expected: 2x² + 5x - 7
-        check("Result x² coeff == 2", diff.coeffAt(2).num == 2);
-        check("Result x  coeff == 5", diff.coeffAt(1).num == 5);
-        check("Result const   == -7", diff.coeffAt(0).num == -7);
+        check("Result x² coeff == 2", diff.coeffAtExact(2).num == 2);
+        check("Result x  coeff == 5", diff.coeffAtExact(1).num == 5);
+        check("Result const   == -7", diff.coeffAtExact(0).num == -7);
 
         PRINT("  a - b = ");
         PRINTLN(diff.toString().c_str());
@@ -190,8 +190,8 @@ void runCASTests() {
         b.normalize();
 
         SymPoly sum = a.add(b);
-        check("(2x+3)+(5x-1) x coeff == 7", sum.coeffAt(1).num == 7);
-        check("(2x+3)+(5x-1) const   == 2", sum.coeffAt(0).num == 2);
+        check("(2x+3)+(5x-1) x coeff == 7", sum.coeffAtExact(1).num == 7);
+        check("(2x+3)+(5x-1) const   == 2", sum.coeffAtExact(0).num == 2);
     }
 
     // ── Test 11: mulScalar ───────────────────────────────────────
@@ -203,8 +203,8 @@ void runCASTests() {
         p.normalize();
 
         SymPoly result = p.mulScalar(vpam::ExactVal::fromInt(4));
-        check("(2x+3)*4 → x coeff == 8", result.coeffAt(1).num == 8);
-        check("(2x+3)*4 → const == 12",  result.coeffAt(0).num == 12);
+        check("(2x+3)*4 → x coeff == 8", result.coeffAtExact(1).num == 8);
+        check("(2x+3)*4 → const == 12",  result.coeffAtExact(0).num == 12);
     }
 
     // ── Test 12: divScalar (distribution) ────────────────────────
@@ -217,9 +217,9 @@ void runCASTests() {
         p.normalize();
 
         SymPoly result = p.divScalar(vpam::ExactVal::fromInt(2));
-        check("(6x²+4x-2)/2 → x² coeff == 3", result.coeffAt(2).num == 3);
-        check("(6x²+4x-2)/2 → x  coeff == 2", result.coeffAt(1).num == 2);
-        check("(6x²+4x-2)/2 → const == -1",   result.coeffAt(0).num == -1);
+        check("(6x²+4x-2)/2 → x² coeff == 3", result.coeffAtExact(2).num == 3);
+        check("(6x²+4x-2)/2 → x  coeff == 2", result.coeffAtExact(1).num == 2);
+        check("(6x²+4x-2)/2 → const == -1",   result.coeffAtExact(0).num == -1);
 
         PRINT("  (6x²+4x-2)/2 = ");
         PRINTLN(result.toString().c_str());
@@ -253,8 +253,8 @@ void runCASTests() {
         SymEquation unified = eq.moveAllToLHS();
         check("moveAllToLHS → RHS is zero", unified.rhs.isZero());
         // LHS should be -2x + 6
-        check("LHS x coeff == -2", unified.lhs.coeffAt(1).num == -2);
-        check("LHS const   ==  6", unified.lhs.coeffAt(0).num == 6);
+        check("LHS x coeff == -2", unified.lhs.coeffAtExact(1).num == -2);
+        check("LHS const   ==  6", unified.lhs.coeffAtExact(0).num == 6);
 
         PRINT("  Unified: ");
         PRINTLN(unified.toString().c_str());
@@ -270,8 +270,8 @@ void runCASTests() {
         p.normalize();
 
         SymPoly neg = p.negate();
-        check("negate(3x²-7) → x² coeff == -3", neg.coeffAt(2).num == -3);
-        check("negate(3x²-7) → const == 7",     neg.coeffAt(0).num == 7);
+        check("negate(3x²-7) → x² coeff == -3", neg.coeffAtExact(2).num == -3);
+        check("negate(3x²-7) → const == 7",     neg.coeffAtExact(0).num == 7);
     }
 
     // ── Test 16: Negative power (denominator variable) ───────────
@@ -283,7 +283,7 @@ void runCASTests() {
         p.normalize();
 
         check("2x⁻¹+1 has 2 terms", p.terms().size() == 2);
-        check("coeffAt(-1) == 2", p.coeffAt(-1).num == 2);
+        check("coeffAt(-1) == 2", p.coeffAtExact(-1).num == 2);
 
         PRINT("  2/x + 1 = ");
         PRINTLN(p.toString().c_str());
@@ -298,8 +298,8 @@ void runCASTests() {
         p.normalize();
 
         SymPoly result = p.divScalar(vpam::ExactVal::fromInt(3));
-        check("(3x+6)/3 → x coeff == 1", result.coeffAt(1).num == 1);
-        check("(3x+6)/3 → const == 2",   result.coeffAt(0).num == 2);
+        check("(3x+6)/3 → x coeff == 1", result.coeffAtExact(1).num == 1);
+        check("(3x+6)/3 → const == 2",   result.coeffAtExact(0).num == 2);
     }
 
     // ── Test 18: SymEquation divBothScalar ───────────────────────
@@ -311,8 +311,8 @@ void runCASTests() {
         SymEquation eq(left, right);
         SymEquation simplified = eq.divBothScalar(vpam::ExactVal::fromInt(4));
 
-        check("4x=8 ÷4 → LHS x coeff == 1", simplified.lhs.coeffAt(1).num == 1);
-        check("4x=8 ÷4 → RHS const == 2",   simplified.rhs.coeffAt(0).num == 2);
+        check("4x=8 ÷4 → LHS x coeff == 1", simplified.lhs.coeffAtExact(1).num == 1);
+        check("4x=8 ÷4 → RHS const == 2",   simplified.rhs.coeffAtExact(0).num == 2);
 
         PRINT("  4x=8 → ");
         PRINTLN(simplified.toString().c_str());
@@ -340,9 +340,9 @@ void runCASTests() {
 
         SymPoly product = a.mul(b);
         check("(x+2)(x-3) has 3 terms", product.terms().size() == 3);
-        check("(x+2)(x-3) x² coeff == 1", product.coeffAt(2).num == 1);
-        check("(x+2)(x-3) x  coeff == -1", product.coeffAt(1).num == -1);
-        check("(x+2)(x-3) const == -6",    product.coeffAt(0).num == -6);
+        check("(x+2)(x-3) x² coeff == 1", product.coeffAtExact(2).num == 1);
+        check("(x+2)(x-3) x  coeff == -1", product.coeffAtExact(1).num == -1);
+        check("(x+2)(x-3) const == -6",    product.coeffAtExact(0).num == -6);
 
         PRINT("  (x+2)(x-3) = ");
         PRINTLN(product.toString().c_str());
@@ -359,8 +359,8 @@ void runCASTests() {
         b.normalize();
 
         SymPoly product = a.mul(b);
-        check("3×(x+1) x coeff == 3", product.coeffAt(1).num == 3);
-        check("3×(x+1) const == 3",  product.coeffAt(0).num == 3);
+        check("3×(x+1) x coeff == 3", product.coeffAtExact(1).num == 3);
+        check("3×(x+1) const == 3",  product.coeffAtExact(0).num == 3);
     }
 
     // ── Test 21: ASTFlattener — simple number ────────────────────
@@ -370,7 +370,7 @@ void runCASTests() {
         auto r = flat.flatten(numNode.get());
         check("flatten(42) ok", r.ok);
         check("flatten(42) is constant", r.poly.isConstant());
-        check("flatten(42) coeff == 42", r.poly.coeffAt(0).num == 42);
+        check("flatten(42) coeff == 42", r.poly.coeffAtExact(0).num == 42);
     }
 
     // ── Test 22: ASTFlattener — decimal becomes fraction ────────
@@ -379,8 +379,8 @@ void runCASTests() {
         auto numNode = vpam::makeNumber("0.5");
         auto r = flat.flatten(numNode.get());
         check("flatten(0.5) ok", r.ok);
-        check("flatten(0.5) num == 1", r.poly.coeffAt(0).num == 1);
-        check("flatten(0.5) den == 2", r.poly.coeffAt(0).den == 2);
+        check("flatten(0.5) num == 1", r.poly.coeffAtExact(0).num == 1);
+        check("flatten(0.5) den == 2", r.poly.coeffAtExact(0).den == 2);
     }
 
     // ── Test 23: ASTFlattener — variable ───────────────────────
@@ -390,7 +390,7 @@ void runCASTests() {
         auto r = flat.flatten(varNode.get());
         check("flatten(x) ok", r.ok);
         check("flatten(x) degree == 1", r.poly.degree() == 1);
-        check("flatten(x) x coeff == 1", r.poly.coeffAt(1).num == 1);
+        check("flatten(x) x coeff == 1", r.poly.coeffAtExact(1).num == 1);
     }
 
     // ── Test 24: ASTFlattener — 3x + 5 (Row with implicit mul) ────
@@ -406,8 +406,8 @@ void runCASTests() {
 
         auto r = flat.flatten(row.get());
         check("flatten(3x+5) ok", r.ok);
-        check("flatten(3x+5) x coeff == 3", r.poly.coeffAt(1).num == 3);
-        check("flatten(3x+5) const == 5",   r.poly.coeffAt(0).num == 5);
+        check("flatten(3x+5) x coeff == 3", r.poly.coeffAtExact(1).num == 3);
+        check("flatten(3x+5) const == 5",   r.poly.coeffAtExact(0).num == 5);
 
         PRINT("  flatten(3x+5) = ");
         PRINTLN(r.poly.toString().c_str());
@@ -435,18 +435,18 @@ void runCASTests() {
 
         auto eqr = flat.flattenEquation(lhs.get(), rhs.get());
         check("flattenEq(3x+5=2x+10) ok", eqr.ok);
-        check("LHS x coeff == 3", eqr.eq.lhs.coeffAt(1).num == 3);
-        check("LHS const == 5",   eqr.eq.lhs.coeffAt(0).num == 5);
-        check("RHS x coeff == 2", eqr.eq.rhs.coeffAt(1).num == 2);
-        check("RHS const == 10",  eqr.eq.rhs.coeffAt(0).num == 10);
+        check("LHS x coeff == 3", eqr.eq.lhs.coeffAtExact(1).num == 3);
+        check("LHS const == 5",   eqr.eq.lhs.coeffAtExact(0).num == 5);
+        check("RHS x coeff == 2", eqr.eq.rhs.coeffAtExact(1).num == 2);
+        check("RHS const == 10",  eqr.eq.rhs.coeffAtExact(0).num == 10);
 
         PRINT("  Equation: ");
         PRINTLN(eqr.eq.toString().c_str());
 
         // Also test moveAllToLHS: x - 5 = 0
         auto unified = eqr.eq.moveAllToLHS();
-        check("unified x coeff == 1",  unified.lhs.coeffAt(1).num == 1);
-        check("unified const == -5",   unified.lhs.coeffAt(0).num == -5);
+        check("unified x coeff == 1",  unified.lhs.coeffAtExact(1).num == 1);
+        check("unified const == -5",   unified.lhs.coeffAtExact(0).num == -5);
 
         PRINT("  moveAllToLHS: ");
         PRINTLN(unified.toString().c_str());
@@ -482,9 +482,9 @@ void runCASTests() {
 
         auto r = flat.flatten(row.get());
         check("FOIL (x+2)(x-3) ok", r.ok);
-        check("FOIL x² coeff == 1", r.poly.coeffAt(2).num == 1);
-        check("FOIL x  coeff == -1", r.poly.coeffAt(1).num == -1);
-        check("FOIL const == -6",    r.poly.coeffAt(0).num == -6);
+        check("FOIL x² coeff == 1", r.poly.coeffAtExact(2).num == 1);
+        check("FOIL x  coeff == -1", r.poly.coeffAtExact(1).num == -1);
+        check("FOIL const == -6",    r.poly.coeffAtExact(0).num == -6);
 
         PRINT("  FOIL (x+2)(x-3) = ");
         PRINTLN(r.poly.toString().c_str());
@@ -501,7 +501,7 @@ void runCASTests() {
         auto r = flat.flatten(pw.get());
         check("flatten(x^3) ok", r.ok);
         check("flatten(x^3) degree == 3", r.poly.degree() == 3);
-        check("flatten(x^3) x³ coeff == 1", r.poly.coeffAt(3).num == 1);
+        check("flatten(x^3) x³ coeff == 1", r.poly.coeffAtExact(3).num == 1);
     }
 
     // ── Test 28: ASTFlattener — Fraction with constant denom ─────
@@ -521,8 +521,8 @@ void runCASTests() {
         auto frac = vpam::makeFraction(std::move(numRow), std::move(denNum));
         auto r = flat.flatten(frac.get());
         check("flatten((6x+4)/2) ok", r.ok);
-        check("(6x+4)/2 x coeff == 3", r.poly.coeffAt(1).num == 3);
-        check("(6x+4)/2 const == 2",   r.poly.coeffAt(0).num == 2);
+        check("(6x+4)/2 x coeff == 3", r.poly.coeffAtExact(1).num == 3);
+        check("(6x+4)/2 const == 2",   r.poly.coeffAtExact(0).num == 2);
 
         PRINT("  (6x+4)/2 = ");
         PRINTLN(r.poly.toString().c_str());
@@ -546,7 +546,7 @@ void runCASTests() {
         auto r = flat.flatten(piNode.get());
         check("flatten(π) ok", r.ok);
         check("flatten(π) is constant", r.poly.isConstant());
-        check("flatten(π) piMul == 1", r.poly.coeffAt(0).piMul == 1);
+        check("flatten(π) piMul == 1", r.poly.coeffAtExact(0).piMul == 1);
     }
 
     // ── Test 31: ASTFlattener — Unary minus: -3x + 7 ───────────
@@ -562,8 +562,8 @@ void runCASTests() {
 
         auto r = flat.flatten(row.get());
         check("flatten(-3x+7) ok", r.ok);
-        check("flatten(-3x+7) x coeff == -3", r.poly.coeffAt(1).num == -3);
-        check("flatten(-3x+7) const == 7",    r.poly.coeffAt(0).num == 7);
+        check("flatten(-3x+7) x coeff == -3", r.poly.coeffAtExact(1).num == -3);
+        check("flatten(-3x+7) const == 7",    r.poly.coeffAtExact(0).num == 7);
 
         PRINT("  flatten(-3x+7) = ");
         PRINTLN(r.poly.toString().c_str());
@@ -583,9 +583,9 @@ void runCASTests() {
         auto pw = vpam::makePower(std::move(paren), vpam::makeNumber("2"));
         auto r = flat.flatten(pw.get());
         check("(x+1)^2 ok", r.ok);
-        check("(x+1)^2 x² coeff == 1", r.poly.coeffAt(2).num == 1);
-        check("(x+1)^2 x  coeff == 2", r.poly.coeffAt(1).num == 2);
-        check("(x+1)^2 const == 1",    r.poly.coeffAt(0).num == 1);
+        check("(x+1)^2 x² coeff == 1", r.poly.coeffAtExact(2).num == 1);
+        check("(x+1)^2 x  coeff == 2", r.poly.coeffAtExact(1).num == 2);
+        check("(x+1)^2 const == 1",    r.poly.coeffAtExact(0).num == 1);
 
         PRINT("  (x+1)^2 = ");
         PRINTLN(r.poly.toString().c_str());

@@ -34,6 +34,7 @@ public:
 
     // ── Input ────────────────────────────────────────────────────────────
     void setLaunchCallback(std::function<void(int)> cb);
+    bool moveFocusByDelta(int dCol, int dRow);
 
     // ── Accessors ────────────────────────────────────────────────────────
     lv_group_t* group()  const { return _group; }
@@ -56,6 +57,8 @@ private:
     void buildGrid();
     lv_obj_t* buildCard(lv_obj_t* parent, const AppEntry& app,
                          int col, int row);
+    lv_obj_t* cardById(int appId) const;
+    int focusedCardId() const;
 
     /** Creates a geometric vector icon inside `parent` based on app id. */
     void createAppIcon(lv_obj_t* parent, const AppEntry& app);
@@ -75,15 +78,21 @@ private:
 
     // ── Event handlers ───────────────────────────────────────────────────
     static void onCardEvent(lv_event_t* e);
+    static void onCardFocused(lv_event_t* e);   ///< Logs focus changes to Serial
     static void onGridDraw(lv_event_t* e);
     static void onIconDraw(lv_event_t* e);
+    /** Disables shadow rendering on all cards+icons during scroll for FPS. */
+    static void onScrollBegin(lv_event_t* e);
+    /** Restores shadow rendering after scroll ends. */
+    static void onScrollEnd(lv_event_t* e);
 
     // ── Members ──────────────────────────────────────────────────────────
     DisplayDriver& _display;
 
-    lv_obj_t*   _screen   = nullptr;
-    lv_obj_t*   _grid     = nullptr;
-    lv_group_t* _group    = nullptr;
+    lv_obj_t*   _screen    = nullptr;
+    lv_obj_t*   _grid      = nullptr;
+    lv_obj_t*   _firstCard = nullptr;   ///< First card — focused on create()
+    lv_group_t* _group     = nullptr;
 
     std::function<void(int)> _launchCb;
 };

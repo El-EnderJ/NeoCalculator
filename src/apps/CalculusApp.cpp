@@ -155,7 +155,7 @@ void CalculusApp::end() {
 
 void CalculusApp::load() {
     if (!_scr) begin();
-    lv_screen_load(_scr);
+    lv_screen_load_anim(_scr, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
     _statusBar.update();
 
     if (_state == State::EDITING) {

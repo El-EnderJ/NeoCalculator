@@ -186,7 +186,7 @@ void GrapherApp::load() {
     Serial.println("[GRAPHER] load() enter");
     if (!_screen) begin();
     Serial.println("[GRAPHER] lv_screen_load...");
-    lv_screen_load(_screen);
+    lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
     Serial.println("[GRAPHER] screen loaded OK");
     _statusBar.update();
     Serial.println("[GRAPHER] load() done");

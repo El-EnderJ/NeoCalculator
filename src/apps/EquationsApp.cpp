@@ -196,7 +196,7 @@ void EquationsApp::end() {
 
 void EquationsApp::load() {
     if (!_screen) begin();
-    lv_screen_load(_screen);
+    lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
     _statusBar.update();
 
     if (_state == State::EDITING) {

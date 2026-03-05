@@ -159,7 +159,7 @@
 #define LV_USE_LABEL        1   /* Nombres de apps y títulos */
 #define LV_USE_LED          0
 #define LV_USE_LINE         1   /* Requerido por widgets internos (scale) */
-#define LV_USE_LIST         0
+#define LV_USE_LIST         1   /* Stats results list */
 #define LV_USE_MENU         0
 #define LV_USE_MSGBOX       0
 #define LV_USE_ROLLER       0
@@ -169,6 +169,7 @@
 #define LV_USE_SPINNER      1
 #define LV_USE_SWITCH       0
 #define LV_USE_TABLE        1
+#define LV_USE_CHART        1   /* Histogram (Stats) + bell curve (Probability) */
 #define LV_USE_TABVIEW      0
 #define LV_USE_TEXTAREA     0
 #define LV_USE_TILEVIEW     0

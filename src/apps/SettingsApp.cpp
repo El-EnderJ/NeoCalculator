@@ -95,7 +95,7 @@ void SettingsApp::load() {
     _focus = 0;
     updateValues();
     updateFocus();
-    lv_scr_load(_screen);
+    lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

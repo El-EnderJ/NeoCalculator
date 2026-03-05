@@ -2118,9 +2118,8 @@ void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
         openCalcMenu();
         return;
     case KeyCode::AC:
-        // Exit trace mode — hide crosshair + pill
+        // Exit trace mode — hide crosshair + pill, return to toolbar
         clearIntegralShading();
-        _grMode = GrMode::NAVIGATE;
         if (_traceDot)   lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
         if (_traceLineH) lv_obj_add_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
         if (_traceLineV) lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);

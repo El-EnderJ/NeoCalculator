@@ -101,7 +101,8 @@ AnalysisResult findRoot(const EvalFunc& f, double xMin, double xMax,
     // Return best approximation even if not fully converged
     double mid = (a + b) * 0.5;
     double fMid = f(mid);
-    if (!std::isnan(fMid) && std::fabs(fMid) < 0.01) {
+    // Use a relaxed tolerance (10× tol) for the fallback check
+    if (!std::isnan(fMid) && std::fabs(fMid) < tol * 10.0) {
         res.found = true;
         res.x = mid;
         res.y = fMid;
@@ -146,7 +147,7 @@ AnalysisResult findExtremum(const EvalFunc& f, double xMin, double xMax,
     if (!res.found) return res;
 
     // Phase 2: Golden-section refinement around bestX
-    static constexpr double PHI = 0.6180339887;  // (√5 - 1) / 2
+    static constexpr double PHI = 0.6180339887;  // 1/φ = 2/(1+√5), reciprocal of golden ratio
     double a = std::max(xMin, bestX - step * 5);
     double b = std::min(xMax, bestX + step * 5);
 

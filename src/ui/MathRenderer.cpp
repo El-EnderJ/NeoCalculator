@@ -463,8 +463,8 @@ void MathCanvas::computeCursorPosition(int16_t baseX, int16_t baseY) {
                 search(sm->body(), bodyX, yBaseline, fm, fmSmall);
                 if (result.found) return;
 
-                // Variable
-                search(sm->variable(), bodyX, yBaseline, fm, fmSmall);
+                // Variable (part of lower limit for summation, e.g. "n=1")
+                search(sm->variable(), lowerX, lowerY, fmLim, fmLim.superscript());
             }
         }
     };

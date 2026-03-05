@@ -70,6 +70,8 @@ GrapherApp::GrapherApp()
     , _traceDot(nullptr), _traceLineH(nullptr), _traceLineV(nullptr)
     , _tracePill(nullptr), _tracePillDot(nullptr), _tracePillLabel(nullptr)
     , _infoBar(nullptr), _infoLabel(nullptr)
+    , _calcMenu(nullptr), _calcMenuIdx(0), _calcMenuOpen(false)
+    , _shadingCount(0), _shadingActive(false)
     , _tblTable(nullptr)
     , _tab(Tab::EXPRESSIONS), _focus(Focus::TAB_BAR), _tabIdx(0)
     , _numFuncs(0), _exprIdx(0), _exprMode(ExprMode::LIST)
@@ -93,6 +95,8 @@ GrapherApp::GrapherApp()
         _funcPtCount[i] = 0;
     }
     for (int i = 0; i < 4; ++i) _toolLabels[i] = nullptr;
+    for (int i = 0; i < CALC_MENU_ITEMS; ++i) _calcMenuRows[i] = nullptr;
+    for (int i = 0; i < 320; ++i) _shadingLines[i] = nullptr;
     _tblTable = nullptr;
     _tplModal = nullptr;
     _tplCount = 0; _tplIdx = 0; _tplOpen = false;
@@ -156,6 +160,10 @@ void GrapherApp::end() {
         _traceDot = nullptr; _traceLineH = nullptr; _traceLineV = nullptr;
         _tracePill = nullptr; _tracePillDot = nullptr; _tracePillLabel = nullptr;
         _infoBar = nullptr; _infoLabel = nullptr;
+        _calcMenu = nullptr; _calcMenuOpen = false;
+        for (int i = 0; i < CALC_MENU_ITEMS; ++i) _calcMenuRows[i] = nullptr;
+        for (int i = 0; i < 320; ++i) _shadingLines[i] = nullptr;
+        _shadingCount = 0; _shadingActive = false;
         _tblTable = nullptr;
         for (int i = 0; i < 3; ++i) { _tabLabels[i] = nullptr; _tabPills[i] = nullptr; }
         for (int i = 0; i < MAX_FUNCS; ++i) {
@@ -1748,6 +1756,12 @@ void GrapherApp::handleKey(const KeyEvent& ev) {
         return;
     }
 
+    // Calculate menu intercept — all keys go to menu when open
+    if (_calcMenuOpen) {
+        handleCalcMenu(ev);
+        return;
+    }
+
     // Global shortcuts: GRAPH → Graph tab, TABLE → Table tab
     if (ev.code == KeyCode::GRAPH && _tab != Tab::GRAPH) {
         _focus = Focus::CONTENT;
@@ -2100,18 +2114,19 @@ void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
         }
         break;
     case KeyCode::ENTER:
+        // Open floating calculate menu (NumWorks-style)
+        openCalcMenu();
+        return;
     case KeyCode::AC:
-        // Exit trace mode — hide crosshair + pill
-        _grMode = GrMode::NAVIGATE;
+        // Exit trace mode — hide crosshair + pill, return to toolbar
+        clearIntegralShading();
         if (_traceDot)   lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
         if (_traceLineH) lv_obj_add_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
         if (_traceLineV) lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
         if (_tracePill)  lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
-        if (ev.code == KeyCode::AC) {
-            _grMode = GrMode::IDLE;
-            _focus = Focus::TOOLBAR;
-            refreshToolbar();
-        }
+        _grMode = GrMode::IDLE;
+        _focus = Focus::TOOLBAR;
+        refreshToolbar();
         updateInfoBar();
         return;
     default:
@@ -2157,4 +2172,303 @@ void GrapherApp::handleTable(const KeyEvent& ev) {
     default:
         break;
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Calculate Menu — Floating overlay (NumWorks-style)
+// ═══════════════════════════════════════════════════════════════════════
+
+static const char* CALC_MENU_LABELS[] = {
+    "Find Root",
+    "Find Minimum",
+    "Find Maximum",
+    "Find Intersection",
+    "Calculate Integral",
+};
+
+void GrapherApp::openCalcMenu() {
+    if (_calcMenuOpen || !_graphArea) return;
+
+    _calcMenuOpen = true;
+    _calcMenuIdx = 0;
+
+    // Create floating menu container centered on the graph area
+    _calcMenu = lv_obj_create(_graphArea);
+    if (!_calcMenu) { _calcMenuOpen = false; return; }
+
+    int menuW = 180;
+    int menuH = CALC_MENU_ITEMS * 28 + 16;  // 28px per row + padding
+    int areaW = lv_obj_get_width(_graphArea);
+    int areaH = lv_obj_get_height(_graphArea);
+
+    lv_obj_set_size(_calcMenu, menuW, menuH);
+    lv_obj_set_pos(_calcMenu, (areaW - menuW) / 2, (areaH - menuH) / 2);
+    lv_obj_set_style_bg_color(_calcMenu, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_calcMenu, LV_OPA_90, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_calcMenu, lv_color_hex(0x4A90E2), LV_PART_MAIN);
+    lv_obj_set_style_border_width(_calcMenu, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(_calcMenu, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_calcMenu, 8, LV_PART_MAIN);
+    lv_obj_remove_flag(_calcMenu, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_layout(_calcMenu, LV_LAYOUT_FLEX, LV_PART_MAIN);
+    lv_obj_set_flex_flow(_calcMenu, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_flex_main_place(_calcMenu, LV_FLEX_ALIGN_START, LV_PART_MAIN);
+
+    // Create menu item labels
+    for (int i = 0; i < CALC_MENU_ITEMS; ++i) {
+        _calcMenuRows[i] = lv_obj_create(_calcMenu);
+        if (!_calcMenuRows[i]) continue;
+        lv_obj_set_size(_calcMenuRows[i], menuW - 16, 26);
+        lv_obj_set_style_radius(_calcMenuRows[i], 4, LV_PART_MAIN);
+        lv_obj_set_style_pad_left(_calcMenuRows[i], 6, LV_PART_MAIN);
+        lv_obj_set_style_pad_top(_calcMenuRows[i], 3, LV_PART_MAIN);
+        lv_obj_set_style_border_width(_calcMenuRows[i], 0, LV_PART_MAIN);
+        lv_obj_remove_flag(_calcMenuRows[i], LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t* lbl = lv_label_create(_calcMenuRows[i]);
+        if (lbl) {
+            lv_label_set_text(lbl, CALC_MENU_LABELS[i]);
+            lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, LV_PART_MAIN);
+        }
+
+        bool sel = (i == _calcMenuIdx);
+        lv_obj_set_style_bg_color(_calcMenuRows[i],
+            lv_color_hex(sel ? COL_BTN_BG : 0xFFFFFF), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_calcMenuRows[i], LV_OPA_COVER, LV_PART_MAIN);
+        if (lbl) {
+            lv_obj_set_style_text_color(lbl,
+                lv_color_hex(sel ? 0xFFFFFF : 0x333333), LV_PART_MAIN);
+        }
+    }
+}
+
+void GrapherApp::closeCalcMenu() {
+    if (!_calcMenuOpen) return;
+    _calcMenuOpen = false;
+
+    // Delete the floating menu and all its children
+    if (_calcMenu) {
+        lv_obj_delete(_calcMenu);
+        _calcMenu = nullptr;
+    }
+    for (int i = 0; i < CALC_MENU_ITEMS; ++i) {
+        _calcMenuRows[i] = nullptr;
+    }
+}
+
+void GrapherApp::handleCalcMenu(const KeyEvent& ev) {
+    switch (ev.code) {
+    case KeyCode::UP:
+        if (_calcMenuIdx > 0) {
+            _calcMenuIdx--;
+            // Refresh selection styling
+            for (int i = 0; i < CALC_MENU_ITEMS; ++i) {
+                if (!_calcMenuRows[i]) continue;
+                bool sel = (i == _calcMenuIdx);
+                lv_obj_set_style_bg_color(_calcMenuRows[i],
+                    lv_color_hex(sel ? COL_BTN_BG : 0xFFFFFF), LV_PART_MAIN);
+                lv_obj_t* lbl = lv_obj_get_child(_calcMenuRows[i], 0);
+                if (lbl) {
+                    lv_obj_set_style_text_color(lbl,
+                        lv_color_hex(sel ? 0xFFFFFF : 0x333333), LV_PART_MAIN);
+                }
+            }
+        }
+        break;
+    case KeyCode::DOWN:
+        if (_calcMenuIdx < CALC_MENU_ITEMS - 1) {
+            _calcMenuIdx++;
+            for (int i = 0; i < CALC_MENU_ITEMS; ++i) {
+                if (!_calcMenuRows[i]) continue;
+                bool sel = (i == _calcMenuIdx);
+                lv_obj_set_style_bg_color(_calcMenuRows[i],
+                    lv_color_hex(sel ? COL_BTN_BG : 0xFFFFFF), LV_PART_MAIN);
+                lv_obj_t* lbl = lv_obj_get_child(_calcMenuRows[i], 0);
+                if (lbl) {
+                    lv_obj_set_style_text_color(lbl,
+                        lv_color_hex(sel ? 0xFFFFFF : 0x333333), LV_PART_MAIN);
+                }
+            }
+        }
+        break;
+    case KeyCode::ENTER:
+        executeCalcOption(_calcMenuIdx);
+        closeCalcMenu();
+        break;
+    case KeyCode::AC:
+    case KeyCode::LEFT:
+        closeCalcMenu();
+        break;
+    default:
+        break;
+    }
+}
+
+void GrapherApp::executeCalcOption(int option) {
+    if (_traceFn < 0 || _traceFn >= _numFuncs || !_funcs[_traceFn].valid) return;
+
+    // Build evaluator lambda for the current traced function
+    auto evalFunc = [this](double x) -> double {
+        return evalAt(_traceFn, x);
+    };
+
+    math::AnalysisResult res = { false, 0.0, 0.0 };
+    char pillBuf[80];
+
+    switch (option) {
+    case 0: { // Find Root
+        res = math::findRoot(evalFunc, (double)_xMin, (double)_xMax);
+        if (res.found) {
+            snprintf(pillBuf, sizeof(pillBuf), "Root: x=%.4f y=%.6f", res.x, res.y);
+        }
+        break;
+    }
+    case 1: { // Find Minimum
+        res = math::findExtremum(evalFunc, (double)_xMin, (double)_xMax, false);
+        if (res.found) {
+            snprintf(pillBuf, sizeof(pillBuf), "Min: x=%.4f y=%.4f", res.x, res.y);
+        }
+        break;
+    }
+    case 2: { // Find Maximum
+        res = math::findExtremum(evalFunc, (double)_xMin, (double)_xMax, true);
+        if (res.found) {
+            snprintf(pillBuf, sizeof(pillBuf), "Max: x=%.4f y=%.4f", res.x, res.y);
+        }
+        break;
+    }
+    case 3: { // Find Intersection
+        // Find the second valid function to intersect with
+        int otherFn = -1;
+        for (int i = 0; i < _numFuncs; ++i) {
+            if (i != _traceFn && _funcs[i].valid) { otherFn = i; break; }
+        }
+        if (otherFn < 0) {
+            if (_tracePillLabel)
+                lv_label_set_text(_tracePillLabel, "No second function");
+            return;
+        }
+        auto evalFunc2 = [this, otherFn](double x) -> double {
+            return evalAt(otherFn, x);
+        };
+        res = math::findIntersection(evalFunc, evalFunc2,
+                                     (double)_xMin, (double)_xMax);
+        if (res.found) {
+            snprintf(pillBuf, sizeof(pillBuf), "Intersect: x=%.4f y=%.4f", res.x, res.y);
+        }
+        break;
+    }
+    case 4: { // Calculate Integral
+        res = math::numericalIntegral(evalFunc, (double)_xMin, (double)_xMax);
+        if (res.found) {
+            snprintf(pillBuf, sizeof(pillBuf), "Area = %.4f", res.y);
+            // Draw area shading
+            drawIntegralShading(_traceFn, _xMin, _xMax);
+        }
+        break;
+    }
+    default:
+        return;
+    }
+
+    if (res.found) {
+        // Move trace cursor to the result
+        if (option != 4) {
+            _traceX = static_cast<float>(res.x);
+            if (_traceX < _xMin) _traceX = _xMin;
+            if (_traceX > _xMax) _traceX = _xMax;
+        }
+        drawTraceCursor();
+
+        // Update pill with special text
+        if (_tracePillLabel) {
+            lv_label_set_text(_tracePillLabel, pillBuf);
+        }
+        if (_tracePill) {
+            lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
+        }
+    } else {
+        if (_tracePillLabel)
+            lv_label_set_text(_tracePillLabel, "Not found in range");
+        if (_tracePill)
+            lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
+    }
+    updateInfoBar();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Integral Area Shading
+// ═══════════════════════════════════════════════════════════════════════
+
+void GrapherApp::drawIntegralShading(int funcIdx, float shadeXMin, float shadeXMax) {
+    clearIntegralShading();
+    if (!_graphArea || funcIdx < 0 || funcIdx >= _numFuncs || !_funcs[funcIdx].valid)
+        return;
+
+    int areaW = lv_obj_get_width(_graphArea);
+    int areaH = lv_obj_get_height(_graphArea);
+    if (areaW < 2 || areaH < 2) return;
+
+    float xRange = _xMax - _xMin;
+    float yRange = _yMax - _yMin;
+    if (xRange <= 0.0f || yRange <= 0.0f) return;
+
+    // Find the Y pixel of the x-axis (y=0)
+    float yAxisPx = (1.0f - (0.0f - _yMin) / yRange) * areaH;
+
+    int count = 0;
+    uint32_t funcColor = _funcs[funcIdx].color;
+
+    for (int px = 0; px < areaW && count < 320; ++px) {
+        float wx = _xMin + (float)px / areaW * xRange;
+        if (wx < shadeXMin || wx > shadeXMax) continue;
+
+        double wy = evalAt(funcIdx, wx);
+        if (std::isnan(wy) || std::isinf(wy)) continue;
+
+        float sy = (1.0f - ((float)wy - _yMin) / yRange) * areaH;
+
+        // Clip to visible area
+        if (sy < 0) sy = 0;
+        if (sy > areaH) sy = static_cast<float>(areaH);
+
+        float y0 = yAxisPx;
+        if (y0 < 0) y0 = 0;
+        if (y0 > areaH) y0 = static_cast<float>(areaH);
+
+        // Draw vertical line from axis to function value
+        float lineTop = std::min(sy, y0);
+        float lineBot = std::max(sy, y0);
+        if (lineBot - lineTop < 1.0f) continue;
+
+        // Create a small lv_obj as a vertical shading line
+        lv_obj_t* line = lv_obj_create(_graphArea);
+        if (!line) break;  // Allocation failed — abort cleanly (Phase 5)
+
+        lv_obj_set_size(line, 1, (int)(lineBot - lineTop));
+        lv_obj_set_pos(line, px, (int)lineTop);
+        lv_obj_set_style_bg_color(line, lv_color_hex(funcColor), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(line, LV_OPA_30, LV_PART_MAIN);
+        lv_obj_set_style_border_width(line, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(line, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(line, 0, LV_PART_MAIN);
+        lv_obj_remove_flag(line, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+
+        _shadingLines[count] = line;
+        count++;
+    }
+    _shadingCount = count;
+    _shadingActive = true;
+}
+
+void GrapherApp::clearIntegralShading() {
+    if (!_shadingActive) return;
+    for (int i = 0; i < _shadingCount; ++i) {
+        if (_shadingLines[i]) {
+            lv_obj_delete(_shadingLines[i]);
+            _shadingLines[i] = nullptr;
+        }
+    }
+    _shadingCount = 0;
+    _shadingActive = false;
 }

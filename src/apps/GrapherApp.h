@@ -19,6 +19,7 @@
 #include "../math/MathAST.h"
 #include "../math/CursorController.h"
 #include "../math/MathEvaluator.h"
+#include "../math/MathAnalysis.h"
 #include "../ui/MathRenderer.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
@@ -145,6 +146,18 @@ private:
     lv_obj_t*       _infoBar;           // bottom bar
     lv_obj_t*       _infoLabel;
 
+    // ── Calculate menu (floating overlay) ────────────────────────────
+    static constexpr int CALC_MENU_ITEMS = 5;
+    lv_obj_t*       _calcMenu;          // Floating menu container (nullptr when closed)
+    lv_obj_t*       _calcMenuRows[CALC_MENU_ITEMS]; // Menu option labels
+    int             _calcMenuIdx;       // Currently highlighted menu item
+    bool            _calcMenuOpen;      // Menu is visible
+
+    // ── Integral area shading ────────────────────────────────────────
+    lv_obj_t*       _shadingLines[320]; // Vertical lines for area shading (max 320px)
+    int             _shadingCount;      // Number of active shading lines
+    bool            _shadingActive;     // Shading is currently displayed
+
     // ── Table panel widgets ──────────────────────────────────────────
     lv_obj_t*       _tblTable;          // native lv_table widget
     static constexpr int TBL_ROWS = 21; // data rows in table
@@ -220,6 +233,16 @@ private:
     void drawTraceCursor();
     void updateInfoBar();
     void autoFit();
+
+    // ── Calculate menu helpers ───────────────────────────────────────
+    void openCalcMenu();
+    void closeCalcMenu();
+    void handleCalcMenu(const KeyEvent& ev);
+    void executeCalcOption(int option);
+
+    // ── Integral shading ─────────────────────────────────────────────
+    void drawIntegralShading(int funcIdx, float shadeXMin, float shadeXMax);
+    void clearIntegralShading();
 
     // ── Table helpers ────────────────────────────────────────────────
     void rebuildTable();

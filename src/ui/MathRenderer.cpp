@@ -94,6 +94,18 @@ void MathCanvas::setExpression(NodeRow* root, const CursorController* ctrl) {
     _root       = root;
     _cursorCtrl = ctrl;
     _scrollX    = 0;
+
+    // Recalculate layout and resize the widget to fit the expression
+    if (_obj && _root) {
+        _root->calculateLayout(_fmNormal);
+        const auto& rl = _root->layout();
+        int16_t neededH = static_cast<int16_t>(rl.ascent + rl.descent + VPAM_VERT_PAD); // 5px padding top+bottom
+        int16_t curH    = static_cast<int16_t>(lv_obj_get_height(_obj));
+        if (neededH > curH) {
+            lv_obj_set_height(_obj, neededH);
+        }
+    }
+
     invalidate();
 }
 
@@ -424,7 +436,14 @@ void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
                           const FontMetrics& fm, const lv_font_t* font,
                           int depth) {
     if (!node) return;
-    if (depth > MAX_DRAW_DEPTH) return;  // Prevent stack overflow
+    if (depth > MAX_RENDER_DEPTH) {
+        // Draw a red overflow indicator instead of recursing further
+        drawFilledRect(layer, x, static_cast<int16_t>(yBaseline - fm.ascent),
+                       static_cast<int16_t>(fm.charWidth * 3), fm.height(),
+                       lv_color_hex(0xFF0000), LV_OPA_60);
+        drawText(layer, x, yBaseline, "...", font, lv_color_hex(0xFF0000));
+        return;
+    }
 
     switch (node->type()) {
         case NodeType::Row:

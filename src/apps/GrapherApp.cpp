@@ -94,6 +94,8 @@ GrapherApp::GrapherApp()
     _tblBodyLabel = nullptr;
     _tplModal = nullptr;
     _tplCount = 0; _tplIdx = 0; _tplOpen = false;
+    _tplLoadTimer = nullptr; _tplLoadNext = 0;
+    _tplCardW = 0; _tplRowH = 0;
     for (int i = 0; i < 6; ++i) { _tplRows[i] = nullptr; }
 }
 
@@ -116,6 +118,11 @@ void GrapherApp::begin() {
 }
 
 void GrapherApp::end() {
+    // ── Stop lazy loading timer ──
+    if (_tplLoadTimer) {
+        lv_timer_delete(_tplLoadTimer);
+        _tplLoadTimer = nullptr;
+    }
     // ── Destroy VPAM canvases before deleting the screen ──
     for (int i = 0; i < MAX_FUNCS; ++i) {
         _exprCanvas[i].destroy();
@@ -292,21 +299,19 @@ void GrapherApp::createExpressionsPanel() {
         _exprRows[i] = makeContainer(_panelExpr, PAD, ry, SCREEN_W - 2 * PAD, ROW_H, COL_ROW_BG);
         lv_obj_set_height(_exprRows[i], LV_SIZE_CONTENT);
         lv_obj_set_style_min_height(_exprRows[i], ROW_H, LV_PART_MAIN);
-        lv_obj_set_style_radius(_exprRows[i], 5, LV_PART_MAIN);
+        lv_obj_set_style_radius(_exprRows[i], PILL_RADIUS, LV_PART_MAIN);
         lv_obj_set_style_border_width(_exprRows[i], 1, LV_PART_MAIN);
         lv_obj_set_style_border_color(_exprRows[i], lv_color_hex(COL_ROW_BRD), LV_PART_MAIN);
         // Shadow for NumWorks 'fun' look
         lv_obj_set_style_shadow_width(_exprRows[i], 3, LV_PART_MAIN);
+        lv_obj_set_style_shadow_spread(_exprRows[i], 0, LV_PART_MAIN);
         lv_obj_set_style_shadow_opa(_exprRows[i], 20, LV_PART_MAIN);
         lv_obj_set_style_shadow_color(_exprRows[i], lv_color_black(), LV_PART_MAIN);
         // Flex centering for pill contents
         lv_obj_set_layout(_exprRows[i], LV_LAYOUT_FLEX);
         lv_obj_set_flex_flow(_exprRows[i], LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(_exprRows[i], LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_left(_exprRows[i], 8, LV_PART_MAIN);
-        lv_obj_set_style_pad_right(_exprRows[i], 4, LV_PART_MAIN);
-        lv_obj_set_style_pad_top(_exprRows[i], 4, LV_PART_MAIN);
-        lv_obj_set_style_pad_bottom(_exprRows[i], 4, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(_exprRows[i], PILL_PAD, LV_PART_MAIN);
         lv_obj_set_style_pad_column(_exprRows[i], 4, LV_PART_MAIN);
 
         // Colour dot
@@ -906,10 +911,12 @@ void GrapherApp::refreshVPAMExpr(int idx) {
     _exprASTRow[idx]->calculateLayout(_exprCanvas[idx].normalMetrics());
     // Resize canvas to fit AST content so the pill stretches
     const auto& rootL = _exprASTRow[idx]->layout();
-    int16_t astH = static_cast<int16_t>(rootL.ascent + rootL.descent + 4); // +4 for padding
-    int16_t minH = ROW_H - 8;
+    int16_t astH = static_cast<int16_t>(rootL.ascent + rootL.descent + 2 * PILL_PAD); // padding top+bottom
+    int16_t minH = ROW_H - 2 * PILL_PAD;
     if (astH < minH) astH = minH;
     lv_obj_set_height(_exprCanvas[idx].obj(), astH);
+    // Force parent pill to recalculate its content-based height
+    if (_exprRows[idx]) lv_obj_update_layout(_exprRows[idx]);
     _exprCanvas[idx].invalidate();
 }
 
@@ -1272,41 +1279,69 @@ void GrapherApp::showTemplates() {
     // Title
     makeLabel(card, cardW / 2 - 40, 6, "Templates", 0x333333, &lv_font_montserrat_14);
 
-    // Template rows with VPAM previews
+    // Create template row containers (UI shells) immediately
     _tplCount = NUM_TEMPLATES;
     int rowH = 22, startY = 30;
+    _tplCardW = cardW;
+    _tplRowH = rowH;
     for (int i = 0; i < _tplCount && i < 6; ++i) {
         _tplRows[i] = makeContainer(card, 8, startY + i * (rowH + 2),
                                      cardW - 16, rowH, COL_BG);
         lv_obj_set_style_radius(_tplRows[i], 6, LV_PART_MAIN);
-
-        // Build AST for template preview
-        _tplAST[i] = buildTemplateAST(TEMPLATES[i].text);
-        auto* tplRow = static_cast<NodeRow*>(_tplAST[i].get());
-
-        // Create VPAM canvas for live preview (read-only, no cursor)
-        _tplCanvas[i].create(_tplRows[i]);
-        lv_obj_set_size(_tplCanvas[i].obj(), cardW - 32, rowH - 2);
-        lv_obj_set_pos(_tplCanvas[i].obj(), 4, 1);
-        _tplCanvas[i].setExpression(tplRow, nullptr);
-        tplRow->calculateLayout(_tplCanvas[i].normalMetrics());
-        _tplCanvas[i].invalidate();
-
-        // Give LVGL + watchdog a breather between heavy canvas creations
-        lv_timer_handler();
     }
 
     _tplIdx = 0;
     _tplOpen = true;
 
-    // Highlight first
+    // Highlight first row
     if (_tplCount > 0) {
         lv_obj_set_style_bg_color(_tplRows[0], lv_color_hex(COL_ROW_SEL), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(_tplRows[0], LV_OPA_COVER, LV_PART_MAIN);
     }
+
+    // Lazy load: start a timer that loads one template AST per tick
+    _tplLoadNext = 0;
+    _tplLoadTimer = lv_timer_create(tplLoadTimerCb, TPL_LOAD_INTERVAL_MS, this);
+}
+
+void GrapherApp::tplLoadTimerCb(lv_timer_t* t) {
+    auto* self = static_cast<GrapherApp*>(lv_timer_get_user_data(t));
+    self->loadNextTemplate();
+}
+
+void GrapherApp::loadNextTemplate() {
+    if (_tplLoadNext >= _tplCount || _tplLoadNext >= 6 || !_tplOpen) {
+        // All templates loaded or modal closed — stop timer
+        if (_tplLoadTimer) {
+            lv_timer_delete(_tplLoadTimer);
+            _tplLoadTimer = nullptr;
+        }
+        return;
+    }
+
+    int i = _tplLoadNext;
+
+    // Build AST for template preview
+    _tplAST[i] = buildTemplateAST(TEMPLATES[i].text);
+    auto* tplRow = static_cast<NodeRow*>(_tplAST[i].get());
+
+    // Create VPAM canvas for live preview (read-only, no cursor)
+    _tplCanvas[i].create(_tplRows[i]);
+    lv_obj_set_size(_tplCanvas[i].obj(), _tplCardW - 32, _tplRowH - 2);
+    lv_obj_set_pos(_tplCanvas[i].obj(), 4, 1);
+    _tplCanvas[i].setExpression(tplRow, nullptr);
+    tplRow->calculateLayout(_tplCanvas[i].normalMetrics());
+    _tplCanvas[i].invalidate();
+
+    _tplLoadNext++;
 }
 
 void GrapherApp::closeTemplates() {
+    // Stop lazy loading timer if still running
+    if (_tplLoadTimer) {
+        lv_timer_delete(_tplLoadTimer);
+        _tplLoadTimer = nullptr;
+    }
     // Destroy VPAM canvases before deleting modal
     for (int i = 0; i < 6; ++i) {
         _tplCanvas[i].destroy();

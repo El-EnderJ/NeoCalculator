@@ -390,6 +390,82 @@ void MathCanvas::computeCursorPosition(int16_t baseX, int16_t baseY) {
                                + NodeLogBase::INNER_PAD);
                 search(lb->argument(), argX, yBaseline, fm, fmSmall);
             }
+            else if (node->type() == NodeType::DefIntegral) {
+                auto* di = static_cast<const NodeDefIntegral*>(node);
+                const auto& diL = di->layout();
+                const auto& lowerL = di->lower()->layout();
+                const auto& upperL = di->upper()->layout();
+                const auto& bodyL  = di->body()->layout();
+                const auto& varL   = di->variable()->layout();
+
+                FontMetrics fmLim = fm.superscript();
+                int16_t symColW = std::max({NodeDefIntegral::SYMBOL_W, lowerL.width, upperL.width});
+
+                // Upper limit (above symbol)
+                int16_t bodyAscent = std::max(bodyL.ascent, fm.ascent);
+                int16_t upperX = static_cast<int16_t>(x + (symColW - upperL.width) / 2);
+                int16_t upperY = static_cast<int16_t>(yBaseline - bodyAscent
+                                 - NodeDefIntegral::SYMBOL_H_PAD - NodeDefIntegral::LIMIT_GAP
+                                 - upperL.descent);
+                search(di->upper(), upperX, upperY, fmLim, fmLim.superscript());
+                if (result.found) return;
+
+                // Lower limit (below symbol)
+                int16_t bodyDescent = std::max(bodyL.descent, fm.descent);
+                int16_t lowerX = static_cast<int16_t>(x + (symColW - lowerL.width) / 2);
+                int16_t lowerY = static_cast<int16_t>(yBaseline + bodyDescent
+                                 + NodeDefIntegral::SYMBOL_H_PAD + NodeDefIntegral::LIMIT_GAP
+                                 + lowerL.ascent);
+                search(di->lower(), lowerX, lowerY, fmLim, fmLim.superscript());
+                if (result.found) return;
+
+                // Body
+                int16_t bodyX = static_cast<int16_t>(x + symColW + NodeDefIntegral::BODY_GAP);
+                search(di->body(), bodyX, yBaseline, fm, fmSmall);
+                if (result.found) return;
+
+                // Variable
+                int16_t dVarX = static_cast<int16_t>(bodyX + bodyL.width
+                                + NodeDefIntegral::D_GAP + fm.charWidth
+                                + NodeDefIntegral::D_GAP);
+                search(di->variable(), dVarX, yBaseline, fm, fmSmall);
+            }
+            else if (node->type() == NodeType::Summation) {
+                auto* sm = static_cast<const NodeSummation*>(node);
+                const auto& smL = sm->layout();
+                const auto& lowerL = sm->lower()->layout();
+                const auto& upperL = sm->upper()->layout();
+                const auto& bodyL  = sm->body()->layout();
+
+                FontMetrics fmLim = fm.superscript();
+                int16_t symColW = std::max({NodeSummation::SYMBOL_W, lowerL.width, upperL.width});
+
+                // Upper limit
+                int16_t bodyAscent = std::max(bodyL.ascent, fm.ascent);
+                int16_t upperX = static_cast<int16_t>(x + (symColW - upperL.width) / 2);
+                int16_t upperY = static_cast<int16_t>(yBaseline - bodyAscent
+                                 - NodeSummation::SYMBOL_H_PAD - NodeSummation::LIMIT_GAP
+                                 - upperL.descent);
+                search(sm->upper(), upperX, upperY, fmLim, fmLim.superscript());
+                if (result.found) return;
+
+                // Lower limit
+                int16_t bodyDescent = std::max(bodyL.descent, fm.descent);
+                int16_t lowerX = static_cast<int16_t>(x + (symColW - lowerL.width) / 2);
+                int16_t lowerY = static_cast<int16_t>(yBaseline + bodyDescent
+                                 + NodeSummation::SYMBOL_H_PAD + NodeSummation::LIMIT_GAP
+                                 + lowerL.ascent);
+                search(sm->lower(), lowerX, lowerY, fmLim, fmLim.superscript());
+                if (result.found) return;
+
+                // Body
+                int16_t bodyX = static_cast<int16_t>(x + symColW + NodeSummation::BODY_GAP);
+                search(sm->body(), bodyX, yBaseline, fm, fmSmall);
+                if (result.found) return;
+
+                // Variable
+                search(sm->variable(), bodyX, yBaseline, fm, fmSmall);
+            }
         }
     };
 
@@ -497,6 +573,14 @@ void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
         case NodeType::PeriodicDecimal:
             drawPeriodicDecimal(layer, static_cast<const NodePeriodicDecimal*>(node),
                                 x, yBaseline, fm, font);
+            break;
+        case NodeType::DefIntegral:
+            drawDefIntegral(layer, static_cast<const NodeDefIntegral*>(node),
+                            x, yBaseline, fm, font, depth);
+            break;
+        case NodeType::Summation:
+            drawSummation(layer, static_cast<const NodeSummation*>(node),
+                          x, yBaseline, fm, font, depth);
             break;
     }
 }
@@ -952,6 +1036,134 @@ void MathCanvas::drawPeriodicDecimal(lv_layer_t* layer,
                  static_cast<int16_t>(cx + repW - 1), overY,
                  NodePeriodicDecimal::OVERLINE_T, lv_color_black());
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// drawDefIntegral — Integral definida: ∫_a^b f(x) dx
+//
+//    ┌ upper ┐
+//    │  ∫    │  body  d(var)
+//    └ lower ┘
+//
+// The ∫ symbol is drawn as vector lines (S-curve).
+// Limits rendered in reduced font above and below the symbol.
+// ════════════════════════════════════════════════════════════════════════════
+
+void MathCanvas::drawDefIntegral(lv_layer_t* layer, const NodeDefIntegral* node,
+                                  int16_t x, int16_t yBaseline,
+                                  const FontMetrics& fm, const lv_font_t* font,
+                                  int depth) {
+    const auto& diL    = node->layout();
+    const auto& lowerL = node->lower()->layout();
+    const auto& upperL = node->upper()->layout();
+    const auto& bodyL  = node->body()->layout();
+    const auto& varL   = node->variable()->layout();
+
+    FontMetrics fmLimit = fm.superscript();
+    int16_t symColW = std::max({NodeDefIntegral::SYMBOL_W, lowerL.width, upperL.width});
+
+    int16_t bodyAscent  = std::max(bodyL.ascent, fm.ascent);
+    int16_t bodyDescent = std::max(bodyL.descent, fm.descent);
+
+    // ── Draw ∫ symbol as vector lines (S-curve) ──
+    int16_t symCenterX = static_cast<int16_t>(x + symColW / 2);
+    int16_t symTop     = static_cast<int16_t>(yBaseline - bodyAscent - NodeDefIntegral::SYMBOL_H_PAD);
+    int16_t symBot     = static_cast<int16_t>(yBaseline + bodyDescent + NodeDefIntegral::SYMBOL_H_PAD);
+    int16_t symMid     = static_cast<int16_t>((symTop + symBot) / 2);
+    int16_t halfW      = static_cast<int16_t>(NodeDefIntegral::SYMBOL_W / 3);
+
+    // Top serif (small curve to the right)
+    drawLine(layer,
+             static_cast<int16_t>(symCenterX + halfW), symTop,
+             symCenterX, static_cast<int16_t>(symTop + 3),
+             1, lv_color_black());
+    // Main vertical stroke
+    drawLine(layer, symCenterX, static_cast<int16_t>(symTop + 3),
+             symCenterX, static_cast<int16_t>(symBot - 3),
+             2, lv_color_black());
+    // Bottom serif (small curve to the left)
+    drawLine(layer,
+             symCenterX, static_cast<int16_t>(symBot - 3),
+             static_cast<int16_t>(symCenterX - halfW), symBot,
+             1, lv_color_black());
+
+    // ── Upper limit (centered above symbol) ──
+    int16_t upperX = static_cast<int16_t>(x + (symColW - upperL.width) / 2);
+    int16_t upperY = static_cast<int16_t>(symTop - NodeDefIntegral::LIMIT_GAP - upperL.descent);
+    drawNode(layer, node->upper(), upperX, upperY, fmLimit, _fontSmall, depth + 1);
+
+    // ── Lower limit (centered below symbol) ──
+    int16_t lowerX = static_cast<int16_t>(x + (symColW - lowerL.width) / 2);
+    int16_t lowerY = static_cast<int16_t>(symBot + NodeDefIntegral::LIMIT_GAP + lowerL.ascent);
+    drawNode(layer, node->lower(), lowerX, lowerY, fmLimit, _fontSmall, depth + 1);
+
+    // ── Body expression (right of symbol) ──
+    int16_t bodyX = static_cast<int16_t>(x + symColW + NodeDefIntegral::BODY_GAP);
+    drawNode(layer, node->body(), bodyX, yBaseline, fm, font, depth + 1);
+
+    // ── "d" + variable (e.g. "dx") ──
+    int16_t dX = static_cast<int16_t>(bodyX + bodyL.width + NodeDefIntegral::D_GAP);
+    drawText(layer, dX, yBaseline, "d", font, lv_color_hex(0x333333));
+    int16_t varX = static_cast<int16_t>(dX + fm.charWidth + NodeDefIntegral::D_GAP);
+    drawNode(layer, node->variable(), varX, yBaseline, fm, font, depth + 1);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// drawSummation — Sumatorio: ∑_{n=a}^{b} expr
+//
+//    ┌ upper ┐
+//    │  ∑    │  body
+//    └ lower ┘
+//
+// The ∑ symbol is drawn as vector lines (zigzag shape).
+// Limits rendered in reduced font above and below the symbol.
+// ════════════════════════════════════════════════════════════════════════════
+
+void MathCanvas::drawSummation(lv_layer_t* layer, const NodeSummation* node,
+                                int16_t x, int16_t yBaseline,
+                                const FontMetrics& fm, const lv_font_t* font,
+                                int depth) {
+    const auto& smL    = node->layout();
+    const auto& lowerL = node->lower()->layout();
+    const auto& upperL = node->upper()->layout();
+    const auto& bodyL  = node->body()->layout();
+
+    FontMetrics fmLimit = fm.superscript();
+    int16_t symColW = std::max({NodeSummation::SYMBOL_W, lowerL.width, upperL.width});
+
+    int16_t bodyAscent  = std::max(bodyL.ascent, fm.ascent);
+    int16_t bodyDescent = std::max(bodyL.descent, fm.descent);
+
+    // ── Draw ∑ symbol as vector lines (zigzag) ──
+    int16_t symLeft  = static_cast<int16_t>(x + (symColW - NodeSummation::SYMBOL_W) / 2);
+    int16_t symRight = static_cast<int16_t>(symLeft + NodeSummation::SYMBOL_W);
+    int16_t symTop   = static_cast<int16_t>(yBaseline - bodyAscent - NodeSummation::SYMBOL_H_PAD);
+    int16_t symBot   = static_cast<int16_t>(yBaseline + bodyDescent + NodeSummation::SYMBOL_H_PAD);
+    int16_t symMidX  = static_cast<int16_t>((symLeft + symRight) / 2);
+    int16_t symMidY  = static_cast<int16_t>((symTop + symBot) / 2);
+
+    // Top horizontal line
+    drawLine(layer, symLeft, symTop, symRight, symTop, 2, lv_color_black());
+    // Diagonal from top-left to center
+    drawLine(layer, symLeft, symTop, symMidX, symMidY, 1, lv_color_black());
+    // Diagonal from center to bottom-left
+    drawLine(layer, symMidX, symMidY, symLeft, symBot, 1, lv_color_black());
+    // Bottom horizontal line
+    drawLine(layer, symLeft, symBot, symRight, symBot, 2, lv_color_black());
+
+    // ── Upper limit (centered above symbol) ──
+    int16_t upperX = static_cast<int16_t>(x + (symColW - upperL.width) / 2);
+    int16_t upperY = static_cast<int16_t>(symTop - NodeSummation::LIMIT_GAP - upperL.descent);
+    drawNode(layer, node->upper(), upperX, upperY, fmLimit, _fontSmall, depth + 1);
+
+    // ── Lower limit (centered below symbol) ──
+    int16_t lowerX = static_cast<int16_t>(x + (symColW - lowerL.width) / 2);
+    int16_t lowerY = static_cast<int16_t>(symBot + NodeSummation::LIMIT_GAP + lowerL.ascent);
+    drawNode(layer, node->lower(), lowerX, lowerY, fmLimit, _fontSmall, depth + 1);
+
+    // ── Body expression (right of symbol) ──
+    int16_t bodyX = static_cast<int16_t>(x + symColW + NodeSummation::BODY_GAP);
+    drawNode(layer, node->body(), bodyX, yBaseline, fm, font, depth + 1);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

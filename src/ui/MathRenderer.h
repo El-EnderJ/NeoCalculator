@@ -225,6 +225,16 @@ private:
                              int16_t x, int16_t yBaseline,
                              const FontMetrics& fm, const lv_font_t* font);
 
+    void drawDefIntegral(lv_layer_t* layer, const NodeDefIntegral* node,
+                         int16_t x, int16_t yBaseline,
+                         const FontMetrics& fm, const lv_font_t* font,
+                         int depth = 0);
+
+    void drawSummation(lv_layer_t* layer, const NodeSummation* node,
+                       int16_t x, int16_t yBaseline,
+                       const FontMetrics& fm, const lv_font_t* font,
+                       int depth = 0);
+
     // ── Cursor ───────────────────────────────────────────────────────────
     void drawCursor(lv_layer_t* layer);
     void computeCursorPosition(int16_t baseX, int16_t baseY);

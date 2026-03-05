@@ -703,6 +703,190 @@ void NodePeriodicDecimal::calculateLayout(const FontMetrics& fm) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  N o d e D e f I n t e g r a l
+// ════════════════════════════════════════════════════════════════════════════
+NodeDefIntegral::NodeDefIntegral()
+    : MathNode(NodeType::DefIntegral)
+    , _lower(makeEmptyRow())
+    , _upper(makeEmptyRow())
+    , _body(makeEmptyRow())
+    , _variable(makeEmptyRow())
+{
+    _lower->setParent(this);
+    _upper->setParent(this);
+    _body->setParent(this);
+    _variable->setParent(this);
+}
+
+NodeDefIntegral::NodeDefIntegral(NodePtr lower, NodePtr upper,
+                                 NodePtr body, NodePtr variable)
+    : MathNode(NodeType::DefIntegral)
+    , _lower(lower ? std::move(lower) : makeEmptyRow())
+    , _upper(upper ? std::move(upper) : makeEmptyRow())
+    , _body(body ? std::move(body) : makeEmptyRow())
+    , _variable(variable ? std::move(variable) : makeEmptyRow())
+{
+    _lower->setParent(this);
+    _upper->setParent(this);
+    _body->setParent(this);
+    _variable->setParent(this);
+}
+
+MathNode* NodeDefIntegral::child(int index) const {
+    switch (index) {
+        case 0: return _lower.get();
+        case 1: return _upper.get();
+        case 2: return _body.get();
+        case 3: return _variable.get();
+        default: return nullptr;
+    }
+}
+
+void NodeDefIntegral::setLower(NodePtr node) {
+    if (!node) node = makeEmptyRow();
+    _lower = std::move(node);
+    _lower->setParent(this);
+}
+
+void NodeDefIntegral::setUpper(NodePtr node) {
+    if (!node) node = makeEmptyRow();
+    _upper = std::move(node);
+    _upper->setParent(this);
+}
+
+void NodeDefIntegral::setBody(NodePtr node) {
+    if (!node) node = makeEmptyRow();
+    _body = std::move(node);
+    _body->setParent(this);
+}
+
+void NodeDefIntegral::setVariable(NodePtr node) {
+    if (!node) node = makeEmptyRow();
+    _variable = std::move(node);
+    _variable->setParent(this);
+}
+
+void NodeDefIntegral::calculateLayout(const FontMetrics& fm) {
+    FontMetrics fmLimit = fm.superscript();
+
+    _lower->calculateLayout(fmLimit);
+    _upper->calculateLayout(fmLimit);
+    _body->calculateLayout(fm);
+    _variable->calculateLayout(fm);
+
+    const auto& lowerL = _lower->layout();
+    const auto& upperL = _upper->layout();
+    const auto& bodyL  = _body->layout();
+    const auto& varL   = _variable->layout();
+
+    // Symbol column width = max(SYMBOL_W, lowerL.width, upperL.width)
+    int16_t symColW = std::max({SYMBOL_W, lowerL.width, upperL.width});
+
+    // "d" text width ≈ 1 char + variable
+    int16_t dVarW = static_cast<int16_t>(fm.charWidth + D_GAP + varL.width);
+
+    // Total width
+    _layout.width = symColW + BODY_GAP + bodyL.width + D_GAP + dVarW;
+
+    // Vertical: upper limit + gap + symbol/body + gap + lower limit
+    int16_t bodyAscent  = std::max(bodyL.ascent, fm.ascent);
+    int16_t bodyDescent = std::max(bodyL.descent, fm.descent);
+
+    _layout.ascent  = bodyAscent + SYMBOL_H_PAD + LIMIT_GAP + upperL.height();
+    _layout.descent = bodyDescent + SYMBOL_H_PAD + LIMIT_GAP + lowerL.height();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  N o d e S u m m a t i o n
+// ════════════════════════════════════════════════════════════════════════════
+NodeSummation::NodeSummation()
+    : MathNode(NodeType::Summation)
+    , _lower(makeEmptyRow())
+    , _upper(makeEmptyRow())
+    , _body(makeEmptyRow())
+    , _variable(makeEmptyRow())
+{
+    _lower->setParent(this);
+    _upper->setParent(this);
+    _body->setParent(this);
+    _variable->setParent(this);
+}
+
+NodeSummation::NodeSummation(NodePtr lower, NodePtr upper,
+                             NodePtr body, NodePtr variable)
+    : MathNode(NodeType::Summation)
+    , _lower(lower ? std::move(lower) : makeEmptyRow())
+    , _upper(upper ? std::move(upper) : makeEmptyRow())
+    , _body(body ? std::move(body) : makeEmptyRow())
+    , _variable(variable ? std::move(variable) : makeEmptyRow())
+{
+    _lower->setParent(this);
+    _upper->setParent(this);
+    _body->setParent(this);
+    _variable->setParent(this);
+}
+
+MathNode* NodeSummation::child(int index) const {
+    switch (index) {
+        case 0: return _lower.get();
+        case 1: return _upper.get();
+        case 2: return _body.get();
+        case 3: return _variable.get();
+        default: return nullptr;
+    }
+}
+
+void NodeSummation::setLower(NodePtr node) {
+    if (!node) node = makeEmptyRow();
+    _lower = std::move(node);
+    _lower->setParent(this);
+}
+
+void NodeSummation::setUpper(NodePtr node) {
+    if (!node) node = makeEmptyRow();
+    _upper = std::move(node);
+    _upper->setParent(this);
+}
+
+void NodeSummation::setBody(NodePtr node) {
+    if (!node) node = makeEmptyRow();
+    _body = std::move(node);
+    _body->setParent(this);
+}
+
+void NodeSummation::setVariable(NodePtr node) {
+    if (!node) node = makeEmptyRow();
+    _variable = std::move(node);
+    _variable->setParent(this);
+}
+
+void NodeSummation::calculateLayout(const FontMetrics& fm) {
+    FontMetrics fmLimit = fm.superscript();
+
+    _lower->calculateLayout(fmLimit);
+    _upper->calculateLayout(fmLimit);
+    _body->calculateLayout(fm);
+    _variable->calculateLayout(fm);
+
+    const auto& lowerL = _lower->layout();
+    const auto& upperL = _upper->layout();
+    const auto& bodyL  = _body->layout();
+
+    // Symbol column width = max(SYMBOL_W, lowerL.width, upperL.width)
+    int16_t symColW = std::max({SYMBOL_W, lowerL.width, upperL.width});
+
+    // Total width
+    _layout.width = symColW + BODY_GAP + bodyL.width;
+
+    // Vertical: upper limit + gap + symbol/body + gap + lower limit
+    int16_t bodyAscent  = std::max(bodyL.ascent, fm.ascent);
+    int16_t bodyDescent = std::max(bodyL.descent, fm.descent);
+
+    _layout.ascent  = bodyAscent + SYMBOL_H_PAD + LIMIT_GAP + upperL.height();
+    _layout.descent = bodyDescent + SYMBOL_H_PAD + LIMIT_GAP + lowerL.height();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  F a c t o r y   H e l p e r s
 // ════════════════════════════════════════════════════════════════════════════
 NodePtr makeRow() {
@@ -773,6 +957,24 @@ NodePtr makePeriodicDecimal(const std::string& intPart,
                             const std::string& repeat,
                             bool negative) {
     return std::make_unique<NodePeriodicDecimal>(intPart, nonRepeat, repeat, negative);
+}
+
+NodePtr makeDefIntegral(NodePtr lower, NodePtr upper,
+                        NodePtr body, NodePtr variable) {
+    if (lower || upper || body || variable) {
+        return std::make_unique<NodeDefIntegral>(std::move(lower), std::move(upper),
+                                                 std::move(body), std::move(variable));
+    }
+    return std::make_unique<NodeDefIntegral>();
+}
+
+NodePtr makeSummation(NodePtr lower, NodePtr upper,
+                      NodePtr body, NodePtr variable) {
+    if (lower || upper || body || variable) {
+        return std::make_unique<NodeSummation>(std::move(lower), std::move(upper),
+                                               std::move(body), std::move(variable));
+    }
+    return std::make_unique<NodeSummation>();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -894,6 +1096,38 @@ std::string dumpTree(const MathNode* node, int indent) {
                  + metrics() + "\n";
             break;
         }
+        case NodeType::DefIntegral: {
+            out += "DefIntegral" + metrics() + "\n";
+            appendIndent(out, indent + 1);
+            out += "lower:\n";
+            out += dumpTree(node->child(0), indent + 2);
+            appendIndent(out, indent + 1);
+            out += "upper:\n";
+            out += dumpTree(node->child(1), indent + 2);
+            appendIndent(out, indent + 1);
+            out += "body:\n";
+            out += dumpTree(node->child(2), indent + 2);
+            appendIndent(out, indent + 1);
+            out += "var:\n";
+            out += dumpTree(node->child(3), indent + 2);
+            break;
+        }
+        case NodeType::Summation: {
+            out += "Summation" + metrics() + "\n";
+            appendIndent(out, indent + 1);
+            out += "lower:\n";
+            out += dumpTree(node->child(0), indent + 2);
+            appendIndent(out, indent + 1);
+            out += "upper:\n";
+            out += dumpTree(node->child(1), indent + 2);
+            appendIndent(out, indent + 1);
+            out += "body:\n";
+            out += dumpTree(node->child(2), indent + 2);
+            appendIndent(out, indent + 1);
+            out += "var:\n";
+            out += dumpTree(node->child(3), indent + 2);
+            break;
+        }
     }
 
     return out;
@@ -966,6 +1200,16 @@ NodePtr cloneNode(const MathNode* node) {
             auto* pd = static_cast<const NodePeriodicDecimal*>(node);
             return makePeriodicDecimal(pd->intPart(), pd->nonRepeat(),
                                        pd->repeat(), pd->isNegative());
+        }
+        case NodeType::DefIntegral: {
+            auto* di = static_cast<const NodeDefIntegral*>(node);
+            return makeDefIntegral(cloneNode(di->lower()), cloneNode(di->upper()),
+                                   cloneNode(di->body()), cloneNode(di->variable()));
+        }
+        case NodeType::Summation: {
+            auto* sm = static_cast<const NodeSummation*>(node);
+            return makeSummation(cloneNode(sm->lower()), cloneNode(sm->upper()),
+                                 cloneNode(sm->body()), cloneNode(sm->variable()));
         }
     }
     return nullptr;  // unreachable

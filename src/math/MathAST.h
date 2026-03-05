@@ -64,6 +64,8 @@ enum class NodeType : uint8_t {
     Constant,         // π, e
     Variable,         // Variable: x, y, z, A-F, Ans, PreAns
     PeriodicDecimal,  // Decimal periódico con overline (solo resultado)
+    DefIntegral,      // Definite integral: ∫[lower,upper] expr d(var)
+    Summation,        // Summation series: ∑[lower,upper] expr (var=n)
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -622,6 +624,107 @@ private:
 };
 
 // ════════════════════════════════════════════════════════════════════════════
+// NodeDefIntegral — Integral definida: ∫_a^b f(x) dx
+//
+// 4 hijos, todos NodeRow:
+//   lower    → Límite inferior (ej. "0")
+//   upper    → Límite superior (ej. "1")
+//   body     → Expresión integrando (ej. "x^2+1")
+//   variable → Variable de integración (ej. "x")
+//
+// Layout:
+//   ┌ upper ┐
+//   │  ∫    │ body  d(var)
+//   └ lower ┘
+//
+// El símbolo ∫ se dibuja como vectores (curva S) con la API de LVGL.
+// Los límites se renderizan en fuente reducida arriba y abajo del símbolo.
+// ════════════════════════════════════════════════════════════════════════════
+class NodeDefIntegral : public MathNode {
+public:
+    NodeDefIntegral();
+    NodeDefIntegral(NodePtr lower, NodePtr upper, NodePtr body, NodePtr variable);
+
+    void calculateLayout(const FontMetrics& fm) override;
+
+    int       childCount()     const override { return 4; }
+    MathNode* child(int index) const override;
+
+    MathNode* lower()    const { return _lower.get(); }
+    MathNode* upper()    const { return _upper.get(); }
+    MathNode* body()     const { return _body.get(); }
+    MathNode* variable() const { return _variable.get(); }
+
+    void setLower(NodePtr node);
+    void setUpper(NodePtr node);
+    void setBody(NodePtr node);
+    void setVariable(NodePtr node);
+
+    // ── Geometry constants ──
+    static constexpr int16_t SYMBOL_W      = 12;  ///< Width of the ∫ symbol
+    static constexpr int16_t SYMBOL_H_PAD  = 4;   ///< Extra height above/below body
+    static constexpr int16_t LIMIT_GAP     = 2;   ///< Gap between symbol and limits
+    static constexpr int16_t BODY_GAP      = 3;   ///< Gap between symbol+limits and body
+    static constexpr int16_t D_GAP         = 2;   ///< Gap before "d" text
+
+private:
+    NodePtr _lower;
+    NodePtr _upper;
+    NodePtr _body;
+    NodePtr _variable;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// NodeSummation — Sumatorio: ∑_{n=a}^{b} expr
+//
+// 4 hijos, todos NodeRow:
+//   lower    → Límite inferior (ej. "n=1")
+//   upper    → Límite superior (ej. "10")
+//   body     → Expresión a sumar (ej. "n^2")
+//   variable → Variable del sumatorio (ej. "n")
+//
+// Layout:
+//   ┌ upper ┐
+//   │  ∑    │ body
+//   └ lower ┘
+//
+// El símbolo ∑ se dibuja como vectores (forma de zigzag) con LVGL.
+// Los límites se renderizan en fuente reducida arriba y abajo.
+// ════════════════════════════════════════════════════════════════════════════
+class NodeSummation : public MathNode {
+public:
+    NodeSummation();
+    NodeSummation(NodePtr lower, NodePtr upper, NodePtr body, NodePtr variable);
+
+    void calculateLayout(const FontMetrics& fm) override;
+
+    int       childCount()     const override { return 4; }
+    MathNode* child(int index) const override;
+
+    MathNode* lower()    const { return _lower.get(); }
+    MathNode* upper()    const { return _upper.get(); }
+    MathNode* body()     const { return _body.get(); }
+    MathNode* variable() const { return _variable.get(); }
+
+    void setLower(NodePtr node);
+    void setUpper(NodePtr node);
+    void setBody(NodePtr node);
+    void setVariable(NodePtr node);
+
+    // ── Geometry constants ──
+    static constexpr int16_t SYMBOL_W      = 14;  ///< Width of the ∑ symbol
+    static constexpr int16_t SYMBOL_H_PAD  = 4;   ///< Extra height above/below body
+    static constexpr int16_t LIMIT_GAP     = 2;   ///< Gap between symbol and limits
+    static constexpr int16_t BODY_GAP      = 3;   ///< Gap between symbol+limits and body
+
+private:
+    NodePtr _lower;
+    NodePtr _upper;
+    NodePtr _body;
+    NodePtr _variable;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
 // Factory helpers — Creación rápida de nodos
 // ════════════════════════════════════════════════════════════════════════════
 NodePtr makeRow();
@@ -658,6 +761,14 @@ NodePtr makePeriodicDecimal(const std::string& intPart,
                             const std::string& nonRepeat,
                             const std::string& repeat,
                             bool negative = false);
+
+/// Integral definida con límites, cuerpo y variable opcionales
+NodePtr makeDefIntegral(NodePtr lower = nullptr, NodePtr upper = nullptr,
+                        NodePtr body = nullptr, NodePtr variable = nullptr);
+
+/// Sumatorio con límites, cuerpo y variable opcionales
+NodePtr makeSummation(NodePtr lower = nullptr, NodePtr upper = nullptr,
+                      NodePtr body = nullptr, NodePtr variable = nullptr);
 
 // ════════════════════════════════════════════════════════════════════════════
 // Debug — Volcado legible del árbol

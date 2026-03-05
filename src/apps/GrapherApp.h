@@ -135,13 +135,20 @@ private:
     lv_point_precise_t* _funcPts[MAX_FUNCS]; // Point arrays (heap)
     int             _funcPtCount[MAX_FUNCS]; // Valid point count per func
     lv_obj_t*       _traceDot;          // Small circle for trace cursor
+    lv_obj_t*       _traceLineH;        // Crosshair horizontal lv_line
+    lv_obj_t*       _traceLineV;        // Crosshair vertical lv_line
+    lv_point_precise_t _traceHPts[2];   // Crosshair H points
+    lv_point_precise_t _traceVPts[2];   // Crosshair V points
+    lv_obj_t*       _tracePill;         // Floating bottom pill container
+    lv_obj_t*       _tracePillDot;      // Color dot in pill
+    lv_obj_t*       _tracePillLabel;    // "x: ... y: ..." label in pill
     lv_obj_t*       _infoBar;           // bottom bar
     lv_obj_t*       _infoLabel;
 
     // ── Table panel widgets ──────────────────────────────────────────
-    lv_obj_t*       _tblBodyLabel;      // single label for all table rows
-    static constexpr int TBL_ROWS = 8;  // rows visible on screen
-    static constexpr int TBL_COLS = 2;  // x, y=f(x)
+    lv_obj_t*       _tblTable;          // native lv_table widget
+    static constexpr int TBL_ROWS = 21; // data rows in table
+    static constexpr int TBL_COLS = 7;  // max columns (x + up to 6 funcs)
 
     // ── State ────────────────────────────────────────────────────────
     Tab             _tab;

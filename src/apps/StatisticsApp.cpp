@@ -223,9 +223,9 @@ void StatisticsApp::createStatsTab() {
     lv_obj_remove_flag(_statsPanel, LV_OBJ_FLAG_SCROLLABLE);
 
     const char* statNames[7] = {
-        "Mean (x):",
+        "Mean:",
         "Median:",
-        "Std Dev (s):",
+        "Std Dev:",
         "Min:",
         "Max:",
         "Sum:",
@@ -366,13 +366,7 @@ void StatisticsApp::refreshTable() {
 
 void StatisticsApp::highlightCell() {
     if (!_table) return;
-
-    // Reset all cells to default style
-    for (int r = 0; r <= _numRows; ++r) {
-        for (int c = 0; c < 2; ++c) {
-            lv_table_set_selected_cell(_table, _tableRow + 1, _tableCol);
-        }
-    }
+    lv_table_set_selected_cell(_table, _tableRow + 1, _tableCol);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

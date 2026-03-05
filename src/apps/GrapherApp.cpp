@@ -67,8 +67,10 @@ GrapherApp::GrapherApp()
     , _exprHint(nullptr), _plotBtn(nullptr), _tableBtn(nullptr)
     , _graphToolbar(nullptr), _graphArea(nullptr)
     , _axisLineX(nullptr), _axisLineY(nullptr)
-    , _traceDot(nullptr), _infoBar(nullptr), _infoLabel(nullptr)
-    , _tblBodyLabel(nullptr)
+    , _traceDot(nullptr), _traceLineH(nullptr), _traceLineV(nullptr)
+    , _tracePill(nullptr), _tracePillDot(nullptr), _tracePillLabel(nullptr)
+    , _infoBar(nullptr), _infoLabel(nullptr)
+    , _tblTable(nullptr)
     , _tab(Tab::EXPRESSIONS), _focus(Focus::TAB_BAR), _tabIdx(0)
     , _numFuncs(0), _exprIdx(0), _exprMode(ExprMode::LIST)
     , _grMode(GrMode::IDLE), _toolIdx(0)
@@ -91,7 +93,7 @@ GrapherApp::GrapherApp()
         _funcPtCount[i] = 0;
     }
     for (int i = 0; i < 4; ++i) _toolLabels[i] = nullptr;
-    _tblBodyLabel = nullptr;
+    _tblTable = nullptr;
     _tplModal = nullptr;
     _tplCount = 0; _tplIdx = 0; _tplOpen = false;
     _tplLoadTimer = nullptr; _tplLoadNext = 0;
@@ -151,8 +153,10 @@ void GrapherApp::end() {
         _exprHint = nullptr; _plotBtn = nullptr; _tableBtn = nullptr;
         _graphToolbar = nullptr; _graphArea = nullptr;
         _axisLineX = nullptr; _axisLineY = nullptr;
-        _traceDot = nullptr; _infoBar = nullptr; _infoLabel = nullptr;
-        _tblBodyLabel = nullptr;
+        _traceDot = nullptr; _traceLineH = nullptr; _traceLineV = nullptr;
+        _tracePill = nullptr; _tracePillDot = nullptr; _tracePillLabel = nullptr;
+        _infoBar = nullptr; _infoLabel = nullptr;
+        _tblTable = nullptr;
         for (int i = 0; i < 3; ++i) { _tabLabels[i] = nullptr; _tabPills[i] = nullptr; }
         for (int i = 0; i < MAX_FUNCS; ++i) {
             _exprRows[i] = nullptr; _exprDots[i] = nullptr;
@@ -610,6 +614,61 @@ void GrapherApp::createGraphPanel() {
     lv_obj_remove_flag(_traceDot, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
 
+    // Crosshair lines (horizontal + vertical)
+    _traceLineH = lv_line_create(_graphArea);
+    lv_obj_set_style_line_color(_traceLineH, lv_color_hex(0x888888), LV_PART_MAIN);
+    lv_obj_set_style_line_width(_traceLineH, 1, LV_PART_MAIN);
+    lv_obj_set_style_line_opa(_traceLineH, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_add_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
+    _traceHPts[0] = {0, 0}; _traceHPts[1] = {0, 0};
+    lv_line_set_points(_traceLineH, _traceHPts, 2);
+
+    _traceLineV = lv_line_create(_graphArea);
+    lv_obj_set_style_line_color(_traceLineV, lv_color_hex(0x888888), LV_PART_MAIN);
+    lv_obj_set_style_line_width(_traceLineV, 1, LV_PART_MAIN);
+    lv_obj_set_style_line_opa(_traceLineV, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
+    _traceVPts[0] = {0, 0}; _traceVPts[1] = {0, 0};
+    lv_line_set_points(_traceLineV, _traceVPts, 2);
+
+    // Floating bottom pill for trace info
+    _tracePill = lv_obj_create(_graphArea);
+    lv_obj_set_size(_tracePill, 200, 26);
+    lv_obj_set_align(_tracePill, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_style_translate_y(_tracePill, -6, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_tracePill, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_tracePill, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(_tracePill, 13, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_tracePill, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_tracePill, lv_color_hex(0xD1D1D1), LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(_tracePill, 8, LV_PART_MAIN);
+    lv_obj_set_style_shadow_spread(_tracePill, 1, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(_tracePill, 30, LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(_tracePill, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_pad_left(_tracePill, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(_tracePill, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_top(_tracePill, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(_tracePill, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
+
+    // Color dot inside pill
+    _tracePillDot = lv_obj_create(_tracePill);
+    lv_obj_set_size(_tracePillDot, 10, 10);
+    lv_obj_set_pos(_tracePillDot, 0, 7);
+    lv_obj_set_style_bg_color(_tracePillDot, lv_color_hex(0xCC0000), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_tracePillDot, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(_tracePillDot, 5, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_tracePillDot, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_tracePillDot, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Label inside pill
+    _tracePillLabel = lv_label_create(_tracePill);
+    lv_obj_set_pos(_tracePillLabel, 14, 5);
+    lv_label_set_text(_tracePillLabel, "");
+    lv_obj_set_style_text_color(_tracePillLabel, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_text_font(_tracePillLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+
     // ── Info bar at bottom ──
     _infoBar = makeContainer(_panelGraph, 0, panelH - INFO_BAR_H, SCREEN_W, INFO_BAR_H, COL_TB_BG);
     _infoLabel = makeLabel(_infoBar, PAD, 2, "", 0x000000, &lv_font_montserrat_12);
@@ -629,18 +688,37 @@ void GrapherApp::createTablePanel() {
     lv_obj_set_style_bg_opa(_panelTable, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_panelTable, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_panelTable, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_panelTable, LV_OBJ_FLAG_SCROLLABLE);
+    // Scrollable — needed for 21+ data rows that exceed the panel height
+    lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(_panelTable, LV_DIR_VER);
     lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
 
-    // Single body label — rebuildTable() fills it with header + data rows
-    _tblBodyLabel = lv_label_create(_panelTable);
-    if (!_tblBodyLabel) { Serial.println("[GRAPHER] FAIL _tblBodyLabel"); return; }
-    lv_obj_set_pos(_tblBodyLabel, 4, 4);
-    lv_obj_set_size(_tblBodyLabel, SCREEN_W - 8, panelH - 8);
-    lv_label_set_long_mode(_tblBodyLabel, LV_LABEL_LONG_CLIP);
-    lv_obj_set_style_text_color(_tblBodyLabel, lv_color_hex(0x000000), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_tblBodyLabel, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_label_set_text(_tblBodyLabel, "");
+    // Native lv_table widget
+    _tblTable = lv_table_create(_panelTable);
+    if (!_tblTable) { Serial.println("[GRAPHER] FAIL _tblTable"); return; }
+    lv_obj_set_pos(_tblTable, 0, 0);
+    lv_obj_set_width(_tblTable, SCREEN_W);
+    lv_table_set_column_count(_tblTable, 2);
+    lv_table_set_column_width(_tblTable, 0, SCREEN_W / 2);
+    lv_table_set_column_width(_tblTable, 1, SCREEN_W / 2);
+    lv_table_set_row_count(_tblTable, 1);
+    lv_table_set_cell_value(_tblTable, 0, 0, "x");
+    lv_table_set_cell_value(_tblTable, 0, 1, "y");
+
+    // Style: header row (row 0) — yellow NumWorks bg, black text
+    lv_obj_set_style_bg_color(_tblTable, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
+    lv_obj_set_style_text_color(_tblTable, lv_color_hex(0x000000), LV_PART_ITEMS);
+    lv_obj_set_style_text_font(_tblTable, &lv_font_montserrat_12, LV_PART_ITEMS);
+    lv_obj_set_style_border_width(_tblTable, 1, LV_PART_ITEMS);
+    lv_obj_set_style_border_color(_tblTable, lv_color_hex(0xE0E0E0), LV_PART_ITEMS);
+    lv_obj_set_style_pad_top(_tblTable, 4, LV_PART_ITEMS);
+    lv_obj_set_style_pad_bottom(_tblTable, 4, LV_PART_ITEMS);
+    lv_obj_set_style_pad_left(_tblTable, 6, LV_PART_ITEMS);
+    lv_obj_set_style_pad_right(_tblTable, 6, LV_PART_ITEMS);
+
+    // Remove main border around table
+    lv_obj_set_style_border_width(_tblTable, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_tblTable, 0, LV_PART_MAIN);
 
     Serial.println("[GRAPHER] tablePanel Done");
 }
@@ -673,12 +751,12 @@ void GrapherApp::switchTab(Tab t) {
             // First creation: don't replot yet — wait for layout pass
             if (_panelGraph) {
                 lv_obj_remove_flag(_panelGraph, LV_OBJ_FLAG_HIDDEN);
-                _grMode = GrMode::IDLE;
+                _grMode = GrMode::NAVIGATE;  // Default to NAVIGATE for immediate pan/zoom
                 _plotDirty = true;  // Will be picked up on next interaction
             }
         } else {
             lv_obj_remove_flag(_panelGraph, LV_OBJ_FLAG_HIDDEN);
-            _grMode = GrMode::IDLE;
+            _grMode = GrMode::NAVIGATE;
             _plotDirty = true;
             replot();
         }
@@ -1485,7 +1563,10 @@ void GrapherApp::replot() {
 void GrapherApp::drawTraceCursor() {
     if (_grMode != GrMode::TRACE || _traceFn < 0 || _traceFn >= _numFuncs ||
         !_funcs[_traceFn].valid) {
-        lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
+        if (_traceDot)   lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
+        if (_traceLineH) lv_obj_add_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
+        if (_traceLineV) lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
+        if (_tracePill)  lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
         return;
     }
 
@@ -1496,16 +1577,39 @@ void GrapherApp::drawTraceCursor() {
 
     double wy = evalAt(_traceFn, _traceX);
     if (std::isnan(wy) || std::isinf(wy)) {
-        lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
+        if (_traceDot)   lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
+        if (_traceLineH) lv_obj_add_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
+        if (_traceLineV) lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
+        if (_tracePill)  lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
         return;
     }
 
     float sx = (_traceX - _xMin) / xRange * areaW;
     float sy = (1.0f - ((float)wy - _yMin) / yRange) * areaH;
 
+    // Trace dot
     lv_obj_remove_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_pos(_traceDot, (int)sx - 4, (int)sy - 4);
     lv_obj_set_style_bg_color(_traceDot, lv_color_hex(_funcs[_traceFn].color), LV_PART_MAIN);
+
+    // Crosshair horizontal line
+    _traceHPts[0] = {0, (lv_value_precise_t)(int)sy};
+    _traceHPts[1] = {(lv_value_precise_t)areaW, (lv_value_precise_t)(int)sy};
+    lv_line_set_points(_traceLineH, _traceHPts, 2);
+    lv_obj_remove_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
+
+    // Crosshair vertical line
+    _traceVPts[0] = {(lv_value_precise_t)(int)sx, 0};
+    _traceVPts[1] = {(lv_value_precise_t)(int)sx, (lv_value_precise_t)areaH};
+    lv_line_set_points(_traceLineV, _traceVPts, 2);
+    lv_obj_remove_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
+
+    // Floating pill — show function color + x/y values
+    lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_bg_color(_tracePillDot, lv_color_hex(_funcs[_traceFn].color), LV_PART_MAIN);
+    char pillBuf[64];
+    snprintf(pillBuf, sizeof(pillBuf), "x: %.3f   y: %.3f", (double)_traceX, wy);
+    lv_label_set_text(_tracePillLabel, pillBuf);
 }
 
 void GrapherApp::updateInfoBar() {
@@ -1513,12 +1617,9 @@ void GrapherApp::updateInfoBar() {
     char buf[64];
     if (_grMode == GrMode::TRACE && _traceFn >= 0 && _traceFn < _numFuncs) {
         double y = evalAt(_traceFn, _traceX);
-        snprintf(buf, sizeof(buf), "x=%.4g  y=%.4g", (double)_traceX, y);
-    } else if (_grMode == GrMode::NAVIGATE) {
-        snprintf(buf, sizeof(buf), "x:[%.2g,%.2g] y:[%.2g,%.2g]",
-                 (double)_xMin, (double)_xMax, (double)_yMin, (double)_yMax);
+        snprintf(buf, sizeof(buf), "Trace: x=%.3f  y=%.3f", (double)_traceX, y);
     } else {
-        snprintf(buf, sizeof(buf), "x:[%.2g,%.2g] y:[%.2g,%.2g]",
+        snprintf(buf, sizeof(buf), "x:[%.2g,%.2g] y:[%.2g,%.2g]  ENTER=trace",
                  (double)_xMin, (double)_xMax, (double)_yMin, (double)_yMax);
     }
     lv_label_set_text(_infoLabel, buf);
@@ -1568,35 +1669,70 @@ void GrapherApp::refreshToolbar() {
 // ═══════════════════════════════════════════════════════════════════════
 
 void GrapherApp::rebuildTable() {
-    if (!_tblBodyLabel) return;
+    if (!_tblTable) return;
 
-    char buf[1024];
-    memset(buf, 0, sizeof(buf));
-    int pos = 0;
-
-    // Header line
-    const char* hdr = (_tblFuncIdx >= 0 && _tblFuncIdx < _numFuncs)
-        ? "  x              y=f(x)" : "  x              y";
-    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s\n", hdr);
-
-    for (int r = 0; r < TBL_ROWS && pos < (int)sizeof(buf) - 60; ++r) {
-        float xVal = _tblStart + (_tblRow + r) * _tblStep;
-        char xBuf[14], yBuf[16];
-        snprintf(xBuf, sizeof(xBuf), "%-12.4g", (double)xVal);
-
-        if (_tblFuncIdx >= 0 && _tblFuncIdx < _numFuncs && _funcs[_tblFuncIdx].valid) {
-            double yVal = evalAt(_tblFuncIdx, xVal);
-            if (std::isnan(yVal) || std::isinf(yVal))
-                snprintf(yBuf, sizeof(yBuf), "--");
-            else
-                snprintf(yBuf, sizeof(yBuf), "%.6g", yVal);
-        } else {
-            snprintf(yBuf, sizeof(yBuf), "--");
+    // Count active (valid) functions
+    int activeFuncs[MAX_FUNCS];
+    int numActive = 0;
+    for (int i = 0; i < _numFuncs; ++i) {
+        if (_funcs[i].valid) {
+            activeFuncs[numActive++] = i;
         }
-
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s %s\n", xBuf, yBuf);
     }
-    lv_label_set_text(_tblBodyLabel, buf);
+
+    // Determine column count: 1 (x) + numActive (f1, f2, ...)
+    int cols = 1 + (numActive > 0 ? numActive : 1);
+    if (cols > TBL_COLS) cols = TBL_COLS;
+    lv_table_set_column_count(_tblTable, cols);
+
+    // Distribute column widths
+    int colW = SCREEN_W / cols;
+    for (int c = 0; c < cols; ++c) {
+        lv_table_set_column_width(_tblTable, c, colW);
+    }
+
+    // Row count: 1 header + TBL_ROWS data rows
+    int dataRows = TBL_ROWS;
+    lv_table_set_row_count(_tblTable, 1 + dataRows);
+
+    // Header row
+    lv_table_set_cell_value(_tblTable, 0, 0, "x");
+    if (numActive > 0) {
+        char hdr[16];
+        for (int c = 0; c < numActive && c + 1 < cols; ++c) {
+            snprintf(hdr, sizeof(hdr), "f%d(x)", activeFuncs[c] + 1);
+            lv_table_set_cell_value(_tblTable, 0, c + 1, hdr);
+        }
+    } else {
+        lv_table_set_cell_value(_tblTable, 0, 1, "y");
+    }
+
+    // Data rows
+    for (int r = 0; r < dataRows; ++r) {
+        if ((r & 15) == 0) yield();  // Feed watchdog
+
+        float xVal = _tblStart + (_tblRow + r) * _tblStep;
+
+        // X column
+        char xBuf[16];
+        snprintf(xBuf, sizeof(xBuf), "%.4g", (double)xVal);
+        lv_table_set_cell_value(_tblTable, r + 1, 0, xBuf);
+
+        // Function value columns
+        if (numActive > 0) {
+            for (int c = 0; c < numActive && c + 1 < cols; ++c) {
+                double yVal = evalAt(activeFuncs[c], xVal);
+                char yBuf[16];
+                if (std::isnan(yVal) || std::isinf(yVal))
+                    snprintf(yBuf, sizeof(yBuf), "--");
+                else
+                    snprintf(yBuf, sizeof(yBuf), "%.6g", yVal);
+                lv_table_set_cell_value(_tblTable, r + 1, c + 1, yBuf);
+            }
+        } else {
+            lv_table_set_cell_value(_tblTable, r + 1, 1, "--");
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1639,9 +1775,8 @@ void GrapherApp::handleKey(const KeyEvent& ev) {
             else handleExprList(ev);
             break;
         case Tab::GRAPH:
-            if (_grMode == GrMode::NAVIGATE) handleGraphNav(ev);
-            else if (_grMode == GrMode::TRACE) handleGraphTrace(ev);
-            else handleToolbar(ev);  // IDLE → toolbar has focus
+            if (_grMode == GrMode::TRACE) handleGraphTrace(ev);
+            else handleGraphNav(ev);  // IDLE + NAVIGATE both use pan/zoom
             break;
         case Tab::TABLE:
             handleTable(ev);
@@ -1863,7 +1998,9 @@ void GrapherApp::handleToolbar(const KeyEvent& ev) {
         case 2: // Navigate
             _focus = Focus::CONTENT;
             _grMode = GrMode::NAVIGATE;
-            lv_label_set_text(_infoLabel, "Arrows=Pan  +/-=Zoom  AC=back");
+            _plotDirty = true;
+            replot();
+            updateInfoBar();
             break;
         case 3: // Calculate (Trace)
             _focus = Focus::CONTENT;
@@ -1896,20 +2033,34 @@ void GrapherApp::handleGraphNav(const KeyEvent& ev) {
     case KeyCode::DOWN:   _yMin -= dy; _yMax -= dy; _plotDirty = true; break;
     case KeyCode::ADD:
     case KeyCode::ZOOM: {
+        // Zoom in by factor 1.5: new_range = range / 1.5 → half = range / 3
         float cx = (_xMin + _xMax) / 2.0f, cy = (_yMin + _yMax) / 2.0f;
-        float sx = (_xMax - _xMin) * 0.4f, sy = (_yMax - _yMin) * 0.4f;
+        float sx = (_xMax - _xMin) / 3.0f, sy = (_yMax - _yMin) / 3.0f;
         _xMin = cx - sx; _xMax = cx + sx;
         _yMin = cy - sy; _yMax = cy + sy;
         _plotDirty = true;
         break;
     }
     case KeyCode::SUB: {
+        // Zoom out by factor 1.5: new_range = range * 1.5 → half = range * 0.75
         float cx = (_xMin + _xMax) / 2.0f, cy = (_yMin + _yMax) / 2.0f;
-        float sx = (_xMax - _xMin) * 0.6f, sy = (_yMax - _yMin) * 0.6f;
+        float sx = (_xMax - _xMin) * 0.75f, sy = (_yMax - _yMin) * 0.75f;
         _xMin = cx - sx; _xMax = cx + sx;
         _yMin = cy - sy; _yMax = cy + sy;
         _plotDirty = true;
         break;
+    }
+    case KeyCode::ENTER: {
+        // Toggle Trace Mode
+        _grMode = GrMode::TRACE;
+        _traceX = (_xMin + _xMax) / 2.0f;
+        _traceFn = -1;
+        for (int i = 0; i < _numFuncs; ++i) {
+            if (_funcs[i].valid) { _traceFn = i; break; }
+        }
+        drawTraceCursor();
+        updateInfoBar();
+        return;
     }
     case KeyCode::AC:
         _grMode = GrMode::IDLE;
@@ -1925,34 +2076,42 @@ void GrapherApp::handleGraphNav(const KeyEvent& ev) {
 
 // ── Graph trace keys ────────────────────────────────────────────────────
 void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
-    float step = (_xMax - _xMin) / SCREEN_W;
+    float step = (_xMax - _xMin) / SCREEN_W;  // Pixel-precise cursor movement
 
     switch (ev.code) {
     case KeyCode::LEFT:
-        _traceX -= step * 2;
+        _traceX -= step;
         if (_traceX < _xMin) _traceX = _xMin;
         break;
     case KeyCode::RIGHT:
-        _traceX += step * 2;
+        _traceX += step;
         if (_traceX > _xMax) _traceX = _xMax;
         break;
     case KeyCode::UP:
-        // Switch to next function
+        // Switch to next function (keep same X)
         for (int i = _traceFn + 1; i < _numFuncs; ++i) {
             if (_funcs[i].valid) { _traceFn = i; break; }
         }
         break;
     case KeyCode::DOWN:
-        // Switch to prev function
+        // Switch to prev function (keep same X)
         for (int i = _traceFn - 1; i >= 0; --i) {
             if (_funcs[i].valid) { _traceFn = i; break; }
         }
         break;
+    case KeyCode::ENTER:
     case KeyCode::AC:
-        _grMode = GrMode::IDLE;
-        _focus = Focus::TOOLBAR;
-        lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
-        refreshToolbar();
+        // Exit trace mode — hide crosshair + pill
+        _grMode = GrMode::NAVIGATE;
+        if (_traceDot)   lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
+        if (_traceLineH) lv_obj_add_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
+        if (_traceLineV) lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
+        if (_tracePill)  lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
+        if (ev.code == KeyCode::AC) {
+            _grMode = GrMode::IDLE;
+            _focus = Focus::TOOLBAR;
+            refreshToolbar();
+        }
         updateInfoBar();
         return;
     default:
@@ -1978,18 +2137,18 @@ void GrapherApp::handleTable(const KeyEvent& ev) {
         rebuildTable();
         break;
     case KeyCode::LEFT:
-        // Switch to prev function
-        for (int i = _tblFuncIdx - 1; i >= 0; --i) {
-            if (_funcs[i].valid) { _tblFuncIdx = i; break; }
+        // Decrease step size
+        if (_tblStep > 0.1f) {
+            _tblStep /= 2.0f;
+            rebuildTable();
         }
-        rebuildTable();
         break;
     case KeyCode::RIGHT:
-        // Switch to next function
-        for (int i = _tblFuncIdx + 1; i < _numFuncs; ++i) {
-            if (_funcs[i].valid) { _tblFuncIdx = i; break; }
+        // Increase step size
+        if (_tblStep < 10.0f) {
+            _tblStep *= 2.0f;
+            rebuildTable();
         }
-        rebuildTable();
         break;
     case KeyCode::AC:
         _focus = Focus::TAB_BAR;

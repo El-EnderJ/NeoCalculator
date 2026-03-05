@@ -32,6 +32,8 @@
 #pragma once
 
 #include <lvgl.h>
+#include <memory>
+#include <vector>
 #include "../math/MathAST.h"
 #include "../math/CursorController.h"
 #include "../math/cas/ASTFlattener.h"
@@ -112,6 +114,17 @@ private:
 
     // STEPS state (scrollable)
     lv_obj_t*       _stepsContainer;
+
+    // ── Step MathCanvas renderers (Pre-Phase 5 Steering Visual) ──────
+    // Each StepRenderData owns a NodePtr (MathAST tree) and a MathCanvas
+    // widget for 2D pixel-perfect rendering of mathematical expressions
+    // in the step-by-step display.  Heap-allocated via unique_ptr to
+    // avoid moves that would invalidate LVGL user_data pointers.
+    struct StepRenderData {
+        vpam::NodePtr    nodeData;   ///< Owns the MathAST tree
+        vpam::MathCanvas canvas;     ///< LVGL widget for 2D rendering
+    };
+    std::vector<std::unique_ptr<StepRenderData>> _stepRenderers;
 
     // ── App state ────────────────────────────────────────────────────
     State    _state;

@@ -18,7 +18,7 @@ SolveResult EquationSolver::solveFreeEquation(const String &expr,
     // 1. Parse LHS = RHS
     int eqPos = expr.indexOf('=');
     if (eqPos < 0) {
-        result.errorMessage = "Falta '=' en la ecuacion";
+        result.errorMessage = "Missing '=' in equation";
         return result;
     }
 
@@ -57,7 +57,7 @@ SolveResult EquationSolver::solveFreeEquation(const String &expr,
     }
 
     // 3. Fallback: Numerical Newton-Raphson
-    if (logger) logger->addStep("No es un polinomio simple detectado.", "Usando metodo numerico");
+    if (logger) logger->addStep("Not a simple polynomial.", "Using numeric method");
     return solveWithNewton(rpnFx, vars, logger);
 }
 
@@ -68,10 +68,10 @@ void EquationSolver::solveLinear(double m, double n, SolveResult &out) {
     out.ok = true;
     if (abs(m) < 1e-12) {
         if (abs(n) < 1e-12) {
-            out.errorMessage = "Infinitas Soluciones"; // 0=0
+            out.errorMessage = "Infinite solutions"; // 0=0
             out.ok = false; 
         } else {
-            out.errorMessage = "Sin Solucion"; // 0=5
+            out.errorMessage = "No solution"; // 0=5
             out.ok = false;
         }
     } else {
@@ -82,35 +82,35 @@ void EquationSolver::solveLinear(double m, double n, SolveResult &out) {
 void EquationSolver::solveQuadratic(double a, double b, double c, SolveResult &out, StepLogger *logger) {
     // ax^2 + bx + c = 0
     if (logger) {
-        String s = String(a) + "x^2 + " + String(b) + "x + " + String(c) + " = 0";
-        logger->addStep("Ecuacion Cuadratica", s);
+        String s = String(a) + "x\xC2\xB2 + " + String(b) + "x + " + String(c) + " = 0";
+        logger->addStep("Quadratic Equation", s);
     }
 
     double disc = b*b - 4*a*c;
     out.ok = true;
 
     if (disc < 0) {
-        out.errorMessage = "Raices complejas"; // Simple calc only real
+        out.errorMessage = "Complex roots"; // Simple calc only real
         // out.ok = false; 
         // Or return empty roots for "No real solution"
     } else if (abs(disc) < 1e-12) {
         double x = -b / (2*a);
         out.roots.push_back(x);
-        if (logger) logger->addStep("Discriminante 0", "Raiz unica: " + String(x));
+        if (logger) logger->addStep("Discriminant = 0", "Single root: " + String(x));
     } else {
         double sqrtD = sqrt(disc);
         double x1 = (-b + sqrtD) / (2*a);
         double x2 = (-b - sqrtD) / (2*a);
         out.roots.push_back(x1);
         out.roots.push_back(x2);
-        if (logger) logger->addStep("Discriminante > 0", "x1=" + String(x1) + ", x2=" + String(x2));
+        if (logger) logger->addStep("Discriminant > 0", "x\xE2\x82\x81 = " + String(x1) + ", x\xE2\x82\x82 = " + String(x2));
     }
 }
 
 void EquationSolver::solveBiquadratic(double a, double c, double e, SolveResult &out, StepLogger *logger) {
     // ax^4 + cx^2 + e = 0. let u = x^2. -> au^2 + cu + e = 0
     if (logger) {
-        logger->addStep("Biquadrada", "Cambio variable u = x^2");
+        logger->addStep("Biquadratic", "Variable substitution u = x\xC2\xB2");
     }
 
     SolveResult quadRes;
@@ -118,7 +118,7 @@ void EquationSolver::solveBiquadratic(double a, double c, double e, SolveResult 
 
     if (!quadRes.ok || quadRes.roots.empty()) {
         out.ok = true; // No real roots is a valid result state
-        out.errorMessage = "Sin sol. real (u<0)";
+        out.errorMessage = "No real solution (u < 0)";
         return;
     }
 
@@ -135,16 +135,16 @@ void EquationSolver::solveBiquadratic(double a, double c, double e, SolveResult 
     }
     
     if (logger) {
-        String s = "Raices finales: ";
+        String s = "Final roots: ";
         for (double r : out.roots) s += String(r) + " ";
-        logger->addStep("Deshacer cambio u=x^2", s);
+        logger->addStep("Undo substitution u = x\xC2\xB2", s);
     }
 }
 
 void EquationSolver::solveCubic(double a, double b, double c, double d, SolveResult &out, StepLogger *logger) {
     // ax^3 + bx^2 + cx + d = 0
     // Try integer roots (Ruffini) divisors of d/a
-    if (logger) logger->addStep("Cubica detected", "Buscando raiz entera (Ruffini)");
+    if (logger) logger->addStep("Cubic detected", "Searching for integer root (Ruffini)");
 
     // Simple heuristic: check integers from -10 to 10.
     // Real implementation should check divisors of 'd'.
@@ -167,17 +167,17 @@ void EquationSolver::solveCubic(double a, double b, double c, double d, SolveRes
     if (!found) {
         // Fallback to Newton for all roots or Cardan (too complex?)
         // Let's just use Newton for one solution currently if no integer found.
-        if (logger) logger->addStep("Ruffini fallo", "Usando metodo numerico");
+        if (logger) logger->addStep("Ruffini failed", "Using numeric method");
         // TODO: Could call solveWithNewton here, but we need to reconstruct the RPN? 
         // Logic gap - simplification: just return "Use Graph" or specific Newton
-        out.errorMessage = "Raiz entera no hallada";
+        out.errorMessage = "No integer root found";
         // out.ok = false;
         return; 
     }
 
     out.ok = true;
     out.roots.push_back(foundRoot);
-    if (logger) logger->addStep("Encontrada Raiz", "x1 = " + String(foundRoot));
+    if (logger) logger->addStep("Root found", "x\xE2\x82\x81 = " + String(foundRoot));
 
     // Synthetic division (Ruffini) to get Quadratic
     // (ax^3 + bx^2 + cx + d) / (x - r) = qx^2 + rx + s
@@ -213,10 +213,10 @@ EquationSolver::SystemResult EquationSolver::solveSystem2x2(const System2x2 &sys
     if (abs(D) < 1e-12) {
         if (abs(Dx) < 1e-12 && abs(Dy) < 1e-12) {
             res.infiniteSolutions = true;
-            res.errorMessage = "Infinitas Sol";
+            res.errorMessage = "Infinite solutions";
         } else {
             res.noSolution = true;
-            res.errorMessage = "Sin Solucion";
+            res.errorMessage = "No solution";
         }
         res.ok = false;
     } else {
@@ -226,8 +226,8 @@ EquationSolver::SystemResult EquationSolver::solveSystem2x2(const System2x2 &sys
         
         if (logger) {
             logger->clear();
-            logger->addStep("Metodo Cramer", "Det=" + String(D));
-            logger->addStep("Solucion", "x=" + String(res.x) + ", y=" + String(res.y));
+            logger->addStep("Cramer's method", "Det = " + String(D));
+            logger->addStep("Solution", "x = " + String(res.x) + ", y = " + String(res.y));
         }
     }
     return res;
@@ -243,7 +243,7 @@ EquationSolver::SystemResult EquationSolver::solveSystem3x3(const System3x3 &sys
     SystemResult res;
     if (abs(D) < 1e-12) {
         res.ok = false;
-        res.errorMessage = "Det=0 (Sin/Inf Sol)";
+        res.errorMessage = "Det = 0 (No unique solution)";
         return res;
     }
 
@@ -269,7 +269,7 @@ EquationSolver::SystemResult EquationSolver::solveSystem3x3(const System3x3 &sys
     
     if (logger) {
        logger->clear();
-       logger->addStep("Metodo Cramer 3x3", "Det=" + String(D));
+       logger->addStep("Cramer's method 3\xC3\x97" "3", "Det = " + String(D));
     }
 
     return res;
@@ -496,14 +496,14 @@ SolveResult EquationSolver::solveWithNewton(const std::vector<Token> &rpn,
     for (int i=0; i<20; ++i) {
         vars.setVariable('x', x);
         EvalResult r = _evaluator.evaluateRPN(rpn, vars);
-        if (!r.ok) { vars.setVariable('x', originalX); res.errorMessage="Eval Err"; return res; }
+        if (!r.ok) { vars.setVariable('x', originalX); res.errorMessage="Eval Error"; return res; }
         double fx = r.value;
         
         if (abs(fx) < 1e-9) {
             vars.setVariable('x', originalX);
             res.ok = true;
             res.roots.push_back(x);
-             if (logger) logger->addStep("Newton Raphson", "Raiz aprox: " + String(x));
+             if (logger) logger->addStep("Newton-Raphson", "Approx. root: " + String(x));
             return res;
         }
 
@@ -522,6 +522,6 @@ SolveResult EquationSolver::solveWithNewton(const std::vector<Token> &rpn,
     }
     
     vars.setVariable('x', originalX);
-    res.errorMessage = "No converge";
+    res.errorMessage = "No convergence";
     return res;
 }

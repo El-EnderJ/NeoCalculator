@@ -313,8 +313,12 @@ NodePtr SymExprToAST::convertMul(const SymMul* m) {
         } else {
             auto numRow = makeRow();
             auto* nr = static_cast<NodeRow*>(numRow.get());
-            for (size_t i = 0; i < numFactors.size(); ++i) {
-                appendFlat(nr, convert(numFactors[i]));
+            // Display order: coefficients (numbers) first
+            for (auto* f : numFactors) {
+                if (f->type == SymExprType::Num) appendFlat(nr, convert(f));
+            }
+            for (auto* f : numFactors) {
+                if (f->type != SymExprType::Num) appendFlat(nr, convert(f));
             }
             numNode = std::move(numRow);
         }
@@ -358,11 +362,17 @@ NodePtr SymExprToAST::convertMul(const SymMul* m) {
             ensureRow(std::move(denNode)));
     }
 
-    // No denominator → simple juxtaposition
+    // No denominator → simple juxtaposition (coefficients first for display)
     auto row = makeRow();
     auto* r = static_cast<NodeRow*>(row.get());
+    // Render numeric coefficients first, then non-numeric factors
     for (uint16_t i = 0; i < m->count; ++i) {
-        appendFlat(r, convert(m->factors[i]));
+        if (m->factors[i]->type == SymExprType::Num)
+            appendFlat(r, convert(m->factors[i]));
+    }
+    for (uint16_t i = 0; i < m->count; ++i) {
+        if (m->factors[i]->type != SymExprType::Num)
+            appendFlat(r, convert(m->factors[i]));
     }
     return row;
 }
@@ -441,11 +451,13 @@ NodePtr SymExprToAST::convertFunc(const SymFunc* f) {
             return row;
         }
         case SymFuncKind::Integral: {
-            // ∫f(x) dx — unevaluated integral rendering
+            // Integral f(x) dx — safe ASCII fallback (Montserrat lacks ∫)
             auto row = makeRow();
             auto* r = static_cast<NodeRow*>(row.get());
-            r->appendChild(makeNumber("\xe2\x88\xab"));   // UTF-8 for ∫
+            r->appendChild(makeNumber("S"));       // safe integral symbol
+            r->appendChild(makeNumber("("));
             appendFlat(r, std::move(argNode));
+            r->appendChild(makeNumber(")"));
             r->appendChild(makeNumber("dx"));
             return row;
         }

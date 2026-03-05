@@ -78,7 +78,9 @@ public:
 
     /// Solve an equation for the given variable.
     /// Returns SolveResult with solutions, steps, and status.
-    SolveResult solve(const SymEquation& eq, char variable = 'x');
+    /// If arena is provided, SymExpr math chunks are built for 2D VPAM rendering.
+    SolveResult solve(const SymEquation& eq, char variable = 'x',
+                      SymExprArena* arena = nullptr);
 
 private:
     // ── Internal solver methods ─────────────────────────────────────
@@ -87,10 +89,12 @@ private:
     SymEquation normalize(const SymEquation& eq, PedagogicalLogger& log);
 
     /// Solve linear: ax + b = 0  →  x = -b/a
-    bool solveLinear(const SymEquation& eq, char var, SolveResult& result);
+    bool solveLinear(const SymEquation& eq, char var, SolveResult& result,
+                     SymExprArena* arena);
 
     /// Solve quadratic: ax² + bx + c = 0  →  discriminant method
-    bool solveQuadratic(const SymEquation& eq, char var, SolveResult& result);
+    bool solveQuadratic(const SymEquation& eq, char var, SolveResult& result,
+                        SymExprArena* arena);
 
     /// Newton-Raphson fallback for degree ≥ 3
     bool solveNewton(const SymEquation& eq, char var, SolveResult& result);

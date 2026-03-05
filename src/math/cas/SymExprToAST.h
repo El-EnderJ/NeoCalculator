@@ -36,6 +36,9 @@ public:
     /// Used for displaying integration results.
     static vpam::NodePtr convertIntegral(const SymExpr* antiderivative);
 
+    /// Helper: wrap a NodePtr in a NodeRow if it isn't already one.
+    static vpam::NodePtr ensureRow(vpam::NodePtr node);
+
 private:
     static vpam::NodePtr convertNum(const SymNum* n);
     static vpam::NodePtr convertVar(const SymVar* v);
@@ -44,9 +47,6 @@ private:
     static vpam::NodePtr convertMul(const SymMul* m);
     static vpam::NodePtr convertPow(const SymPow* p);
     static vpam::NodePtr convertFunc(const SymFunc* f);
-
-    /// Helper: wrap a NodePtr in a NodeRow if it isn't already one.
-    static vpam::NodePtr ensureRow(vpam::NodePtr node);
 
     /// Helper: render an ExactVal as AST (reuses SymToAST pattern).
     static vpam::NodePtr renderExactVal(const vpam::ExactVal& val);

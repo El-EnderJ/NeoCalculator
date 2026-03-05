@@ -54,9 +54,9 @@ static constexpr int ROW_GAP   = 3;    // Gap between rows
 
 const char* EquationsApp::TEMPLATE_LABELS[NUM_TEMPLATES] = {
     "Empty",
-    "Polynomial: ax" "\xC2\xB2" "+bx+c=0",
-    "Exponential: a" "\xC2\xB7" "e" "\xCB\xA3" "+b=0",
-    "Logarithmic: ln(x)+a=0",
+    "Polynomial:",
+    "Exponential:",
+    "Logarithmic:",
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -111,7 +111,10 @@ EquationsApp::EquationsApp()
         _eqLabels[i] = nullptr;
         _eqRowData[i] = nullptr;
     }
-    for (int i = 0; i < NUM_TEMPLATES; ++i) _templateItems[i] = nullptr;
+    for (int i = 0; i < NUM_TEMPLATES; ++i) {
+        _templateItems[i] = nullptr;
+        _templateLabels[i] = nullptr;
+    }
     for (int i = 0; i < MAX_RESULTS; ++i) _resultRow[i] = nullptr;
 }
 
@@ -173,7 +176,12 @@ void EquationsApp::end() {
             _eqRows[i] = nullptr;
             _eqLabels[i] = nullptr;
         }
-        for (int i = 0; i < NUM_TEMPLATES; ++i) _templateItems[i] = nullptr;
+        for (int i = 0; i < NUM_TEMPLATES; ++i) {
+            _templateCanvas[i].destroy();
+            _templateNode[i].reset();
+            _templateItems[i] = nullptr;
+            _templateLabels[i] = nullptr;
+        }
     }
 
     _state = State::EQ_LIST;
@@ -309,10 +317,38 @@ void EquationsApp::createUI() {
     lv_obj_set_pos(_templateTitle, 12, 8);
 
     for (int i = 0; i < NUM_TEMPLATES; ++i) {
-        _templateItems[i] = lv_label_create(_templateOverlay);
-        lv_label_set_text(_templateItems[i], TEMPLATE_LABELS[i]);
-        lv_obj_set_style_text_font(_templateItems[i], &lv_font_montserrat_14, LV_PART_MAIN);
-        lv_obj_set_pos(_templateItems[i], 20, 32 + i * 26);
+        // Row container for text + MathCanvas side by side
+        _templateItems[i] = lv_obj_create(_templateOverlay);
+        lv_obj_set_size(_templateItems[i], 236, 24);
+        lv_obj_set_pos(_templateItems[i], 12, 30 + i * 26);
+        lv_obj_set_style_bg_opa(_templateItems[i], LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_width(_templateItems[i], 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(_templateItems[i], 0, LV_PART_MAIN);
+        lv_obj_set_flex_flow(_templateItems[i], LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(_templateItems[i], LV_FLEX_ALIGN_START,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_column(_templateItems[i], 4, LV_PART_MAIN);
+        lv_obj_remove_flag(_templateItems[i], LV_OBJ_FLAG_SCROLLABLE);
+
+        // Text prefix label
+        _templateLabels[i] = lv_label_create(_templateItems[i]);
+        lv_label_set_text(_templateLabels[i], TEMPLATE_LABELS[i]);
+        lv_obj_set_style_text_font(_templateLabels[i], &lv_font_montserrat_14, LV_PART_MAIN);
+
+        // MathCanvas for the formula (templates 1-3 have math)
+        if (i > 0) {
+            _templateNode[i] = buildTemplateAST(i);
+            auto* row = static_cast<vpam::NodeRow*>(_templateNode[i].get());
+            _templateCanvas[i].create(_templateItems[i]);
+            _templateCanvas[i].setExpression(row, nullptr);
+            row->calculateLayout(_templateCanvas[i].normalMetrics());
+            int16_t cw = row->layout().width + 8;
+            int16_t ch = row->layout().ascent + row->layout().descent + 4;
+            if (ch < 20) ch = 20;
+            if (cw > 160) cw = 160;
+            lv_obj_set_size(_templateCanvas[i].obj(), cw, ch);
+            _templateCanvas[i].invalidate();
+        }
     }
 
     lv_obj_add_flag(_templateOverlay, LV_OBJ_FLAG_HIDDEN);
@@ -548,10 +584,10 @@ void EquationsApp::showTemplate() {
     // Update template item styles
     for (int i = 0; i < NUM_TEMPLATES; ++i) {
         if (i == _templateFocus) {
-            lv_obj_set_style_text_color(_templateItems[i],
+            lv_obj_set_style_text_color(_templateLabels[i],
                 lv_color_hex(COL_FOCUS_HEX), LV_PART_MAIN);
         } else {
-            lv_obj_set_style_text_color(_templateItems[i],
+            lv_obj_set_style_text_color(_templateLabels[i],
                 lv_color_black(), LV_PART_MAIN);
         }
     }
@@ -717,7 +753,7 @@ void EquationsApp::handleKeyTemplate(const KeyEvent& ev) {
             if (_templateFocus > 0) {
                 --_templateFocus;
                 for (int i = 0; i < NUM_TEMPLATES; ++i) {
-                    lv_obj_set_style_text_color(_templateItems[i],
+                    lv_obj_set_style_text_color(_templateLabels[i],
                         (i == _templateFocus) ? lv_color_hex(COL_FOCUS_HEX) : lv_color_black(),
                         LV_PART_MAIN);
                 }
@@ -729,7 +765,7 @@ void EquationsApp::handleKeyTemplate(const KeyEvent& ev) {
             if (_templateFocus < NUM_TEMPLATES - 1) {
                 ++_templateFocus;
                 for (int i = 0; i < NUM_TEMPLATES; ++i) {
-                    lv_obj_set_style_text_color(_templateItems[i],
+                    lv_obj_set_style_text_color(_templateLabels[i],
                         (i == _templateFocus) ? lv_color_hex(COL_FOCUS_HEX) : lv_color_black(),
                         LV_PART_MAIN);
                 }
@@ -1670,14 +1706,8 @@ addHint:
 // ════════════════════════════════════════════════════════════════════════════
 
 void EquationsApp::buildStepsDisplay() {
-    // ── Destroy existing step canvases BEFORE cleaning container ────
-    for (int i = 0; i < _stepCanvasCount; ++i) {
-        _stepCanvas[i].destroy();
-        _stepNode[i].reset();
-        _stepRow[i] = nullptr;
-    }
-    _stepCanvasCount = 0;
-
+    // ── 1. Clean up ────────────────────────────────────────────────
+    _stepRenderers.clear();
     lv_obj_clean(_stepsContainer);
 
     const cas::CASStepLogger& log = _isOmniSolve
@@ -1694,69 +1724,91 @@ void EquationsApp::buildStepsDisplay() {
         return;
     }
 
+    static constexpr int CANVAS_W = SCREEN_W - 2 * PAD - 16;
+
+    // Helper: create a MathCanvas from a NodePtr, add to _stepRenderers
+    auto emitCanvas = [&](vpam::NodePtr node) {
+        if (!node) return;
+        node = cas::SymExprToAST::ensureRow(std::move(node));
+        auto srd = std::make_unique<StepRenderData>();
+        srd->nodeData = std::move(node);
+        srd->canvas.create(_stepsContainer);
+
+        auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
+        srd->canvas.setExpression(row, nullptr);
+        row->calculateLayout(srd->canvas.normalMetrics());
+
+        int16_t w = row->layout().width + 24;
+        int16_t h = row->layout().ascent + row->layout().descent + 8;
+        if (w > CANVAS_W) w = CANVAS_W;
+        if (h < 22) h = 22;
+        lv_obj_set_size(srd->canvas.obj(), w, h);
+        srd->canvas.invalidate();
+        _stepRenderers.push_back(std::move(srd));
+    };
+
+    // ── 2. Iterate all steps ───────────────────────────────────────
     for (size_t i = 0; i < steps.size(); ++i) {
         const auto& step = steps[i];
 
-        // Choose color based on step kind
+        // Color: orange accent for results, green for normal steps
         uint32_t descColor = COL_DESC_HEX;
-        if (step.kind == cas::StepKind::Result || step.kind == cas::StepKind::ComplexResult)
+        if (step.kind == cas::StepKind::Result
+            || step.kind == cas::StepKind::ComplexResult)
             descColor = COL_ACCENT_HEX;
 
-        char buf[200];
+        // ── 2a. Text description label ─────────────────────────────
+        // Only create a label if there IS a description to show
+        if (!step.description.empty()) {
+            char buf[200];
+            if (step.kind == cas::StepKind::ComplexResult
+                && _isOmniSolve && _omniResult.hasComplexRoots)
+            {
+                snprintf(buf, sizeof(buf), "%d. Complex conjugate roots:",
+                         (int)(i + 1));
+            } else {
+                snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
+                         step.description.c_str());
+            }
 
-        // For ComplexResult with available data, show short label instead
-        // of the linear text equation — VPAM canvases will render below.
-        if (step.kind == cas::StepKind::ComplexResult
-            && _isOmniSolve && _omniResult.hasComplexRoots) {
-            snprintf(buf, sizeof(buf), "%d. Complex conjugate roots:", (int)(i + 1));
-        } else {
-            snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
-                     step.description.c_str());
+            lv_obj_t* descLbl = lv_label_create(_stepsContainer);
+            lv_label_set_text(descLbl, buf);
+            lv_obj_set_width(descLbl, SCREEN_W - 2 * PAD - 8);
+            lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
+            lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12,
+                                       LV_PART_MAIN);
+            lv_obj_set_style_text_color(descLbl, lv_color_hex(descColor),
+                                        LV_PART_MAIN);
         }
 
-        lv_obj_t* descLbl = lv_label_create(_stepsContainer);
-        lv_label_set_text(descLbl, buf);
-        lv_obj_set_width(descLbl, SCREEN_W - 2 * PAD - 8);
-        lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12, LV_PART_MAIN);
-        lv_obj_set_style_text_color(descLbl, lv_color_hex(descColor), LV_PART_MAIN);
+        // ── 2b. MathCanvas for CAS mathExpr ────────────────────────
+        // Any step with a SymExpr tree gets a mandatory MathCanvas
+        if (step.mathExpr) {
+            vpam::NodePtr astNode = cas::SymExprToAST::convert(step.mathExpr);
+            emitCanvas(std::move(astNode));
+        }
 
-        // ── VPAM render for equation snapshots (Transform / Result) ──
-        if ((step.kind == cas::StepKind::Transform || step.kind == cas::StepKind::Result)
-            && _stepCanvasCount < MAX_STEP_CANVASES)
+        // ── 2c. MathCanvas for equation snapshots ──────────────────
+        // Transform/Result steps may carry a SymEquation snapshot
+        if ((step.kind == cas::StepKind::Transform
+             || step.kind == cas::StepKind::Result)
+            && !step.mathExpr)
         {
             std::string eqText = step.snapshot.toString();
             if (!eqText.empty() && eqText != "0" && eqText != "0 = 0") {
-                int ci = _stepCanvasCount;
-
-                // Convert SymEquation → MathAST NodeRow for VPAM rendering
-                _stepNode[ci] = cas::SymToAST::fromSymEquation(step.snapshot);
-                _stepRow[ci]  = static_cast<vpam::NodeRow*>(_stepNode[ci].get());
-
-                _stepCanvas[ci].create(_stepsContainer);
-                _stepCanvas[ci].setExpression(_stepRow[ci], nullptr);
-                _stepRow[ci]->calculateLayout(_stepCanvas[ci].normalMetrics());
-
-                // Size the canvas to fit the expression
-                int16_t w = _stepRow[ci]->layout().width + 24;   // padding
-                int16_t h = _stepRow[ci]->layout().ascent + _stepRow[ci]->layout().descent + 6;
-                if (w > SCREEN_W - 2 * PAD) w = SCREEN_W - 2 * PAD;
-                if (h < 20) h = 20;
-                lv_obj_set_size(_stepCanvas[ci].obj(), w, h);
-
-                _stepCanvas[ci].invalidate();
-                ++_stepCanvasCount;
+                vpam::NodePtr snapNode =
+                    cas::SymToAST::fromSymEquation(step.snapshot);
+                emitCanvas(std::move(snapNode));
             }
         }
 
-        // ── VPAM render for ComplexResult: two roots as MathCanvas ──
+        // ── 2d. ComplexResult: two root canvases ───────────────────
         if (step.kind == cas::StepKind::ComplexResult
-            && _isOmniSolve && _omniResult.hasComplexRoots
-            && _stepCanvasCount + 1 < MAX_STEP_CANVASES)
+            && _isOmniSolve && _omniResult.hasComplexRoots)
         {
             using namespace vpam;
-            const auto& re = _omniResult.complexReal;
-            const auto& im = _omniResult.complexImagMag;
+            const auto& re  = _omniResult.complexReal;
+            const auto& im  = _omniResult.complexImagMag;
             char var = _omniResult.variable;
 
             auto appendExactVPAM = [](NodeRow* r, const ExactVal& val) {
@@ -1770,11 +1822,10 @@ void EquationsApp::buildStepsDisplay() {
                 }
             };
 
-            // Root 1: x₁ = re + im·i
+            // Root 1: x1 = re + im·i
             {
-                int ci = _stepCanvasCount;
                 auto row = makeRow();
-                auto* r = static_cast<NodeRow*>(row.get());
+                auto* r  = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(var));
                 r->appendChild(makeNumber("1"));
                 r->appendChild(makeVariable('='));
@@ -1782,29 +1833,13 @@ void EquationsApp::buildStepsDisplay() {
                 r->appendChild(makeOperator(OpKind::Add));
                 appendExactVPAM(r, im);
                 r->appendChild(makeConstant(ConstKind::Imag));
-
-                _stepNode[ci] = std::move(row);
-                _stepRow[ci]  = static_cast<NodeRow*>(_stepNode[ci].get());
-
-                _stepCanvas[ci].create(_stepsContainer);
-                _stepCanvas[ci].setExpression(_stepRow[ci], nullptr);
-                _stepRow[ci]->calculateLayout(_stepCanvas[ci].normalMetrics());
-
-                int16_t w = _stepRow[ci]->layout().width + 24;
-                int16_t h = _stepRow[ci]->layout().ascent +
-                            _stepRow[ci]->layout().descent + 6;
-                if (w > SCREEN_W - 2 * PAD) w = SCREEN_W - 2 * PAD;
-                if (h < 20) h = 20;
-                lv_obj_set_size(_stepCanvas[ci].obj(), w, h);
-                _stepCanvas[ci].invalidate();
-                ++_stepCanvasCount;
+                emitCanvas(std::move(row));
             }
 
-            // Root 2: x₂ = re - im·i
-            if (_stepCanvasCount < MAX_STEP_CANVASES) {
-                int ci = _stepCanvasCount;
+            // Root 2: x2 = re - im·i
+            {
                 auto row = makeRow();
-                auto* r = static_cast<NodeRow*>(row.get());
+                auto* r  = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(var));
                 r->appendChild(makeNumber("2"));
                 r->appendChild(makeVariable('='));
@@ -1812,29 +1847,16 @@ void EquationsApp::buildStepsDisplay() {
                 r->appendChild(makeOperator(OpKind::Sub));
                 appendExactVPAM(r, im);
                 r->appendChild(makeConstant(ConstKind::Imag));
-
-                _stepNode[ci] = std::move(row);
-                _stepRow[ci]  = static_cast<NodeRow*>(_stepNode[ci].get());
-
-                _stepCanvas[ci].create(_stepsContainer);
-                _stepCanvas[ci].setExpression(_stepRow[ci], nullptr);
-                _stepRow[ci]->calculateLayout(_stepCanvas[ci].normalMetrics());
-
-                int16_t w = _stepRow[ci]->layout().width + 24;
-                int16_t h = _stepRow[ci]->layout().ascent +
-                            _stepRow[ci]->layout().descent + 6;
-                if (w > SCREEN_W - 2 * PAD) w = SCREEN_W - 2 * PAD;
-                if (h < 20) h = 20;
-                lv_obj_set_size(_stepCanvas[ci].obj(), w, h);
-                _stepCanvas[ci].invalidate();
-                ++_stepCanvasCount;
+                emitCanvas(std::move(row));
             }
         }
-        // Annotation steps: text-only, no equation line
     }
 
+    // ── 3. Footer hint ─────────────────────────────────────────────
     lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
-    lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+    lv_label_set_text(hintLbl,
+                      LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
     lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
+    lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
+                                LV_PART_MAIN);
 }

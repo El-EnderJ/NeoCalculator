@@ -43,7 +43,8 @@ SingleSolver::SingleSolver() {}
 // solve — Main entry point
 // ────────────────────────────────────────────────────────────────────
 
-SolveResult SingleSolver::solve(const SymEquation& eq, char variable) {
+SolveResult SingleSolver::solve(const SymEquation& eq, char variable,
+                                SymExprArena* arena) {
     SolveResult result;
     result.variable = variable;
     result.ok       = false;
@@ -81,11 +82,11 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable) {
         MethodId::General);
 
     if (deg == 1) {
-        if (solveLinear(normalized, variable, result)) {
+        if (solveLinear(normalized, variable, result, arena)) {
             result.ok = true;
         }
     } else if (deg == 2) {
-        if (solveQuadratic(normalized, variable, result)) {
+        if (solveQuadratic(normalized, variable, result, arena)) {
             result.ok = true;
         }
     } else {
@@ -120,7 +121,8 @@ SymEquation SingleSolver::normalize(const SymEquation& eq, PedagogicalLogger& lo
 // Uses PedagogicalLogger for contextual step descriptions.
 // ════════════════════════════════════════════════════════════════════
 
-bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& result) {
+bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& result,
+                               SymExprArena* arena) {
     const SymPoly& f = eq.lhs;
 
     // Extract coefficients as CASNumber (from ExactVal bridge)
@@ -137,7 +139,7 @@ bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& res
     // Log coefficient identification
     result.steps.logAction(
         SolveAction::LINEAR_IDENTIFY_COEFFICIENTS,
-        ActionContext().var(var).val("a", a).val("b", b),
+        ActionContext().var(var).withArena(arena).val("a", a).val("b", b),
         MethodId::Linear);
 
     // Step: Isolate variable term — ax = -b
@@ -151,7 +153,7 @@ bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& res
 
         result.steps.logAction(
             SolveAction::LINEAR_ISOLATE_VARIABLE,
-            ActionContext().var(var).snap(&step),
+            ActionContext().var(var).withArena(arena).snap(&step),
             MethodId::Linear);
     }
 
@@ -167,12 +169,12 @@ bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& res
 
         result.steps.logAction(
             SolveAction::LINEAR_DIVIDE_BY_COEFFICIENT,
-            ActionContext().var(var).val("a", a).snap(&stepEq),
+            ActionContext().var(var).withArena(arena).val("a", a).snap(&stepEq),
             MethodId::Linear);
 
         result.steps.logAction(
             SolveAction::LINEAR_PRESENT_SOLUTION,
-            ActionContext().var(var).val("solution", solution).snap(&stepEq),
+            ActionContext().var(var).withArena(arena).val("solution", solution).snap(&stepEq),
             MethodId::Linear);
     }
 
@@ -198,7 +200,8 @@ bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& res
 //   Pilar 3 (SymExprArena): SymPoly terms and step vectors live in PSRAM.
 // ════════════════════════════════════════════════════════════════════
 
-bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& result) {
+bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& result,
+                                  SymExprArena* arena) {
     const SymPoly& f = eq.lhs;
 
     // ── Extract coefficients via CASNumber ──────────────────────────
@@ -216,7 +219,7 @@ bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& 
     // ── ACTION: Identify coefficients ──────────────────────────────
     result.steps.logAction(
         SolveAction::QUAD_IDENTIFY_COEFFICIENTS,
-        ActionContext().var(var)
+        ActionContext().var(var).withArena(arena)
             .val("a", a).val("b", b).val("c", c),
         MethodId::Quadratic);
 
@@ -225,13 +228,6 @@ bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& 
     CASNumber four = CASNumber::fromInt(4);
     CASNumber ac4  = CASNumber::mul(four, CASNumber::mul(a, c));        // 4ac
     CASNumber disc = CASNumber::sub(b2, ac4);                           // D = b² - 4ac
-
-    // ── ACTION: Show discriminant computation ──────────────────────
-    result.steps.logAction(
-        SolveAction::QUAD_COMPUTE_DISCRIMINANT,
-        ActionContext().var(var)
-            .val("a", a).val("b", b).val("c", c).val("D", disc),
-        MethodId::Quadratic);
 
     // ── Evaluate discriminant sign (exact) ─────────────────────────
     bool discNegative = disc.isNegative();
@@ -242,9 +238,16 @@ bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& 
     // ════════════════════════════════════════════════════════════════
 
     if (discNegative) {
+        // Show discriminant computation (only for D < 0)
+        result.steps.logAction(
+            SolveAction::QUAD_COMPUTE_DISCRIMINANT,
+            ActionContext().var(var).withArena(arena)
+                .val("a", a).val("b", b).val("c", c).val("D", disc),
+            MethodId::Quadratic);
+
         result.steps.logAction(
             SolveAction::QUAD_DISCRIMINANT_NEGATIVE,
-            ActionContext().var(var).val("D", disc),
+            ActionContext().var(var).withArena(arena).val("D", disc),
             MethodId::Quadratic);
 
         // ── Complex toggle: if disabled, stop here ─────────────────
@@ -275,13 +278,13 @@ bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& 
         // ── ACTION: Show complex parts ─────────────────────────────
         result.steps.logAction(
             SolveAction::QUAD_COMPUTE_COMPLEX_PARTS,
-            ActionContext().var(var).val("re", realPart).val("im", imagMag),
+            ActionContext().var(var).withArena(arena).val("re", realPart).val("im", imagMag),
             MethodId::Quadratic);
 
-        // ── ACTION: Present complex roots ──────────────────────────
+        // ── ACTION: Present complex roots ──────────────────────
         result.steps.logAction(
             SolveAction::QUAD_PRESENT_COMPLEX_ROOTS,
-            ActionContext().var(var).val("re", realPart).val("im", imagMag),
+            ActionContext().var(var).withArena(arena).val("re", realPart).val("im", imagMag),
             MethodId::Quadratic);
 
         // Store in result
@@ -296,39 +299,34 @@ bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& 
         return true;
     }
 
-    // ── Common: Compute -b and 2a ──────────────────────────────────
+    // ════════════════════════════════════════════════════════════════
+    // CASE 2 & 3: D ≥ 0 — Show formula with values substituted
+    //
+    // New flow: skip intermediate discriminant/sqrt steps.
+    // Emit ONE formula step with actual numerical values, then solutions.
+    // ════════════════════════════════════════════════════════════════
+
     CASNumber negB = CASNumber::neg(b);
     CASNumber twoA = CASNumber::mul(CASNumber::fromInt(2), a);
 
-    // ── ACTION: State the quadratic formula ────────────────────────
-    result.steps.logAction(
-        SolveAction::QUAD_APPLY_FORMULA,
-        ActionContext().var(var),
-        MethodId::Quadratic);
-
-    // ════════════════════════════════════════════════════════════════
-    // CASE 2: Discriminant = 0 — One repeated root
-    // ════════════════════════════════════════════════════════════════
-
     if (discZero) {
-        result.steps.logAction(
-            SolveAction::QUAD_DISCRIMINANT_ZERO,
-            ActionContext().var(var),
-            MethodId::Quadratic);
-
+        // D = 0 → repeated root: x = -b / (2a)
         CASNumber root = CASNumber::div(negB, twoA);
         ExactVal rootEV = root.toExactVal();
         rootEV.simplify();
 
-        // Build equation snapshot for display
-        SymPoly lhs = SymPoly::fromTerm(SymTerm::variable(var, 1, 1, 1));
-        SymPoly rhs = SymPoly::fromConstant(rootEV);
-        SymEquation stepEq(lhs, rhs);
+        // Show formula with values
+        result.steps.logAction(
+            SolveAction::QUAD_APPLY_FORMULA,
+            ActionContext().var(var).withArena(arena)
+                .val("D", disc).val("negB", negB).val("twoA", twoA),
+            MethodId::Quadratic);
 
+        // Present the single root
         result.steps.logAction(
             SolveAction::QUAD_PRESENT_REAL_SOLUTION,
-            ActionContext().var(var).val("solution", root)
-                          .solIdx(0).snap(&stepEq),
+            ActionContext().var(var).withArena(arena).val("solution", root)
+                          .solIdx(0),
             MethodId::Quadratic);
 
         result.solutions[0] = rootEV;
@@ -336,29 +334,14 @@ bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& 
         return true;
     }
 
-    // ════════════════════════════════════════════════════════════════
-    // CASE 3: Discriminant > 0 — Two distinct real roots
-    // ════════════════════════════════════════════════════════════════
-
-    result.steps.logAction(
-        SolveAction::QUAD_DISCRIMINANT_POSITIVE,
-        ActionContext().var(var).val("D", disc),
-        MethodId::Quadratic);
-
-    // Compute sqrt(D) — CASNumber returns Radical if not a perfect square
+    // D > 0 → two distinct real roots
     CASNumber sqrtDisc = CASNumber::sqrt(disc);
 
-    // ── ACTION: Show sqrt(D) computation ───────────────────────────
+    // Show formula with values substituted
     result.steps.logAction(
-        SolveAction::QUAD_COMPUTE_SQRT_DISC,
-        ActionContext().var(var).val("D", disc).val("sqrtD", sqrtDisc),
-        MethodId::Quadratic);
-
-    // ── ACTION: Show formula substitution ──────────────────────────
-    result.steps.logAction(
-        SolveAction::QUAD_COMPUTE_ROOTS,
-        ActionContext().var(var)
-            .val("negB", negB).val("sqrtD", sqrtDisc).val("twoA", twoA),
+        SolveAction::QUAD_APPLY_FORMULA,
+        ActionContext().var(var).withArena(arena)
+            .val("D", disc).val("negB", negB).val("sqrtD", sqrtDisc).val("twoA", twoA),
         MethodId::Quadratic);
 
     // ── x₁ = (-b + sqrt(D)) / (2a) ────────────────────────────────
@@ -373,27 +356,18 @@ bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& 
     ExactVal root2EV = root2.toExactVal();
     root2EV.simplify();
 
-    // ── Log solutions with equation snapshots ──────────────────────
-    {
-        SymPoly lhs  = SymPoly::fromTerm(SymTerm::variable(var, 1, 1, 1));
-        SymPoly rhs1 = SymPoly::fromConstant(root1EV);
-        SymEquation eq1(lhs, rhs1);
+    // ── Present solutions with MathCanvas (no snapshots) ───────────
+    result.steps.logAction(
+        SolveAction::QUAD_PRESENT_REAL_SOLUTION,
+        ActionContext().var(var).withArena(arena).val("solution", root1)
+                      .solIdx(1),
+        MethodId::Quadratic);
 
-        result.steps.logAction(
-            SolveAction::QUAD_PRESENT_REAL_SOLUTION,
-            ActionContext().var(var).val("solution", root1)
-                          .solIdx(1).snap(&eq1),
-            MethodId::Quadratic);
-
-        SymPoly rhs2 = SymPoly::fromConstant(root2EV);
-        SymEquation eq2(lhs, rhs2);
-
-        result.steps.logAction(
-            SolveAction::QUAD_PRESENT_REAL_SOLUTION,
-            ActionContext().var(var).val("solution", root2)
-                          .solIdx(2).snap(&eq2),
-            MethodId::Quadratic);
-    }
+    result.steps.logAction(
+        SolveAction::QUAD_PRESENT_REAL_SOLUTION,
+        ActionContext().var(var).withArena(arena).val("solution", root2)
+                      .solIdx(2),
+        MethodId::Quadratic);
 
     result.solutions[0] = root1EV;
     result.solutions[1] = root2EV;

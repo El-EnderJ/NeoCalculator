@@ -117,10 +117,9 @@ NewtonResult HybridNewton::solve(SymExpr* f, char var, SymExprArena& arena,
     df = SymSimplify::simplify(df, arena);
 
     if (log) {
-        log->logNote(
-            "Exact symbolic derivative: f'(" + std::string(1, var) + ") = " +
-            df->toString(),
-            MethodId::Newton);
+        log->logExpr(
+            "Exact symbolic derivative f\xE2\x80\xB2(" + std::string(1, var) + ") =",
+            df, MethodId::Newton);
     }
 
     // 3. Generate diversified initial guesses

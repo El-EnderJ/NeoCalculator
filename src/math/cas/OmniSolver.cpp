@@ -260,7 +260,7 @@ OmniResult OmniSolver::solveExpr(SymExpr* f, char var, SymExprArena& arena) {
 // solvePolynomial — Convert to SymPoly, delegate to SingleSolver
 // ════════════════════════════════════════════════════════════════════
 
-bool OmniSolver::solvePolynomial(SymExpr* f, char var, SymExprArena& /*arena*/,
+bool OmniSolver::solvePolynomial(SymExpr* f, char var, SymExprArena& arena,
                                   OmniResult& result) {
     // Convert SymExpr (known polynomial) to SymPoly
     SymPoly poly = f->toSymPoly(var);
@@ -268,9 +268,9 @@ bool OmniSolver::solvePolynomial(SymExpr* f, char var, SymExprArena& /*arena*/,
     // Build a SymEquation: poly = 0
     SymEquation eq(poly, SymPoly::fromConstant(vpam::ExactVal::fromInt(0)));
 
-    // Delegate to SingleSolver
+    // Delegate to SingleSolver (pass arena for VPAM math rendering)
     SingleSolver solver;
-    SolveResult sres = solver.solve(eq, var);
+    SolveResult sres = solver.solve(eq, var, &arena);
 
     // Copy steps preserving StepKind (Transform, Annotation, Result, etc.)
     for (const auto& step : sres.steps.steps()) {
@@ -452,8 +452,8 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
             double numericVal = sol_expr->evaluate(0.0);
 
             result.steps.logNote(
-                "Inverse: " + std::string(1, var) + "^n = " + rhs->toString() +
-                " -> " + std::string(1, var) + " = " + sol_expr->toString(),
+                "Inverse power: " + std::string(1, var) + "\xE2\x81\xBF = " + rhs->toString() +
+                " \xE2\x86\x92 " + std::string(1, var) + " = " + sol_expr->toString(),
                 MethodId::General);
 
             OmniSolution sol;
@@ -499,7 +499,7 @@ bool OmniSolver::solveInverse(SymExpr* f, char var, SymExprArena& arena,
             sol_expr = SymSimplify::simplify(sol_expr, arena);
 
             result.steps.logNote(
-                "Exponential inverse: a^x = c -> x = ln(c)/ln(a)",
+                "Exponential inverse: a\xCB\xA3 = c \xE2\x86\x92 x = ln(c)/ln(a)",
                 MethodId::General);
 
             OmniSolution sol;
@@ -623,7 +623,7 @@ SymExpr* OmniSolver::isolateVar(SymExpr* expr, SymExpr* rhs, char var,
     // ── Neg(inner) = rhs  →  inner = -rhs ──
     if (expr->type == SymExprType::Neg) {
         auto* neg = static_cast<SymNeg*>(expr);
-        log.logNote("-(f) = rhs  →  f = -(rhs)", MethodId::General);
+        log.logNote("\xE2\x88\x92(f) = rhs  \xE2\x86\x92  f = \xE2\x88\x92(rhs)", MethodId::General);
         SymExpr* newRhs = symNeg(arena, rhs);
         return isolateVar(neg->child, newRhs, var, arena, log, depth + 1);
     }
@@ -691,7 +691,7 @@ SymExpr* OmniSolver::isolateVar(SymExpr* expr, SymExpr* rhs, char var,
 
         if (baseHas && !expHas) {
             // base^exp = rhs  →  base = rhs^(1/exp)
-            log.logNote("base^n = rhs  →  base = rhs^(1/n)", MethodId::General);
+            log.logNote("base\xE2\x81\xBF = rhs  \xE2\x86\x92  base = rhs\xC2\xB9\xE2\x81\x8F\xE2\x81\xBF", MethodId::General);
             SymExpr* invExp = symPow(arena, pw->exponent, symInt(arena, -1));
             SymExpr* newRhs = symPow(arena, rhs, invExp);
             newRhs = SymSimplify::simplify(newRhs, arena);
@@ -700,7 +700,7 @@ SymExpr* OmniSolver::isolateVar(SymExpr* expr, SymExpr* rhs, char var,
 
         if (expHas && !baseHas) {
             // a^exp = rhs  →  exp = ln(rhs) / ln(a)
-            log.logNote("a^f(x) = rhs  →  f(x) = ln(rhs)/ln(a)", MethodId::General);
+            log.logNote("a\xCB\xA3 = rhs  \xE2\x86\x92  f(x) = ln(rhs)/ln(a)", MethodId::General);
             SymExpr* lnRhs  = symFunc(arena, SymFuncKind::Ln, rhs);
             SymExpr* lnBase = symFunc(arena, SymFuncKind::Ln, pw->base);
             SymExpr* invLnB = symPow(arena, lnBase, symInt(arena, -1));
@@ -722,7 +722,7 @@ SymExpr* OmniSolver::isolateVar(SymExpr* expr, SymExpr* rhs, char var,
             return nullptr;
         }
         log.logNote(std::string(symFuncName(fn->kind)) +
-                    "(f) = rhs  →  f = " + inv->toString(),
+                    "(f) = rhs  \xE2\x86\x92  f = " + inv->toString(),
                     MethodId::General);
         SymExpr* newRhs = SymSimplify::simplify(inv, arena);
         return isolateVar(fn->argument, newRhs, var, arena, log, depth + 1);

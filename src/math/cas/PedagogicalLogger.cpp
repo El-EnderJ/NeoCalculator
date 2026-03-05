@@ -2,27 +2,31 @@
  * PedagogicalLogger.cpp — Dynamic phrase generation engine.
  *
  * Each SolveAction is mapped to a contextual English phrase that
- * explains the mathematical reasoning.  The phrases reference the
- * actual coefficient values from the ActionContext, producing output
- * like a human tutor would:
+ * explains the mathematical reasoning, plus an optional SymExpr tree
+ * for 2D MathCanvas rendering via VPAM.
  *
- *   "The discriminant D = b^2 - 4ac = (5)^2 - 4*(2)*(-3) = 49"
- *
- * rather than generic:
- *
- *   "Step 3: Compute discriminant"
- *
- * The generated phrase is stored in a CASStep with the appropriate
- * StepKind (Annotation for explanations, Transform for manipulations,
- * Result for final answers, ComplexResult for complex roots).
+ * Text descriptions contain ONLY explanatory text — no math notation.
+ * Each step with a math expression emits a SINGLE CASStep containing
+ * BOTH the text description AND a SymExpr* tree for 2D MathCanvas
+ * rendering (fractions, superscripts, radicals, etc.).
  *
  * Part of: NumOS CAS-S3-ULTRA — Pilar 2 (Super Detail Steps)
  */
 
 #include "PedagogicalLogger.h"
+#include "SymExpr.h"
+#include "SymExprArena.h"
 #include <cstdio>
 
 namespace cas {
+
+// ════════════════════════════════════════════════════════════════════
+// symFromCAS — Build a SymExpr node from a CASNumber using the arena
+// ════════════════════════════════════════════════════════════════════
+
+static SymExpr* symFromCAS(SymExprArena& arena, const CASNumber& n) {
+    return symNum(arena, n.toExactVal());
+}
 
 // ════════════════════════════════════════════════════════════════════
 // findVal — Look up a value by label in the context
@@ -71,106 +75,47 @@ std::string PedagogicalLogger::buildPhrase(SolveAction action,
 
     // ── Linear ─────────────────────────────────────────────────────
 
-    case SolveAction::LINEAR_IDENTIFY_COEFFICIENTS: {
-        const CASNumber* a = findVal(ctx, "a");
-        const CASNumber* b = findVal(ctx, "b");
-        std::string msg = "In the form a" + v + " + b = 0, the coefficients are: ";
-        if (a) msg += "a = " + a->toString();
-        if (b) msg += ", b = " + b->toString();
-        return msg;
-    }
+    case SolveAction::LINEAR_IDENTIFY_COEFFICIENTS:
+        return "Identifying coefficients:";
 
     case SolveAction::LINEAR_ISOLATE_VARIABLE:
         return "Moving the constant term to the right side to isolate " + v + ".";
 
-    case SolveAction::LINEAR_DIVIDE_BY_COEFFICIENT: {
-        const CASNumber* a = findVal(ctx, "a");
-        std::string msg = "Dividing both sides by ";
-        if (a) msg += a->toString();
-        msg += " to solve for " + v + ".";
-        return msg;
-    }
+    case SolveAction::LINEAR_DIVIDE_BY_COEFFICIENT:
+        return "Dividing both sides by the coefficient:";
 
-    case SolveAction::LINEAR_PRESENT_SOLUTION: {
-        const CASNumber* sol = findVal(ctx, "solution");
-        return "Solution: " + v + " = " + (sol ? sol->toString() : "?");
-    }
+    case SolveAction::LINEAR_PRESENT_SOLUTION:
+        return "Solution:";
 
     // ── Quadratic ──────────────────────────────────────────────────
 
-    case SolveAction::QUAD_IDENTIFY_COEFFICIENTS: {
-        const CASNumber* a = findVal(ctx, "a");
-        const CASNumber* b = findVal(ctx, "b");
-        const CASNumber* c = findVal(ctx, "c");
+    case SolveAction::QUAD_IDENTIFY_COEFFICIENTS:
+        return "Identifying coefficients:";
 
-        std::string msg = "Reading the standard form a" + v + "^2 + b"
-                        + v + " + c = 0, we identify the coefficients:\n";
-        if (a) msg += "  a = " + a->toString();
-        if (b) msg += ",  b = " + b->toString();
-        if (c) msg += ",  c = " + c->toString();
-        return msg;
-    }
+    case SolveAction::QUAD_COMPUTE_DISCRIMINANT:
+        return "Computing the discriminant:";
 
-    case SolveAction::QUAD_COMPUTE_DISCRIMINANT: {
-        const CASNumber* b  = findVal(ctx, "b");
-        const CASNumber* a  = findVal(ctx, "a");
-        const CASNumber* c  = findVal(ctx, "c");
-        const CASNumber* D  = findVal(ctx, "D");
-
-        std::string msg = "Computing the discriminant D = b^2 - 4ac";
-        if (b && a && c) {
-            msg += " = (" + b->toString() + ")^2 - 4*("
-                 + a->toString() + ")*(" + c->toString() + ")";
-        }
-        if (D) msg += " = " + D->toString();
-        return msg;
-    }
-
-    case SolveAction::QUAD_DISCRIMINANT_POSITIVE: {
-        const CASNumber* D = findVal(ctx, "D");
-        std::string msg = "Since D = ";
-        if (D) msg += D->toString();
-        msg += " > 0, the equation has two distinct real roots.";
-        return msg;
-    }
+    case SolveAction::QUAD_DISCRIMINANT_POSITIVE:
+        return "Discriminant is positive: two distinct real roots.";
 
     case SolveAction::QUAD_DISCRIMINANT_ZERO:
-        return "Since D = 0, the equation has exactly one repeated real root.";
+        return "Discriminant is zero: one repeated real root.";
 
-    case SolveAction::QUAD_DISCRIMINANT_NEGATIVE: {
+    case SolveAction::QUAD_DISCRIMINANT_NEGATIVE:
+        return "Discriminant is negative: complex conjugate roots.";
+
+    case SolveAction::QUAD_APPLY_FORMULA: {
         const CASNumber* D = findVal(ctx, "D");
-        std::string msg = "Since D = ";
-        if (D) msg += D->toString();
-        msg += " < 0, there are no real solutions. "
-               "The roots are complex conjugates.";
-        return msg;
+        if (D && D->isZero())
+            return "Discriminant is zero, one repeated root:";
+        return "Applying the quadratic formula:";
     }
 
-    case SolveAction::QUAD_APPLY_FORMULA:
-        return "Applying the quadratic formula: " + v
-             + " = (-b +/- sqrt(D)) / (2a)";
+    case SolveAction::QUAD_COMPUTE_SQRT_DISC:
+        return "Computing square root of discriminant:";
 
-    case SolveAction::QUAD_COMPUTE_SQRT_DISC: {
-        const CASNumber* D    = findVal(ctx, "D");
-        const CASNumber* sqD  = findVal(ctx, "sqrtD");
-        std::string msg = "Computing sqrt(D)";
-        if (D) msg += " = sqrt(" + D->toString() + ")";
-        if (sqD) msg += " = " + sqD->toString();
-        return msg;
-    }
-
-    case SolveAction::QUAD_COMPUTE_ROOTS: {
-        const CASNumber* negB = findVal(ctx, "negB");
-        const CASNumber* sqD  = findVal(ctx, "sqrtD");
-        const CASNumber* twoA = findVal(ctx, "twoA");
-        std::string msg = "Substituting into the formula: " + v + " = (";
-        if (negB) msg += negB->toString();
-        msg += " +/- ";
-        if (sqD) msg += sqD->toString();
-        msg += ") / ";
-        if (twoA) msg += twoA->toString();
-        return msg;
-    }
+    case SolveAction::QUAD_COMPUTE_ROOTS:
+        return "Substituting into the formula:";
 
     case SolveAction::QUAD_PRESENT_REAL_SOLUTION: {
         const CASNumber* sol = findVal(ctx, "solution");
@@ -179,32 +124,19 @@ std::string PedagogicalLogger::buildPhrase(SolveAction action,
 
         std::string label;
         if (ctx.solutionIndex == 0) {
-            label = "Solution (repeated root)";
+            label = "Solution (repeated root):";
         } else {
-            label = std::string("Solution ") + v + idxBuf;
+            label = std::string("Solution ") + v + idxBuf + ":";
         }
-        return label + " = " + (sol ? sol->toString() : "?");
+        // Value rendered via MathCanvas (logExpr), not in text
+        return label;
     }
 
-    case SolveAction::QUAD_COMPUTE_COMPLEX_PARTS: {
-        const CASNumber* re = findVal(ctx, "re");
-        const CASNumber* im = findVal(ctx, "im");
-        std::string msg = "Computing complex parts:\n";
-        msg += "  Real part: -b/(2a) = ";
-        if (re) msg += re->toString();
-        msg += "\n  Imaginary magnitude: sqrt(|D|)/(2a) = ";
-        if (im) msg += im->toString();
-        return msg;
-    }
+    case SolveAction::QUAD_COMPUTE_COMPLEX_PARTS:
+        return "Computing complex parts:";
 
-    case SolveAction::QUAD_PRESENT_COMPLEX_ROOTS: {
-        const CASNumber* re = findVal(ctx, "re");
-        const CASNumber* im = findVal(ctx, "im");
-        std::string reStr = re ? re->toString() : "?";
-        std::string imStr = im ? im->toString() : "?";
-        return v + "1 = " + reStr + " + " + imStr + "i,  "
-             + v + "2 = " + reStr + " - " + imStr + "i";
-    }
+    case SolveAction::QUAD_PRESENT_COMPLEX_ROOTS:
+        return "Complex conjugate roots:";
 
     // ── Newton-Raphson ─────────────────────────────────────────────
 
@@ -213,12 +145,10 @@ std::string PedagogicalLogger::buildPhrase(SolveAction action,
                "Applying Newton-Raphson numeric method.";
 
     case SolveAction::NEWTON_CONVERGED: {
-        const CASNumber* sol = findVal(ctx, "solution");
-        char buf[128];
+        char buf[80];
         snprintf(buf, sizeof(buf),
-                 "Numeric root found in %d iterations: %s = %s (approx.)",
-                 ctx.iterCount, v.c_str(),
-                 sol ? sol->toString().c_str() : "?");
+                 "Numeric root found in %d iterations (approx.).",
+                 ctx.iterCount);
         return buf;
     }
 
@@ -238,6 +168,7 @@ void PedagogicalLogger::logAction(SolveAction action,
                                    const ActionContext& ctx,
                                    MethodId method) {
     std::string phrase = buildPhrase(action, ctx);
+    SymExprArena* ar = ctx.arena;
 
     // Determine StepKind based on action type
     switch (action) {
@@ -255,8 +186,24 @@ void PedagogicalLogger::logAction(SolveAction action,
 
     // ── Result steps (final answer with equation snapshot) ──────────
     case SolveAction::LINEAR_PRESENT_SOLUTION:
-    case SolveAction::QUAD_PRESENT_REAL_SOLUTION:
         if (ctx.snapshot) {
+            logResult(phrase, *ctx.snapshot, method);
+        } else {
+            logNote(phrase, method);
+        }
+        break;
+
+    // ── Quadratic solution: render value via MathCanvas ─────────────
+    case SolveAction::QUAD_PRESENT_REAL_SOLUTION:
+        if (ar) {
+            const CASNumber* sol = findVal(ctx, "solution");
+            if (sol) {
+                SymExpr* solExpr = symFromCAS(*ar, *sol);
+                logResultExpr(phrase, solExpr, method);
+            } else {
+                logNote(phrase, method);
+            }
+        } else if (ctx.snapshot) {
             logResult(phrase, *ctx.snapshot, method);
         } else {
             logNote(phrase, method);
@@ -265,8 +212,175 @@ void PedagogicalLogger::logAction(SolveAction action,
 
     // ── Complex result steps ────────────────────────────────────────
     case SolveAction::QUAD_PRESENT_COMPLEX_ROOTS:
-        logComplex(phrase, method);
+        logNote(phrase, method);
+        // Complex root math is rendered as two MathCanvas widgets
+        // directly in buildStepsDisplay() using OmniResult data.
         break;
+
+    // ── Quadratic formula: emit text + fraction with actual values ─
+    case SolveAction::QUAD_APPLY_FORMULA:
+        if (ar) {
+            const CASNumber* negBVal = findVal(ctx, "negB");
+            const CASNumber* sqDVal  = findVal(ctx, "sqrtD");
+            const CASNumber* twoAVal = findVal(ctx, "twoA");
+            if (negBVal && twoAVal) {
+                SymExpr* negBSym = symFromCAS(*ar, *negBVal);
+                SymExpr* twoASym = symFromCAS(*ar, *twoAVal);
+                if (sqDVal && !sqDVal->isZero()) {
+                    // D > 0: show (-b + sqrt(D)) / 2a with actual values
+                    SymExpr* sqDSym = symFromCAS(*ar, *sqDVal);
+                    // Bypass canonical sort: negB first, then sqrtD
+                    auto** arr = static_cast<SymExpr**>(
+                        ar->allocRaw(2 * sizeof(SymExpr*)));
+                    arr[0] = negBSym;
+                    arr[1] = sqDSym;
+                    SymExpr* num = ar->create<SymAdd>(
+                        const_cast<SymExpr* const*>(arr), uint16_t(2));
+                    SymExpr* frac = symMul(*ar, num,
+                        symPow(*ar, twoASym, symInt(*ar, -1)));
+                    logExpr(phrase, frac, method);
+                } else {
+                    // D = 0: show -b / (2a) with actual values
+                    SymExpr* frac = symMul(*ar, negBSym,
+                        symPow(*ar, twoASym, symInt(*ar, -1)));
+                    logExpr(phrase, frac, method);
+                }
+            } else {
+                logNote(phrase, method);
+            }
+        } else {
+            logNote(phrase, method);
+        }
+        break;
+
+    // ── Discriminant computation: emit text + D = b^2 - 4ac ──────
+    case SolveAction::QUAD_COMPUTE_DISCRIMINANT: {
+        if (ar) {
+            const CASNumber* b  = findVal(ctx, "b");
+            const CASNumber* a  = findVal(ctx, "a");
+            const CASNumber* c  = findVal(ctx, "c");
+            const CASNumber* D  = findVal(ctx, "D");
+            if (b && a && c && D) {
+                SymExpr* bSym = symFromCAS(*ar, *b);
+
+                // b^2
+                SymExpr* b2 = symPow(*ar, bSym, symInt(*ar, 2));
+                // Compute 4ac as a single numeric value (avoids "342" display)
+                CASNumber ac4_val = CASNumber::mul(CASNumber::fromInt(4),
+                                      CASNumber::mul(*a, *c));
+                SymExpr* fourACSym = symFromCAS(*ar, ac4_val);
+                // b^2 - 4ac — bypass canonical sort to preserve visual order
+                auto** arr = static_cast<SymExpr**>(ar->allocRaw(2 * sizeof(SymExpr*)));
+                arr[0] = b2;                       // b² first
+                arr[1] = symNeg(*ar, fourACSym);   // -4ac (as computed value) second
+                SymExpr* discExpr = ar->create<SymAdd>(const_cast<SymExpr* const*>(arr), uint16_t(2));
+
+                // Single step: text + MathCanvas expression
+                logExpr(phrase, discExpr, method);
+            } else {
+                logNote(phrase, method);
+            }
+        } else {
+            logNote(phrase, method);
+        }
+        break;
+    }
+
+    // ── sqrt(D) computation: emit text + sqrt(D) expression ──────
+    case SolveAction::QUAD_COMPUTE_SQRT_DISC: {
+        if (ar) {
+            const CASNumber* D   = findVal(ctx, "D");
+            const CASNumber* sqD = findVal(ctx, "sqrtD");
+            if (D && sqD) {
+                SymExpr* dSym  = symFromCAS(*ar, *D);
+                // Show: sqrt(D_value) as D^(1/2)
+                SymExpr* sqrtExpr = symPow(*ar, dSym, symFrac(*ar, 1, 2));
+                // Single step: text + MathCanvas expression
+                logExpr(phrase, sqrtExpr, method);
+            } else {
+                logNote(phrase, method);
+            }
+        } else {
+            logNote(phrase, method);
+        }
+        break;
+    }
+
+    // ── Root substitution: emit text + x = (negB ± sqrtD) / 2a ──
+    case SolveAction::QUAD_COMPUTE_ROOTS: {
+        if (ar) {
+            const CASNumber* negB = findVal(ctx, "negB");
+            const CASNumber* sqD  = findVal(ctx, "sqrtD");
+            const CASNumber* twoA = findVal(ctx, "twoA");
+            if (negB && sqD && twoA) {
+                SymExpr* negBSym = symFromCAS(*ar, *negB);
+                SymExpr* sqDSym  = symFromCAS(*ar, *sqD);
+                SymExpr* twoASym = symFromCAS(*ar, *twoA);
+
+                // Build: (negB + sqrtD) / twoA   (for x1)
+                SymExpr* num = symAdd(*ar, negBSym, sqDSym);
+                SymExpr* frac = symMul(*ar, num,
+                    symPow(*ar, twoASym, symInt(*ar, -1)));
+                // Single step: text + MathCanvas expression
+                logExpr(phrase, frac, method);
+            } else {
+                logNote(phrase, method);
+            }
+        } else {
+            logNote(phrase, method);
+        }
+        break;
+    }
+
+    // ── Complex parts: emit text + re, im values via MathCanvas ──
+    case SolveAction::QUAD_COMPUTE_COMPLEX_PARTS: {
+        if (ar) {
+            const CASNumber* re = findVal(ctx, "re");
+            const CASNumber* im = findVal(ctx, "im");
+            if (re) {
+                SymExpr* reSym = symFromCAS(*ar, *re);
+                logExpr(phrase, reSym, method);
+            }
+            if (im) {
+                SymExpr* imSym = symFromCAS(*ar, *im);
+                logExpr("Imaginary magnitude:", imSym, method);
+            }
+            if (!re && !im) logNote(phrase, method);
+        } else {
+            logNote(phrase, method);
+        }
+        break;
+    }
+
+    // ── Identify coefficients: emit text + the standard form ──────
+    case SolveAction::QUAD_IDENTIFY_COEFFICIENTS: {
+        if (ar) {
+            const CASNumber* a = findVal(ctx, "a");
+            const CASNumber* b = findVal(ctx, "b");
+            const CASNumber* c = findVal(ctx, "c");
+            if (a && b && c) {
+                // Build: a*x^2 + b*x + c = 0 with actual values
+                SymExpr* x = symVar(*ar, ctx.variable);
+                SymExpr* aSym = symFromCAS(*ar, *a);
+                SymExpr* bSym = symFromCAS(*ar, *b);
+                SymExpr* cSym = symFromCAS(*ar, *c);
+
+                // a*x^2
+                SymExpr* ax2 = symMul(*ar, aSym, symPow(*ar, x, symInt(*ar, 2)));
+                // b*x
+                SymExpr* bx = symMul(*ar, bSym, x);
+                // a*x^2 + b*x + c
+                SymExpr* poly = symAdd3(*ar, ax2, bx, cSym);
+                // Single step: text + MathCanvas expression
+                logExpr(phrase, poly, method);
+            } else {
+                logNote(phrase, method);
+            }
+        } else {
+            logNote(phrase, method);
+        }
+        break;
+    }
 
     // ── All other actions are annotations (text-only) ───────────────
     default:

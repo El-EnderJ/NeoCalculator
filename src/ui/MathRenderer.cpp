@@ -26,14 +26,13 @@ MathCanvas::MathCanvas()
     , _cursorCtrl(nullptr)
     , _fontNormal(&lv_font_montserrat_14)
     , _fontSmall(&lv_font_montserrat_12)
+    , _cursorTimer(nullptr)
     , _cursorVisible(true)
-    , _cursorBlinking(false)
     , _cursorX(0), _cursorY(0), _cursorH(0)
     , _scrollX(0)
 {
     _fmNormal = metricsFromFont(_fontNormal);
     _fmSmall  = metricsFromFont(_fontSmall);
-    std::memset(&_cursorAnim, 0, sizeof(_cursorAnim));
 }
 
 MathCanvas::~MathCanvas() {
@@ -113,45 +112,38 @@ void MathCanvas::scrollBy(int16_t delta) {
 // ════════════════════════════════════════════════════════════════════════════
 
 void MathCanvas::startCursorBlink() {
-    if (_cursorBlinking) return;
-    _cursorBlinking = true;
-    _cursorVisible  = true;
-
-    lv_anim_init(&_cursorAnim);
-    lv_anim_set_var(&_cursorAnim, this);
-    lv_anim_set_exec_cb(&_cursorAnim, cursorAnimCb);
-    lv_anim_set_values(&_cursorAnim, 1, 0);
-    lv_anim_set_duration(&_cursorAnim, BLINK_PERIOD);
-    lv_anim_set_repeat_count(&_cursorAnim, LV_ANIM_REPEAT_INFINITE);
-    lv_anim_set_playback_duration(&_cursorAnim, BLINK_PERIOD);
-    lv_anim_start(&_cursorAnim);
+    if (_cursorTimer) return;   // already running
+    _cursorVisible = true;
+    // lv_timer fires every BLINK_PERIOD ms and toggles visibility.
+    // Much more reliable than lv_anim_t which got reset on every keypress.
+    _cursorTimer = lv_timer_create(cursorTimerCb, BLINK_PERIOD, this);
+    invalidate();
 }
 
 void MathCanvas::stopCursorBlink() {
-    if (!_cursorBlinking) return;
-    _cursorBlinking = false;
-    _cursorVisible  = false;
-    lv_anim_delete(this, cursorAnimCb);
+    if (!_cursorTimer) return;
+    lv_timer_delete(_cursorTimer);
+    _cursorTimer   = nullptr;
+    _cursorVisible = false;
     invalidate();
 }
 
 void MathCanvas::resetCursorBlink() {
-    if (_cursorBlinking) {
-        lv_anim_delete(this, cursorAnimCb);
-        _cursorBlinking = false;
-    }
+    // Make cursor instantly visible, then restart the 500 ms countdown.
+    // Called on every keypress so the cursor is visible right after input.
     _cursorVisible = true;
-    startCursorBlink();
+    if (_cursorTimer) {
+        lv_timer_reset(_cursorTimer);   // restart 500 ms from now
+    } else {
+        _cursorTimer = lv_timer_create(cursorTimerCb, BLINK_PERIOD, this);
+    }
     invalidate();
 }
 
-void MathCanvas::cursorAnimCb(void* var, int32_t value) {
-    auto* self = static_cast<MathCanvas*>(var);
-    bool newVis = (value > 0);
-    if (self->_cursorVisible != newVis) {
-        self->_cursorVisible = newVis;
-        self->invalidate();
-    }
+void MathCanvas::cursorTimerCb(lv_timer_t* t) {
+    auto* self = static_cast<MathCanvas*>(lv_timer_get_user_data(t));
+    self->_cursorVisible = !self->_cursorVisible;
+    self->invalidate();
 }
 
 // ════════════════════════════════════════════════════════════════════════════

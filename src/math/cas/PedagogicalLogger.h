@@ -32,6 +32,8 @@
 #include "CASNumber.h"
 #include <string>
 
+namespace cas { class SymExprArena; }  // forward declaration
+
 namespace cas {
 
 // ════════════════════════════════════════════════════════════════════
@@ -85,6 +87,7 @@ struct ActionContext {
     int          degree = 0;                 ///< Equation degree (for type identification)
     int          solutionIndex = 0;          ///< Which solution (1, 2, ...)
     int          iterCount = 0;              ///< Newton iteration count
+    SymExprArena* arena = nullptr;           ///< Arena for building SymExpr math chunks
 
     // ── Builder API for clean solver code ──────────────────────────
 
@@ -93,6 +96,7 @@ struct ActionContext {
     ActionContext& solIdx(int i) { solutionIndex = i; return *this; }
     ActionContext& iters(int n) { iterCount = n; return *this; }
     ActionContext& snap(const SymEquation* eq) { snapshot = eq; return *this; }
+    ActionContext& withArena(SymExprArena* a) { arena = a; return *this; }
 
     ActionContext& val(const char* label, const CASNumber& v) {
         if (numValues < MAX_VALUES) {

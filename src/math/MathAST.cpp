@@ -161,7 +161,7 @@ void NodeOperator::calculateLayout(const FontMetrics& fm) {
 const char* NodeOperator::symbol() const {
     switch (_op) {
         case OpKind::Add: return "+";
-        case OpKind::Sub: return "\xe2\x88\x92";  // − (U+2212 MINUS SIGN)
+        case OpKind::Sub: return "-";              // ASCII hyphen-minus (U+002D)
         case OpKind::Mul: return "\xc3\x97";       // × (U+00D7)
     }
     return "?";

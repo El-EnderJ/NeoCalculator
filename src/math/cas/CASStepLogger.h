@@ -27,6 +27,9 @@
 
 namespace cas {
 
+// Forward declaration for MathCanvas-ready step expressions
+class SymExpr;
+
 // ════════════════════════════════════════════════════════════════════
 // MethodId — Identifies which solver generated a step
 // ════════════════════════════════════════════════════════════════════
@@ -57,18 +60,22 @@ enum class StepKind : uint8_t {
 // ════════════════════════════════════════════════════════════════════
 
 struct CASStep {
-    std::string  description;   // Human-readable step description
+    std::string  description;   // Human-readable step description (text only, no math notation)
     SymEquation  snapshot;      // Equation state (only meaningful for Transform/Result)
     MethodId     method;        // Which solver phase generated this
     StepKind     kind;          // Structural type of step
+    const SymExpr* mathExpr;    // Optional: CAS expression for 2D MathCanvas rendering
+                                // Non-owning — SymExprArena manages lifetime
 
     CASStep()
         : description(), snapshot(), method(MethodId::General),
-          kind(StepKind::Transform) {}
+          kind(StepKind::Transform), mathExpr(nullptr) {}
 
     CASStep(const std::string& desc, const SymEquation& snap,
-            MethodId m, StepKind k = StepKind::Transform)
-        : description(desc), snapshot(snap), method(m), kind(k) {}
+            MethodId m, StepKind k = StepKind::Transform,
+            const SymExpr* expr = nullptr)
+        : description(desc), snapshot(snap), method(m), kind(k),
+          mathExpr(expr) {}
 };
 
 // PSRAM-allocated step vector
@@ -90,10 +97,19 @@ public:
     /// Add an annotation step (text-only, NO equation rendered).
     void logNote(const std::string& note, MethodId method = MethodId::General);
 
+    /// Add an annotation step with an attached SymExpr for 2D MathCanvas rendering.
+    /// The SymExpr* is non-owning — the arena must outlive the step display.
+    void logExpr(const std::string& desc, const SymExpr* expr,
+                 MethodId method = MethodId::General);
+
     /// Add a result step (final answer with equation snapshot).
     void logResult(const std::string& description,
                    const SymEquation& snapshot,
                    MethodId method = MethodId::General);
+
+    /// Add a result step with MathCanvas expression (no snapshot needed).
+    void logResultExpr(const std::string& desc, const SymExpr* expr,
+                       MethodId method = MethodId::General);
 
     /// Add a complex result step (text description only, no SymEquation).
     void logComplex(const std::string& description,

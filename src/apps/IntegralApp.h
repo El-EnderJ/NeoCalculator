@@ -26,6 +26,8 @@
 #pragma once
 
 #include <lvgl.h>
+#include <memory>
+#include <vector>
 #include "../math/MathAST.h"
 #include "../math/CursorController.h"
 #include "../math/cas/ASTFlattener.h"
@@ -95,6 +97,13 @@ private:
 
     // STEPS state (scrollable)
     lv_obj_t*       _stepsContainer;
+
+    // ── Step MathCanvas renderers (Pre-Phase 5 Steering Visual) ──────
+    struct StepRenderData {
+        vpam::NodePtr    nodeData;
+        vpam::MathCanvas canvas;
+    };
+    std::vector<std::unique_ptr<StepRenderData>> _stepRenderers;
 
     // ── App state ────────────────────────────────────────────────────
     State   _state;

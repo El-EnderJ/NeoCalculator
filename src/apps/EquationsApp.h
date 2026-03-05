@@ -15,6 +15,8 @@
 #pragma once
 
 #include <lvgl.h>
+#include <vector>
+#include <memory>
 #include "../math/MathAST.h"
 #include "../math/CursorController.h"
 #include "../math/cas/ASTFlattener.h"
@@ -87,7 +89,10 @@ private:
     // ── TEMPLATE state ───────────────────────────────────────────────
     lv_obj_t*       _templateOverlay;
     lv_obj_t*       _templateTitle;
-    lv_obj_t*       _templateItems[NUM_TEMPLATES];
+    lv_obj_t*       _templateItems[NUM_TEMPLATES];   ///< row containers
+    lv_obj_t*       _templateLabels[NUM_TEMPLATES];  ///< text-only prefix labels
+    vpam::MathCanvas   _templateCanvas[NUM_TEMPLATES]; ///< VPAM formula preview
+    vpam::NodePtr      _templateNode[NUM_TEMPLATES];   ///< AST data for canvas
     int             _templateFocus;
 
     // ── EDITING state ────────────────────────────────────────────────
@@ -117,12 +122,12 @@ private:
     // ── STEPS state ──────────────────────────────────────────────────
     lv_obj_t*       _stepsContainer;
 
-    // Step canvas pool for VPAM equation rendering in Steps view
-    static constexpr int MAX_STEP_CANVASES = 12;
-    vpam::MathCanvas   _stepCanvas[MAX_STEP_CANVASES];
-    vpam::NodePtr      _stepNode[MAX_STEP_CANVASES];
-    vpam::NodeRow*     _stepRow[MAX_STEP_CANVASES] = {};
-    int                _stepCanvasCount = 0;
+    // Dynamic step renderers — each owns a MathAST tree + MathCanvas
+    struct StepRenderData {
+        vpam::NodePtr    nodeData;   ///< Owns the MathAST tree
+        vpam::MathCanvas canvas;     ///< LVGL widget for 2D rendering
+    };
+    std::vector<std::unique_ptr<StepRenderData>> _stepRenderers;
 
     // ── App state ────────────────────────────────────────────────────
     State   _state;

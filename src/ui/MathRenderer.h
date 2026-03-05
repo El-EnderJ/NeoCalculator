@@ -121,9 +121,8 @@ private:
     FontMetrics        _fmSmall;
 
     // ── Cursor visual ────────────────────────────────────────────────────
-    lv_anim_t  _cursorAnim;
-    bool       _cursorVisible;
-    bool       _cursorBlinking;
+    lv_timer_t* _cursorTimer = nullptr;  ///< Reliable 500ms toggle timer
+    bool        _cursorVisible = true;
     int16_t    _cursorX;        // Posición X absoluta (px)
     int16_t    _cursorY;        // Posición Y absoluta (px, tope)
     int16_t    _cursorH;        // Altura del cursor (px)
@@ -134,11 +133,11 @@ private:
     // ── Constantes de estilo ─────────────────────────────────────────────
     static constexpr int16_t PADDING_LEFT   = 8;    ///< Margen izquierdo
     static constexpr int16_t PADDING_RIGHT  = 8;    ///< Margen derecho
-    static constexpr int16_t CURSOR_WIDTH   = 2;    ///< Grosor del cursor (px)
+    static constexpr int16_t CURSOR_WIDTH   = 3;    ///< Grosor del cursor (px)
     static constexpr int16_t CURSOR_PAD     = 1;    ///< Extensión vertical del cursor
     static constexpr uint32_t BLINK_PERIOD  = 500;  ///< Half-period for cursor blink (ms)
     static constexpr uint32_t EMPTY_COLOR   = 0xD1D1D1;  ///< Color del placeholder
-    static constexpr uint32_t CURSOR_COLOR  = 0x4A90D9;  ///< Color del cursor (azul)
+    static constexpr uint32_t CURSOR_COLOR  = 0x000000;  ///< Color del cursor (negro puro, máximo contraste)
     static constexpr int16_t  EMPTY_SIZE    = 8;    ///< Tamaño del cuadrado placeholder
 
     // ── Event callback (estático → instancia) ────────────────────────────
@@ -146,7 +145,7 @@ private:
     void onDraw(lv_event_t* e);
 
     // ── Animación de cursor ──────────────────────────────────────────────
-    static void cursorAnimCb(void* var, int32_t value);
+    static void cursorTimerCb(lv_timer_t* t);  ///< 500ms toggle — replaces erratic lv_anim_t
 
     // ── Motor de dibujo recursivo ────────────────────────────────────────
 

@@ -628,14 +628,14 @@ void IntegralApp::computeIntegral() {
     _integralFound = false;
 
     // Step 1: Flatten MathAST → SymExpr
-    _integSteps.logNote("Convirtiendo expresion a forma simbolica");
+    _integSteps.logNote("Converting expression to symbolic form");
 
     cas::ASTFlattener flattener;
     flattener.setArena(&_arena);
     cas::SymExpr* expr = flattener.flattenToExpr(_inputRow);
 
     if (!expr) {
-        _integSteps.logNote("Error: no se pudo interpretar la expresion");
+        _integSteps.logNote("Error: could not interpret the expression");
         _integralExpr = nullptr;
         showResult();
         return;
@@ -645,21 +645,17 @@ void IntegralApp::computeIntegral() {
     _variable = detectVariable(expr);
     if (_variable == 0) _variable = 'x';
 
-    {
-        char varBuf[64];
-        snprintf(varBuf, sizeof(varBuf),
-                 "Expresion original: %s", expr->toString().c_str());
-        _integSteps.logNote(varBuf);
-    }
+    // Render original expression via MathCanvas (no toString)
+    _integSteps.logExpr("Original expression:", expr);
     {
         char varBuf[48];
         snprintf(varBuf, sizeof(varBuf),
-                 "Integrando respecto a '%c'", _variable);
+                 "Integrating with respect to '%c'", _variable);
         _integSteps.logNote(varBuf);
     }
 
     // Step 3: Integrate
-    _integSteps.logNote("Buscando antiderivada simbolica");
+    _integSteps.logNote("Searching for symbolic antiderivative");
 
     cas::SymExpr* antideriv = cas::SymIntegrate::integrate(expr, _variable, _arena);
 
@@ -668,26 +664,22 @@ void IntegralApp::computeIntegral() {
         _integralFound = true;
         _integralExpr = antideriv;
 
-        {
-            char resBuf[128];
-            snprintf(resBuf, sizeof(resBuf),
-                     "Antiderivada encontrada: %s + C", antideriv->toString().c_str());
-            _integSteps.logNote(resBuf);
-        }
+        // Render antiderivative via MathCanvas (no toString)
+        _integSteps.logExpr("Antiderivative found:", antideriv);
 
         // Check if the result is polynomial
         if (_integralExpr->isPolynomial()) {
-            _integSteps.logNote("Resultado: expresion polinomica");
+            _integSteps.logNote("Result: polynomial expression");
         } else {
-            _integSteps.logNote("Resultado: expresion transcendental");
+            _integSteps.logNote("Result: transcendental expression");
         }
     } else {
         // No closed-form found — store original expr for unevaluated display
         _integralFound = false;
         _integralExpr = expr;
 
-        _integSteps.logNote("No se encontro antiderivada en forma cerrada");
-        _integSteps.logNote("Mostrando integral sin evaluar");
+        _integSteps.logNote("No closed-form antiderivative found");
+        _integSteps.logNote("Displaying unevaluated integral");
     }
 
     showResult();
@@ -762,7 +754,7 @@ void IntegralApp::buildResultDisplay() {
         lv_label_set_text(_resultTitle, "Integral sin evaluar");
 
         char iLabel[32];
-        snprintf(iLabel, sizeof(iLabel), "\xE2\x88\xABf(%c)d%c =", _variable, _variable);
+        snprintf(iLabel, sizeof(iLabel), "\xE2\x88\xAB" "f(%c)d%c =", _variable, _variable);
         lv_label_set_text(_resultLabel, iLabel);
 
         // Show the original expression (it stays as ∫)
@@ -791,21 +783,27 @@ void IntegralApp::buildResultDisplay() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void IntegralApp::buildStepsDisplay() {
+    // Destroy step MathCanvas widgets FIRST (avoids double-free)
+    _stepRenderers.clear();
+
     lv_obj_clean(_stepsContainer);
 
     const auto& steps = _integSteps.steps();
 
     if (steps.empty()) {
         lv_obj_t* lbl = lv_label_create(_stepsContainer);
-        lv_label_set_text(lbl, "No hay pasos disponibles.");
+        lv_label_set_text(lbl, "No steps available.");
         lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
         lv_obj_set_style_text_color(lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
         return;
     }
 
+    static constexpr int STEP_CANVAS_W = SCREEN_W - 2 * PAD - 16;
+
     for (size_t i = 0; i < steps.size(); ++i) {
         const auto& step = steps[i];
 
+        // ── Text description label ───────────────────────────────────
         char buf[200];
         snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
                  step.description.c_str());
@@ -817,22 +815,49 @@ void IntegralApp::buildStepsDisplay() {
         lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12, LV_PART_MAIN);
         lv_obj_set_style_text_color(descLbl, lv_color_hex(COL_DESC_HEX), LV_PART_MAIN);
 
-        // Show equation snapshot (if non-empty)
-        std::string eqText = step.snapshot.toString();
-        if (!eqText.empty() && eqText != "0") {
-            std::string full = "   " + eqText;
-            lv_obj_t* eqLbl = lv_label_create(_stepsContainer);
-            lv_label_set_text(eqLbl, full.c_str());
-            lv_obj_set_width(eqLbl, SCREEN_W - 2 * PAD - 8);
-            lv_label_set_long_mode(eqLbl, LV_LABEL_LONG_WRAP);
-            lv_obj_set_style_text_font(eqLbl, &lv_font_montserrat_14, LV_PART_MAIN);
-            lv_obj_set_style_text_color(eqLbl, lv_color_hex(COL_STEP_HEX), LV_PART_MAIN);
+        // ── 2D MathCanvas rendering (Phase 5 Steering Visual) ────────
+        if (step.mathExpr) {
+            vpam::NodePtr astNode = cas::SymExprToAST::convert(step.mathExpr);
+            if (astNode && astNode->type() == vpam::NodeType::Row) {
+                auto srd = std::make_unique<StepRenderData>();
+                srd->nodeData = std::move(astNode);
+                srd->canvas.create(_stepsContainer);
+
+                auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
+                srd->canvas.setExpression(row, nullptr);
+                row->calculateLayout(srd->canvas.normalMetrics());
+
+                int contentH = row->layout().ascent + row->layout().descent;
+                int canvasH = contentH + 8;
+                if (canvasH < 22) canvasH = 22;
+                if (canvasH > 80) canvasH = 80;
+                lv_obj_set_size(srd->canvas.obj(), STEP_CANVAS_W, canvasH);
+                lv_obj_set_style_bg_color(srd->canvas.obj(),
+                                          lv_color_hex(0xF5F5F0), LV_PART_MAIN);
+                srd->canvas.invalidate();
+
+                _stepRenderers.push_back(std::move(srd));
+            }
+        }
+
+        // ── Equation snapshot fallback (text, for legacy steps) ──────
+        if (!step.mathExpr) {
+            std::string eqText = step.snapshot.toString();
+            if (!eqText.empty() && eqText != "0") {
+                std::string full = "   " + eqText;
+                lv_obj_t* eqLbl = lv_label_create(_stepsContainer);
+                lv_label_set_text(eqLbl, full.c_str());
+                lv_obj_set_width(eqLbl, SCREEN_W - 2 * PAD - 8);
+                lv_label_set_long_mode(eqLbl, LV_LABEL_LONG_WRAP);
+                lv_obj_set_style_text_font(eqLbl, &lv_font_montserrat_14, LV_PART_MAIN);
+                lv_obj_set_style_text_color(eqLbl, lv_color_hex(COL_STEP_HEX), LV_PART_MAIN);
+            }
         }
     }
 
     // Footer hint
     lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
-    lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Desplazar    AC: Volver");
+    lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
     lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
 }

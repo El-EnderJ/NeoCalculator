@@ -34,6 +34,15 @@ void CASStepLogger::logNote(const std::string& note, MethodId method) {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// logExpr — Record an annotation step with MathCanvas-ready expression
+// ────────────────────────────────────────────────────────────────────
+
+void CASStepLogger::logExpr(const std::string& desc, const SymExpr* expr,
+                            MethodId method) {
+    _steps.emplace_back(desc, SymEquation(), method, StepKind::Annotation, expr);
+}
+
+// ────────────────────────────────────────────────────────────────────
 // logResult — Record a final result step with equation snapshot
 // ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +50,16 @@ void CASStepLogger::logResult(const std::string& description,
                               const SymEquation& snapshot,
                               MethodId method) {
     _steps.emplace_back(description, snapshot, method, StepKind::Result);
+}
+
+// ────────────────────────────────────────────────────────────────────
+// logResultExpr — Record a final result step with MathCanvas expression
+// ────────────────────────────────────────────────────────────────────
+
+void CASStepLogger::logResultExpr(const std::string& desc,
+                                  const SymExpr* expr,
+                                  MethodId method) {
+    _steps.emplace_back(desc, SymEquation(), method, StepKind::Result, expr);
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -57,7 +76,8 @@ void CASStepLogger::logComplex(const std::string& description,
 // ────────────────────────────────────────────────────────────────────
 
 void CASStepLogger::copyStep(const CASStep& step) {
-    _steps.emplace_back(step.description, step.snapshot, step.method, step.kind);
+    _steps.emplace_back(step.description, step.snapshot, step.method, step.kind,
+                        step.mathExpr);
 }
 
 // ────────────────────────────────────────────────────────────────────

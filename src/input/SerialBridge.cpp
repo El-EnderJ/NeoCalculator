@@ -120,6 +120,7 @@ void SerialBridge::processChar(int ch) {
         case 0x1B:          // Escape
         case 'c':           push(KeyCode::AC,    "AC");        break;
         case 'h': case 'H': push(KeyCode::MODE,  "MODE/HOME"); break;
+        case 'b': case 'B': push(KeyCode::AC,    "BACK (AC)"); break;
 
         // ── Digits ──
         case '0': push(KeyCode::NUM_0, "0"); break;

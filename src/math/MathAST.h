@@ -153,6 +153,10 @@ class MathNode {
 public:
     virtual ~MathNode() = default;
 
+    // ── PSRAM allocation — all AST nodes go to external RAM ──
+    void* operator new(std::size_t size);
+    void  operator delete(void* ptr) noexcept;
+
     // ── Identidad ──
     NodeType type() const { return _type; }
 

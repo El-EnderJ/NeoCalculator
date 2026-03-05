@@ -19,7 +19,35 @@
 #include "MathAST.h"
 #include <algorithm>
 
+#ifdef ARDUINO
+  #include <esp_heap_caps.h>
+#endif
+
 namespace vpam {
+
+// ════════════════════════════════════════════════════════════════════════════
+// MathNode — PSRAM allocation
+// ════════════════════════════════════════════════════════════════════════════
+void* MathNode::operator new(std::size_t size) {
+    void* p = nullptr;
+#ifdef ARDUINO
+    p = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!p) p = heap_caps_malloc(size, MALLOC_CAP_8BIT); // fallback
+#else
+    p = std::malloc(size);
+#endif
+    if (!p) throw std::bad_alloc();
+    return p;
+}
+
+void MathNode::operator delete(void* ptr) noexcept {
+    if (!ptr) return;
+#ifdef ARDUINO
+    heap_caps_free(ptr);
+#else
+    std::free(ptr);
+#endif
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // Utilidad interna

@@ -421,13 +421,15 @@ int16_t MathCanvas::childXOffset(const NodeRow* row, int index,
 
 void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
                           int16_t x, int16_t yBaseline,
-                          const FontMetrics& fm, const lv_font_t* font) {
+                          const FontMetrics& fm, const lv_font_t* font,
+                          int depth) {
     if (!node) return;
+    if (depth > MAX_DRAW_DEPTH) return;  // Prevent stack overflow
 
     switch (node->type()) {
         case NodeType::Row:
             drawRow(layer, static_cast<const NodeRow*>(node),
-                    x, yBaseline, fm, font);
+                    x, yBaseline, fm, font, depth);
             break;
         case NodeType::Number:
             drawNumber(layer, static_cast<const NodeNumber*>(node),
@@ -443,27 +445,27 @@ void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
             break;
         case NodeType::Fraction:
             drawFraction(layer, static_cast<const NodeFraction*>(node),
-                         x, yBaseline, fm, font);
+                         x, yBaseline, fm, font, depth);
             break;
         case NodeType::Power:
             drawPower(layer, static_cast<const NodePower*>(node),
-                      x, yBaseline, fm, font);
+                      x, yBaseline, fm, font, depth);
             break;
         case NodeType::Root:
             drawRoot(layer, static_cast<const NodeRoot*>(node),
-                     x, yBaseline, fm, font);
+                     x, yBaseline, fm, font, depth);
             break;
         case NodeType::Paren:
             drawParen(layer, static_cast<const NodeParen*>(node),
-                      x, yBaseline, fm, font);
+                      x, yBaseline, fm, font, depth);
             break;
         case NodeType::Function:
             drawFunction(layer, static_cast<const NodeFunction*>(node),
-                         x, yBaseline, fm, font);
+                         x, yBaseline, fm, font, depth);
             break;
         case NodeType::LogBase:
             drawLogBase(layer, static_cast<const NodeLogBase*>(node),
-                        x, yBaseline, fm, font);
+                        x, yBaseline, fm, font, depth);
             break;
         case NodeType::Constant:
             drawConstant(layer, static_cast<const NodeConstant*>(node),
@@ -486,11 +488,12 @@ void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
 
 void MathCanvas::drawRow(lv_layer_t* layer, const NodeRow* row,
                          int16_t x, int16_t yBaseline,
-                         const FontMetrics& fm, const lv_font_t* font) {
+                         const FontMetrics& fm, const lv_font_t* font,
+                         int depth) {
     int16_t cx = x;
     for (int i = 0; i < row->childCount(); ++i) {
         if (i > 0) cx += NodeRow::CHILD_GAP;
-        drawNode(layer, row->child(i), cx, yBaseline, fm, font);
+        drawNode(layer, row->child(i), cx, yBaseline, fm, font, depth + 1);
         cx += row->child(i)->layout().width;
     }
 }
@@ -553,7 +556,8 @@ void MathCanvas::drawEmpty(lv_layer_t* layer, const NodeEmpty* node,
 
 void MathCanvas::drawFraction(lv_layer_t* layer, const NodeFraction* node,
                               int16_t x, int16_t yBaseline,
-                              const FontMetrics& fm, const lv_font_t* font) {
+                              const FontMetrics& fm, const lv_font_t* font,
+                              int depth) {
     const auto& fracL = node->layout();
     const auto& numL  = node->numerator()->layout();
     const auto& denL  = node->denominator()->layout();
@@ -576,14 +580,14 @@ void MathCanvas::drawFraction(lv_layer_t* layer, const NodeFraction* node,
                    (contentW - numL.width) / 2);
     int16_t numBaseline = static_cast<int16_t>(yAxis - barHalfUp -
                           NodeFraction::BAR_V_GAP - numL.descent);
-    drawNode(layer, node->numerator(), numX, numBaseline, fm, font);
+    drawNode(layer, node->numerator(), numX, numBaseline, fm, font, depth + 1);
 
     // ── Denominador (centrado bajo la barra) ──
     int16_t denX = static_cast<int16_t>(x + NodeFraction::BAR_H_PAD +
                    (contentW - denL.width) / 2);
     int16_t denBaseline = static_cast<int16_t>(yAxis + barHalfDown +
                           NodeFraction::BAR_V_GAP + denL.ascent);
-    drawNode(layer, node->denominator(), denX, denBaseline, fm, font);
+    drawNode(layer, node->denominator(), denX, denBaseline, fm, font, depth + 1);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -596,11 +600,12 @@ void MathCanvas::drawFraction(lv_layer_t* layer, const NodeFraction* node,
 
 void MathCanvas::drawPower(lv_layer_t* layer, const NodePower* node,
                            int16_t x, int16_t yBaseline,
-                           const FontMetrics& fm, const lv_font_t* font) {
+                           const FontMetrics& fm, const lv_font_t* font,
+                           int depth) {
     const auto& baseL = node->base()->layout();
 
     // ── Base (fuente normal) ──
-    drawNode(layer, node->base(), x, yBaseline, fm, font);
+    drawNode(layer, node->base(), x, yBaseline, fm, font, depth + 1);
 
     // ── Exponente (fuente reducida, elevado) ──
     FontMetrics fmSup = fm.superscript();
@@ -611,7 +616,7 @@ void MathCanvas::drawPower(lv_layer_t* layer, const NodePower* node,
     int16_t expBaseline = static_cast<int16_t>(yBaseline - expShift);
 
     int16_t expX = static_cast<int16_t>(x + baseL.width);
-    drawNode(layer, node->exponent(), expX, expBaseline, fmSup, _fontSmall);
+    drawNode(layer, node->exponent(), expX, expBaseline, fmSup, _fontSmall, depth + 1);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -626,7 +631,8 @@ void MathCanvas::drawPower(lv_layer_t* layer, const NodePower* node,
 
 void MathCanvas::drawRoot(lv_layer_t* layer, const NodeRoot* node,
                           int16_t x, int16_t yBaseline,
-                          const FontMetrics& fm, const lv_font_t* font) {
+                          const FontMetrics& fm, const lv_font_t* font,
+                          int depth) {
     const auto& rootL = node->layout();
     const auto& radL  = node->radicand()->layout();
     int16_t radSymW   = NodeRoot::HOOK_W + NodeRoot::SLOPE_W;
@@ -659,7 +665,7 @@ void MathCanvas::drawRoot(lv_layer_t* layer, const NodeRoot* node,
 
     // ── Radicando ──
     int16_t radX = static_cast<int16_t>(x + radSymW);
-    drawNode(layer, node->radicand(), radX, yBaseline, fm, font);
+    drawNode(layer, node->radicand(), radX, yBaseline, fm, font, depth + 1);
 
     // ── Índice de raíz (si existe) ──
     if (node->hasDegree()) {
@@ -667,7 +673,7 @@ void MathCanvas::drawRoot(lv_layer_t* layer, const NodeRoot* node,
         const auto& degL  = node->degree()->layout();
         int16_t degX = static_cast<int16_t>(x + 1);
         int16_t degY = static_cast<int16_t>(yTop + degL.ascent);
-        drawNode(layer, node->degree(), degX, degY, fmDeg, _fontSmall);
+        drawNode(layer, node->degree(), degX, degY, fmDeg, _fontSmall, depth + 1);
     }
 }
 
@@ -679,7 +685,8 @@ void MathCanvas::drawRoot(lv_layer_t* layer, const NodeRoot* node,
 
 void MathCanvas::drawParen(lv_layer_t* layer, const NodeParen* node,
                            int16_t x, int16_t yBaseline,
-                           const FontMetrics& fm, const lv_font_t* font) {
+                           const FontMetrics& fm, const lv_font_t* font,
+                           int depth) {
     const auto& parenL   = node->layout();
     const auto& contentL = node->content()->layout();
 
@@ -703,7 +710,7 @@ void MathCanvas::drawParen(lv_layer_t* layer, const NodeParen* node,
 
     // ── Contenido ──
     int16_t contentX = static_cast<int16_t>(x + pw + NodeParen::INNER_PAD);
-    drawNode(layer, node->content(), contentX, yBaseline, fm, font);
+    drawNode(layer, node->content(), contentX, yBaseline, fm, font, depth + 1);
 
     // ── Paréntesis derecho: ) ──
     int16_t rpX = static_cast<int16_t>(x + parenL.width - pw);
@@ -732,7 +739,8 @@ void MathCanvas::drawParen(lv_layer_t* layer, const NodeParen* node,
 
 void MathCanvas::drawFunction(lv_layer_t* layer, const NodeFunction* node,
                               int16_t x, int16_t yBaseline,
-                              const FontMetrics& fm, const lv_font_t* font) {
+                              const FontMetrics& fm, const lv_font_t* font,
+                              int depth) {
     const auto& funcL = node->layout();
     const auto& argL  = node->argument()->layout();
 
@@ -765,7 +773,7 @@ void MathCanvas::drawFunction(lv_layer_t* layer, const NodeFunction* node,
 
     // Contenido (argumento)
     int16_t contentX = static_cast<int16_t>(parenX + pw + NodeFunction::INNER_PAD);
-    drawNode(layer, node->argument(), contentX, yBaseline, fm, font);
+    drawNode(layer, node->argument(), contentX, yBaseline, fm, font, depth + 1);
 
     // Paréntesis derecho )
     int16_t rpX = static_cast<int16_t>(parenX + parenBlock - pw);
@@ -793,7 +801,8 @@ void MathCanvas::drawFunction(lv_layer_t* layer, const NodeFunction* node,
 
 void MathCanvas::drawLogBase(lv_layer_t* layer, const NodeLogBase* node,
                              int16_t x, int16_t yBaseline,
-                             const FontMetrics& fm, const lv_font_t* font) {
+                             const FontMetrics& fm, const lv_font_t* font,
+                             int depth) {
     const auto& lbL  = node->layout();
     const auto& baseL = node->base()->layout();
     const auto& argL  = node->argument()->layout();
@@ -813,7 +822,7 @@ void MathCanvas::drawLogBase(lv_layer_t* layer, const NodeLogBase* node,
         std::max(static_cast<int>(fm.descent * NodeLogBase::SUB_DROP_NUM / NodeLogBase::SUB_DROP_DEN), 2));
     int16_t baseX = static_cast<int16_t>(x + labelW);
     int16_t baseBaseline = static_cast<int16_t>(yBaseline + subDrop);
-    drawNode(layer, node->base(), baseX, baseBaseline, fmSub, _fontSmall);
+    drawNode(layer, node->base(), baseX, baseBaseline, fmSub, _fontSmall, depth + 1);
 
     // ── Paréntesis automáticos + argumento ──
     int16_t parenX = static_cast<int16_t>(x + labelW + baseL.width + NodeLogBase::LABEL_GAP);
@@ -834,7 +843,7 @@ void MathCanvas::drawLogBase(lv_layer_t* layer, const NodeLogBase* node,
 
     // Contenido (argumento)
     int16_t contentX = static_cast<int16_t>(parenX + pw + NodeLogBase::INNER_PAD);
-    drawNode(layer, node->argument(), contentX, yBaseline, fm, font);
+    drawNode(layer, node->argument(), contentX, yBaseline, fm, font, depth + 1);
 
     // Paréntesis derecho )
     int16_t rpX = static_cast<int16_t>(parenX + parenBlock - pw);

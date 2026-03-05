@@ -77,9 +77,11 @@ void SystemApp::begin() {
     _calcApp = new CalculationApp();
     _calcApp->begin();
 
-    // ── Create GrapherApp ──
-    _grapherApp = new GrapherApp(_display, _vars);
-    _grapherApp->begin();
+    // ── Create GrapherApp (LVGL-native 2.0) ──
+    // Lazy-init: begin() se llama en load() la primera vez que el
+    // usuario abre la app.  Llamarlo aqui durante el boot bloquea
+    // el sistema porque LVGL no esta bombeando todavia.
+    _grapherApp = new GrapherApp();
 
     // ── Create EquationsApp (LVGL-native CAS-Lite) ──
     _equationsApp = new EquationsApp();
@@ -151,8 +153,8 @@ void SystemApp::update() {
         // LVGL handles CalculusApp rendering
     } else if (_mode == Mode::APP_EQUATIONS) {
         // LVGL handles EquationsApp rendering
-    } else if (_mode == Mode::APP_GRAPHER && _grapherApp) {
-        _grapherApp->render();
+    } else if (_mode == Mode::APP_GRAPHER) {
+        // LVGL handles GrapherApp rendering
     } else if (_mode == Mode::MENU) {
         // LVGL maneja el renderizado del menú via lv_timer_handler() en main.cpp
         _redraw = false;
@@ -462,6 +464,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_calculusApp) _calculusApp->load();
+    } else if (id == 1) {
+        // GrapherApp es LVGL-native 2.0
+        g_lvglActive = true;
+        switchApp(id);
+        if (_grapherApp) _grapherApp->load();
     } else if (id == 8) {
         // Settings es LVGL-native
         g_lvglActive = true;
@@ -491,6 +498,11 @@ void SystemApp::returnToMenu() {
     if (_mode == Mode::APP_CALCULUS && _calculusApp) {
         _calculusApp->end();
         _calculusApp->begin();
+    }
+    // Si venimos de la GrapherApp (LVGL-native 2.0)
+    // Solo end(); load()->begin() reconstruye en la proxima apertura.
+    if (_mode == Mode::APP_GRAPHER && _grapherApp) {
+        _grapherApp->end();
     }
     // Si venimos de la SettingsApp (LVGL-native)
     if (_mode == Mode::APP_SETTINGS && _settingsApp) {
@@ -626,7 +638,15 @@ void SystemApp::renderSteps() {
 void SystemApp::handleKeyGraph(const KeyEvent &ev) {
     if (ev.code == KeyCode::MODE) {
         returnToMenu();
-    } else if (_grapherApp) {
+        return;
+    }
+    if (_grapherApp) {
+        // AC at tab level on Expressions tab = return to Home
+        if (ev.code == KeyCode::AC && _grapherApp->atTabLevel()
+            && _grapherApp->isOnExpressions()) {
+            returnToMenu();
+            return;
+        }
         _grapherApp->handleKey(ev);
     }
 }
@@ -635,7 +655,7 @@ void SystemApp::handleKeyGraph(const KeyEvent &ev) {
 // renderGraphMode()
 // ═════════════════════════════════════════════════
 void SystemApp::renderGraphMode() {
-    if (_grapherApp) _grapherApp->render();
+    // GrapherApp 2.0 is LVGL-native — no manual rendering needed
 }
 
 // ═════════════════════════════════════════════════

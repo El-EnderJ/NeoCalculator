@@ -123,7 +123,7 @@
  *   14 → fuente por defecto / labels generales
  *   20 → título del header
  */
-#define LV_FONT_MONTSERRAT_10   0
+#define LV_FONT_MONTSERRAT_10   1
 #define LV_FONT_MONTSERRAT_12   1
 #define LV_FONT_MONTSERRAT_14   1
 #define LV_FONT_MONTSERRAT_16   0
@@ -227,7 +227,7 @@
  *====================*/
 #define LV_USE_SYSMON            1
 #if LV_USE_SYSMON
-  #define LV_USE_PERF_MONITOR    1
+  #define LV_USE_PERF_MONITOR    0
   #if LV_USE_PERF_MONITOR
     #define LV_USE_PERF_MONITOR_POS  LV_ALIGN_BOTTOM_RIGHT
   #endif

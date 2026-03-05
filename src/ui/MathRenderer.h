@@ -139,6 +139,7 @@ private:
     static constexpr uint32_t EMPTY_COLOR   = 0xD1D1D1;  ///< Color del placeholder
     static constexpr uint32_t CURSOR_COLOR  = 0x000000;  ///< Color del cursor (negro puro, máximo contraste)
     static constexpr int16_t  EMPTY_SIZE    = 8;    ///< Tamaño del cuadrado placeholder
+    static constexpr int      MAX_DRAW_DEPTH = 8;   ///< Limit recursion depth to avoid stack overflow
 
     // ── Event callback (estático → instancia) ────────────────────────────
     static void drawEventCb(lv_event_t* e);
@@ -160,12 +161,14 @@ private:
      */
     void drawNode(lv_layer_t* layer, const MathNode* node,
                   int16_t x, int16_t yBaseline,
-                  const FontMetrics& fm, const lv_font_t* font);
+                  const FontMetrics& fm, const lv_font_t* font,
+                  int depth = 0);
 
     // Dibujo especializado por tipo de nodo
     void drawRow(lv_layer_t* layer, const NodeRow* row,
                  int16_t x, int16_t yBaseline,
-                 const FontMetrics& fm, const lv_font_t* font);
+                 const FontMetrics& fm, const lv_font_t* font,
+                 int depth = 0);
 
     void drawNumber(lv_layer_t* layer, const NodeNumber* node,
                     int16_t x, int16_t yBaseline,
@@ -181,27 +184,33 @@ private:
 
     void drawFraction(lv_layer_t* layer, const NodeFraction* node,
                       int16_t x, int16_t yBaseline,
-                      const FontMetrics& fm, const lv_font_t* font);
+                      const FontMetrics& fm, const lv_font_t* font,
+                      int depth = 0);
 
     void drawPower(lv_layer_t* layer, const NodePower* node,
                    int16_t x, int16_t yBaseline,
-                   const FontMetrics& fm, const lv_font_t* font);
+                   const FontMetrics& fm, const lv_font_t* font,
+                   int depth = 0);
 
     void drawRoot(lv_layer_t* layer, const NodeRoot* node,
                   int16_t x, int16_t yBaseline,
-                  const FontMetrics& fm, const lv_font_t* font);
+                  const FontMetrics& fm, const lv_font_t* font,
+                  int depth = 0);
 
     void drawParen(lv_layer_t* layer, const NodeParen* node,
                    int16_t x, int16_t yBaseline,
-                   const FontMetrics& fm, const lv_font_t* font);
+                   const FontMetrics& fm, const lv_font_t* font,
+                   int depth = 0);
 
     void drawFunction(lv_layer_t* layer, const NodeFunction* node,
                       int16_t x, int16_t yBaseline,
-                      const FontMetrics& fm, const lv_font_t* font);
+                      const FontMetrics& fm, const lv_font_t* font,
+                      int depth = 0);
 
     void drawLogBase(lv_layer_t* layer, const NodeLogBase* node,
                      int16_t x, int16_t yBaseline,
-                     const FontMetrics& fm, const lv_font_t* font);
+                     const FontMetrics& fm, const lv_font_t* font,
+                     int depth = 0);
 
     void drawConstant(lv_layer_t* layer, const NodeConstant* node,
                       int16_t x, int16_t yBaseline,

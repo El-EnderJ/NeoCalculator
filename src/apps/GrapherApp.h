@@ -148,7 +148,7 @@ private:
     // ── Table panel widgets ──────────────────────────────────────────
     lv_obj_t*       _tblTable;          // native lv_table widget
     static constexpr int TBL_ROWS = 21; // data rows in table
-    static constexpr int TBL_COLS = 7;  // max columns (x + up to 6 funcs)
+    static constexpr int TBL_COLS = 1 + MAX_FUNCS;  // x + one column per function
 
     // ── State ────────────────────────────────────────────────────────
     Tab             _tab;

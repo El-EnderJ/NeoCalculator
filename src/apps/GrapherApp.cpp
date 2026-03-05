@@ -688,6 +688,7 @@ void GrapherApp::createTablePanel() {
     lv_obj_set_style_bg_opa(_panelTable, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_panelTable, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_panelTable, 0, LV_PART_MAIN);
+    // Scrollable — needed for 21+ data rows that exceed the panel height
     lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(_panelTable, LV_DIR_VER);
     lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
@@ -750,7 +751,7 @@ void GrapherApp::switchTab(Tab t) {
             // First creation: don't replot yet — wait for layout pass
             if (_panelGraph) {
                 lv_obj_remove_flag(_panelGraph, LV_OBJ_FLAG_HIDDEN);
-                _grMode = GrMode::NAVIGATE;
+                _grMode = GrMode::NAVIGATE;  // Default to NAVIGATE for immediate pan/zoom
                 _plotDirty = true;  // Will be picked up on next interaction
             }
         } else {
@@ -2032,7 +2033,7 @@ void GrapherApp::handleGraphNav(const KeyEvent& ev) {
     case KeyCode::DOWN:   _yMin -= dy; _yMax -= dy; _plotDirty = true; break;
     case KeyCode::ADD:
     case KeyCode::ZOOM: {
-        // Zoom in: shrink range by factor 1.5
+        // Zoom in by factor 1.5: new_range = range / 1.5 → half = range / 3
         float cx = (_xMin + _xMax) / 2.0f, cy = (_yMin + _yMax) / 2.0f;
         float sx = (_xMax - _xMin) / 3.0f, sy = (_yMax - _yMin) / 3.0f;
         _xMin = cx - sx; _xMax = cx + sx;
@@ -2041,7 +2042,7 @@ void GrapherApp::handleGraphNav(const KeyEvent& ev) {
         break;
     }
     case KeyCode::SUB: {
-        // Zoom out: expand range by factor 1.5
+        // Zoom out by factor 1.5: new_range = range * 1.5 → half = range * 0.75
         float cx = (_xMin + _xMax) / 2.0f, cy = (_yMin + _yMax) / 2.0f;
         float sx = (_xMax - _xMin) * 0.75f, sy = (_yMax - _yMin) * 0.75f;
         _xMin = cx - sx; _xMax = cx + sx;
@@ -2075,7 +2076,7 @@ void GrapherApp::handleGraphNav(const KeyEvent& ev) {
 
 // ── Graph trace keys ────────────────────────────────────────────────────
 void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
-    float step = (_xMax - _xMin) / SCREEN_W;  // One pixel step
+    float step = (_xMax - _xMin) / SCREEN_W;  // Pixel-precise cursor movement
 
     switch (ev.code) {
     case KeyCode::LEFT:

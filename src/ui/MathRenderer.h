@@ -140,6 +140,7 @@ private:
     static constexpr uint32_t CURSOR_COLOR  = 0x000000;  ///< Color del cursor (negro puro, máximo contraste)
     static constexpr int16_t  EMPTY_SIZE    = 8;    ///< Tamaño del cuadrado placeholder
     static constexpr int      MAX_RENDER_DEPTH = 12;  ///< Limit recursion depth to avoid stack overflow
+    static constexpr int16_t  VPAM_VERT_PAD   = 10;   ///< Vertical padding (5px top + 5px bottom) for auto-size
 
     // ── Event callback (estático → instancia) ────────────────────────────
     static void drawEventCb(lv_event_t* e);

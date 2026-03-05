@@ -299,7 +299,7 @@ void GrapherApp::createExpressionsPanel() {
         _exprRows[i] = makeContainer(_panelExpr, PAD, ry, SCREEN_W - 2 * PAD, ROW_H, COL_ROW_BG);
         lv_obj_set_height(_exprRows[i], LV_SIZE_CONTENT);
         lv_obj_set_style_min_height(_exprRows[i], ROW_H, LV_PART_MAIN);
-        lv_obj_set_style_radius(_exprRows[i], 6, LV_PART_MAIN);
+        lv_obj_set_style_radius(_exprRows[i], PILL_RADIUS, LV_PART_MAIN);
         lv_obj_set_style_border_width(_exprRows[i], 1, LV_PART_MAIN);
         lv_obj_set_style_border_color(_exprRows[i], lv_color_hex(COL_ROW_BRD), LV_PART_MAIN);
         // Shadow for NumWorks 'fun' look
@@ -311,10 +311,7 @@ void GrapherApp::createExpressionsPanel() {
         lv_obj_set_layout(_exprRows[i], LV_LAYOUT_FLEX);
         lv_obj_set_flex_flow(_exprRows[i], LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(_exprRows[i], LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_left(_exprRows[i], 5, LV_PART_MAIN);
-        lv_obj_set_style_pad_right(_exprRows[i], 5, LV_PART_MAIN);
-        lv_obj_set_style_pad_top(_exprRows[i], 5, LV_PART_MAIN);
-        lv_obj_set_style_pad_bottom(_exprRows[i], 5, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(_exprRows[i], PILL_PAD, LV_PART_MAIN);
         lv_obj_set_style_pad_column(_exprRows[i], 4, LV_PART_MAIN);
 
         // Colour dot
@@ -914,8 +911,8 @@ void GrapherApp::refreshVPAMExpr(int idx) {
     _exprASTRow[idx]->calculateLayout(_exprCanvas[idx].normalMetrics());
     // Resize canvas to fit AST content so the pill stretches
     const auto& rootL = _exprASTRow[idx]->layout();
-    int16_t astH = static_cast<int16_t>(rootL.ascent + rootL.descent + 10); // +10 for 5px padding top+bottom
-    int16_t minH = ROW_H - 10;
+    int16_t astH = static_cast<int16_t>(rootL.ascent + rootL.descent + 2 * PILL_PAD); // padding top+bottom
+    int16_t minH = ROW_H - 2 * PILL_PAD;
     if (astH < minH) astH = minH;
     lv_obj_set_height(_exprCanvas[idx].obj(), astH);
     // Force parent pill to recalculate its content-based height
@@ -1304,7 +1301,7 @@ void GrapherApp::showTemplates() {
 
     // Lazy load: start a timer that loads one template AST per tick
     _tplLoadNext = 0;
-    _tplLoadTimer = lv_timer_create(tplLoadTimerCb, 30, this);
+    _tplLoadTimer = lv_timer_create(tplLoadTimerCb, TPL_LOAD_INTERVAL_MS, this);
 }
 
 void GrapherApp::tplLoadTimerCb(lv_timer_t* t) {

@@ -55,6 +55,9 @@ private:
     static constexpr int PAD          = 6;
     static constexpr int ROW_H        = 32;   // Expression row height
     static constexpr int ROW_GAP      = 2;
+    static constexpr int PILL_RADIUS  = 6;    // NumWorks pill corner radius
+    static constexpr int PILL_PAD     = 5;    // Internal padding (all sides)
+    static constexpr int TPL_LOAD_INTERVAL_MS = 30;  // Lazy template load interval
 
     // Function colours (NumWorks palette)
     static constexpr uint32_t FUNC_COLORS[MAX_FUNCS] = {

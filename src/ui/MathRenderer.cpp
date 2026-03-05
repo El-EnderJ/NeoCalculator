@@ -99,7 +99,7 @@ void MathCanvas::setExpression(NodeRow* root, const CursorController* ctrl) {
     if (_obj && _root) {
         _root->calculateLayout(_fmNormal);
         const auto& rl = _root->layout();
-        int16_t neededH = static_cast<int16_t>(rl.ascent + rl.descent + 10); // 5px padding top+bottom
+        int16_t neededH = static_cast<int16_t>(rl.ascent + rl.descent + VPAM_VERT_PAD); // 5px padding top+bottom
         int16_t curH    = static_cast<int16_t>(lv_obj_get_height(_obj));
         if (neededH > curH) {
             lv_obj_set_height(_obj, neededH);

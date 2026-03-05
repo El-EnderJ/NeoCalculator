@@ -231,6 +231,7 @@
   #if LV_USE_PERF_MONITOR
     #define LV_USE_PERF_MONITOR_POS  LV_ALIGN_BOTTOM_RIGHT
   #endif
+  #define LV_USE_MEM_MONITOR     0
 #endif
 
 #endif /* LV_CONF_H */

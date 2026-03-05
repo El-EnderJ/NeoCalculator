@@ -117,6 +117,10 @@ private:
     int             _tplCount;          // Number of templates shown
     int             _tplIdx;            // Focused template index
     bool            _tplOpen;           // Modal is open
+    lv_timer_t*     _tplLoadTimer;      // Lazy loader for template ASTs
+    int             _tplLoadNext;       // Next template index to load
+    int             _tplCardW;          // Card width (cached for lazy loader)
+    int             _tplRowH;           // Row height (cached for lazy loader)
 
     // ── Graph panel widgets ──────────────────────────────────────────
     lv_obj_t*       _graphToolbar;
@@ -195,6 +199,8 @@ private:
     void closeTemplates();
     void handleTemplates(const KeyEvent& ev);
     void refreshTemplateButtons();
+    static void tplLoadTimerCb(lv_timer_t* t);  // Lazy template AST loader callback
+    void loadNextTemplate();                      // Load one template AST per timer tick
 
     // ── Graph helpers ────────────────────────────────────────────────
     void refreshToolbar();

@@ -42,7 +42,8 @@ public:
 private:
     static constexpr int OUT_BUF_SIZE = 2048;
     static constexpr int ERR_BUF_SIZE = 512;
-    static constexpr int HEAP_SIZE    = 1024 * 1024;  // 1 MB PSRAM
+    static constexpr int HEAP_SIZE    = 1 * 1024 * 1024;  // 1 MB PSRAM
+    static constexpr int HEAP_FALLBACK = 256 * 1024;      // 256 KB fallback
 
     char  _outBuf[OUT_BUF_SIZE];
     int   _outPos;

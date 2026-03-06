@@ -220,7 +220,7 @@ void SystemApp::render() {
         case Mode::APP_PYTHON:      break;  // LVGL-native — no-op
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
-        // Remaining placeholder apps
+        // APP_TABLE placeholder
         case Mode::APP_TABLE:
             renderAppView();
             break;

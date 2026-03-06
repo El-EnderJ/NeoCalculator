@@ -77,7 +77,7 @@ void PythonEngine::init() {
     _heap = heap_caps_malloc(HEAP_SIZE, MALLOC_CAP_SPIRAM);
     if (!_heap) {
         // Fallback: try smaller allocation
-        _heap = heap_caps_malloc(256 * 1024, MALLOC_CAP_SPIRAM);
+        _heap = heap_caps_malloc(HEAP_FALLBACK, MALLOC_CAP_SPIRAM);
     }
 #else
     _heap = malloc(HEAP_SIZE);
@@ -187,7 +187,7 @@ bool PythonEngine::evalExpr(const char* expr, double& result) {
                         case '-': result = lv - rv; return true;
                         case '*': result = lv * rv; return true;
                         case '/':
-                            if (rv == 0) { appendErr("ZeroDivisionError\n"); return false; }
+                            if (fabs(rv) < 1e-15) { appendErr("ZeroDivisionError\n"); return false; }
                             result = lv / rv; return true;
                     }
                 }

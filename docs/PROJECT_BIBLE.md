@@ -157,7 +157,7 @@ void update();                 // Periodic tick (~60 fps)
 This prevents `StatusBar::create()` from misfiring its `if (_bar) return` guard on dangling pointers  
 when the app is reopened. Every app (`CalculationApp`, `GrapherApp`, `EquationsApp`, `CalculusApp`,  
 `SettingsApp`, `StatisticsApp`, `ProbabilityApp`, `RegressionApp`, `MatricesApp`, `SequencesApp`,  
-`PythonApp`) follows this pattern.
+`PythonApp`, `PeriodicTableApp`, `BridgeDesignerApp`) follows this pattern.
 
 **LVGL-native apps**: All current apps → `g_lvglActive = true`.
 
@@ -367,6 +367,8 @@ Without this, PSRAM accumulates allocations between app sessions.
 | `MatricesApp` | `apps/MatricesApp.cpp/.h` | ✅ | m×n editor, +/−/×/transp., det, inverse, Ax=b |
 | `SequencesApp` | `apps/SequencesApp.cpp/.h` | ✅ | Arithmetic/geometric sequences, Nth term, partial sums |
 | `PythonApp` | `apps/PythonApp.cpp/.h` | ⚠️ | Placeholder UI (Lua/MicroPython scripting — Phase 8) |
+| `PeriodicTableApp` | `apps/PeriodicTableApp.cpp/.h` | ✅ | Interactive periodic table, molar mass calculator, equation balancer |
+| `BridgeDesignerApp` | `apps/BridgeDesignerApp.cpp/.h` | ✅ | Bridge structural simulator: Verlet physics, stress analysis, truck/car loads, PSRAM-backed |
 
 ### UI
 

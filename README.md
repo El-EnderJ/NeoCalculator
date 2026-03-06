@@ -72,6 +72,7 @@
 | **CAS-S3-ULTRA Engine** | Sylvester Resultant solver (3×3 NL systems), 16-seed Newton-Raphson, BigInt precision (`CASInt` + `CASRational`), hash-consed DAG, 8-pass fixed-point simplifier, PSRAM-backed step logger |
 | **Unified Calculus App** | Symbolic $d/dx$ differentiation (17 rules) and numerical/symbolic $\int dx$ integration (Slagle heuristic: table lookup, linearity, u-substitution, integration by parts/LIATE), tab-based mode switching, automatic simplification, and detailed step-by-step output |
 | **EquationsApp** | Solves linear, quadratic, and 2×2 systems (linear + non-linear via Sylvester resultant) with full step-by-step display |
+| **Bridge Designer** | Real-time structural bridge simulator with Verlet integration physics, stress analysis (green→red beam visualisation), snap-to-grid editor, wood/steel/cable materials, and truck/car load testing — PSRAM-backed, 60 Hz fixed timestep |
 | **Settings App** | System-wide toggles for complex number output (ON/OFF), decimal precision selector (6/8/10/12 digits), and angle-mode display |
 | **Natural Display** | Real fractions, radicals, exponents, 2D cursors — mathematical rendering as it appears on paper |
 | **Graphing: y=f(x)** | Real-time function plotter with zoom, pan, and value table |
@@ -407,6 +408,7 @@ numOS/
 │   │   ├── GrapherApp.cpp/.h         # y=f(x) graphing plotter
 │   │   ├── EquationsApp.cpp/.h       # Pro-CAS — Equation solver
 │   │   ├── CalculusApp.cpp/.h        # Pro-CAS — Unified symbolic derivatives + integrals
+│   │   ├── BridgeDesignerApp.cpp/.h  # Bridge structural simulator (Verlet physics)
 │   │   └── SettingsApp.cpp/.h        # Settings: complex roots, precision, angle mode
 │   ├── display/
 │   │   └── DisplayDriver.cpp/.h      # TFT_eSPI FSPI + LVGL init + DMA flush

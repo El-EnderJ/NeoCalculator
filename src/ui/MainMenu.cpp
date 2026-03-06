@@ -74,6 +74,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     {  9, "Matrices",     0x7B1FA2,   0xAB60D0 },   // Purple
     { 10, "Settings",     0x546E7A,   0x8AA4B0 },   // Blue-grey
     { 11, "Chemistry",    0x00838F,   0x4DB6AC },   // Cyan-teal
+    { 12, "Bridge",       0x2E86AB,   0x6BB8D6 },   // Steel blue
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);
@@ -572,6 +573,23 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             drawLine(cx - 12, cy - 6, cx + 12, cy + 6, 1, white, LV_OPA_70);
             drawLine(cx - 12, cy + 6, cx + 12, cy - 6, 1, white, LV_OPA_70);
             drawLine(cx - 6, cy - 12, cx + 6, cy + 12, 1, light, LV_OPA_60);
+            break;
+        }
+        case 12: {
+            // Bridge: arch bridge with truss structure
+            int baseY3 = cy + 8;
+            // Road deck (horizontal line)
+            drawLine(a.x1 + 4, baseY3, a.x2 - 4, baseY3, 2, white, LV_OPA_COVER);
+            // Arch (inverted V)
+            drawLine(a.x1 + 4, baseY3, cx, cy - 10, 1, light, LV_OPA_80);
+            drawLine(cx, cy - 10, a.x2 - 4, baseY3, 1, light, LV_OPA_80);
+            // Vertical trusses
+            drawLine(cx - 8, baseY3, cx - 6, cy - 4, 1, white, LV_OPA_70);
+            drawLine(cx,     baseY3, cx,     cy - 10, 1, white, LV_OPA_70);
+            drawLine(cx + 8, baseY3, cx + 6, cy - 4, 1, white, LV_OPA_70);
+            // Anchor points (small dots)
+            drawCircle(a.x1 + 4, baseY3, 2, light, LV_OPA_COVER);
+            drawCircle(a.x2 - 4, baseY3, 2, light, LV_OPA_COVER);
             break;
         }
         default:

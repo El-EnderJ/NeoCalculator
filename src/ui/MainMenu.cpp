@@ -66,11 +66,11 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     {  1, "Grapher",      0x50B849,   0x8ED888 },   // Green
     {  2, "Equations",    0x1565C0,   0x5E9CE0 },   // Blue
     {  3, "Calculus",     0x6A1B9A,   0xAB60D0 },   // Purple
-    {  4, "Regression",   0xBF360C,   0xE07040 },   // Brown-red
-    {  5, "Sequences",    0x7B1FA2,   0xAB60D0 },   // Purple
-    {  6, "Python",       0xF57F17,   0xFAAF50 },   // Amber
-    {  7, "Probability",  0x00897B,   0x40BBA8 },   // Teal
-    {  8, "Solver",       0x283593,   0x5C6BC0 },   // Navy
+    {  4, "Statistics",   0xE65100,   0xFF8A50 },   // Deep orange
+    {  5, "Probability",  0x00897B,   0x40BBA8 },   // Teal
+    {  6, "Regression",   0xBF360C,   0xE07040 },   // Brown-red
+    {  7, "Sequences",    0x7B1FA2,   0xAB60D0 },   // Purple
+    {  8, "Python",       0xF57F17,   0xFAAF50 },   // Amber
     {  9, "Settings",     0x546E7A,   0x8AA4B0 },   // Blue-grey
 };
 const int MainMenu::APP_COUNT =
@@ -113,7 +113,7 @@ void MainMenu::setLaunchCallback(std::function<void(int)> cb) {
 
 void MainMenu::load() {
     if (_screen) {
-        lv_scr_load(_screen);
+        lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
         lv_group_set_default(_group);
     }
 }
@@ -494,30 +494,17 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             break;
         }
         case 4: {
-            // Regression: scatter dots + trend line
-            drawCircle(cx - 8, cy + 4, 2, white, LV_OPA_COVER);
-            drawCircle(cx - 3, cy - 1, 2, white, LV_OPA_COVER);
-            drawCircle(cx + 4, cy - 5, 2, white, LV_OPA_COVER);
-            drawCircle(cx + 9, cy - 9, 2, white, LV_OPA_COVER);
-            // Trend line
-            drawLine(cx - 12, cy + 8, cx + 12, cy - 10, 2, light, LV_OPA_70);
+            // Statistics: bar chart icon (3 ascending bars)
+            int bw = 6;
+            int baseY2 = cy + 10;
+            drawRect(cx - 10, cy + 2,  cx - 10 + bw, baseY2, 1, light, LV_OPA_80);
+            drawRect(cx - 3,  cy - 4,  cx - 3 + bw,  baseY2, 1, white, LV_OPA_COVER);
+            drawRect(cx + 4,  cy - 10, cx + 4 + bw,  baseY2, 1, white, LV_OPA_COVER);
+            // Base line
+            drawLine(a.x1 + 5, baseY2, a.x2 - 5, baseY2, 1, white, LV_OPA_40);
             break;
         }
         case 5: {
-            // Sequences: concentric circles (rings = progression)
-            drawCircle(cx, cy, 14, light, LV_OPA_40);
-            drawCircle(cx, cy, 9,  white, LV_OPA_60);
-            drawCircle(cx, cy, 4,  white, LV_OPA_COVER);
-            break;
-        }
-        case 6: {
-            // Python: ">_" prompt — two lines
-            drawLine(cx - 8, cy - 6, cx,     cy,     2, white, LV_OPA_COVER);
-            drawLine(cx,     cy,     cx - 8, cy + 6, 2, white, LV_OPA_COVER);
-            drawLine(cx + 2, cy + 6, cx + 10,cy + 6, 2, light, LV_OPA_90);
-            break;
-        }
-        case 7: {
             // Probability: bell-curve (Gaussian approximation)
             drawLine(a.x1 + 6,  cy + 8, cx - 6, cy - 2,  2, light, LV_OPA_70);
             drawLine(cx - 6,    cy - 2, cx,     cy - 12, 2, white, LV_OPA_COVER);
@@ -527,11 +514,28 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             drawLine(a.x1 + 5, cy + 8, a.x2 - 5, cy + 8, 1, white, LV_OPA_40);
             break;
         }
+        case 6: {
+            // Regression: scatter dots + trend line
+            drawCircle(cx - 8, cy + 4, 2, white, LV_OPA_COVER);
+            drawCircle(cx - 3, cy - 1, 2, white, LV_OPA_COVER);
+            drawCircle(cx + 4, cy - 5, 2, white, LV_OPA_COVER);
+            drawCircle(cx + 9, cy - 9, 2, white, LV_OPA_COVER);
+            // Trend line
+            drawLine(cx - 12, cy + 8, cx + 12, cy - 10, 2, light, LV_OPA_70);
+            break;
+        }
+        case 7: {
+            // Sequences: concentric circles (rings = progression)
+            drawCircle(cx, cy, 14, light, LV_OPA_40);
+            drawCircle(cx, cy, 9,  white, LV_OPA_60);
+            drawCircle(cx, cy, 4,  white, LV_OPA_COVER);
+            break;
+        }
         case 8: {
-            // Solver: checkmark / tick inside rounded frame
-            drawRect(cx - 11, cy - 11, cx + 11, cy + 11, 4, light, LV_OPA_30);
-            drawLine(cx - 6,  cy,     cx - 2, cy + 5, 3, white, LV_OPA_COVER);
-            drawLine(cx - 2,  cy + 5, cx + 7, cy - 6, 3, white, LV_OPA_COVER);
+            // Python: ">_" prompt — two lines
+            drawLine(cx - 8, cy - 6, cx,     cy,     2, white, LV_OPA_COVER);
+            drawLine(cx,     cy,     cx - 8, cy + 6, 2, white, LV_OPA_COVER);
+            drawLine(cx + 2, cy + 6, cx + 10,cy + 6, 2, light, LV_OPA_90);
             break;
         }
         case 9: {

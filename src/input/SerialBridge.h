@@ -45,7 +45,7 @@ public:
 
 private:
     // Small circular buffer for generated events
-    static const int BUF_SIZE = 8;
+    static const int BUF_SIZE = 32;
     KeyEvent _buf[BUF_SIZE];
     int _head;
     int _tail;

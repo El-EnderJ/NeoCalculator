@@ -34,6 +34,8 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _equationsApp(nullptr),
       _calculusApp(nullptr),
       _settingsApp(nullptr),
+      _statisticsApp(nullptr),
+      _probabilityApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -95,6 +97,14 @@ void SystemApp::begin() {
     _settingsApp = new SettingsApp();
     _settingsApp->begin();
 
+    // ── Create StatisticsApp (LVGL-native Statistics) ──
+    _statisticsApp = new StatisticsApp();
+    _statisticsApp->begin();
+
+    // ── Create ProbabilityApp (LVGL-native Distributions) ──
+    _probabilityApp = new ProbabilityApp();
+    _probabilityApp->begin();
+
     // ── Load apps & go to menu ──
     initApps();
     _mode = Mode::MENU;
@@ -126,11 +136,12 @@ void SystemApp::initApps() {
     _apps.emplace_back(1, "Grapher",      icon_Grapher);
     _apps.emplace_back(2, "Equations",    icon_Equations);
     _apps.emplace_back(3, "Calculus",     icon_Elements);
-    _apps.emplace_back(4, "Probability",  icon_Distributions);
-    _apps.emplace_back(5, "Sequence",     icon_Sequences);
+    _apps.emplace_back(4, "Statistics",   icon_Distributions);
+    _apps.emplace_back(5, "Probability",  icon_Distributions);
     _apps.emplace_back(6, "Regression",   icon_Regression);
-    _apps.emplace_back(7, "Python",       icon_Python);
-    _apps.emplace_back(8, "Settings",     icon_Settings);
+    _apps.emplace_back(7, "Sequence",     icon_Sequences);
+    _apps.emplace_back(8, "Python",       icon_Python);
+    _apps.emplace_back(9, "Settings",     icon_Settings);
 }
 
 
@@ -155,6 +166,12 @@ void SystemApp::update() {
         // LVGL handles EquationsApp rendering
     } else if (_mode == Mode::APP_GRAPHER) {
         // LVGL handles GrapherApp rendering
+    } else if (_mode == Mode::APP_SETTINGS) {
+        // LVGL handles SettingsApp rendering
+    } else if (_mode == Mode::APP_STATISTICS) {
+        // LVGL handles StatisticsApp rendering
+    } else if (_mode == Mode::APP_PROBABILITY) {
+        // LVGL handles ProbabilityApp rendering
     } else if (_mode == Mode::MENU) {
         // LVGL maneja el renderizado del menú via lv_timer_handler() en main.cpp
         _redraw = false;
@@ -181,11 +198,11 @@ void SystemApp::render() {
         case Mode::APP_CALCULUS:    break;  // LVGL-native — no-op
         case Mode::APP_EQUATIONS:   break;  // LVGL-native — no-op
         case Mode::APP_SETTINGS:    break;  // LVGL-native — no-op
+        case Mode::APP_STATISTICS:  break;  // LVGL-native — no-op
+        case Mode::APP_PROBABILITY: break;  // LVGL-native — no-op
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
         // All placeholder apps
-        case Mode::APP_STATISTICS:
-        case Mode::APP_PROBABILITY:
         case Mode::APP_SEQUENCE:
         case Mode::APP_REGRESSION:
         case Mode::APP_PYTHON:
@@ -379,11 +396,23 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _settingsApp->handleKey(ev);
             }
             break;
+        case Mode::APP_STATISTICS:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_statisticsApp) {
+                _statisticsApp->handleKey(ev);
+            }
+            break;
+        case Mode::APP_PROBABILITY:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_probabilityApp) {
+                _probabilityApp->handleKey(ev);
+            }
+            break;
         // All placeholder apps share generic handler
         case Mode::APP_PYTHON:
-        case Mode::APP_STATISTICS:
         case Mode::APP_TABLE:
-        case Mode::APP_PROBABILITY:
         case Mode::APP_SEQUENCE:
         case Mode::APP_REGRESSION:
             handleKeyApp(ev);
@@ -469,7 +498,17 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_grapherApp) _grapherApp->load();
-    } else if (id == 8) {
+    } else if (id == 4) {
+        // StatisticsApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_statisticsApp) _statisticsApp->load();
+    } else if (id == 5) {
+        // ProbabilityApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_probabilityApp) _probabilityApp->load();
+    } else if (id == 9) {
         // Settings es LVGL-native
         g_lvglActive = true;
         switchApp(id);
@@ -509,6 +548,16 @@ void SystemApp::returnToMenu() {
         _settingsApp->end();
         _settingsApp->begin();
     }
+    // Si venimos de la StatisticsApp (LVGL-native)
+    if (_mode == Mode::APP_STATISTICS && _statisticsApp) {
+        _statisticsApp->end();
+        _statisticsApp->begin();
+    }
+    // Si venimos de la ProbabilityApp (LVGL-native)
+    if (_mode == Mode::APP_PROBABILITY && _probabilityApp) {
+        _probabilityApp->end();
+        _probabilityApp->begin();
+    }
 
     _mode    = Mode::MENU;
     _redraw  = false;
@@ -521,13 +570,14 @@ void SystemApp::switchApp(int id) {
     switch (id) {
         case 0: _mode = Mode::APP_CALCULATION; break;
         case 1: _mode = Mode::APP_GRAPHER;     break;
-        case 2: _mode = Mode::APP_EQUATIONS;   break;   // Equations (pure equation solving)
-        case 3: _mode = Mode::APP_CALCULUS;    break;   // Calculus (derivatives + integrals)
-        case 4: _mode = Mode::APP_PROBABILITY; break;
-        case 5: _mode = Mode::APP_SEQUENCE;    break;
+        case 2: _mode = Mode::APP_EQUATIONS;   break;
+        case 3: _mode = Mode::APP_CALCULUS;    break;
+        case 4: _mode = Mode::APP_STATISTICS;  break;
+        case 5: _mode = Mode::APP_PROBABILITY; break;
         case 6: _mode = Mode::APP_REGRESSION;  break;
-        case 7: _mode = Mode::APP_PYTHON;      break;
-        case 8: _mode = Mode::APP_SETTINGS;    break;
+        case 7: _mode = Mode::APP_SEQUENCE;    break;
+        case 8: _mode = Mode::APP_PYTHON;      break;
+        case 9: _mode = Mode::APP_SETTINGS;    break;
         default: _mode = Mode::MENU;           break;
     }
     _redraw = true;

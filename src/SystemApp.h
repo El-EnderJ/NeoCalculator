@@ -29,6 +29,8 @@
 #include "apps/EquationsApp.h"
 #include "apps/CalculusApp.h"
 #include "apps/SettingsApp.h"
+#include "apps/StatisticsApp.h"
+#include "apps/ProbabilityApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -93,6 +95,8 @@ private:
     EquationsApp*   _equationsApp;
     CalculusApp*    _calculusApp;
     SettingsApp*    _settingsApp;
+    StatisticsApp*  _statisticsApp;
+    ProbabilityApp* _probabilityApp;
 
     // Math Engine
     Tokenizer _tokenizer;

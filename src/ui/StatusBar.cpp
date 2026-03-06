@@ -70,8 +70,7 @@ void StatusBar::create(lv_obj_t* parent) {
     lv_obj_set_style_text_color(_angleLabel, lv_color_hex(COL_TEXT), LV_PART_MAIN);
     lv_obj_align(_angleLabel, LV_ALIGN_RIGHT_MID, -38, 0);
 
-    // ── Icono de batería (esquina derecha) ────────────────────────────
-    // Usamos un objeto simple con borde y un hijo de relleno
+    // ── Icono de batería (esquina derecha) — 3-bar style ────────────
     _batIcon = lv_obj_create(_bar);
     lv_obj_set_size(_batIcon, 22, 11);
     lv_obj_align(_batIcon, LV_ALIGN_RIGHT_MID, -8, 0);
@@ -83,16 +82,18 @@ void StatusBar::create(lv_obj_t* parent) {
     lv_obj_set_style_pad_all(_batIcon, 0, LV_PART_MAIN);
     lv_obj_remove_flag(_batIcon, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Relleno interior (hijo del icono batería)
-    lv_obj_t* fill = lv_obj_create(_batIcon);
-    lv_obj_set_size(fill, 18, 7);   // Se ajustará en updateBatteryIcon
-    lv_obj_set_pos(fill, 1, 1);
-    lv_obj_set_style_bg_color(fill, lv_color_hex(0x66CC66), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(fill, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(fill, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(fill, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(fill, LV_OBJ_FLAG_SCROLLABLE);
+    // Create 3 individual bars inside the battery icon
+    for (int i = 0; i < 3; ++i) {
+        lv_obj_t* bar = lv_obj_create(_batIcon);
+        lv_obj_set_size(bar, 4, 7);
+        lv_obj_set_pos(bar, 2 + i * 6, 1);
+        lv_obj_set_style_bg_color(bar, lv_color_hex(0x66CC66), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(bar, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(bar, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(bar, 0, LV_PART_MAIN);
+        lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+    }
 
     // ── Línea separadora inferior (1 px) ──────────────────────────────
     _separator = lv_obj_create(parent);
@@ -234,17 +235,8 @@ void StatusBar::updateAngleMode() {
 void StatusBar::updateBatteryIcon() {
     if (!_batIcon) return;
 
-    // El hijo [0] del _batIcon es el rectángulo de relleno
-    lv_obj_t* fill = lv_obj_get_child(_batIcon, 0);
-    if (!fill) return;
-
-    // Máximo ancho de relleno = 18 px
-    int maxW = 18;
-    int w = (maxW * _batLevel) / 100;
-    if (w < 1 && _batLevel > 0) w = 1;
-    lv_obj_set_width(fill, w);
-
-    // Color según nivel
+    // 3 bars: bar0 (0-33%), bar1 (34-66%), bar2 (67-100%)
+    // Color per level: green >50%, yellow >20%, red ≤20%
     uint32_t col;
     if (_batLevel > 50) {
         col = 0x66CC66;  // Verde
@@ -253,7 +245,22 @@ void StatusBar::updateBatteryIcon() {
     } else {
         col = 0xFF4444;  // Rojo
     }
-    lv_obj_set_style_bg_color(fill, lv_color_hex(col), LV_PART_MAIN);
+
+    int numBars = 0;
+    if (_batLevel > 66) numBars = 3;
+    else if (_batLevel > 33) numBars = 2;
+    else if (_batLevel > 5)  numBars = 1;
+
+    for (int i = 0; i < 3; ++i) {
+        lv_obj_t* bar = lv_obj_get_child(_batIcon, i);
+        if (!bar) continue;
+        if (i < numBars) {
+            lv_obj_set_style_bg_color(bar, lv_color_hex(col), LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
+        } else {
+            lv_obj_set_style_bg_opa(bar, LV_OPA_TRANSP, LV_PART_MAIN);
+        }
+    }
 }
 
 } // namespace ui

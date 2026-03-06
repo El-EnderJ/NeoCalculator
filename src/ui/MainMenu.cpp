@@ -75,6 +75,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     { 10, "Settings",     0x546E7A,   0x8AA4B0 },   // Blue-grey
     { 11, "Chemistry",    0x00838F,   0x4DB6AC },   // Cyan-teal
     { 12, "Bridge",       0x2E86AB,   0x6BB8D6 },   // Steel blue
+    { 13, "Circuit",      0xE91E63,   0xF06292 },   // Pink-red (electronics)
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);
@@ -590,6 +591,22 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             // Anchor points (small dots)
             drawCircle(a.x1 + 4, baseY3, 2, light, LV_OPA_COVER);
             drawCircle(a.x2 - 4, baseY3, 2, light, LV_OPA_COVER);
+            break;
+        }
+        case 13: {
+            // Circuit: schematic resistor zigzag + voltage source symbol
+            // Resistor zigzag (horizontal)
+            drawLine(cx - 12, cy, cx - 8, cy - 5, 1, white, LV_OPA_COVER);
+            drawLine(cx - 8, cy - 5, cx - 4, cy + 5, 1, white, LV_OPA_COVER);
+            drawLine(cx - 4, cy + 5, cx,     cy - 5, 1, white, LV_OPA_COVER);
+            drawLine(cx,     cy - 5, cx + 4, cy + 5, 1, white, LV_OPA_COVER);
+            drawLine(cx + 4, cy + 5, cx + 8, cy - 5, 1, white, LV_OPA_COVER);
+            drawLine(cx + 8, cy - 5, cx + 12, cy, 1, white, LV_OPA_COVER);
+            // Ground symbol below
+            drawLine(cx, cy + 6, cx, cy + 10, 1, light, LV_OPA_80);
+            drawLine(cx - 6, cy + 10, cx + 6, cy + 10, 1, light, LV_OPA_80);
+            drawLine(cx - 4, cy + 12, cx + 4, cy + 12, 1, light, LV_OPA_60);
+            drawLine(cx - 2, cy + 14, cx + 2, cy + 14, 1, light, LV_OPA_40);
             break;
         }
         default:

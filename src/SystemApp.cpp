@@ -42,6 +42,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _sequencesApp(nullptr),
       _periodicTableApp(nullptr),
       _bridgeDesignerApp(nullptr),
+      _circuitCoreApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -90,6 +91,7 @@ void SystemApp::begin() {
     _sequencesApp  = new SequencesApp();
     _periodicTableApp = new PeriodicTableApp();
     _bridgeDesignerApp = new BridgeDesignerApp();
+    _circuitCoreApp = new CircuitCoreApp();
 
     // ── LVGL Launcher (show menu before LittleFS I/O) ──
     initApps();
@@ -166,6 +168,7 @@ void SystemApp::update() {
             case Mode::APP_SEQUENCES:    if (_sequencesApp)   _sequencesApp->end();    break;
             case Mode::APP_PERIODIC_TABLE: if (_periodicTableApp) _periodicTableApp->end(); break;
             case Mode::APP_BRIDGE_DESIGNER: if (_bridgeDesignerApp) _bridgeDesignerApp->end(); break;
+            case Mode::APP_CIRCUIT_CORE: if (_circuitCoreApp) _circuitCoreApp->end(); break;
             default: break;
         }
         _pendingTeardownMode = Mode::MENU;  // mark as done
@@ -197,6 +200,8 @@ void SystemApp::update() {
         // LVGL handles ProbabilityApp rendering
     } else if (_mode == Mode::APP_PERIODIC_TABLE) {
         // LVGL handles PeriodicTableApp rendering
+    } else if (_mode == Mode::APP_CIRCUIT_CORE) {
+        // LVGL handles CircuitCoreApp rendering
     } else if (_mode == Mode::MENU) {
         // LVGL maneja el renderizado del menú via lv_timer_handler() en main.cpp
         _redraw = false;
@@ -229,6 +234,9 @@ void SystemApp::render() {
         case Mode::APP_MATRICES:    break;  // LVGL-native — no-op
         case Mode::APP_PYTHON:      break;  // LVGL-native — no-op
         case Mode::APP_PERIODIC_TABLE: break; // LVGL-native — no-op
+        case Mode::APP_BRIDGE_DESIGNER: break; // LVGL-native — no-op
+        case Mode::APP_CIRCUIT_CORE: break;    // LVGL-native — no-op
+        case Mode::APP_SEQUENCES:    break;    // LVGL-native — no-op
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
         // APP_TABLE placeholder
@@ -483,6 +491,17 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _bridgeDesignerApp->handleKey(ev);
             }
             break;
+        // CircuitCoreApp is LVGL-native
+        case Mode::APP_CIRCUIT_CORE:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (ev.code == KeyCode::AC && _circuitCoreApp) {
+                // AC: if on toolbar, return to menu; otherwise app handles it
+                _circuitCoreApp->handleKey(ev);
+            } else if (_circuitCoreApp) {
+                _circuitCoreApp->handleKey(ev);
+            }
+            break;
         case Mode::APP_TABLE:
             handleKeyApp(ev);
             break;
@@ -612,6 +631,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_bridgeDesignerApp) _bridgeDesignerApp->load();
+    } else if (id == 13) {
+        // CircuitCoreApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_circuitCoreApp) _circuitCoreApp->load();
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -661,6 +685,7 @@ void SystemApp::switchApp(int id) {
         case 10: _mode = Mode::APP_SETTINGS;    break;
         case 11: _mode = Mode::APP_PERIODIC_TABLE; break;
         case 12: _mode = Mode::APP_BRIDGE_DESIGNER; break;
+        case 13: _mode = Mode::APP_CIRCUIT_CORE; break;
         default: _mode = Mode::MENU;            break;
     }
     _redraw = true;

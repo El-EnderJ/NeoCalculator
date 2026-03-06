@@ -31,6 +31,8 @@
 #include "apps/SettingsApp.h"
 #include "apps/StatisticsApp.h"
 #include "apps/ProbabilityApp.h"
+#include "apps/RegressionApp.h"
+#include "apps/MatricesApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -50,8 +52,8 @@ enum class Mode : uint8_t {
     APP_PROBABILITY,   // Probability distribution (placeholder)
     APP_EQUATIONS,     // Equation solver
     APP_CALCULUS,      // Calculus (derivatives + integrals)
-    APP_SEQUENCE,      // Sequence solver (placeholder)
-    APP_REGRESSION,    // Regression analysis (placeholder)
+    APP_MATRICES,      // Matrix algebra (LVGL-native)
+    APP_REGRESSION,    // Regression analysis (LVGL-native)
     APP_PYTHON,        // Python shell (placeholder)
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
@@ -97,6 +99,8 @@ private:
     SettingsApp*    _settingsApp;
     StatisticsApp*  _statisticsApp;
     ProbabilityApp* _probabilityApp;
+    RegressionApp*  _regressionApp;
+    MatricesApp*    _matricesApp;
 
     // Math Engine
     Tokenizer _tokenizer;

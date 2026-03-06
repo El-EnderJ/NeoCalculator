@@ -129,6 +129,9 @@
 #define LV_FONT_MONTSERRAT_16   0
 #define LV_FONT_MONTSERRAT_18   0
 #define LV_FONT_MONTSERRAT_20   1
+
+/** Fuente monoespaciada UNSCII 8 para el editor Python */
+#define LV_FONT_UNSCII_8        1
 #define LV_FONT_MONTSERRAT_22   0
 #define LV_FONT_MONTSERRAT_24   0
 #define LV_FONT_MONTSERRAT_28   0
@@ -171,7 +174,7 @@
 #define LV_USE_TABLE        1
 #define LV_USE_CHART        1   /* Histogram (Stats) + bell curve (Probability) */
 #define LV_USE_TABVIEW      0
-#define LV_USE_TEXTAREA     0
+#define LV_USE_TEXTAREA     1
 #define LV_USE_TILEVIEW     0
 #define LV_USE_WIN          0
 

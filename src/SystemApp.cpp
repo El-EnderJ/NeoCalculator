@@ -38,6 +38,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _probabilityApp(nullptr),
       _regressionApp(nullptr),
       _matricesApp(nullptr),
+      _pythonApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -114,6 +115,10 @@ void SystemApp::begin() {
     // ── Create MatricesApp (LVGL-native Matrices) ──
     _matricesApp = new MatricesApp();
     _matricesApp->begin();
+
+    // ── Create PythonApp (LVGL-native Python IDE) ──
+    _pythonApp = new PythonApp();
+    _pythonApp->begin();
 
     // ── Load apps & go to menu ──
     initApps();
@@ -212,10 +217,11 @@ void SystemApp::render() {
         case Mode::APP_PROBABILITY: break;  // LVGL-native — no-op
         case Mode::APP_REGRESSION:  break;  // LVGL-native — no-op
         case Mode::APP_MATRICES:    break;  // LVGL-native — no-op
+        case Mode::APP_PYTHON:      break;  // LVGL-native — no-op
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
-        // All placeholder apps
-        case Mode::APP_PYTHON:
+        // APP_TABLE placeholder
+        case Mode::APP_TABLE:
             renderAppView();
             break;
     }
@@ -434,8 +440,14 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _matricesApp->handleKey(ev);
             }
             break;
-        // All placeholder apps share generic handler
+        // PythonApp is LVGL-native
         case Mode::APP_PYTHON:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_pythonApp) {
+                _pythonApp->handleKey(ev);
+            }
+            break;
         case Mode::APP_TABLE:
             handleKeyApp(ev);
             break;
@@ -545,6 +557,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_settingsApp) _settingsApp->load();
+    } else if (id == 8) {
+        // PythonApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_pythonApp) _pythonApp->load();
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -600,6 +617,11 @@ void SystemApp::returnToMenu() {
         _matricesApp->end();
         _matricesApp->begin();
     }
+    // Si venimos de la PythonApp (LVGL-native)
+    if (_mode == Mode::APP_PYTHON && _pythonApp) {
+        _pythonApp->end();
+        _pythonApp->begin();
+    }
 
     _mode    = Mode::MENU;
     _redraw  = false;
@@ -643,7 +665,6 @@ void SystemApp::renderAppView() {
             (_mode == Mode::APP_PROBABILITY && _apps[i].id == 5) ||
             (_mode == Mode::APP_MATRICES    && _apps[i].id == 7) ||
             (_mode == Mode::APP_REGRESSION  && _apps[i].id == 6) ||
-            (_mode == Mode::APP_PYTHON      && _apps[i].id == 8) ||
             (_mode == Mode::APP_SETTINGS    && _apps[i].id == 9)) {
             appName = _apps[i].name;
             break;

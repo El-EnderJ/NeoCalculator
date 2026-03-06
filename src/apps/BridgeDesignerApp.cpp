@@ -88,6 +88,8 @@ void BridgeDesignerApp::begin() {
 #endif
 
     if (!_nodes || !_beams) return;  // allocation failure guard
+    memset(_nodes, 0, MAX_NODES * sizeof(BridgeNode));
+    memset(_beams, 0, MAX_BEAMS * sizeof(BridgeBeam));
     _nodeCount = 0;
     _beamCount = 0;
 
@@ -456,6 +458,11 @@ void BridgeDesignerApp::applyGravity() {
         n.x += vx;
         n.y += vy + GRAVITY * DT * DT * 50.0f;
 
+        // NaN/Inf guard — reset simulation if physics diverges
+        if (!std::isfinite(n.x) || !std::isfinite(n.y)) {
+            resetSimulation();
+            return;
+        }
         // Clamp to draw area bounds
         if (n.y > DRAW_H - 2) { n.y = DRAW_H - 2; n.oy = n.y; }
         if (n.x < 2)          { n.x = 2;           n.ox = n.x; }

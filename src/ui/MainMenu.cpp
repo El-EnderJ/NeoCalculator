@@ -257,7 +257,7 @@ void MainMenu::buildGrid() {
         LV_GRID_TEMPLATE_LAST
     };
     static lv_coord_t row_dsc[] = {
-        ROW_H, ROW_H, ROW_H, ROW_H,
+        ROW_H, ROW_H, ROW_H, ROW_H, ROW_H,
         LV_GRID_TEMPLATE_LAST
     };
 

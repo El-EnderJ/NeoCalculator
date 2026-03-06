@@ -35,6 +35,7 @@
 #include "apps/MatricesApp.h"
 #include "apps/PythonApp.h"
 #include "apps/SequencesApp.h"
+#include "apps/PeriodicTableApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -58,6 +59,7 @@ enum class Mode : uint8_t {
     APP_REGRESSION,    // Regression analysis (LVGL-native)
     APP_SEQUENCES,     // Sequences & series
     APP_PYTHON,        // Python shell (placeholder)
+    APP_PERIODIC_TABLE, // Periodic table & chemistry
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
@@ -106,6 +108,7 @@ private:
     MatricesApp*    _matricesApp;
     PythonApp*      _pythonApp;
     SequencesApp*   _sequencesApp;
+    PeriodicTableApp* _periodicTableApp;
 
     // Math Engine
     Tokenizer _tokenizer;

@@ -73,6 +73,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     {  8, "Python",       0xF57F17,   0xFAAF50 },   // Amber
     {  9, "Matrices",     0x7B1FA2,   0xAB60D0 },   // Purple
     { 10, "Settings",     0x546E7A,   0x8AA4B0 },   // Blue-grey
+    { 11, "Chemistry",    0x00838F,   0x4DB6AC },   // Cyan-teal
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);
@@ -561,6 +562,16 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             drawLine(cx, cy + 10, cx, cy + 14, 2, white, LV_OPA_80);
             drawLine(cx - 14, cy, cx - 10, cy, 2, white, LV_OPA_80);
             drawLine(cx + 10, cy, cx + 14, cy, 2, white, LV_OPA_80);
+            break;
+        }
+        case 11: {
+            // Chemistry: atom icon (nucleus + orbits)
+            drawCircle(cx, cy, 3, white, LV_OPA_COVER);
+            // Three elliptical orbits (simplified as tilted lines)
+            drawCircle(cx, cy, 11, light, LV_OPA_50);
+            drawLine(cx - 12, cy - 6, cx + 12, cy + 6, 1, white, LV_OPA_70);
+            drawLine(cx - 12, cy + 6, cx + 12, cy - 6, 1, white, LV_OPA_70);
+            drawLine(cx - 6, cy - 12, cx + 6, cy + 12, 1, light, LV_OPA_60);
             break;
         }
         default:

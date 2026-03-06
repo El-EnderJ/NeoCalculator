@@ -40,6 +40,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _matricesApp(nullptr),
       _pythonApp(nullptr),
       _sequencesApp(nullptr),
+      _periodicTableApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -86,6 +87,7 @@ void SystemApp::begin() {
     _matricesApp   = new MatricesApp();
     _pythonApp     = new PythonApp();
     _sequencesApp  = new SequencesApp();
+    _periodicTableApp = new PeriodicTableApp();
 
     // ── LVGL Launcher (show menu before LittleFS I/O) ──
     initApps();
@@ -160,6 +162,7 @@ void SystemApp::update() {
             case Mode::APP_MATRICES:     if (_matricesApp)    _matricesApp->end();     break;
             case Mode::APP_PYTHON:       if (_pythonApp)      _pythonApp->end();       break;
             case Mode::APP_SEQUENCES:    if (_sequencesApp)   _sequencesApp->end();    break;
+            case Mode::APP_PERIODIC_TABLE: if (_periodicTableApp) _periodicTableApp->end(); break;
             default: break;
         }
         _pendingTeardownMode = Mode::MENU;  // mark as done
@@ -189,6 +192,8 @@ void SystemApp::update() {
         // LVGL handles StatisticsApp rendering
     } else if (_mode == Mode::APP_PROBABILITY) {
         // LVGL handles ProbabilityApp rendering
+    } else if (_mode == Mode::APP_PERIODIC_TABLE) {
+        // LVGL handles PeriodicTableApp rendering
     } else if (_mode == Mode::MENU) {
         // LVGL maneja el renderizado del menú via lv_timer_handler() en main.cpp
         _redraw = false;
@@ -220,6 +225,7 @@ void SystemApp::render() {
         case Mode::APP_REGRESSION:  break;  // LVGL-native — no-op
         case Mode::APP_MATRICES:    break;  // LVGL-native — no-op
         case Mode::APP_PYTHON:      break;  // LVGL-native — no-op
+        case Mode::APP_PERIODIC_TABLE: break; // LVGL-native — no-op
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
         // APP_TABLE placeholder
@@ -458,6 +464,14 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _pythonApp->handleKey(ev);
             }
             break;
+        // PeriodicTableApp is LVGL-native
+        case Mode::APP_PERIODIC_TABLE:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_periodicTableApp) {
+                _periodicTableApp->handleKey(ev);
+            }
+            break;
         case Mode::APP_TABLE:
             handleKeyApp(ev);
             break;
@@ -577,6 +591,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_settingsApp) _settingsApp->load();
+    } else if (id == 11) {
+        // PeriodicTableApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_periodicTableApp) _periodicTableApp->load();
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -624,6 +643,7 @@ void SystemApp::switchApp(int id) {
         case 8:  _mode = Mode::APP_PYTHON;      break;
         case 9:  _mode = Mode::APP_MATRICES;    break;
         case 10: _mode = Mode::APP_SETTINGS;    break;
+        case 11: _mode = Mode::APP_PERIODIC_TABLE; break;
         default: _mode = Mode::MENU;            break;
     }
     _redraw = true;

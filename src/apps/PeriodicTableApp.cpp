@@ -577,41 +577,15 @@ void PeriodicTableApp::deleteChar(char* buf, int& len) {
 char PeriodicTableApp::keyToChar(const KeyEvent& ev) {
     auto& km = vpam::KeyboardManager::instance();
 
-    // Alpha keys produce uppercase letters
-    if (km.isAlpha()) {
-        switch (ev.code) {
-            case KeyCode::ALPHA_A: return 'A';
-            case KeyCode::ALPHA_B: return 'B';
-            case KeyCode::ALPHA_C: return 'C';
-            case KeyCode::ALPHA_D: return 'D';
-            case KeyCode::ALPHA_E: return 'E';
-            case KeyCode::ALPHA_F: return 'F';
-            default: break;
-        }
-    }
-
-    // Direct alpha keys (without modifier) for chemistry input
+    // Alpha keys produce uppercase letters for chemistry input
     switch (ev.code) {
-        case KeyCode::ALPHA_A: return 'A';
-        case KeyCode::ALPHA_B: return 'B';
-        case KeyCode::ALPHA_C: return 'C';
-        case KeyCode::ALPHA_D: return 'D';
-        case KeyCode::ALPHA_E: return 'E';
-        case KeyCode::ALPHA_F: return 'F';
+        case KeyCode::ALPHA_A: return km.isShift() ? 'a' : 'A';
+        case KeyCode::ALPHA_B: return km.isShift() ? 'b' : 'B';
+        case KeyCode::ALPHA_C: return km.isShift() ? 'c' : 'C';
+        case KeyCode::ALPHA_D: return km.isShift() ? 'd' : 'D';
+        case KeyCode::ALPHA_E: return km.isShift() ? 'e' : 'E';
+        case KeyCode::ALPHA_F: return km.isShift() ? 'f' : 'F';
         default: break;
-    }
-
-    // Shift + alpha for lowercase
-    if (km.isShift()) {
-        switch (ev.code) {
-            case KeyCode::ALPHA_A: return 'a';
-            case KeyCode::ALPHA_B: return 'b';
-            case KeyCode::ALPHA_C: return 'c';
-            case KeyCode::ALPHA_D: return 'd';
-            case KeyCode::ALPHA_E: return 'e';
-            case KeyCode::ALPHA_F: return 'f';
-            default: break;
-        }
     }
 
     // Numbers

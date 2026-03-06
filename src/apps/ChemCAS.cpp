@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cctype>
+#include <climits>
 
 namespace chem {
 
@@ -96,7 +97,9 @@ static int parseNumber(const char* s, int& pos, int len) {
     if (pos >= len || !isdigit((unsigned char)s[pos])) return 1;
     int n = 0;
     while (pos < len && isdigit((unsigned char)s[pos])) {
-        n = n * 10 + (s[pos] - '0');
+        int digit = s[pos] - '0';
+        if (n > (INT32_MAX - digit) / 10) return n > 0 ? n : 1; // overflow guard
+        n = n * 10 + digit;
         ++pos;
     }
     return n > 0 ? n : 1;
@@ -454,12 +457,14 @@ bool balanceEquation(const char* equation, char* result) {
         }
     }
 
-    // Scale to integers
+    // Scale to integers (use 64-bit intermediate to prevent overflow)
     int32_t coeffs[MAX_MOLECULES];
     for (int c = 0; c < formulaCount; ++c) {
-        coeffs[c] = solution[c].num * (denom_lcm / solution[c].den);
-        if (coeffs[c] < 0) coeffs[c] = -coeffs[c];
-        if (coeffs[c] == 0) return false;
+        int64_t val = static_cast<int64_t>(solution[c].num)
+                    * (denom_lcm / solution[c].den);
+        if (val < 0) val = -val;
+        if (val == 0 || val > INT32_MAX) return false;
+        coeffs[c] = static_cast<int32_t>(val);
     }
 
     // Reduce by GCD of all coefficients

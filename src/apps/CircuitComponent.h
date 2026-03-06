@@ -24,7 +24,11 @@ enum class CompType : uint8_t {
     VOLTAGE_SOURCE,
     LED,
     GROUND,
-    MCU
+    MCU,
+    POTENTIOMETER,
+    PUSH_BUTTON,
+    CAPACITOR,
+    DIODE
 };
 
 // ── Base class ──────────────────────────────────────────────────────────────
@@ -184,4 +188,88 @@ private:
     float _pinVoltage[PIN_COUNT];
     bool  _pinActive[PIN_COUNT];
     int   _pinVsIndex[PIN_COUNT];  // voltage source indices
+};
+
+// ── Potentiometer (Adjustable Resistor) ─────────────────────────────────────
+
+class Potentiometer : public CircuitComponent {
+public:
+    Potentiometer(int gridX, int gridY, float ohms = 10000.0f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+
+    float resistance() const { return _resistance; }
+    void setResistance(float r) { if (r >= MIN_RESISTANCE && r <= MAX_RESISTANCE) _resistance = r; }
+
+    /** Adjust resistance by a factor (UP/DOWN in EDIT_MODE). */
+    void adjustUp()   { setResistance(_resistance * ADJUST_FACTOR); }
+    void adjustDown() { setResistance(_resistance / ADJUST_FACTOR); }
+
+    static constexpr float MIN_RESISTANCE = 10.0f;
+    static constexpr float MAX_RESISTANCE = 1e6f;
+    static constexpr float ADJUST_FACTOR  = 1.2f;
+
+private:
+    float _resistance;
+};
+
+// ── Push-Button (Switch) ────────────────────────────────────────────────────
+
+class PushButton : public CircuitComponent {
+public:
+    PushButton(int gridX, int gridY);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+
+    bool isPressed() const { return _pressed; }
+    void setPressed(bool p) { _pressed = p; }
+    void toggle() { _pressed = !_pressed; }
+
+private:
+    bool _pressed;
+    static constexpr float OPEN_RESISTANCE   = 1e6f;   // 1MΩ when open
+    static constexpr float CLOSED_RESISTANCE = 0.001f;  // 1mΩ when pressed
+};
+
+// ── Capacitor (Transient Euler Integration) ─────────────────────────────────
+
+class Capacitor : public CircuitComponent {
+public:
+    Capacitor(int gridX, int gridY, float farads = 100e-6f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+    void updateFromSolution(MnaMatrix& mna) override;
+
+    float capacitance() const { return _capacitance; }
+    void setCapacitance(float c) { _capacitance = c; }
+    float voltageDrop() const { return _vPrev; }
+
+private:
+    float _capacitance;
+    float _vPrev;       // voltage across capacitor from previous time step
+    float _current;     // computed current through capacitor
+};
+
+// ── Diode (Piecewise-Linear Rectifier) ──────────────────────────────────────
+
+class Diode : public CircuitComponent {
+public:
+    Diode(int gridX, int gridY, float vForward = 0.7f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+    void updateFromSolution(MnaMatrix& mna) override;
+
+    bool  isConducting() const { return _conducting; }
+    float current()      const { return _current; }
+
+private:
+    float _vForward;
+    float _current;
+    bool  _conducting;
+    static constexpr float ON_RESISTANCE  = 10.0f;     // 10Ω when conducting
+    static constexpr float OFF_RESISTANCE = 1e6f;      // 1MΩ when blocking
 };

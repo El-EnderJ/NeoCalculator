@@ -69,6 +69,25 @@ public:
     int  vsCount() const { return _vsCount; }
     void setVsCount(int n) { _vsCount = n; }
 
+    // ── Transient analysis ──────────────────────────────────────────────
+
+    /** Set the time step for transient analysis (seconds). */
+    void setTimeStep(float dt) { _dt = dt; }
+    float timeStep() const { return _dt; }
+
+    /**
+     * Stamp a capacitor companion model (Backward Euler).
+     * Replaces C with: conductance G_eq = C/dt  and
+     * current source I_eq = C/dt * V_prev.
+     */
+    void stampCapacitor(int nodeA, int nodeB, float capacitance, float vPrev);
+
+    /**
+     * Stamp a current source between two nodes.
+     * Positive current flows from nodeA to nodeB.
+     */
+    void stampCurrentSource(int nodeA, int nodeB, float amps);
+
     // ── Solver ───────────────────────────────────────────────────────────
 
     /**
@@ -95,6 +114,7 @@ private:
 
     int _dim;       // current dimension
     int _vsCount;   // active voltage sources
+    float _dt;      // time step for transient analysis (seconds)
 
     // ── Union-Find parent array ──────────────────────────────────────────
     int _ufParent[MAX_NODES];

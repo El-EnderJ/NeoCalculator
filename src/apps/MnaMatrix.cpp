@@ -22,7 +22,7 @@ static constexpr float PARASITIC_G = 1e-9f;
 
 MnaMatrix::MnaMatrix()
     : _A(nullptr), _z(nullptr), _x(nullptr)
-    , _dim(MAX_NODES - 1), _vsCount(0)
+    , _dim(MAX_NODES - 1), _vsCount(0), _dt(1.0f / 30.0f)
 {
     ufReset();
 }
@@ -183,6 +183,31 @@ void MnaMatrix::stampVoltageSource(int nodeP, int nodeN, float volts, int vsIdx)
 
     // z vector: voltage value
     _z[vsRow] = volts;
+}
+
+void MnaMatrix::stampCurrentSource(int nodeA, int nodeB, float amps) {
+    if (!_z) return;
+
+    nodeA = ufFind(nodeA);
+    nodeB = ufFind(nodeB);
+
+    int ra = nodeToRow(nodeA);
+    int rb = nodeToRow(nodeB);
+
+    // Current entering nodeA, leaving nodeB
+    if (ra >= 0 && ra < MAX_DIM) _z[ra] += amps;
+    if (rb >= 0 && rb < MAX_DIM) _z[rb] -= amps;
+}
+
+void MnaMatrix::stampCapacitor(int nodeA, int nodeB, float capacitance, float vPrev) {
+    if (_dt <= 0.0f || capacitance <= 0.0f) return;
+
+    // Backward Euler companion model:
+    //   G_eq = C / dt
+    //   I_eq = G_eq * V_prev = (C / dt) * V_prev
+    float gEq = capacitance / _dt;
+    stampConductance(nodeA, nodeB, gEq);
+    stampCurrentSource(nodeA, nodeB, gEq * vPrev);
 }
 
 // ══ Solver: Gaussian Elimination with Partial Pivoting ══════════════════════

@@ -495,9 +495,9 @@ void SystemApp::handleKey(const KeyEvent &ev) {
         case Mode::APP_CIRCUIT_CORE:
             if (ev.code == KeyCode::MODE) {
                 returnToMenu();
-            } else if (ev.code == KeyCode::AC && _circuitCoreApp) {
-                // AC: if on toolbar, return to menu; otherwise app handles it
-                _circuitCoreApp->handleKey(ev);
+            } else if (ev.code == KeyCode::AC && _circuitCoreApp &&
+                       _circuitCoreApp->isToolbarFocused()) {
+                returnToMenu();
             } else if (_circuitCoreApp) {
                 _circuitCoreApp->handleKey(ev);
             }

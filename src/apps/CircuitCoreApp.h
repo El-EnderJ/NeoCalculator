@@ -42,6 +42,9 @@ public:
 
     bool isActive() const { return _screen != nullptr; }
 
+    /** True when LVGL focus is on the toolbar (AC should exit to menu). */
+    bool isToolbarFocused() const { return _focusArea == FocusArea::TOOLBAR; }
+
 private:
     // ── Tool types (toolbar order) ──────────────────────────────────────
     enum class Tool : uint8_t {

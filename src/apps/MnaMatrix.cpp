@@ -251,9 +251,12 @@ bool MnaMatrix::solve() {
 
 float MnaMatrix::nodeVoltage(int node) const {
     if (!_x) return 0.0f;
-    node = const_cast<MnaMatrix*>(this)->ufFind(node);
-    if (node <= 0) return 0.0f;  // ground
-    int r = nodeToRow(node);
+    // Perform Union-Find lookup without path compression for const safety
+    int n = node;
+    if (n < 0 || n >= MAX_NODES) return 0.0f;
+    while (_ufParent[n] != n) n = _ufParent[n];
+    if (n <= 0) return 0.0f;  // ground
+    int r = nodeToRow(n);
     if (r < 0 || r >= _dim) return 0.0f;
     return _x[r];
 }

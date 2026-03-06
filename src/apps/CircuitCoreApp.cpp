@@ -82,7 +82,7 @@ void CircuitCoreApp::begin() {
     // ── Allocate MNA matrices ──
     if (!_mna.allocate()) return;
 
-    // ── Initialize Lua VM ──
+    // ── Initialize Lua VM (MCU component set later when one is placed) ──
     _luaVM.init(&_mna, nullptr);
 
     // ── Create LVGL screen ──
@@ -356,14 +356,8 @@ void CircuitCoreApp::handleKeyToolbar(const KeyEvent& ev) {
             updateToolbarHighlight();
             break;
         case KeyCode::AC:
-            // AC on toolbar: return handled by SystemApp (returnToMenu)
-            // This is signalled by NOT consuming the key — but SystemApp
-            // checks MODE key. We'll handle it by setting a flag.
-            // Actually, SystemApp checks MODE for return. For AC on toolbar,
-            // we need the app to let SystemApp handle it. However, the
-            // current architecture has SystemApp check MODE/AC before
-            // forwarding to app. So AC on toolbar should already trigger
-            // returnToMenu in SystemApp's handler.
+            // AC on toolbar: SystemApp handles MODE for return to menu.
+            // This case intentionally does nothing — SystemApp intercepts it.
             break;
         default:
             break;

@@ -161,7 +161,7 @@
 #define LV_USE_LINE         1   /* Requerido por widgets internos (scale) */
 #define LV_USE_LIST         1   /* Stats results list */
 #define LV_USE_MENU         0
-#define LV_USE_MSGBOX       0
+#define LV_USE_MSGBOX       1   /* Error dialogs (Matrices) */
 #define LV_USE_ROLLER       0
 #define LV_USE_SLIDER       0
 #define LV_USE_SPAN         0

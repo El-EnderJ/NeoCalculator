@@ -69,7 +69,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     {  4, "Statistics",   0xE65100,   0xFF8A50 },   // Deep orange
     {  5, "Probability",  0x00897B,   0x40BBA8 },   // Teal
     {  6, "Regression",   0xBF360C,   0xE07040 },   // Brown-red
-    {  7, "Sequences",    0x7B1FA2,   0xAB60D0 },   // Purple
+    {  7, "Matrices",     0x7B1FA2,   0xAB60D0 },   // Purple
     {  8, "Python",       0xF57F17,   0xFAAF50 },   // Amber
     {  9, "Settings",     0x546E7A,   0x8AA4B0 },   // Blue-grey
 };

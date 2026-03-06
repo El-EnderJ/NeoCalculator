@@ -36,6 +36,8 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _settingsApp(nullptr),
       _statisticsApp(nullptr),
       _probabilityApp(nullptr),
+      _regressionApp(nullptr),
+      _matricesApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -105,6 +107,14 @@ void SystemApp::begin() {
     _probabilityApp = new ProbabilityApp();
     _probabilityApp->begin();
 
+    // ── Create RegressionApp (LVGL-native Regression) ──
+    _regressionApp = new RegressionApp();
+    _regressionApp->begin();
+
+    // ── Create MatricesApp (LVGL-native Matrices) ──
+    _matricesApp = new MatricesApp();
+    _matricesApp->begin();
+
     // ── Load apps & go to menu ──
     initApps();
     _mode = Mode::MENU;
@@ -139,7 +149,7 @@ void SystemApp::initApps() {
     _apps.emplace_back(4, "Statistics",   icon_Distributions);
     _apps.emplace_back(5, "Probability",  icon_Distributions);
     _apps.emplace_back(6, "Regression",   icon_Regression);
-    _apps.emplace_back(7, "Sequence",     icon_Sequences);
+    _apps.emplace_back(7, "Matrices",     icon_Sequences);
     _apps.emplace_back(8, "Python",       icon_Python);
     _apps.emplace_back(9, "Settings",     icon_Settings);
 }
@@ -200,11 +210,11 @@ void SystemApp::render() {
         case Mode::APP_SETTINGS:    break;  // LVGL-native — no-op
         case Mode::APP_STATISTICS:  break;  // LVGL-native — no-op
         case Mode::APP_PROBABILITY: break;  // LVGL-native — no-op
+        case Mode::APP_REGRESSION:  break;  // LVGL-native — no-op
+        case Mode::APP_MATRICES:    break;  // LVGL-native — no-op
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
         // All placeholder apps
-        case Mode::APP_SEQUENCE:
-        case Mode::APP_REGRESSION:
         case Mode::APP_PYTHON:
             renderAppView();
             break;
@@ -410,11 +420,23 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _probabilityApp->handleKey(ev);
             }
             break;
+        case Mode::APP_REGRESSION:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_regressionApp) {
+                _regressionApp->handleKey(ev);
+            }
+            break;
+        case Mode::APP_MATRICES:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_matricesApp) {
+                _matricesApp->handleKey(ev);
+            }
+            break;
         // All placeholder apps share generic handler
         case Mode::APP_PYTHON:
         case Mode::APP_TABLE:
-        case Mode::APP_SEQUENCE:
-        case Mode::APP_REGRESSION:
             handleKeyApp(ev);
             break;
     }
@@ -508,6 +530,16 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_probabilityApp) _probabilityApp->load();
+    } else if (id == 6) {
+        // RegressionApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_regressionApp) _regressionApp->load();
+    } else if (id == 7) {
+        // MatricesApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_matricesApp) _matricesApp->load();
     } else if (id == 9) {
         // Settings es LVGL-native
         g_lvglActive = true;
@@ -558,6 +590,16 @@ void SystemApp::returnToMenu() {
         _probabilityApp->end();
         _probabilityApp->begin();
     }
+    // Si venimos de la RegressionApp (LVGL-native)
+    if (_mode == Mode::APP_REGRESSION && _regressionApp) {
+        _regressionApp->end();
+        _regressionApp->begin();
+    }
+    // Si venimos de la MatricesApp (LVGL-native)
+    if (_mode == Mode::APP_MATRICES && _matricesApp) {
+        _matricesApp->end();
+        _matricesApp->begin();
+    }
 
     _mode    = Mode::MENU;
     _redraw  = false;
@@ -575,7 +617,7 @@ void SystemApp::switchApp(int id) {
         case 4: _mode = Mode::APP_STATISTICS;  break;
         case 5: _mode = Mode::APP_PROBABILITY; break;
         case 6: _mode = Mode::APP_REGRESSION;  break;
-        case 7: _mode = Mode::APP_SEQUENCE;    break;
+        case 7: _mode = Mode::APP_MATRICES;    break;
         case 8: _mode = Mode::APP_PYTHON;      break;
         case 9: _mode = Mode::APP_SETTINGS;    break;
         default: _mode = Mode::MENU;           break;
@@ -597,12 +639,12 @@ void SystemApp::renderAppView() {
     String appName = "App";
     for (int i = 0; i < (int)_apps.size(); i++) {
         // Find the matching app to get its name
-        if ((_mode == Mode::APP_STATISTICS  && _apps[i].id == 3) ||
-            (_mode == Mode::APP_PROBABILITY && _apps[i].id == 4) ||
-            (_mode == Mode::APP_SEQUENCE    && _apps[i].id == 5) ||
+        if ((_mode == Mode::APP_STATISTICS  && _apps[i].id == 4) ||
+            (_mode == Mode::APP_PROBABILITY && _apps[i].id == 5) ||
+            (_mode == Mode::APP_MATRICES    && _apps[i].id == 7) ||
             (_mode == Mode::APP_REGRESSION  && _apps[i].id == 6) ||
-            (_mode == Mode::APP_PYTHON      && _apps[i].id == 7) ||
-            (_mode == Mode::APP_SETTINGS    && _apps[i].id == 8)) {
+            (_mode == Mode::APP_PYTHON      && _apps[i].id == 8) ||
+            (_mode == Mode::APP_SETTINGS    && _apps[i].id == 9)) {
             appName = _apps[i].name;
             break;
         }

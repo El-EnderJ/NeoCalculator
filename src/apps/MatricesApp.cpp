@@ -54,7 +54,7 @@ MatricesApp::MatricesApp()
     , _editing(false)
     , _editLen(0)
     , _pendingOp(Op::NONE)
-    , _opFirstMat(0)
+    , _opFirstMat(-1)
     , _pickingSecond(false)
 {
     memset(_editBuf, 0, sizeof(_editBuf));
@@ -694,7 +694,7 @@ void MatricesApp::handleKeyManager(const KeyEvent& ev) {
     int totalItems = NUM_MATS + 5;  // 3 matrices + 5 operations
 
     if (_pickingSecond) {
-        // Only accept matrix selection (0-2) or cancel
+        // Navigate matrices only
         if (ev.code == KeyCode::LEFT) {
             if (_selectedItem > 0) { --_selectedItem; updateManagerStyles(); }
             return;
@@ -705,15 +705,30 @@ void MatricesApp::handleKeyManager(const KeyEvent& ev) {
         }
         if (ev.code == KeyCode::ENTER) {
             if (_selectedItem < NUM_MATS) {
-                executeOp(_pendingOp, _opFirstMat, _selectedItem);
+                if (_pendingOp == Op::DET || _pendingOp == Op::INV) {
+                    // Single-operand: selected matrix is the operand
+                    executeOp(_pendingOp, _selectedItem);
+                } else if (_opFirstMat < 0) {
+                    // Binary op: first operand chosen, now pick second
+                    _opFirstMat = _selectedItem;
+                    if (_managerHint)
+                        lv_label_set_text(_managerHint, "Select SECOND matrix, then ENTER");
+                    updateManagerStyles();
+                    return;
+                } else {
+                    // Binary op: second operand chosen, execute
+                    executeOp(_pendingOp, _opFirstMat, _selectedItem);
+                }
                 _pickingSecond = false;
                 _pendingOp = Op::NONE;
+                _opFirstMat = -1;
             }
             return;
         }
         if (ev.code == KeyCode::AC) {
             _pickingSecond = false;
             _pendingOp = Op::NONE;
+            _opFirstMat = -1;
             updateManagerStyles();
             return;
         }
@@ -760,15 +775,14 @@ void MatricesApp::handleKeyManager(const KeyEvent& ev) {
                 Op op = ops[opIdx];
 
                 if (op == Op::DET || op == Op::INV) {
-                    // Single operand: use first selected matrix (default: MatA=0)
-                    // Let user pick which matrix
+                    // Single operand: let user pick which matrix
                     _pendingOp = op;
-                    _opFirstMat = 0;
+                    _opFirstMat = -1;
                     _selectedItem = 0;  // Highlight MatA
                     _pickingSecond = true;
                     if (_managerHint) {
                         const char* opName = (op == Op::DET) ? "det" : "inverse";
-                        char hint[64];
+                        char hint[80];
                         snprintf(hint, sizeof(hint), "Select matrix for %s, then ENTER", opName);
                         lv_label_set_text(_managerHint, hint);
                     }
@@ -776,7 +790,7 @@ void MatricesApp::handleKeyManager(const KeyEvent& ev) {
                 } else {
                     // Two operand: pick first, then second
                     _pendingOp = op;
-                    _opFirstMat = 0;
+                    _opFirstMat = -1;
                     _selectedItem = 0;
                     _pickingSecond = true;
                     if (_managerHint) {

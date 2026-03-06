@@ -149,7 +149,7 @@ void SystemApp::initApps() {
     _apps.emplace_back(4, "Statistics",   icon_Distributions);
     _apps.emplace_back(5, "Probability",  icon_Distributions);
     _apps.emplace_back(6, "Regression",   icon_Regression);
-    _apps.emplace_back(7, "Sequence",     icon_Sequences);
+    _apps.emplace_back(7, "Matrices",     icon_Sequences);
     _apps.emplace_back(8, "Python",       icon_Python);
     _apps.emplace_back(9, "Settings",     icon_Settings);
 }
@@ -639,12 +639,12 @@ void SystemApp::renderAppView() {
     String appName = "App";
     for (int i = 0; i < (int)_apps.size(); i++) {
         // Find the matching app to get its name
-        if ((_mode == Mode::APP_STATISTICS  && _apps[i].id == 3) ||
-            (_mode == Mode::APP_PROBABILITY && _apps[i].id == 4) ||
-            (_mode == Mode::APP_MATRICES    && _apps[i].id == 5) ||
+        if ((_mode == Mode::APP_STATISTICS  && _apps[i].id == 4) ||
+            (_mode == Mode::APP_PROBABILITY && _apps[i].id == 5) ||
+            (_mode == Mode::APP_MATRICES    && _apps[i].id == 7) ||
             (_mode == Mode::APP_REGRESSION  && _apps[i].id == 6) ||
-            (_mode == Mode::APP_PYTHON      && _apps[i].id == 7) ||
-            (_mode == Mode::APP_SETTINGS    && _apps[i].id == 8)) {
+            (_mode == Mode::APP_PYTHON      && _apps[i].id == 8) ||
+            (_mode == Mode::APP_SETTINGS    && _apps[i].id == 9)) {
             appName = _apps[i].name;
             break;
         }

@@ -317,13 +317,21 @@ void SequencesApp::recompute() {
             // Try to parse simple expressions like "2*n+1" or "n^2"
             // This is a basic evaluator; full math engine can be added later
             if (strstr(expr, "n^2")) {
-                // Quadratic: coefficient * n^2 + rest
-                val = (double)(n * n);
+                // Quadratic: a*n^2 + b or just n^2
+                double a = 1.0;
+                double b = 0.0;
+                if (sscanf(expr, "%lf*n^2+%lf", &a, &b) == 2) {
+                    val = a * (double)(n * n) + b;
+                } else if (sscanf(expr, "%lf*n^2", &a) == 1) {
+                    val = a * (double)(n * n);
+                } else {
+                    val = (double)(n * n);
+                }
             } else if (strstr(expr, "*n")) {
                 // Linear: a*n + b
                 double a = 1.0;
                 double b = 0.0;
-                if (sscanf(expr, "%lf*n+%lf", &a, &b) >= 1) {
+                if (sscanf(expr, "%lf*n+%lf", &a, &b) == 2) {
                     val = a * n + b;
                 } else if (sscanf(expr, "%lf*n", &a) == 1) {
                     val = a * n;

@@ -84,9 +84,15 @@ private:
     static constexpr int   ITER_COUNT  = 8;
     static constexpr int   GRID_SNAP   = 10;
 
-    // ── Material properties [WOOD, STEEL, CABLE] ─────────────────────────
-    static constexpr float MAT_ELASTICITY[]  = { 0.8f, 0.3f, 0.5f };
-    static constexpr float MAT_BREAK_POINT[] = { 0.7f, 0.95f, 0.5f };
+    // ── Material indices (match BridgeBeam::material) ──────────────────
+    static constexpr uint8_t MAT_WOOD  = 0;
+    static constexpr uint8_t MAT_STEEL = 1;
+    static constexpr uint8_t MAT_CABLE = 2;
+    static constexpr int     MAT_COUNT = 3;
+
+    // ── Material properties indexed by MAT_WOOD / MAT_STEEL / MAT_CABLE ─
+    static constexpr float MAT_ELASTICITY[MAT_COUNT]  = { 0.8f, 0.3f, 0.5f };
+    static constexpr float MAT_BREAK_POINT[MAT_COUNT] = { 0.7f, 0.95f, 0.5f };
 
     // ── LVGL objects ─────────────────────────────────────────────────────
     lv_obj_t*       _screen;
@@ -103,7 +109,8 @@ private:
     int             _beamCount;
 
     // ── Vehicles ─────────────────────────────────────────────────────────
-    Vehicle         _vehicles[2];   // [0] = truck, [1] = car
+    static constexpr int MAX_VEHICLES = 2;
+    Vehicle         _vehicles[MAX_VEHICLES]; // [0] = truck, [1] = car
 
     // ── Editor / sim state ───────────────────────────────────────────────
     AppMode         _appMode;

@@ -39,6 +39,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _regressionApp(nullptr),
       _matricesApp(nullptr),
       _pythonApp(nullptr),
+      _sequencesApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -120,6 +121,10 @@ void SystemApp::begin() {
     _pythonApp = new PythonApp();
     _pythonApp->begin();
 
+    // ── Create SequencesApp (LVGL-native Sequences) ──
+    _sequencesApp = new SequencesApp();
+    _sequencesApp->begin();
+
     // ── Load apps & go to menu ──
     initApps();
     _mode = Mode::MENU;
@@ -147,16 +152,17 @@ void SystemApp::begin() {
 // ═════════════════════════════════════════════════
 void SystemApp::initApps() {
     _apps.clear();
-    _apps.emplace_back(0, "Calculation",  icon_Calculation);
-    _apps.emplace_back(1, "Grapher",      icon_Grapher);
-    _apps.emplace_back(2, "Equations",    icon_Equations);
-    _apps.emplace_back(3, "Calculus",     icon_Elements);
-    _apps.emplace_back(4, "Statistics",   icon_Distributions);
-    _apps.emplace_back(5, "Probability",  icon_Distributions);
-    _apps.emplace_back(6, "Regression",   icon_Regression);
-    _apps.emplace_back(7, "Matrices",     icon_Sequences);
-    _apps.emplace_back(8, "Python",       icon_Python);
-    _apps.emplace_back(9, "Settings",     icon_Settings);
+    _apps.emplace_back(0,  "Calculation",  icon_Calculation);
+    _apps.emplace_back(1,  "Grapher",      icon_Grapher);
+    _apps.emplace_back(2,  "Equations",    icon_Equations);
+    _apps.emplace_back(3,  "Calculus",     icon_Elements);
+    _apps.emplace_back(4,  "Statistics",   icon_Distributions);
+    _apps.emplace_back(5,  "Probability",  icon_Distributions);
+    _apps.emplace_back(6,  "Regression",   icon_Regression);
+    _apps.emplace_back(7,  "Sequences",    icon_Sequences);
+    _apps.emplace_back(8,  "Python",       icon_Python);
+    _apps.emplace_back(9,  "Matrices",     icon_Inference);
+    _apps.emplace_back(10, "Settings",     icon_Settings);
 }
 
 
@@ -440,6 +446,14 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _matricesApp->handleKey(ev);
             }
             break;
+        // SequencesApp is LVGL-native
+        case Mode::APP_SEQUENCES:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_sequencesApp) {
+                _sequencesApp->handleKey(ev);
+            }
+            break;
         // PythonApp is LVGL-native
         case Mode::APP_PYTHON:
             if (ev.code == KeyCode::MODE) {
@@ -517,6 +531,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_calcApp) _calcApp->load();
+    } else if (id == 1) {
+        // GrapherApp es LVGL-native 2.0
+        g_lvglActive = true;
+        switchApp(id);
+        if (_grapherApp) _grapherApp->load();
     } else if (id == 2) {
         // EquationsApp es LVGL-native: ecuaciones y sistemas
         g_lvglActive = true;
@@ -527,11 +546,6 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_calculusApp) _calculusApp->load();
-    } else if (id == 1) {
-        // GrapherApp es LVGL-native 2.0
-        g_lvglActive = true;
-        switchApp(id);
-        if (_grapherApp) _grapherApp->load();
     } else if (id == 4) {
         // StatisticsApp es LVGL-native
         g_lvglActive = true;
@@ -548,20 +562,25 @@ void SystemApp::launchApp(int id) {
         switchApp(id);
         if (_regressionApp) _regressionApp->load();
     } else if (id == 7) {
-        // MatricesApp es LVGL-native
+        // SequencesApp es LVGL-native
         g_lvglActive = true;
         switchApp(id);
-        if (_matricesApp) _matricesApp->load();
-    } else if (id == 9) {
-        // Settings es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_settingsApp) _settingsApp->load();
+        if (_sequencesApp) _sequencesApp->load();
     } else if (id == 8) {
         // PythonApp es LVGL-native
         g_lvglActive = true;
         switchApp(id);
         if (_pythonApp) _pythonApp->load();
+    } else if (id == 9) {
+        // MatricesApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_matricesApp) _matricesApp->load();
+    } else if (id == 10) {
+        // Settings es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_settingsApp) _settingsApp->load();
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -572,6 +591,12 @@ void SystemApp::launchApp(int id) {
 // returnToMenu() — Reanuda LVGL y recarga el launcher
 // ═════════════════════════════════════════════════
 void SystemApp::returnToMenu() {
+    // ── Load the menu screen FIRST to avoid operating on a deleted active screen ──
+    // This prevents crashes where LVGL tries to access the deleted app screen
+    // during the transition.
+    _mainMenu.load();
+
+    // ── Now safely clean up the previous app ──
     // Si venimos de la CalculationApp (LVGL-native), detener su cursor
     if (_mode == Mode::APP_CALCULATION && _calcApp) {
         _calcApp->end();
@@ -622,27 +647,32 @@ void SystemApp::returnToMenu() {
         _pythonApp->end();
         _pythonApp->begin();
     }
+    // Si venimos de la SequencesApp (LVGL-native)
+    if (_mode == Mode::APP_SEQUENCES && _sequencesApp) {
+        _sequencesApp->end();
+        _sequencesApp->begin();
+    }
 
     _mode    = Mode::MENU;
     _redraw  = false;
     g_lvglActive = true;
-    _mainMenu.load();                     // Activa el screen del launcher
     lv_obj_invalidate(lv_scr_act());      // Fuerza redibujado completo
 }
 
 void SystemApp::switchApp(int id) {
     switch (id) {
-        case 0: _mode = Mode::APP_CALCULATION; break;
-        case 1: _mode = Mode::APP_GRAPHER;     break;
-        case 2: _mode = Mode::APP_EQUATIONS;   break;
-        case 3: _mode = Mode::APP_CALCULUS;    break;
-        case 4: _mode = Mode::APP_STATISTICS;  break;
-        case 5: _mode = Mode::APP_PROBABILITY; break;
-        case 6: _mode = Mode::APP_REGRESSION;  break;
-        case 7: _mode = Mode::APP_MATRICES;    break;
-        case 8: _mode = Mode::APP_PYTHON;      break;
-        case 9: _mode = Mode::APP_SETTINGS;    break;
-        default: _mode = Mode::MENU;           break;
+        case 0:  _mode = Mode::APP_CALCULATION; break;
+        case 1:  _mode = Mode::APP_GRAPHER;     break;
+        case 2:  _mode = Mode::APP_EQUATIONS;   break;
+        case 3:  _mode = Mode::APP_CALCULUS;    break;
+        case 4:  _mode = Mode::APP_STATISTICS;  break;
+        case 5:  _mode = Mode::APP_PROBABILITY; break;
+        case 6:  _mode = Mode::APP_REGRESSION;  break;
+        case 7:  _mode = Mode::APP_SEQUENCES;   break;
+        case 8:  _mode = Mode::APP_PYTHON;      break;
+        case 9:  _mode = Mode::APP_MATRICES;    break;
+        case 10: _mode = Mode::APP_SETTINGS;    break;
+        default: _mode = Mode::MENU;            break;
     }
     _redraw = true;
 }
@@ -663,9 +693,10 @@ void SystemApp::renderAppView() {
         // Find the matching app to get its name
         if ((_mode == Mode::APP_STATISTICS  && _apps[i].id == 4) ||
             (_mode == Mode::APP_PROBABILITY && _apps[i].id == 5) ||
-            (_mode == Mode::APP_MATRICES    && _apps[i].id == 7) ||
+            (_mode == Mode::APP_MATRICES    && _apps[i].id == 9) ||
             (_mode == Mode::APP_REGRESSION  && _apps[i].id == 6) ||
-            (_mode == Mode::APP_SETTINGS    && _apps[i].id == 9)) {
+            (_mode == Mode::APP_SEQUENCES   && _apps[i].id == 7) ||
+            (_mode == Mode::APP_SETTINGS    && _apps[i].id == 10)) {
             appName = _apps[i].name;
             break;
         }

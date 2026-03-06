@@ -69,9 +69,10 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     {  4, "Statistics",   0xE65100,   0xFF8A50 },   // Deep orange
     {  5, "Probability",  0x00897B,   0x40BBA8 },   // Teal
     {  6, "Regression",   0xBF360C,   0xE07040 },   // Brown-red
-    {  7, "Matrices",     0x7B1FA2,   0xAB60D0 },   // Purple
+    {  7, "Sequences",    0x1B5E20,   0x4C9A4E },   // Dark green
     {  8, "Python",       0xF57F17,   0xFAAF50 },   // Amber
-    {  9, "Settings",     0x546E7A,   0x8AA4B0 },   // Blue-grey
+    {  9, "Matrices",     0x7B1FA2,   0xAB60D0 },   // Purple
+    { 10, "Settings",     0x546E7A,   0x8AA4B0 },   // Blue-grey
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);
@@ -539,6 +540,18 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             break;
         }
         case 9: {
+            // Matrices: grid pattern (2×2 matrix)
+            int gs = 6; // grid square size
+            drawRect(cx - 10, cy - 10, cx - 10 + gs, cy - 10 + gs, 1, white, LV_OPA_COVER);
+            drawRect(cx + 2,  cy - 10, cx + 2 + gs,  cy - 10 + gs, 1, light, LV_OPA_80);
+            drawRect(cx - 10, cy + 2,  cx - 10 + gs, cy + 2 + gs,  1, light, LV_OPA_80);
+            drawRect(cx + 2,  cy + 2,  cx + 2 + gs,  cy + 2 + gs,  1, white, LV_OPA_COVER);
+            // Brackets
+            drawLine(cx - 14, cy - 13, cx - 14, cy + 11, 2, white, LV_OPA_60);
+            drawLine(cx + 12, cy - 13, cx + 12, cy + 11, 2, white, LV_OPA_60);
+            break;
+        }
+        case 10: {
             // Settings: gear — concentric ring + centre dot
             drawCircle(cx, cy, 12, light, LV_OPA_40);
             drawCircle(cx, cy, 8,  white, LV_OPA_50);

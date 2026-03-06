@@ -36,6 +36,7 @@
 #include "apps/PythonApp.h"
 #include "apps/SequencesApp.h"
 #include "apps/PeriodicTableApp.h"
+#include "apps/BridgeDesignerApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -60,6 +61,7 @@ enum class Mode : uint8_t {
     APP_SEQUENCES,     // Sequences & series
     APP_PYTHON,        // Python shell (placeholder)
     APP_PERIODIC_TABLE, // Periodic table & chemistry
+    APP_BRIDGE_DESIGNER, // Bridge structural simulator
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
@@ -109,6 +111,7 @@ private:
     PythonApp*      _pythonApp;
     SequencesApp*   _sequencesApp;
     PeriodicTableApp* _periodicTableApp;
+    BridgeDesignerApp* _bridgeDesignerApp;
 
     // Math Engine
     Tokenizer _tokenizer;

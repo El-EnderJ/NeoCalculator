@@ -1,0 +1,31 @@
+C:\.piobuild\numOS/esp32s3_n16r8/lib0b0/lvgl/drivers/display/st7796/lv_st7796.c.o: \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/lv_st7796.c \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/lv_st7796.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/lv_lcd_generic_mipi.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/lv_display.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_types.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/../lv_conf_internal.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/../lv_conf_kconfig.h \
+ /home/runner/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/qio_opi/include/sdkconfig.h \
+ /home/runner/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_common/include/esp_attr.h \
+ src/lv_conf.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_timer.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/../tick/lv_tick.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/../tick/../lv_conf_internal.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/../tick/../misc/lv_types.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_types.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_ll.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_event.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_array.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_color.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_assert.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_log.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/../stdlib/lv_mem.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/../stdlib/../lv_conf_internal.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/../stdlib/lv_string.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/../stdlib/../misc/lv_types.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_math.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_palette.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_color.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_color_op.h \
+ .pio/libdeps/esp32s3_n16r8/lvgl/src/drivers/display/st7796/../lcd/../../../display/../misc/lv_area.h

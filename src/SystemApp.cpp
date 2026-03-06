@@ -41,6 +41,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _pythonApp(nullptr),
       _sequencesApp(nullptr),
       _periodicTableApp(nullptr),
+      _bridgeDesignerApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -88,6 +89,7 @@ void SystemApp::begin() {
     _pythonApp     = new PythonApp();
     _sequencesApp  = new SequencesApp();
     _periodicTableApp = new PeriodicTableApp();
+    _bridgeDesignerApp = new BridgeDesignerApp();
 
     // ── LVGL Launcher (show menu before LittleFS I/O) ──
     initApps();
@@ -163,6 +165,7 @@ void SystemApp::update() {
             case Mode::APP_PYTHON:       if (_pythonApp)      _pythonApp->end();       break;
             case Mode::APP_SEQUENCES:    if (_sequencesApp)   _sequencesApp->end();    break;
             case Mode::APP_PERIODIC_TABLE: if (_periodicTableApp) _periodicTableApp->end(); break;
+            case Mode::APP_BRIDGE_DESIGNER: if (_bridgeDesignerApp) _bridgeDesignerApp->end(); break;
             default: break;
         }
         _pendingTeardownMode = Mode::MENU;  // mark as done
@@ -472,6 +475,14 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _periodicTableApp->handleKey(ev);
             }
             break;
+        // BridgeDesignerApp is LVGL-native
+        case Mode::APP_BRIDGE_DESIGNER:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_bridgeDesignerApp) {
+                _bridgeDesignerApp->handleKey(ev);
+            }
+            break;
         case Mode::APP_TABLE:
             handleKeyApp(ev);
             break;
@@ -596,6 +607,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_periodicTableApp) _periodicTableApp->load();
+    } else if (id == 12) {
+        // BridgeDesignerApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_bridgeDesignerApp) _bridgeDesignerApp->load();
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -644,6 +660,7 @@ void SystemApp::switchApp(int id) {
         case 9:  _mode = Mode::APP_MATRICES;    break;
         case 10: _mode = Mode::APP_SETTINGS;    break;
         case 11: _mode = Mode::APP_PERIODIC_TABLE; break;
+        case 12: _mode = Mode::APP_BRIDGE_DESIGNER; break;
         default: _mode = Mode::MENU;            break;
     }
     _redraw = true;

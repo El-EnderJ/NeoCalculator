@@ -272,6 +272,7 @@ void GrapherApp::createTabBar() {
 static void notebookLinesCb(lv_event_t* e) {
     lv_layer_t* layer = lv_event_get_layer(e);
     lv_obj_t* obj = lv_event_get_target_obj(e);
+    if (!layer || !obj) return;
     lv_area_t coords;
     lv_obj_get_coords(obj, &coords);
 
@@ -404,6 +405,7 @@ static void graphGridDrawCb(lv_event_t* e) {
     lv_layer_t* layer = lv_event_get_layer(e);
     lv_obj_t* obj = lv_event_get_target_obj(e);
     GrapherApp* app = static_cast<GrapherApp*>(lv_event_get_user_data(e));
+    if (!layer || !obj || !app) return;
 
     lv_area_t coords;
     lv_obj_get_coords(obj, &coords);

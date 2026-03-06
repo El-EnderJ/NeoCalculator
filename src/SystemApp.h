@@ -33,6 +33,7 @@
 #include "apps/ProbabilityApp.h"
 #include "apps/RegressionApp.h"
 #include "apps/MatricesApp.h"
+#include "apps/PythonApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -101,6 +102,7 @@ private:
     ProbabilityApp* _probabilityApp;
     RegressionApp*  _regressionApp;
     MatricesApp*    _matricesApp;
+    PythonApp*      _pythonApp;
 
     // Math Engine
     Tokenizer _tokenizer;

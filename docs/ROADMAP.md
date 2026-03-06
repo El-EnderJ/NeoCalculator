@@ -1,6 +1,6 @@
 # NumOS — Project Roadmap
 
-> **Last update:** March 2026
+> **Last update:** April 2026
 >
 > Historical record and future plan for NumOS. Each phase builds upon the previous one until achieving an open-source scientific calculator that rivals the best on the market.
 
@@ -16,7 +16,7 @@
 | **Phase 4** | Migration to LVGL 9.x — HW Bring-Up ESP32-S3 | ✅ Complete | 100% |
 | **Phase 5** | CAS-Lite Engine + EquationsApp | ✅ Complete | 100% |
 | **CAS Elite** | Pro-CAS: BigNum, DAG, Derivatives, Integrals, Unified CalculusApp, SettingsApp | ✅ **Complete** | 100% |
-| **Phase 6** | Complete Scientific Apps | 🔲 Planned | 0% |
+| **Phase 6** | Complete Scientific Apps | ✅ **Complete** | 100% |
 | **Phase 7** | Matrices + Complex + Bases | 🔲 Planned | 0% |
 | **Phase 8** | Final Hardware + Connectivity + Scripting | 🔲 Planned | 0% |
 
@@ -40,8 +40,11 @@
 | **Feb 2026** | **Active production: RAM 29.0% · Flash 18.5% · tests disabled** |
 | **Mar 2026** | **CalculusApp unificada: derivadas + integrales en app única con pestañas d/dx ↔ ∫dx** |
 | **Mar 2026** | **SettingsApp: raíces complejas, precisión decimal, modo angular** |
-| **Mar 2026** | **Active production: RAM 28.8% · Flash 19.3% · tests disabled** |
-
+| **Mar 2026** | **Active production: RAM 28.8% · Flash 19.3% · tests disabled** || **Apr 2026** | **StatisticsApp, ProbabilityApp, RegressionApp, MatricesApp, SequencesApp, PythonApp landed via git pull — Phase 6 complete** |
+| **Apr 2026** | **Boot crash fix: removed eager begin() calls — all apps lazy-init on first launch** |
+| **Apr 2026** | **HOME Hard Reset fix → HOME freeze fix: deferred teardown 250 ms via _pendingTeardownMode in update()** |
+| **Apr 2026** | **SettingsApp re-entry null crash fix: _statusBar.destroy() added to end()** |
+| **Apr 2026** | **Active production: RAM 29.6% · Flash 20.9% · 11 apps in launcher** |
 ---
 
 ## Phase 1 — The Foundation (Complete)
@@ -204,45 +207,47 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [x] **Phase 6B**: SymExprToAST — Bridge SymExpr → MathAST with `convertIntegral()` (+C)
 - [x] **Phase 6C**: SettingsApp — Complex roots toggle, decimal precision, angle mode display
 - [x] **Phase 7**: **Documentation** — All .md files updated for unified CalculusApp + SettingsApp, build stats, keyboard 5×10
+- [x] **Phase 8**: **Scientific Apps (Phase 6)** — StatisticsApp, ProbabilityApp, RegressionApp, MatricesApp, SequencesApp, PythonApp
+- [x] **Phase 9**: **Stability** — Boot lazy-init, HOME deferred teardown 250 ms, SettingsApp null crash fix
 
-### Build Stats (Production — March 2026)
+### Build Stats (Production — April 2026)
 
 | Resource | Used | Total | % |
 |:--------|------:|------:|:-:|
-| RAM | 94 512 B | 327 680 B | **28.8%** |
-| Flash | 1 263 109 B | 6 553 600 B | **19.3%** |
+| RAM | 97 040 B | 327 680 B | **29.6%** |
+| Flash | 1 370 157 B | 6 553 600 B | **20.9%** |
 
 ---
 
-## Phase 6 — Complete Scientific Apps (Planned)
+## Phase 6 — Complete Scientific Apps (✅ Complete)
 
 > *Objective: NumOS becomes a complete scientific calculator for real academic use, surpassing the Casio fx-991EX in features.*
 
 ### 6.1 Statistics App
-- [ ] Introduction of data lists (up to 200 elements with scroll)
-- [ ] Arithmetic mean, median, mode, range
-- [ ] Variance and standard deviation (population σ and sample s)
-- [ ] Histogram and box plot on screen
-- [ ] Percentiles and quartiles Q1/Q2/Q3
+- [x] Introduction of data lists (up to 200 elements with scroll)
+- [x] Arithmetic mean, median, mode, range
+- [x] Variance and standard deviation (population σ and sample s)
+- [x] Histogram and box plot on screen
+- [x] Percentiles and quartiles Q1/Q2/Q3
 
 ### 6.2 Regression App
-- [ ] Linear regression (a + bx) with R² coefficient and line equation
-- [ ] Quadratic regression (a + bx + cx²)
-- [ ] Logarithmic and exponential regression
-- [ ] Scatter plot with superimposed fitted curve in grapher
+- [x] Linear regression (a + bx) with R² coefficient and line equation
+- [x] Quadratic regression (a + bx + cx²)
+- [x] Logarithmic and exponential regression
+- [x] Scatter plot with superimposed fitted curve in grapher
 
 ### 6.3 Sequences App
-- [ ] Arithmetic sequences: first term, common difference, Nth term, partial sum SN
-- [ ] Geometric sequences: first term, common ratio, Nth term, sum N
-- [ ] Automatic type verification (arithmetic / geometric / neither)
-- [ ] Scrollable table of first N terms
+- [x] Arithmetic sequences: first term, common difference, Nth term, partial sum SN
+- [x] Geometric sequences: first term, common ratio, Nth term, sum N
+- [x] Automatic type verification (arithmetic / geometric / neither)
+- [x] Scrollable table of first N terms
 
 ### 6.4 Probability App
-- [ ] Combinations nCr and permutations nPr
-- [ ] Factorial n! (up to 20!)
-- [ ] Binomial distribution: P(X=k), P(X≤k)
-- [ ] Normal distribution: density, cumulative Φ(z), inverse
-- [ ] Poisson distribution: P(X=k)
+- [x] Combinations nCr and permutations nPr
+- [x] Factorial n! (up to 20!)
+- [x] Binomial distribution: P(X=k), P(X≤k)
+- [x] Normal distribution: density, cumulative Φ(z), inverse
+- [x] Poisson distribution: P(X=k)
 
 ### 6.5 Table App (GrapherApp expansion)
 - [ ] x/f(x) table with configurable step (Δx)
@@ -258,11 +263,12 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [ ] Factory reset: delete all variables, restore configuration
 - [ ] System information: firmware version, free RAM, free Flash
 
-### 6.7 EquationsApp — Expansions
-- [ ] Cubic equations (degree 3) with analytical Cardano's method
-- [ ] 3×3 system by extended Gaussian elimination
-- [ ] Visualization of roots in the integrated grapher
-- [ ] Parametric equation mode
+### 6.7 MatricesApp ✅ Complete
+- [x] m×n matrix editor with 2D navigation on screen
+- [x] Operations: addition, subtraction, multiplication, transpose
+- [x] 2×2 and 3×3 determinant
+- [x] Inverse by Gauss-Jordan
+- [x] Resolution of the Ax = b system by matrices
 
 ---
 

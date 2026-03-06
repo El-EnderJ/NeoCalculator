@@ -128,6 +128,13 @@ private:
     bool _hasSteps;
     int _stepScroll;
 
+    // Deferred teardown (SAFE_HOME_EXIT):
+    // After returnToMenu(), the old app screen stays alive for 250ms so that
+    // the LVGL 200ms FADE_IN animation can reference it safely.  _pendingTeardownMode
+    // holds the mode we LEFT; MENU means "nothing to tear down".
+    Mode     _pendingTeardownMode;
+    uint32_t _teardownStartMs;
+
     // Grid Menu state
     std::vector<AppData> _apps;
     int _selectedAppIndex;

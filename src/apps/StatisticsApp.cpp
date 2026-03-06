@@ -91,7 +91,7 @@ void StatisticsApp::begin() {
 void StatisticsApp::end() {
     if (_screen) {
         _statusBar.destroy();
-        lv_obj_del(_screen);
+        lv_obj_delete(_screen);
         _screen     = nullptr;
         _tabBar     = nullptr;
         _dataPanel  = nullptr;

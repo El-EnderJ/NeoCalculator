@@ -146,6 +146,10 @@ void StatusBar::destroy() {
     _separator  = nullptr;
 }
 
+void StatusBar::resetPointers() {
+    destroy();  // idéntico: sólo nulifica punteros, no llama lv_obj_delete
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // setTitle()
 // ════════════════════════════════════════════════════════════════════════════

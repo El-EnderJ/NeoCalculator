@@ -46,6 +46,10 @@ public:
     /** Destruye los widgets LVGL (no llama delete en la pantalla padre). */
     void destroy();
 
+    /** Alias semántico de destroy(): nulifica los punteros internos sin tocar LVGL.
+     *  Usar desde App::end() después de lv_obj_delete(screen). */
+    void resetPointers();
+
     // ── Contenido dinámico ───────────────────────────────────────────────
 
     /** Establece el título centrado (nombre de la app activa). */

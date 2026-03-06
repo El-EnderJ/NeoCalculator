@@ -72,7 +72,8 @@ void SettingsApp::begin() {
 
 void SettingsApp::end() {
     if (_screen) {
-        lv_obj_del(_screen);
+        _statusBar.destroy();   // nullify dangling pointers before parent screen is freed
+        lv_obj_delete(_screen);
         _screen    = nullptr;
         _container = nullptr;
         _hintLabel = nullptr;

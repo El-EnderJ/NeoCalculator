@@ -179,8 +179,8 @@ bool VariableManager::saveToFlash() {
 // ════════════════════════════════════════════════════════════════════════════
 
 bool VariableManager::loadFromFlash() {
-    if (!LittleFS.exists(FLASH_PATH)) return false;
-
+    // Attempt open directly — avoids LittleFS.exists() which internally calls
+    // open("r") and emits log_e via vfs_api.cpp:105 when the file is absent.
     File f = LittleFS.open(FLASH_PATH, "r");
     if (!f) return false;
 

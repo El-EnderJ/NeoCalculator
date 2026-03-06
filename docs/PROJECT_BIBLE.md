@@ -4,7 +4,7 @@
 >
 > **Platform**: ESP32-S3 N16R8 CAM · **UI**: LVGL 9.5
 > **Language**: C++17 · **Pro-CAS Engine**: Active Production
-> **Last Update**: March 2026
+> **Last Update**: April 2026
 
 ---
 
@@ -15,7 +15,7 @@
 3. [Pro-CAS Engine — Internal Architecture](#3-pro-cas-engine--internal-architecture)
 4. [Modules — Complete Inventory](#4-modules--complete-inventory)
 5. [Build Configuration](#5-build-configuration)
-6. [Current State (February 2026)](#6-current-state-february-2026)
+6. [Current State (April 2026)](#6-current-state-april-2026)
 7. [Code Style Guide](#7-code-style-guide)
 8. [How to Add a New App](#8-how-to-add-a-new-app)
 9. [How to Add a Math Function](#9-how-to-add-a-math-function)
@@ -122,29 +122,44 @@
 | **LvglKeypad** | Initializes LVGL indev type `KEYPAD` |
 
 ```cpp
-enum class Mode { MENU, APP };
+enum class Mode { MENU, APP_CALCULATION, APP_GRAPHER, APP_EQUATIONS,
+                  APP_CALCULUS, APP_SETTINGS, APP_STATISTICS,
+                  APP_PROBABILITY, APP_REGRESSION, APP_MATRICES,
+                  APP_PYTHON, APP_SEQUENCES };
 
-// Lifecycle of an app:
-// 1. User selects icon → ENTER
-// 2. SystemApp: app->begin(), g_lvglActive=true/false, mode=APP
+// Lazy-init lifecycle of an app:
+// 1. Boot: all apps are new'd (no LVGL work) — cheap.
+// 2. User selects icon → ENTER → launchApp():
+//    app->load() calls if (!_screen) begin()  [lazy LVGL creation]
+//    g_lvglActive = true, _mode = APP_*
 // 3. update() → app->update()
-// 4. injectKey(key):
-//    - if key==MODE → returnToMenu(): app->end()+app->begin() reset + mode=MENU
-//    - else → app->handleKey(key)
+// 4. injectKey(key==MODE) → returnToMenu() [DEFERRED TEARDOWN]:
+//    a) _mainMenu.load()          ← starts 200 ms FADE_IN animation
+//    b) _pendingTeardownMode = _mode, _teardownStartMs = millis()
+//    c) _mode = MENU  — returns immediately (no end() yet!)
+// 5. 250 ms later inside update():
+//    app->end() is called — animation has already completed, safe to delete
+// This 250 ms gap prevents use-after-free corruption of the LVGL
+// animation object list that caused an infinite loop in lv_timer_handler().
 ```
 
 ### 2.3 Apps Interface
 
 ```cpp
-void begin();                  // Create LVGL screen, initialize state
-void end();                    // Destroy screen, free resources (inc. PSRAM steps)
-void load();                   // App visible (post-transition)
+void begin();                  // Create LVGL screen, initialize state (lazy: called by load())
+void end();                    // Destroy screen, free resources (called by deferred teardown)
+void load();                   // Make app visible: calls begin() if needed, then loads screen
 void handleKey(KeyCode key);   // Process user input
 void update();                 // Periodic tick (~60 fps)
 ```
 
-**LVGL-native apps**: `CalculationApp`, `GrapherApp`, `EquationsApp`, `CalculusApp`, `SettingsApp`, `MainMenu` → `g_lvglActive = true`.  
-**TFT-direct apps**: pending full implementation → `g_lvglActive = false`.
+**Critical rule for `end()`**: must call `_statusBar.destroy()` *before* `lv_obj_delete(_screen)`.  
+This prevents `StatusBar::create()` from misfiring its `if (_bar) return` guard on dangling pointers  
+when the app is reopened. Every app (`CalculationApp`, `GrapherApp`, `EquationsApp`, `CalculusApp`,  
+`SettingsApp`, `StatisticsApp`, `ProbabilityApp`, `RegressionApp`, `MatricesApp`, `SequencesApp`,  
+`PythonApp`) follows this pattern.
+
+**LVGL-native apps**: All current apps → `g_lvglActive = true`.
 
 ### 2.4 EquationsApp — Internal Flow
 
@@ -341,14 +356,17 @@ Without this, PSRAM accumulates allocations between app sessions.
 
 | App | File | Status | Description |
 |:----|:-----|:------:|:------------|
-| `CalculationApp` | `apps/CalculationApp.cpp/.h` | ✅ | Natural VPAM, history 32, variables |
-| `GrapherApp` | `apps/GrapherApp.cpp/.h` | ✅ | y=f(x), zoom, pan, table (UI base) |
-| `EquationsApp` | `apps/EquationsApp.cpp/.h` | ✅ | Pro-CAS: 1-var, 2×2, steps in PSRAM |
-| `CalculusApp` | `apps/CalculusApp.cpp/.h` | ✅ | Pro-CAS: unified derivatives (d/dx) + integrals (∫dx), tab switch, steps |
-| `SettingsApp` | `apps/SettingsApp.cpp/.h` | ✅ | Settings: complex roots, decimal precision, angle mode |
-| Sequences, Statistics, Regression | — | 🔲 | Phase 6 Pending |
-| Table, Probability | — | 🔲 | Phase 6 Pending |
-| Python | — | 🔲 | Placeholder (Lua future) |
+| `CalculationApp` | `apps/CalculationApp.cpp/.h` | ✅ | Natural VPAM, history 32, A-Z+Ans variables |
+| `GrapherApp` | `apps/GrapherApp.cpp/.h` | ✅ | y=f(x), zoom, pan, expression list, table |
+| `EquationsApp` | `apps/EquationsApp.cpp/.h` | ✅ | Pro-CAS: 1-var, 2×2 (linear+NL), PSRAM steps |
+| `CalculusApp` | `apps/CalculusApp.cpp/.h` | ✅ | Pro-CAS: symbolic d/dx (17 rules) + ∯dx (Slagle), tabs, +C, steps |
+| `SettingsApp` | `apps/SettingsApp.cpp/.h` | ✅ | Complex roots toggle, decimal precision, angle mode |
+| `StatisticsApp` | `apps/StatisticsApp.cpp/.h` | ✅ | Data lists, mean/median/σ/s, histogram UI |
+| `ProbabilityApp` | `apps/ProbabilityApp.cpp/.h` | ✅ | nCr, nPr, n!, binomial, normal, Poisson distributions |
+| `RegressionApp` | `apps/RegressionApp.cpp/.h` | ✅ | Linear/quadratic/log/exp regression, R², scatter plot |
+| `MatricesApp` | `apps/MatricesApp.cpp/.h` | ✅ | m×n editor, +/−/×/transp., det, inverse, Ax=b |
+| `SequencesApp` | `apps/SequencesApp.cpp/.h` | ✅ | Arithmetic/geometric sequences, Nth term, partial sums |
+| `PythonApp` | `apps/PythonApp.cpp/.h` | ⚠️ | Placeholder UI (Lua/MicroPython scripting — Phase 8) |
 
 ### UI
 
@@ -434,35 +452,43 @@ buf1 = ps_malloc(6400);
 
 ---
 
-## 6. Current State (March 2026)
+## 6. Current State (April 2026)
 
 ### In production
 
-- ✅ Stable boot ESP32-S3 N16R8 CAM — no panics
+- ✅ Stable boot ESP32-S3 N16R8 CAM — no panics, lazy-init (no begin() at boot)
 - ✅ ILI9341 IPS @10 MHz — no artifacts
 - ✅ LVGL 9.5.0 double DMA buffer — launcher visible
 - ✅ Animated SplashScreen
 - ✅ SerialBridge — key echo, 5 s heartbeat
-- ✅ LittleFS — persistent variables
+- ✅ LittleFS — persistent variables (proactive /vars.dat creation on first boot)
 - ✅ CalculationApp — Natural VPAM, history 32, A-Z+Ans
-- ✅ GrapherApp — y=f(x) zoom/pan
+- ✅ GrapherApp — y=f(x) zoom/pan, expression list, values table
 - ✅ **Pro-CAS Engine** — SymExpr DAG, CASInt, CASRational, SymDiff, SymIntegrate, SymSimplify, OmniSolver, SymPolyMulti
 - ✅ **EquationsApp** — 4 states, modes 1-var and 2×2 (linear + NL), PSRAM steps
-- ✅ **CalculusApp** — Unified: symbolic derivatives (17 rules) + integrals (Slagle), tab-based d/dx ↔ ∫dx mode switching, simplification, steps
+- ✅ **CalculusApp** — Unified: symbolic derivatives (17 rules) + integrals (Slagle), tab-based d/dx ↔ ∯dx mode switching, simplification, steps
 - ✅ **SettingsApp** — Complex roots toggle, decimal precision selector, angle mode
+- ✅ **StatisticsApp** — Data lists, descriptive statistics (μ, σ, median, mode), histogram UI
+- ✅ **ProbabilityApp** — nCr, nPr, n!, binomial, normal (PDF/CDF/inverse), Poisson
+- ✅ **RegressionApp** — Linear/quadratic/log/exp regression, R², scatter plot
+- ✅ **MatricesApp** — m×n editor, +/−/×/transpose, det (2×2, 3×3), inverse, Ax=b
+- ✅ **SequencesApp** — Arithmetic/geometric sequences, Nth term, partial sums Sn
+- ⚠️ **PythonApp** — Placeholder UI present; scripting engine pending Phase 8
+- ✅ **Deferred teardown** — HOME key triggers 250 ms deferred end() to let FADE_IN animation complete safely
 - ✅ **85+ CAS tests** — all passing (disabled in production)
 
 ### Build Stats
 
 | Resource | Used | Total | % |
 |:---------|-----:|------:|:-:|
-| RAM | 94 512 B | 327 680 B | **28.8%** |
-| Flash | 1 263 109 B | 6 553 600 B | **19.3%** |
+| RAM | 97 040 B | 327 680 B | **29.6%** |
+| Flash | 1 370 157 B | 6 553 600 B | **20.9%** |
 
 ### Pending
 
-- ⏳ 5 apps with logic: Statistics, Regression, Sequences, Table, Probability
-- ⏳ Advanced CAS: definite integrals, matrices, complex numbers
+- ⏳ PythonApp scripting engine (Lua/MicroPython — Phase 8)
+- ⏳ Table App (GrapherApp x/f(x) expansion)
+- ⏳ Advanced CAS: definite integrals, complex numbers
 - ⏳ Custom PCB, battery, 3D case, WiFi OTA
 
 ---
@@ -595,8 +621,11 @@ steps.add(StepType::INFO, "Cardano's Method (degree 3)");
 | EquationsApp incorrect result | ASTFlattener didn't recognize node | Review `ASTFlattener::visit*()` |
 | PSRAM grows between sessions | `end()` without `.clear()` in StepVec | Verify `_singleResult.steps.clear()` in `end()` |
 | `ConstKind::Euler` doesn't compile | Enum uses `ConstKind::E` | Use `ConstKind::E` in `SymToAST.cpp` |
+| App re-entry crash (NULL dereference in StatusBar) | `end()` missing `_statusBar.destroy()` | Add `_statusBar.destroy()` before `lv_obj_delete(_screen)` in every `end()` |
+| HOME key freeze / no heartbeat (infinite loop in LVGL) | `lv_obj_delete` or `lv_obj_delete_async` called while FADE_IN animation holds screen reference | Use deferred teardown: `returnToMenu()` only records `_pendingTeardownMode`; `end()` called 250 ms later in `update()` |
+| Hard Reset (Guru Meditation) on HOME key | Sync `lv_obj_delete` during live FADE_IN animation — same as above | Same fix: deferred teardown in `SystemApp` |
 
 ---
 
 *NumOS — Open-source scientific calculator OS for ESP32-S3 N16R8.*
-*Master documentation — last update: March 2026*
+*Master documentation — last update: April 2026*

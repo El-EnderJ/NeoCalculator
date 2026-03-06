@@ -55,7 +55,9 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _stepScroll(0),
       _selectedAppIndex(0),
       _menuScrollOffset(0),
-      _redraw(true)
+      _redraw(true),
+      _pendingTeardownMode(Mode::MENU),
+      _teardownStartMs(0)
 {
 }
 
@@ -68,83 +70,51 @@ void SystemApp::begin() {
     _equationSolver.setAngleMode(_angleMode);
     _graphView.setAngleMode(_angleMode);
 
-    // ── LittleFS: cargar variables persistidas ──
-    if (LittleFS.begin(true)) {   // true = formatOnFail
-        if (vpam::VariableManager::instance().loadFromFlash()) {
-            Serial.println("[SYSTEM] LittleFS OK, variables loaded");
-        } else {
-            Serial.println("[SYSTEM] LittleFS OK, vars.dat not found (first boot)");
-        }
-    } else {
-        Serial.println("[SYSTEM] LittleFS FAIL (continuing without persistence)");
-    }
-
-    // ── Create CalculationApp (LVGL-native VPAM) ──
-    _calcApp = new CalculationApp();
-    _calcApp->begin();
-
-    // ── Create GrapherApp (LVGL-native 2.0) ──
-    // Lazy-init: begin() se llama en load() la primera vez que el
-    // usuario abre la app.  Llamarlo aqui durante el boot bloquea
-    // el sistema porque LVGL no esta bombeando todavia.
-    _grapherApp = new GrapherApp();
-
-    // ── Create EquationsApp (LVGL-native CAS-Lite) ──
-    _equationsApp = new EquationsApp();
-    _equationsApp->begin();
-
-    // ── Create CalculusApp (LVGL-native Derivatives + Integrals) ──
-    _calculusApp = new CalculusApp();
-    _calculusApp->begin();
-
-    // ── Create SettingsApp (LVGL-native Settings) ──
-    _settingsApp = new SettingsApp();
-    _settingsApp->begin();
-
-    // ── Create StatisticsApp (LVGL-native Statistics) ──
+    // ── Instantiate all apps (lazy-init: begin() deferred to first load()) ──
+    // IMPORTANT: Do NOT call ->begin() here. Each app's load() checks
+    // `if (!_screen) begin()` so screens are created on first use only.
+    // Calling begin() on 10 apps simultaneously at boot exhausts LVGL heap
+    // before lv_timer_handler() ever runs, causing a watchdog/abort crash.
+    _calcApp       = new CalculationApp();
+    _grapherApp    = new GrapherApp();
+    _equationsApp  = new EquationsApp();
+    _calculusApp   = new CalculusApp();
+    _settingsApp   = new SettingsApp();
     _statisticsApp = new StatisticsApp();
-    _statisticsApp->begin();
-
-    // ── Create ProbabilityApp (LVGL-native Distributions) ──
     _probabilityApp = new ProbabilityApp();
-    _probabilityApp->begin();
-
-    // ── Create RegressionApp (LVGL-native Regression) ──
     _regressionApp = new RegressionApp();
-    _regressionApp->begin();
+    _matricesApp   = new MatricesApp();
+    _pythonApp     = new PythonApp();
+    _sequencesApp  = new SequencesApp();
 
-    // ── Create MatricesApp (LVGL-native Matrices) ──
-    _matricesApp = new MatricesApp();
-    _matricesApp->begin();
-
-    // ── Create PythonApp (LVGL-native Python IDE) ──
-    _pythonApp = new PythonApp();
-    _pythonApp->begin();
-
-    // ── Create SequencesApp (LVGL-native Sequences) ──
-    _sequencesApp = new SequencesApp();
-    _sequencesApp->begin();
-
-    // ── Load apps & go to menu ──
+    // ── LVGL Launcher (show menu before LittleFS I/O) ──
     initApps();
     _mode = Mode::MENU;
     _selectedAppIndex = 0;
     _redraw = false;
 
-    // ── LVGL Launcher ──
-    // Registra el callback que LVGL llamará cuando el usuario pulse ENTER
-    // sobre una card del grid (evento LV_EVENT_CLICKED).
     _mainMenu.setLaunchCallback([this](int id) { launchApp(id); });
-
-    // Construye los widgets LVGL del launcher (llamar una sola vez).
     _mainMenu.create();
-
-    // Conecta el indev del teclado físico al grupo de foco del launcher.
     lv_indev_set_group(LvglKeypad::indev(), _mainMenu.group());
-
-    // Activa la pantalla del launcher (la hace visible).
     _mainMenu.load();
     g_lvglActive = true;
+
+    // ── LittleFS: cargar variables persistidas ──
+    // Done AFTER menu is ready so user sees the UI, not a black screen.
+    // Proactively create vars.dat on first boot to silence vfs_api.cpp:105.
+    if (LittleFS.begin(true)) {   // true = formatOnFail
+        if (!LittleFS.exists("/vars.dat")) {
+            auto f = LittleFS.open("/vars.dat", "w");
+            if (f) { f.write(static_cast<uint8_t>(0)); f.close(); }
+        }
+        if (vpam::VariableManager::instance().loadFromFlash()) {
+            Serial.println("[SYSTEM] LittleFS OK, variables loaded");
+        } else {
+            Serial.println("[SYSTEM] LittleFS OK, vars.dat empty (first boot)");
+        }
+    } else {
+        Serial.println("[SYSTEM] LittleFS FAIL (continuing without persistence)");
+    }
 }
 
 // ═════════════════════════════════════════════════
@@ -170,6 +140,32 @@ void SystemApp::initApps() {
 // update() — Main loop tick (called every frame)
 // ═════════════════════════════════════════════════
 void SystemApp::update() {
+    // ── Deferred teardown (SAFE_HOME_EXIT) ──
+    // After returnToMenu(), we wait 250ms before destroying the old app screen.
+    // This ensures the 200ms LVGL FADE_IN animation has fully completed and
+    // is no longer referencing the outgoing screen's objects.
+    if (_pendingTeardownMode != Mode::MENU &&
+        millis() - _teardownStartMs > 250) {
+        Serial.printf("[RTM] Deferred teardown: destroying mode=%d\n",
+                      (int)_pendingTeardownMode);
+        switch (_pendingTeardownMode) {
+            case Mode::APP_CALCULATION:  if (_calcApp)        _calcApp->end();         break;
+            case Mode::APP_EQUATIONS:    if (_equationsApp)   _equationsApp->end();    break;
+            case Mode::APP_CALCULUS:     if (_calculusApp)    _calculusApp->end();     break;
+            case Mode::APP_GRAPHER:      if (_grapherApp)     _grapherApp->end();      break;
+            case Mode::APP_SETTINGS:     if (_settingsApp)    _settingsApp->end();     break;
+            case Mode::APP_STATISTICS:   if (_statisticsApp)  _statisticsApp->end();   break;
+            case Mode::APP_PROBABILITY:  if (_probabilityApp) _probabilityApp->end();  break;
+            case Mode::APP_REGRESSION:   if (_regressionApp)  _regressionApp->end();   break;
+            case Mode::APP_MATRICES:     if (_matricesApp)    _matricesApp->end();     break;
+            case Mode::APP_PYTHON:       if (_pythonApp)      _pythonApp->end();       break;
+            case Mode::APP_SEQUENCES:    if (_sequencesApp)   _sequencesApp->end();    break;
+            default: break;
+        }
+        _pendingTeardownMode = Mode::MENU;  // mark as done
+        Serial.println("[RTM] Deferred teardown complete.");
+    }
+
     _keypad.update();
 
     KeyEvent ev;
@@ -588,75 +584,31 @@ void SystemApp::launchApp(int id) {
 }
 
 // ═════════════════════════════════════════════════
-// returnToMenu() — Reanuda LVGL y recarga el launcher
+// returnToMenu() — Safe exit protocol (SAFE_HOME_EXIT)
 // ═════════════════════════════════════════════════
 void SystemApp::returnToMenu() {
-    // ── Load the menu screen FIRST to avoid operating on a deleted active screen ──
-    // This prevents crashes where LVGL tries to access the deleted app screen
-    // during the transition.
+    Serial.printf("[RTM] Entering returnToMenu — mode=%d\n", (int)_mode);
+
+    // ── Step 1: Switch the active LVGL screen to the menu FIRST.
+    //    This starts a 200ms FADE_IN animation. The old app screen
+    //    remains in memory — it is still referenced by the animation.
     _mainMenu.load();
+    Serial.println("[RTM] Menu screen loaded.");
 
-    // ── Now safely clean up the previous app ──
-    // Si venimos de la CalculationApp (LVGL-native), detener su cursor
-    if (_mode == Mode::APP_CALCULATION && _calcApp) {
-        _calcApp->end();
-        _calcApp->begin();   // Recrear para la próxima vez
-    }
-    // Si venimos de la EquationsApp (LVGL-native)
-    if (_mode == Mode::APP_EQUATIONS && _equationsApp) {
-        _equationsApp->end();
-        _equationsApp->begin();
-    }
-    // Si venimos de la CalculusApp (LVGL-native)
-    if (_mode == Mode::APP_CALCULUS && _calculusApp) {
-        _calculusApp->end();
-        _calculusApp->begin();
-    }
-    // Si venimos de la GrapherApp (LVGL-native 2.0)
-    // Solo end(); load()->begin() reconstruye en la proxima apertura.
-    if (_mode == Mode::APP_GRAPHER && _grapherApp) {
-        _grapherApp->end();
-    }
-    // Si venimos de la SettingsApp (LVGL-native)
-    if (_mode == Mode::APP_SETTINGS && _settingsApp) {
-        _settingsApp->end();
-        _settingsApp->begin();
-    }
-    // Si venimos de la StatisticsApp (LVGL-native)
-    if (_mode == Mode::APP_STATISTICS && _statisticsApp) {
-        _statisticsApp->end();
-        _statisticsApp->begin();
-    }
-    // Si venimos de la ProbabilityApp (LVGL-native)
-    if (_mode == Mode::APP_PROBABILITY && _probabilityApp) {
-        _probabilityApp->end();
-        _probabilityApp->begin();
-    }
-    // Si venimos de la RegressionApp (LVGL-native)
-    if (_mode == Mode::APP_REGRESSION && _regressionApp) {
-        _regressionApp->end();
-        _regressionApp->begin();
-    }
-    // Si venimos de la MatricesApp (LVGL-native)
-    if (_mode == Mode::APP_MATRICES && _matricesApp) {
-        _matricesApp->end();
-        _matricesApp->begin();
-    }
-    // Si venimos de la PythonApp (LVGL-native)
-    if (_mode == Mode::APP_PYTHON && _pythonApp) {
-        _pythonApp->end();
-        _pythonApp->begin();
-    }
-    // Si venimos de la SequencesApp (LVGL-native)
-    if (_mode == Mode::APP_SEQUENCES && _sequencesApp) {
-        _sequencesApp->end();
-        _sequencesApp->begin();
-    }
+    // ── Step 2: Record which app needs to be torn down, but do NOT
+    //    call end() yet.  The deferred teardown in update() will call
+    //    end() after 250ms, once the fade animation has fully completed.
+    //    This prevents the use-after-free that caused the freeze.
+    _pendingTeardownMode = _mode;     // remember what to destroy
+    _teardownStartMs     = millis();
 
-    _mode    = Mode::MENU;
-    _redraw  = false;
+    // ── Step 3: Transition mode to MENU immediately so key routing
+    //    and rendering are correct from the very next update() tick.
+    _mode        = Mode::MENU;
+    _redraw      = false;
     g_lvglActive = true;
-    lv_obj_invalidate(lv_scr_act());      // Fuerza redibujado completo
+
+    Serial.println("[RTM] returnToMenu complete — teardown deferred 250ms.");
 }
 
 void SystemApp::switchApp(int id) {

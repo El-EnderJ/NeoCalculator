@@ -171,6 +171,40 @@ private:
     int         _meterNodeB;        // probe B node (-1 = inactive)
     bool        _meterActive;       // multimeter display enabled
 
+    // ── Simulation speed ────────────────────────────────────────────────
+    enum class SimSpeed : uint8_t { SPEED_1X = 0, SPEED_05X, SPEED_025X, PAUSED };
+    SimSpeed    _simSpeed;
+
+    // ── Voltage heatmap toggle ──────────────────────────────────────────
+    bool        _voltageHeatmap;
+
+    // ── Undo/Redo system ────────────────────────────────────────────────
+    static constexpr int MAX_UNDO = 8;
+    struct UndoSnapshot {
+        int compCount;
+        struct CompData {
+            int typeVal, gridX, gridY, nodeA, nodeB;
+            float param1, param2;
+            int extra1, extra2;
+            char label[5];
+        } comps[MAX_COMPONENTS];
+    };
+    UndoSnapshot _undoBuffer[MAX_UNDO];
+    int          _undoHead;
+    int          _undoCount;
+
+    // ── Auto-save timer ─────────────────────────────────────────────────
+    uint32_t    _lastEditTime;
+    static constexpr uint32_t AUTOSAVE_INTERVAL_MS = 30000;
+
+    // ── IDE (Programming Editor) ────────────────────────────────────────
+    bool        _ideOpen;
+    lv_obj_t*   _ideTextArea;
+    lv_obj_t*   _ideContainer;
+    lv_obj_t*   _ideAutoLabel;
+    char        _ideBuffer[512];
+    int         _ideBufferLen;
+
     // ── Tooltip descriptions (now provided by ComponentFactory) ────────
 
     // ── UI construction ─────────────────────────────────────────────────
@@ -200,7 +234,6 @@ private:
 
     // ── Visual enhancements ─────────────────────────────────────────────
     void drawNodeLabels(lv_layer_t* layer, int objX, int objY);
-    void drawCurrentDots(lv_layer_t* layer, int objX, int objY);
 
     // ── Persistence (LittleFS) ──────────────────────────────────────────
     void saveCircuit(const char* filename);
@@ -216,6 +249,28 @@ private:
     // ── Multimeter ──────────────────────────────────────────────────────
     void drawMultimeter(lv_layer_t* layer, int objX, int objY);
     void probeMultimeter(int gx, int gy);
+
+    // ── Undo/Redo ───────────────────────────────────────────────────────
+    void saveUndoSnapshot();
+    void performUndo();
+
+    // ── Voltage heatmap drawing ─────────────────────────────────────────
+    void drawVoltageHeatmap(lv_layer_t* layer, int objX, int objY);
+
+    // ── Current arrows ──────────────────────────────────────────────────
+    void drawCurrentArrows(lv_layer_t* layer, int objX, int objY);
+
+    // ── Circuit sharing ─────────────────────────────────────────────────
+    void generateShareString(char* outBuf, int maxLen);
+
+    // ── Property editor ─────────────────────────────────────────────────
+    void openPropertyEditor(CircuitComponent* comp);
+
+    // ── IDE ──────────────────────────────────────────────────────────────
+    void openIDE();
+    void closeIDE();
+    void updateAutoComplete();
+    void handleKeyIDE(const KeyEvent& ev);
 
     // ── Toolbar pages ───────────────────────────────────────────────────
     void rebuildToolbarPage();

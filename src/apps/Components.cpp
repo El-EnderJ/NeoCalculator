@@ -21,6 +21,41 @@ static inline int px(int gridCoord, int offset) {
     return gridCoord + offset;
 }
 
+// ── Helper: draw a broken component (dark gray rect with "X") ───────────────
+static void drawBrokenOverlay(lv_layer_t* layer, int cx, int cy) {
+    lv_draw_rect_dsc_t rdsc;
+    lv_draw_rect_dsc_init(&rdsc);
+    rdsc.bg_color = lv_color_hex(0x333333);
+    rdsc.bg_opa   = LV_OPA_COVER;
+    rdsc.border_color = lv_color_hex(0x666666);
+    rdsc.border_width = 1;
+    rdsc.radius = 2;
+    lv_area_t area;
+    area.x1 = cx - 12; area.y1 = cy - 10;
+    area.x2 = cx + 12; area.y2 = cy + 10;
+    lv_draw_rect(layer, &rdsc, &area);
+
+    lv_draw_line_dsc_t ldsc;
+    lv_draw_line_dsc_init(&ldsc);
+    ldsc.color = lv_color_hex(0xFF4444);
+    ldsc.width = 2;
+    ldsc.p1.x = cx - 8; ldsc.p1.y = cy - 6;
+    ldsc.p2.x = cx + 8; ldsc.p2.y = cy + 6;
+    lv_draw_line(layer, &ldsc);
+    ldsc.p1.x = cx + 8; ldsc.p1.y = cy - 6;
+    ldsc.p2.x = cx - 8; ldsc.p2.y = cy + 6;
+    lv_draw_line(layer, &ldsc);
+}
+
+// ── Base class: checkStress default implementation ──────────────────────────
+void CircuitComponent::checkStress(MnaMatrix& mna) {
+    if (_isBroken) return;
+    float vA = mna.nodeVoltage(_nodeA);
+    float vB = mna.nodeVoltage(_nodeB);
+    float vDrop = fabsf(vA - vB);
+    if (vDrop > _maxVoltage) { _isBroken = true; return; }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Resistor
 // ══════════════════════════════════════════════════════════════════════════════
@@ -31,14 +66,15 @@ Resistor::Resistor(int gridX, int gridY, float ohms)
 {}
 
 void Resistor::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     // G_aa += 1/R, G_bb += 1/R, G_ab -= 1/R, G_ba -= 1/R
     mna.stampResistor(_nodeA, _nodeB, _resistance);
 }
 
 void Resistor::draw(lv_layer_t* layer, int offsetX, int offsetY) {
-    // Draw a zigzag resistor symbol (horizontal, 40px wide)
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -78,13 +114,14 @@ VoltageSource::VoltageSource(int gridX, int gridY, float volts)
 {}
 
 void VoltageSource::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     mna.stampVoltageSource(_nodeA, _nodeB, _voltage, _vsIndex);
 }
 
 void VoltageSource::draw(lv_layer_t* layer, int offsetX, int offsetY) {
-    // Draw as two parallel lines (long + short) = battery symbol
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -128,9 +165,10 @@ LEDComponent::LEDComponent(int gridX, int gridY, float vForward)
     , _current(0.0f)
     , _isOn(false)
     , _vsIndex(0)
-{}
+{ _maxPower = 0.06f; }
 
 void LEDComponent::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     // Iterative PWL model:
     // If Vanode - Vcathode > Vf → stamp voltage source + 10Ω series
     // Else → stamp 1MΩ off-resistor
@@ -166,6 +204,7 @@ void LEDComponent::updateFromSolution(MnaMatrix& mna) {
 void LEDComponent::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     // Brightness based on current (0-20mA typical)
     float brightness = _isOn ? fminf(_current / 0.020f, 1.0f) : 0.0f;
@@ -225,6 +264,7 @@ WireComponent::WireComponent(int gridX, int gridY)
 {}
 
 void WireComponent::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     // Wire: merge nodes via Union-Find (done before stamping other components)
     mna.ufUnion(_nodeA, _nodeB);
 }
@@ -232,6 +272,7 @@ void WireComponent::stampMatrix(MnaMatrix& mna) {
 void WireComponent::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -258,6 +299,7 @@ GroundNode::GroundNode(int gridX, int gridY)
 }
 
 void GroundNode::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     // Ground node: connect nodeA to node 0 via Union-Find
     mna.ufUnion(_nodeA, 0);
 }
@@ -265,6 +307,7 @@ void GroundNode::stampMatrix(MnaMatrix& mna) {
 void GroundNode::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -326,6 +369,7 @@ void MCUComponent::clearPins() {
 }
 
 void MCUComponent::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     // Stamp active pins as temporary voltage sources
     for (int i = 0; i < PIN_COUNT; ++i) {
         if (_pinActive[i] && _pinNodes[i] > 0) {
@@ -337,6 +381,7 @@ void MCUComponent::stampMatrix(MnaMatrix& mna) {
 void MCUComponent::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     // Draw a rectangle with pin stubs
     lv_draw_rect_dsc_t rdsc;
@@ -405,12 +450,14 @@ Potentiometer::Potentiometer(int gridX, int gridY, float ohms)
 {}
 
 void Potentiometer::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     mna.stampResistor(_nodeA, _nodeB, _resistance);
 }
 
 void Potentiometer::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -462,6 +509,7 @@ PushButton::PushButton(int gridX, int gridY)
 {}
 
 void PushButton::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     float r = _pressed ? CLOSED_RESISTANCE : OPEN_RESISTANCE;
     mna.stampResistor(_nodeA, _nodeB, r);
 }
@@ -469,6 +517,7 @@ void PushButton::stampMatrix(MnaMatrix& mna) {
 void PushButton::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -528,6 +577,7 @@ Capacitor::Capacitor(int gridX, int gridY, float farads)
 {}
 
 void Capacitor::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     // Backward Euler companion model: stamp equivalent conductance + current source
     mna.stampCapacitor(_nodeA, _nodeB, _capacitance, _vPrev);
 }
@@ -550,6 +600,7 @@ void Capacitor::updateFromSolution(MnaMatrix& mna) {
 void Capacitor::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -593,6 +644,7 @@ Diode::Diode(int gridX, int gridY, float vForward)
 {}
 
 void Diode::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     if (_conducting) {
         // ON state: low resistance (forward biased)
         mna.stampResistor(_nodeA, _nodeB, ON_RESISTANCE);
@@ -620,6 +672,7 @@ void Diode::updateFromSolution(MnaMatrix& mna) {
 void Diode::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     uint32_t color = _conducting ? 0x3FB950 : 0x808080;
 
@@ -684,12 +737,14 @@ void LDR::setLightLevel(float level) {
 }
 
 void LDR::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     mna.stampResistor(_nodeA, _nodeB, _resistance);
 }
 
 void LDR::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -747,12 +802,14 @@ void Thermistor::setTemperature(float tempC) {
 }
 
 void Thermistor::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     mna.stampResistor(_nodeA, _nodeB, _resistance);
 }
 
 void Thermistor::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -803,12 +860,14 @@ void FlexSensor::setBendLevel(float level) {
 }
 
 void FlexSensor::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     mna.stampResistor(_nodeA, _nodeB, _resistance);
 }
 
 void FlexSensor::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -856,12 +915,14 @@ void FSRComponent::setForceLevel(float level) {
 }
 
 void FSRComponent::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     mna.stampResistor(_nodeA, _nodeB, _resistance);
 }
 
 void FSRComponent::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_rect_dsc_t rdsc;
     lv_draw_rect_dsc_init(&rdsc);
@@ -899,6 +960,7 @@ NpnBjt::NpnBjt(int gridX, int gridY, float beta)
     , _nodeC(0), _beta(beta), _vbe(0.0f), _saturated(false) {}
 
 void NpnBjt::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     if (_vbe > VBE_ON) {
         mna.stampResistor(_nodeA, _nodeB, R_ON);
         float rCE = R_ON * (1.0f + 1.0f / _beta);
@@ -919,6 +981,7 @@ void NpnBjt::updateFromSolution(MnaMatrix& mna) {
 void NpnBjt::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
     uint32_t color = _saturated ? 0x3FB950 : 0xC0C0C0;
 
     lv_draw_line_dsc_t dsc;
@@ -967,6 +1030,7 @@ PnpBjt::PnpBjt(int gridX, int gridY, float beta)
     , _nodeC(0), _beta(beta), _veb(0.0f), _saturated(false) {}
 
 void PnpBjt::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     if (_veb > VEB_ON) {
         mna.stampResistor(_nodeA, _nodeB, R_ON);
         float rCE = R_ON * (1.0f + 1.0f / _beta);
@@ -987,6 +1051,7 @@ void PnpBjt::updateFromSolution(MnaMatrix& mna) {
 void PnpBjt::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
     uint32_t color = _saturated ? 0x3FB950 : 0xC0C0C0;
 
     lv_draw_line_dsc_t dsc;
@@ -1031,6 +1096,7 @@ NmosFet::NmosFet(int gridX, int gridY, float vThreshold)
     , _nodeD(0), _vThreshold(vThreshold), _vgs(0.0f), _conducting(false) {}
 
 void NmosFet::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     if (_conducting) {
         mna.stampResistor(_nodeD, _nodeB, R_ON);
     } else {
@@ -1049,6 +1115,7 @@ void NmosFet::updateFromSolution(MnaMatrix& mna) {
 void NmosFet::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
     uint32_t color = _conducting ? 0x3FB950 : 0xC0C0C0;
 
     lv_draw_line_dsc_t dsc;
@@ -1093,6 +1160,7 @@ OpAmp::OpAmp(int gridX, int gridY, float gain)
     , _nodeInN(0), _gain(gain), _vOut(0.0f), _vsIndex(0) {}
 
 void OpAmp::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     mna.stampResistor(_nodeA, 0, 1e8f);
     mna.stampResistor(_nodeInN, 0, 1e8f);
     mna.stampVoltageSource(_nodeB, 0, _vOut, _vsIndex);
@@ -1109,6 +1177,7 @@ void OpAmp::updateFromSolution(MnaMatrix& mna) {
 void OpAmp::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
@@ -1168,6 +1237,7 @@ BuzzerComponent::BuzzerComponent(int gridX, int gridY)
     , _active(false), _current(0.0f) {}
 
 void BuzzerComponent::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     mna.stampResistor(_nodeA, _nodeB, IMPEDANCE);
 }
 
@@ -1180,6 +1250,7 @@ void BuzzerComponent::updateFromSolution(MnaMatrix& mna) {
 void BuzzerComponent::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_rect_dsc_t rdsc;
     lv_draw_rect_dsc_init(&rdsc);
@@ -1224,6 +1295,7 @@ SevenSegment::SevenSegment(int gridX, int gridY)
     , _segments(0), _voltage(0.0f), _active(false) {}
 
 void SevenSegment::stampMatrix(MnaMatrix& mna) {
+    if (_isBroken) return;
     mna.stampResistor(_nodeA, _nodeB, R_INTERNAL);
 }
 
@@ -1246,6 +1318,7 @@ void SevenSegment::updateFromSolution(MnaMatrix& mna) {
 void SevenSegment::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     int cx = px(_gridX, offsetX);
     int cy = px(_gridY, offsetY);
+    if (_isBroken) { drawBrokenOverlay(layer, cx, cy); return; }
 
     lv_draw_rect_dsc_t rdsc;
     lv_draw_rect_dsc_init(&rdsc);

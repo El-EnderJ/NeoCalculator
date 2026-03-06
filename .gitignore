@@ -8,5 +8,5 @@
 node_modules/
 *.bin
 *.elf
-C:\.piobuild/
-C:\\.piobuild/
+.piobuild/
+*piobuild*

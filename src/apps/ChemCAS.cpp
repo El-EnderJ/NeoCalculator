@@ -341,6 +341,9 @@ bool balanceEquation(const char* equation, char* result) {
         }
     }
 
+    // Safety: prevent CPU hang on oversized matrices
+    if (numUnique > 10 || formulaCount > 10) return false;
+
     // ── Step 4: Build composition matrix (rational) ──────────────────────
     // Matrix: numUnique rows × formulaCount columns
     // Left-side molecules get positive counts, right-side get negative

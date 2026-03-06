@@ -466,7 +466,7 @@ void SystemApp::handleKey(const KeyEvent &ev) {
             break;
         // PeriodicTableApp is LVGL-native
         case Mode::APP_PERIODIC_TABLE:
-            if (ev.code == KeyCode::MODE) {
+            if (ev.code == KeyCode::MODE || ev.code == KeyCode::AC) {
                 returnToMenu();
             } else if (_periodicTableApp) {
                 _periodicTableApp->handleKey(ev);

@@ -24,6 +24,8 @@ static constexpr uint32_t COL_RESULT_OK  = 0x4CAF50;  // Green result
 static constexpr uint32_t COL_RESULT_ERR = 0xFF5252;  // Red error
 static constexpr uint32_t COL_HINT       = 0x666688;
 static constexpr uint32_t COL_GRID_LINE  = 0x3A3A55;
+static constexpr uint32_t COL_MODAL_BG   = 0x111122;  // Deep dive overlay
+static constexpr uint32_t COL_MODAL_BOX  = 0x1E1E3A;  // Modal content box
 
 // Category colors (bright, distinct for the periodic table)
 static constexpr uint32_t CAT_COLORS[] = {
@@ -53,8 +55,10 @@ PeriodicTableApp::PeriodicTableApp()
     , _molarResult(nullptr), _molarHint(nullptr)
     , _balContainer(nullptr), _balInput(nullptr)
     , _balResult(nullptr), _balHint(nullptr)
+    , _modalOverlay(nullptr), _modalBox(nullptr), _modalOpen(false), _modalScrollY(0)
     , _currentTab(Tab::TABLE)
     , _cursorAtomicNumber(1)
+    , _tabFocused(false)
     , _molarLen(0), _balLen(0)
 {
     for (int i = 0; i < 3; ++i) { _tabBtns[i] = nullptr; _tabLabels[i] = nullptr; }
@@ -99,6 +103,7 @@ void PeriodicTableApp::end() {
         _detMass = nullptr;
         _detConfig = nullptr;
         _detEN = nullptr;
+        _detCategory = nullptr;
         _molarContainer = nullptr;
         _molarInput = nullptr;
         _molarResult = nullptr;
@@ -107,6 +112,11 @@ void PeriodicTableApp::end() {
         _balInput = nullptr;
         _balResult = nullptr;
         _balHint = nullptr;
+        _modalOverlay = nullptr;
+        _modalBox = nullptr;
+        _modalOpen = false;
+        _modalScrollY = 0;
+        _tabFocused = false;
         for (int i = 0; i < 3; ++i) {
             _tabBtns[i] = nullptr;
             _tabLabels[i] = nullptr;
@@ -193,39 +203,45 @@ void PeriodicTableApp::createTableTab() {
 
     // Giant symbol (left side)
     _detSymbol = lv_label_create(_detailPanel);
-    lv_obj_set_style_text_font(_detSymbol, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_detSymbol, &lv_font_montserrat_28, LV_PART_MAIN);
     lv_obj_set_style_text_color(_detSymbol, lv_color_hex(COL_CURSOR), LV_PART_MAIN);
-    lv_obj_set_pos(_detSymbol, 8, 4);
+    lv_obj_set_pos(_detSymbol, 6, 6);
 
-    // Atomic number (above symbol)
+    // Atomic number (small, above-right of symbol)
     _detNumber = lv_label_create(_detailPanel);
-    lv_obj_set_style_text_font(_detNumber, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_detNumber, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(_detNumber, lv_color_hex(COL_TEXT_DIM), LV_PART_MAIN);
-    lv_obj_set_pos(_detNumber, 50, 4);
+    lv_obj_set_pos(_detNumber, 6, 40);
 
-    // Full name
+    // Full name (large, prominent)
     _detName = lv_label_create(_detailPanel);
     lv_obj_set_style_text_font(_detName, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_detName, lv_color_hex(COL_TEXT), LV_PART_MAIN);
-    lv_obj_set_pos(_detName, 50, 18);
+    lv_obj_set_style_text_color(_detName, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_pos(_detName, 56, 6);
 
-    // Mass
+    // Category label (colored)
+    _detCategory = lv_label_create(_detailPanel);
+    lv_obj_set_style_text_font(_detCategory, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_detCategory, lv_color_hex(COL_TEXT_DIM), LV_PART_MAIN);
+    lv_obj_set_pos(_detCategory, 56, 22);
+
+    // Mass (right-aligned block)
     _detMass = lv_label_create(_detailPanel);
-    lv_obj_set_style_text_font(_detMass, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_detMass, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(_detMass, lv_color_hex(COL_TEXT), LV_PART_MAIN);
-    lv_obj_set_pos(_detMass, 50, 36);
+    lv_obj_set_pos(_detMass, 56, 36);
 
-    // Electron config
+    // Electron config (bottom row left)
     _detConfig = lv_label_create(_detailPanel);
     lv_obj_set_style_text_font(_detConfig, &lv_font_montserrat_10, LV_PART_MAIN);
     lv_obj_set_style_text_color(_detConfig, lv_color_hex(COL_TEXT_DIM), LV_PART_MAIN);
-    lv_obj_set_pos(_detConfig, 50, 48);
+    lv_obj_set_pos(_detConfig, 56, 52);
 
-    // Electronegativity
+    // Electronegativity (bottom row right)
     _detEN = lv_label_create(_detailPanel);
-    lv_obj_set_style_text_font(_detEN, &lv_font_montserrat_10, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_detEN, lv_color_hex(COL_TEXT_DIM), LV_PART_MAIN);
-    lv_obj_set_pos(_detEN, 200, 36);
+    lv_obj_set_style_text_font(_detEN, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_detEN, lv_color_hex(COL_RESULT_OK), LV_PART_MAIN);
+    lv_obj_set_pos(_detEN, 220, 6);
 
     updateFocusedElement();
 }
@@ -382,6 +398,13 @@ void PeriodicTableApp::updateTabHighlight() {
         bool active = (i == static_cast<int>(_currentTab));
         lv_obj_set_style_bg_color(_tabBtns[i],
             lv_color_hex(active ? COL_TAB_ACTIVE : COL_TAB_IDLE), LV_PART_MAIN);
+        // Show border on active tab when tab-focused
+        if (_tabFocused && active) {
+            lv_obj_set_style_border_width(_tabBtns[i], 2, LV_PART_MAIN);
+            lv_obj_set_style_border_color(_tabBtns[i], lv_color_hex(COL_CURSOR), LV_PART_MAIN);
+        } else {
+            lv_obj_set_style_border_width(_tabBtns[i], 0, LV_PART_MAIN);
+        }
     }
 }
 
@@ -404,8 +427,23 @@ void PeriodicTableApp::updateFocusedElement() {
 
     if (_detName) lv_label_set_text(_detName, el.name);
 
+    // Category name
+    if (_detCategory) {
+        static const char* catNames[] = {
+            "Non-Metal", "Noble Gas", "Alkali Metal", "Alkaline Earth",
+            "Metalloid", "Halogen", "Transition Metal", "Post-Transition",
+            "Lanthanide", "Actinide", "Unknown"
+        };
+        int ci = static_cast<int>(el.category);
+        if (ci >= 0 && ci < 11) {
+            lv_label_set_text(_detCategory, catNames[ci]);
+            lv_obj_set_style_text_color(_detCategory,
+                lv_color_hex(categoryColor(el.category)), LV_PART_MAIN);
+        }
+    }
+
     if (_detMass) {
-        snprintf(buf, sizeof(buf), "Mass: %.3f g/mol", (double)el.mass);
+        snprintf(buf, sizeof(buf), "%.4f g/mol", (double)el.mass);
         lv_label_set_text(_detMass, buf);
     }
 
@@ -416,7 +454,7 @@ void PeriodicTableApp::updateFocusedElement() {
 
     if (_detEN) {
         if (el.electronegativity > 0.0f) {
-            snprintf(buf, sizeof(buf), "EN: %.2f", (double)el.electronegativity);
+            snprintf(buf, sizeof(buf), "EN %.2f", (double)el.electronegativity);
         } else {
             snprintf(buf, sizeof(buf), "EN: N/A");
         }
@@ -623,15 +661,49 @@ char PeriodicTableApp::keyToChar(const KeyEvent& ev) {
 void PeriodicTableApp::handleKey(const KeyEvent& ev) {
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
-    // F1/F2/F3 switch tabs (or SHIFT+LEFT/RIGHT)
+    // ── Modal open: UP/DOWN scroll, anything else closes ─────────────────
+    if (_modalOpen) {
+        if (ev.code == KeyCode::UP || ev.code == KeyCode::DOWN) {
+            if (_modalBox) {
+                int scroll = lv_obj_get_scroll_y(_modalBox);
+                int step = 30;
+                if (ev.code == KeyCode::UP) {
+                    lv_obj_scroll_to_y(_modalBox, (scroll - step < 0) ? 0 : scroll - step, LV_ANIM_ON);
+                } else {
+                    lv_obj_scroll_to_y(_modalBox, scroll + step, LV_ANIM_ON);
+                }
+            }
+        } else {
+            closeDeepDive();
+        }
+        return;
+    }
+
+    // ── F1/F2/F3 switch tabs ─────────────────────────────────────────────
     auto& km = vpam::KeyboardManager::instance();
 
-    if (ev.code == KeyCode::F1) { switchTab(Tab::TABLE); return; }
-    if (ev.code == KeyCode::F2) { switchTab(Tab::MOLAR); return; }
-    if (ev.code == KeyCode::F3) { switchTab(Tab::BALANCE); return; }
+    if (ev.code == KeyCode::F1) { _tabFocused = false; switchTab(Tab::TABLE); return; }
+    if (ev.code == KeyCode::F2) { _tabFocused = false; switchTab(Tab::MOLAR); return; }
+    if (ev.code == KeyCode::F3) { _tabFocused = false; switchTab(Tab::BALANCE); return; }
 
-    // Tab cycling with SHIFT+LEFT/RIGHT
+    // ── Tab cycling with SHIFT+LEFT/RIGHT ────────────────────────────────
     if (km.isShift()) {
+        if (ev.code == KeyCode::LEFT) {
+            _tabFocused = false;
+            int t = (static_cast<int>(_currentTab) + 2) % 3;
+            switchTab(static_cast<Tab>(t));
+            return;
+        }
+        if (ev.code == KeyCode::RIGHT) {
+            _tabFocused = false;
+            int t = (static_cast<int>(_currentTab) + 1) % 3;
+            switchTab(static_cast<Tab>(t));
+            return;
+        }
+    }
+
+    // ── Tab-focused mode: arrow keys navigate tabs ───────────────────────
+    if (_tabFocused) {
         if (ev.code == KeyCode::LEFT) {
             int t = (static_cast<int>(_currentTab) + 2) % 3;
             switchTab(static_cast<Tab>(t));
@@ -642,8 +714,15 @@ void PeriodicTableApp::handleKey(const KeyEvent& ev) {
             switchTab(static_cast<Tab>(t));
             return;
         }
+        if (ev.code == KeyCode::DOWN || ev.code == KeyCode::ENTER) {
+            _tabFocused = false;
+            updateTabHighlight();
+            return;
+        }
+        return;  // ignore other keys while tab-focused
     }
 
+    // ── Route to current tab handler ─────────────────────────────────────
     switch (_currentTab) {
         case Tab::TABLE:   handleKeyTable(ev); break;
         case Tab::MOLAR:   handleKeyMolar(ev); break;
@@ -653,11 +732,29 @@ void PeriodicTableApp::handleKey(const KeyEvent& ev) {
 
 void PeriodicTableApp::handleKeyTable(const KeyEvent& ev) {
     switch (ev.code) {
-        case KeyCode::UP:
+        case KeyCode::UP: {
+            // If NAV_LUT says 0 (no neighbor above), escape to tab bar
+            const uint8_t* nav = chem::NAV_LUT[_cursorAtomicNumber - 1];
+            if (nav[0] == 0) {
+                _tabFocused = true;
+                updateTabHighlight();
+            } else {
+                navigateTable(ev.code);
+            }
+            break;
+        }
         case KeyCode::DOWN:
         case KeyCode::LEFT:
         case KeyCode::RIGHT:
             navigateTable(ev.code);
+            break;
+        case KeyCode::ENTER:
+            openDeepDive();
+            break;
+        case KeyCode::DEL:
+            // DEL acts as soft-back in Table tab (no text to delete)
+            _tabFocused = true;
+            updateTabHighlight();
             break;
         default:
             break;
@@ -777,4 +874,232 @@ void PeriodicTableApp::handleKeyBalance(const KeyEvent& ev) {
             lv_label_set_text(_balInput, display);
         }
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Deep Dive modal
+// ════════════════════════════════════════════════════════════════════════════
+
+void PeriodicTableApp::openDeepDive() {
+    if (_modalOpen || !_screen) return;
+    if (_cursorAtomicNumber < 1 || _cursorAtomicNumber > 118) return;
+
+    const chem::ElementData& el = chem::ELEMENTS[_cursorAtomicNumber - 1];
+    const chem::ExtendedData& ex = chem::EXTENDED[_cursorAtomicNumber - 1];
+
+    // ── Full-screen semi-transparent overlay ──────────────────────────────
+    _modalOverlay = lv_obj_create(_screen);
+    lv_obj_set_size(_modalOverlay, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(_modalOverlay, 0, 0);
+    lv_obj_set_style_bg_color(_modalOverlay, lv_color_hex(COL_MODAL_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_modalOverlay, LV_OPA_90, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_modalOverlay, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(_modalOverlay, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_modalOverlay, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_modalOverlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    // ── Content box (full-width, scrollable) ─────────────────────────────
+    static constexpr int BOX_W = 300;
+    static constexpr int BOX_H = 220;
+    _modalBox = lv_obj_create(_modalOverlay);
+    lv_obj_set_size(_modalBox, BOX_W, BOX_H);
+    lv_obj_set_pos(_modalBox, (SCREEN_W - BOX_W) / 2, (SCREEN_H - BOX_H) / 2);
+    lv_obj_set_style_bg_color(_modalBox, lv_color_hex(COL_MODAL_BOX), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_modalBox, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_modalBox, lv_color_hex(COL_TAB_ACTIVE), LV_PART_MAIN);
+    lv_obj_set_style_border_width(_modalBox, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(_modalBox, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_modalBox, 8, LV_PART_MAIN);
+    lv_obj_add_flag(_modalBox, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(_modalBox, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(_modalBox, LV_SCROLLBAR_MODE_AUTO);
+    // Style the scrollbar
+    lv_obj_set_style_bg_color(_modalBox, lv_color_hex(COL_TAB_ACTIVE), LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(_modalBox, LV_OPA_60, LV_PART_SCROLLBAR);
+
+    // Use a flex layout for vertical stacking
+    lv_obj_set_flex_flow(_modalBox, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(_modalBox, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(_modalBox, 2, LV_PART_MAIN);
+
+    char buf[128];
+    int contentW = BOX_W - 20;
+
+    // Helper lambda-like: create a row label
+    auto makeRow = [&](const char* text, uint32_t color = COL_TEXT) {
+        lv_obj_t* lbl = lv_label_create(_modalBox);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(color), LV_PART_MAIN);
+        lv_obj_set_width(lbl, contentW);
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+        lv_label_set_text(lbl, text);
+        return lbl;
+    };
+
+    // ── Title: "Symbol — Name" ───────────────────────────────────────────
+    snprintf(buf, sizeof(buf), "%s  -  %s", el.symbol, el.name);
+    lv_obj_t* title = lv_label_create(_modalBox);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, lv_color_hex(COL_CURSOR), LV_PART_MAIN);
+    lv_obj_set_width(title, contentW);
+    lv_label_set_text(title, buf);
+
+    // ── Category ─────────────────────────────────────────────────────────
+    static const char* catNames[] = {
+        "Non-Metal", "Noble Gas", "Alkali Metal", "Alkaline Earth",
+        "Metalloid", "Halogen", "Transition Metal", "Post-Transition",
+        "Lanthanide", "Actinide", "Unknown"
+    };
+    int ci = static_cast<int>(el.category);
+    if (ci >= 0 && ci < 11) {
+        makeRow(catNames[ci], categoryColor(el.category));
+    }
+
+    // ── Separator ────────────────────────────────────────────────────────
+    lv_obj_t* sep1 = lv_obj_create(_modalBox);
+    lv_obj_set_size(sep1, contentW, 1);
+    lv_obj_set_style_bg_color(sep1, lv_color_hex(COL_GRID_LINE), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sep1, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sep1, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(sep1, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(sep1, 0, LV_PART_MAIN);
+
+    // ── Z: Atomic Number ─────────────────────────────────────────────────
+    snprintf(buf, sizeof(buf), "Z: Atomic Number          %d", el.atomicNumber);
+    makeRow(buf);
+
+    // ── A: Mass Number ───────────────────────────────────────────────────
+    snprintf(buf, sizeof(buf), "A: Mass Number            %u", ex.massNumber);
+    makeRow(buf);
+
+    // ── M: Molar Mass ────────────────────────────────────────────────────
+    snprintf(buf, sizeof(buf), "M: Molar Mass             %.4f g/mol", (double)el.mass);
+    makeRow(buf);
+
+    // ── EC: Electronic Configuration ─────────────────────────────────────
+    snprintf(buf, sizeof(buf), "EC: %s", el.electronConfig);
+    makeRow(buf);
+
+    // ── Electronegativity ────────────────────────────────────────────────
+    if (el.electronegativity > 0.0f) {
+        snprintf(buf, sizeof(buf), "Electronegativity         %.2f", (double)el.electronegativity);
+    } else {
+        snprintf(buf, sizeof(buf), "Electronegativity         N/A");
+    }
+    makeRow(buf, COL_RESULT_OK);
+
+    // ── Family (same as category, but explicit label)─────────────────────
+    if (ci >= 0 && ci < 11) {
+        snprintf(buf, sizeof(buf), "Family                    %s", catNames[ci]);
+    } else {
+        snprintf(buf, sizeof(buf), "Family                    Unknown");
+    }
+    makeRow(buf);
+
+    // ── r: Atomic Radius ─────────────────────────────────────────────────
+    if (ex.atomicRadius > 0) {
+        snprintf(buf, sizeof(buf), "r: Atomic Radius          %u pm", ex.atomicRadius);
+    } else {
+        snprintf(buf, sizeof(buf), "r: Atomic Radius          N/A");
+    }
+    makeRow(buf);
+
+    // ── State ────────────────────────────────────────────────────────────
+    {
+        const char* stateStr = "Unknown";
+        switch (ex.state) {
+            case chem::PhysState::Solid:  stateStr = "Solid";  break;
+            case chem::PhysState::Liquid: stateStr = "Liquid"; break;
+            case chem::PhysState::Gas:    stateStr = "Gas";    break;
+            default: break;
+        }
+        snprintf(buf, sizeof(buf), "State (25 C)              %s", stateStr);
+        makeRow(buf);
+    }
+
+    // ── Density ──────────────────────────────────────────────────────────
+    if (ex.density > 0.0f) {
+        if (ex.density < 0.1f) {
+            snprintf(buf, sizeof(buf), "Density                   %.5f g/cm3", (double)ex.density);
+        } else {
+            snprintf(buf, sizeof(buf), "Density                   %.3f g/cm3", (double)ex.density);
+        }
+    } else {
+        snprintf(buf, sizeof(buf), "Density                   N/A");
+    }
+    makeRow(buf);
+
+    // ── Melting Temperature ──────────────────────────────────────────────
+    if (ex.meltingPoint > chem::UNK + 1.0f) {
+        snprintf(buf, sizeof(buf), "Melting Point             %.2f C", (double)ex.meltingPoint);
+    } else {
+        snprintf(buf, sizeof(buf), "Melting Point             N/A");
+    }
+    makeRow(buf);
+
+    // ── Boiling Temperature ──────────────────────────────────────────────
+    if (ex.boilingPoint > chem::UNK + 1.0f) {
+        snprintf(buf, sizeof(buf), "Boiling Point             %.2f C", (double)ex.boilingPoint);
+    } else {
+        snprintf(buf, sizeof(buf), "Boiling Point             N/A");
+    }
+    makeRow(buf);
+
+    // ── Affinity ─────────────────────────────────────────────────────────
+    if (ex.electronAffinity > chem::UNK + 1.0f) {
+        snprintf(buf, sizeof(buf), "Electron Affinity         %.1f kJ/mol", (double)ex.electronAffinity);
+    } else {
+        snprintf(buf, sizeof(buf), "Electron Affinity         N/A");
+    }
+    makeRow(buf);
+
+    // ── Ionization ───────────────────────────────────────────────────────
+    if (ex.ionizationEnergy > chem::UNK + 1.0f) {
+        snprintf(buf, sizeof(buf), "Ionization Energy         %.1f kJ/mol", (double)ex.ionizationEnergy);
+    } else {
+        snprintf(buf, sizeof(buf), "Ionization Energy         N/A");
+    }
+    makeRow(buf);
+
+    // ── Separator 2 ──────────────────────────────────────────────────────
+    lv_obj_t* sep2 = lv_obj_create(_modalBox);
+    lv_obj_set_size(sep2, contentW, 1);
+    lv_obj_set_style_bg_color(sep2, lv_color_hex(COL_GRID_LINE), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sep2, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sep2, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(sep2, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(sep2, 0, LV_PART_MAIN);
+
+    // ── Fun Fact (Trivia) ────────────────────────────────────────────────
+    lv_obj_t* triviaTitle = lv_label_create(_modalBox);
+    lv_obj_set_style_text_font(triviaTitle, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_set_style_text_color(triviaTitle, lv_color_hex(COL_HINT), LV_PART_MAIN);
+    lv_label_set_text(triviaTitle, "Fun Fact:");
+
+    lv_obj_t* triviaLbl = lv_label_create(_modalBox);
+    lv_obj_set_style_text_font(triviaLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(triviaLbl, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_width(triviaLbl, contentW);
+    lv_label_set_long_mode(triviaLbl, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(triviaLbl, chem::ELEMENT_TRIVIA[_cursorAtomicNumber - 1]);
+
+    // ── Footer hint (fixed at bottom of overlay, outside scroll) ─────────
+    lv_obj_t* hint = lv_label_create(_modalOverlay);
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint, lv_color_hex(COL_HINT), LV_PART_MAIN);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -2);
+    lv_label_set_text(hint, "UP/DOWN: scroll  |  Any other key: close");
+
+    _modalOpen = true;
+}
+
+void PeriodicTableApp::closeDeepDive() {
+    if (!_modalOpen) return;
+    if (_modalOverlay) {
+        lv_obj_delete(_modalOverlay);
+        _modalOverlay = nullptr;
+        _modalBox = nullptr;
+    }
+    _modalOpen = false;
+    _modalScrollY = 0;
 }

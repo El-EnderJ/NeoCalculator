@@ -19,6 +19,7 @@
 #include "../input/KeyCodes.h"
 #include "../input/KeyboardManager.h"
 #include "ChemDatabase.h"
+#include "ChemExtraData.h"
 
 class PeriodicTableApp {
 public:
@@ -69,6 +70,7 @@ private:
     lv_obj_t*       _detMass;        // atomic mass
     lv_obj_t*       _detConfig;      // electron configuration
     lv_obj_t*       _detEN;          // electronegativity
+    lv_obj_t*       _detCategory;    // category label (colored)
 
     // Molar mass tab
     lv_obj_t*       _molarContainer;
@@ -82,9 +84,16 @@ private:
     lv_obj_t*       _balResult;      // balanced result
     lv_obj_t*       _balHint;
 
+    // Deep Dive modal
+    lv_obj_t*       _modalOverlay;   // fullscreen dark overlay
+    lv_obj_t*       _modalBox;       // content container (scrollable)
+    bool            _modalOpen;
+    int             _modalScrollY;   // scroll offset for modal content
+
     // ── State ────────────────────────────────────────────────────────────
     Tab             _currentTab;
     uint8_t         _cursorAtomicNumber;   // 1-118
+    bool            _tabFocused;           // true = focus on tab bar
 
     // Text input buffers
     char            _molarBuf[64];
@@ -111,6 +120,10 @@ private:
     void handleKeyTable(const KeyEvent& ev);
     void handleKeyMolar(const KeyEvent& ev);
     void handleKeyBalance(const KeyEvent& ev);
+
+    // ── Deep Dive modal ──────────────────────────────────────────────────
+    void openDeepDive();
+    void closeDeepDive();
 
     // ── Text input helpers ───────────────────────────────────────────────
     void appendChar(char* buf, int& len, int maxLen, char c);

@@ -200,11 +200,15 @@ public:
     void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
 
     float resistance() const { return _resistance; }
-    void setResistance(float r) { if (r >= 10.0f && r <= 1e6f) _resistance = r; }
+    void setResistance(float r) { if (r >= MIN_RESISTANCE && r <= MAX_RESISTANCE) _resistance = r; }
 
     /** Adjust resistance by a factor (UP/DOWN in EDIT_MODE). */
-    void adjustUp()   { setResistance(_resistance * 1.2f); }
-    void adjustDown() { setResistance(_resistance / 1.2f); }
+    void adjustUp()   { setResistance(_resistance * ADJUST_FACTOR); }
+    void adjustDown() { setResistance(_resistance / ADJUST_FACTOR); }
+
+    static constexpr float MIN_RESISTANCE = 10.0f;
+    static constexpr float MAX_RESISTANCE = 1e6f;
+    static constexpr float ADJUST_FACTOR  = 1.2f;
 
 private:
     float _resistance;

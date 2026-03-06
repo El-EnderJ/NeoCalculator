@@ -741,13 +741,14 @@ void CircuitCoreApp::drawScope(lv_layer_t* layer, int objX, int objY) {
     lv_draw_rect(layer, &bgDsc, &bgArea);
 
     // Find voltage range for auto-scaling
+    static constexpr float SCOPE_MIN_RANGE = 0.1f;  // minimum displayable voltage range
     float vMin = 1e9f, vMax = -1e9f;
     for (int i = 0; i < SCOPE_SAMPLES; ++i) {
         if (_scopeBuffer[i] < vMin) vMin = _scopeBuffer[i];
         if (_scopeBuffer[i] > vMax) vMax = _scopeBuffer[i];
     }
     float vRange = vMax - vMin;
-    if (vRange < 0.1f) { vRange = 0.1f; vMin = vMax - 0.05f; }
+    if (vRange < SCOPE_MIN_RANGE) { vRange = SCOPE_MIN_RANGE; vMin = vMax - SCOPE_MIN_RANGE / 2.0f; }
 
     // Draw waveform
     lv_draw_line_dsc_t lineDsc;

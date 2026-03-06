@@ -536,6 +536,8 @@ void Capacitor::updateFromSolution(MnaMatrix& mna) {
     float dt = mna.timeStep();
     if (dt > 0.0f) {
         _current = _capacitance * (vNow - _vPrev) / dt;
+    } else {
+        _current = 0.0f;
     }
     _vPrev = vNow;
 }

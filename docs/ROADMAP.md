@@ -45,6 +45,7 @@
 | **Apr 2026** | **HOME Hard Reset fix → HOME freeze fix: deferred teardown 250 ms via _pendingTeardownMode in update()** |
 | **Apr 2026** | **SettingsApp re-entry null crash fix: _statusBar.destroy() added to end()** |
 | **Apr 2026** | **Active production: RAM 29.6% · Flash 20.9% · 11 apps in launcher** |
+| **Mar 2026** | **BridgeDesignerApp (ID 12): Verlet physics bridge simulator with stress analysis, 3 materials, truck/car loads — PSRAM-backed 60Hz engine** |
 ---
 
 ## Phase 1 — The Foundation (Complete)

@@ -28,7 +28,30 @@ enum class CompType : uint8_t {
     POTENTIOMETER,
     PUSH_BUTTON,
     CAPACITOR,
-    DIODE
+    DIODE,
+    // ── Sensors (Variable Resistance) ──
+    LDR,               // Light Dependent Resistor
+    THERMISTOR,         // TMP36 temperature sensor
+    FLEX_SENSOR,        // Flex/bend sensor
+    FSR,                // Force Sensitive Resistor
+    // ── Semiconductors ──
+    NPN_BJT,            // NPN Bipolar Junction Transistor
+    PNP_BJT,            // PNP Bipolar Junction Transistor
+    NMOS,               // N-Channel MOSFET
+    OP_AMP,             // Operational Amplifier (uA741)
+    // ── Logic Gates (74HCxx digital sublayer) ──
+    AND_GATE,
+    OR_GATE,
+    NOT_GATE,
+    NAND_GATE,
+    XOR_GATE,
+    // ── Power ──
+    BATTERY_AA,         // 1.5V AA battery
+    BATTERY_COIN,       // 3V coin cell
+    BATTERY_9V,         // 9V battery
+    // ── Outputs ──
+    BUZZER,             // Piezo buzzer
+    SEVEN_SEG           // 7-segment display
 };
 
 // ── Base class ──────────────────────────────────────────────────────────────
@@ -272,4 +295,233 @@ private:
     bool  _conducting;
     static constexpr float ON_RESISTANCE  = 10.0f;     // 10Ω when conducting
     static constexpr float OFF_RESISTANCE = 1e6f;      // 1MΩ when blocking
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// SENSORS — Variable Resistance (Template Pattern: all share R-based stamp)
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── LDR (Light Dependent Resistor) ──────────────────────────────────────────
+
+class LDR : public CircuitComponent {
+public:
+    LDR(int gridX, int gridY, float darkR = 100000.0f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+
+    float resistance() const { return _resistance; }
+    /** Set light level 0.0 (dark) to 1.0 (bright). R decreases with light. */
+    void setLightLevel(float level);
+    float lightLevel() const { return _lightLevel; }
+
+private:
+    float _darkResistance;   // resistance in full darkness
+    float _resistance;       // current resistance (computed from light)
+    float _lightLevel;       // 0.0 = dark, 1.0 = bright
+};
+
+// ── Thermistor (TMP36 Temperature Sensor Model) ────────────────────────────
+
+class Thermistor : public CircuitComponent {
+public:
+    Thermistor(int gridX, int gridY, float nominalR = 10000.0f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+
+    float resistance() const { return _resistance; }
+    /** Set temperature in °C. Resistance changes via simplified NTC model. */
+    void setTemperature(float tempC);
+    float temperature() const { return _tempC; }
+
+private:
+    float _nominalR;    // resistance at 25°C
+    float _resistance;  // current resistance
+    float _tempC;       // simulated temperature
+};
+
+// ── Flex Sensor ─────────────────────────────────────────────────────────────
+
+class FlexSensor : public CircuitComponent {
+public:
+    FlexSensor(int gridX, int gridY, float flatR = 25000.0f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+
+    float resistance() const { return _resistance; }
+    /** Set bend level 0.0 (flat) to 1.0 (fully bent). R increases with bend. */
+    void setBendLevel(float level);
+    float bendLevel() const { return _bendLevel; }
+
+private:
+    float _flatResistance;
+    float _resistance;
+    float _bendLevel;
+};
+
+// ── FSR (Force Sensitive Resistor) ──────────────────────────────────────────
+
+class FSRComponent : public CircuitComponent {
+public:
+    FSRComponent(int gridX, int gridY, float maxR = 1000000.0f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+
+    float resistance() const { return _resistance; }
+    /** Set force level 0.0 (no force) to 1.0 (max force). R decreases. */
+    void setForceLevel(float level);
+    float forceLevel() const { return _forceLevel; }
+
+private:
+    float _maxResistance;
+    float _resistance;
+    float _forceLevel;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// SEMICONDUCTORS — Active Components
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── NPN BJT (Simplified Ebers-Moll / PWL) ──────────────────────────────────
+
+class NpnBjt : public CircuitComponent {
+public:
+    NpnBjt(int gridX, int gridY, float beta = 100.0f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+    void updateFromSolution(MnaMatrix& mna) override;
+
+    int nodeC() const { return _nodeC; }
+    void setNodeC(int n) { _nodeC = n; }
+    float beta() const { return _beta; }
+
+    /** Nodes: _nodeA=Base, _nodeB=Emitter, _nodeC=Collector */
+private:
+    int   _nodeC;        // collector node (3rd terminal)
+    float _beta;         // current gain
+    float _vbe;          // base-emitter voltage
+    bool  _saturated;    // operating region
+    static constexpr float VBE_ON = 0.7f;
+    static constexpr float R_ON   = 10.0f;
+    static constexpr float R_OFF  = 1e6f;
+};
+
+// ── PNP BJT ─────────────────────────────────────────────────────────────────
+
+class PnpBjt : public CircuitComponent {
+public:
+    PnpBjt(int gridX, int gridY, float beta = 100.0f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+    void updateFromSolution(MnaMatrix& mna) override;
+
+    int nodeC() const { return _nodeC; }
+    void setNodeC(int n) { _nodeC = n; }
+
+private:
+    int   _nodeC;
+    float _beta;
+    float _veb;
+    bool  _saturated;
+    static constexpr float VEB_ON = 0.7f;
+    static constexpr float R_ON   = 10.0f;
+    static constexpr float R_OFF  = 1e6f;
+};
+
+// ── N-Channel MOSFET (Simplified Switch Model) ─────────────────────────────
+
+class NmosFet : public CircuitComponent {
+public:
+    NmosFet(int gridX, int gridY, float vThreshold = 2.0f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+    void updateFromSolution(MnaMatrix& mna) override;
+
+    int nodeD() const { return _nodeD; }
+    void setNodeD(int n) { _nodeD = n; }
+
+    /** Nodes: _nodeA=Gate, _nodeB=Source, _nodeD=Drain */
+private:
+    int   _nodeD;        // drain node (3rd terminal)
+    float _vThreshold;   // gate threshold voltage
+    float _vgs;          // gate-source voltage
+    bool  _conducting;
+    static constexpr float R_ON  = 1.0f;    // 1Ω when conducting
+    static constexpr float R_OFF = 1e6f;     // 1MΩ when off
+};
+
+// ── Op-Amp (uA741 — High-Gain Dependent Voltage Source) ─────────────────────
+
+class OpAmp : public CircuitComponent {
+public:
+    OpAmp(int gridX, int gridY, float gain = 100000.0f);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+    void updateFromSolution(MnaMatrix& mna) override;
+
+    int nodeInP() const { return _nodeA; }       // V+ (non-inverting)
+    int nodeInN() const { return _nodeInN; }      // V- (inverting)
+    int nodeOut() const { return _nodeB; }         // output
+    void setNodeInN(int n) { _nodeInN = n; }
+
+    int vsIndex() const { return _vsIndex; }
+    void setVsIndex(int idx) { _vsIndex = idx; }
+
+private:
+    int   _nodeInN;      // inverting input node
+    float _gain;         // open-loop gain
+    float _vOut;         // output voltage (clamped)
+    int   _vsIndex;
+    static constexpr float V_SAT = 13.5f;  // saturation voltage (±)
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// OUTPUTS — Visual/Audio Components
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Buzzer (Piezo) ──────────────────────────────────────────────────────────
+
+class BuzzerComponent : public CircuitComponent {
+public:
+    BuzzerComponent(int gridX, int gridY);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+    void updateFromSolution(MnaMatrix& mna) override;
+
+    bool isActive() const { return _active; }
+
+private:
+    bool  _active;
+    float _current;
+    static constexpr float IMPEDANCE = 42.0f;  // typical piezo impedance
+    static constexpr float THRESHOLD_V = 1.5f;  // min voltage to sound
+};
+
+// ── 7-Segment Display ──────────────────────────────────────────────────────
+
+class SevenSegment : public CircuitComponent {
+public:
+    SevenSegment(int gridX, int gridY);
+
+    void stampMatrix(MnaMatrix& mna) override;
+    void draw(lv_layer_t* layer, int offsetX, int offsetY) override;
+    void updateFromSolution(MnaMatrix& mna) override;
+
+    uint8_t segments() const { return _segments; }
+    void setSegments(uint8_t s) { _segments = s; }
+
+private:
+    uint8_t _segments;   // bit mask: a=0x01..g=0x40, dp=0x80
+    float   _voltage;
+    bool    _active;
+    static constexpr float LED_VF = 2.0f;
+    static constexpr float R_INTERNAL = 100.0f;
 };

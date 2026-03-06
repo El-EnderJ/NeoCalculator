@@ -6,6 +6,9 @@
  */
 
 #include "CircuitCoreApp.h"
+#include "ComponentFactory.h"
+#include "LogicGates.h"
+#include "PowerSystems.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -29,26 +32,21 @@ static constexpr uint32_t COL_INFO_TEXT   = 0xA0A0A0;
 static constexpr uint32_t COL_RUN_ON      = 0x3FB950;
 static constexpr uint32_t COL_RUN_OFF     = 0xFF4444;
 
-// ── Toolbar labels ──────────────────────────────────────────────────────────
-static const char* TOOL_LABELS[] = {
-    "RES", "VCC", "GND", "LED", "MCU", "WIRE", "POT", "BTN", "CAP", "DIO", "RUN"
+// ── Toolbar labels (per page, 10 tools each) ────────────────────────────────
+static const char* PAGE0_LABELS[] = {
+    "RES", "VCC", "GND", "LED", "MCU", "WIRE", "POT", "BTN", "CAP", "DIO"
 };
-static constexpr int NUM_TOOLS = 11;
+static const char* PAGE1_LABELS[] = {
+    "LDR", "TMP", "FLX", "FSR", "NPN", "PNP", "MOS", "OPA", "BUZ", "7SG"
+};
+static const char* PAGE2_LABELS[] = {
+    "AND", "OR", "NOT", "NAN", "XOR", "1V5", "3V", "9V", "MTR", "RUN"
+};
+static const char** PAGE_LABELS[] = { PAGE0_LABELS, PAGE1_LABELS, PAGE2_LABELS };
+static constexpr int PAGE_SIZES[] = { 10, 10, 10 };
 
-// ── Toolbar tooltip descriptions ────────────────────────────────────────────
-const char* CircuitCoreApp::TOOL_TOOLTIPS[] = {
-    "RESISTOR [R] - Adjust value with ENTER",
-    "VOLTAGE SOURCE [V] - 5V DC supply",
-    "GROUND [G] - 0V reference node",
-    "LED [L] - Light-emitting diode",
-    "MCU [M] - Microcontroller (Lua)",
-    "WIRE [W] - Connect two nodes",
-    "POTENTIOMETER [P] - Adjustable resistor (UP/DOWN)",
-    "PUSH-BUTTON [B] - Toggle with F4",
-    "CAPACITOR [C] - RC transient analysis",
-    "DIODE [D] - Rectifier diode (0.7V)",
-    "RUN/STOP - Toggle simulation"
-};
+// ── Toolbar tooltip descriptions (removed static array, using factory) ──────
+// Tooltips now come from ComponentFactory::tooltip() and are mapped dynamically.
 
 // ══ Constructor / Destructor ═════════════════════════════════════════════════
 
@@ -57,11 +55,13 @@ CircuitCoreApp::CircuitCoreApp()
     , _drawObj(nullptr)
     , _toolbarObj(nullptr)
     , _infoLabel(nullptr)
+    , _pageLabel(nullptr)
     , _simTimer(nullptr)
     , _components(nullptr)
     , _compCount(0)
     , _currentTool(Tool::RES)
     , _toolbarIdx(0)
+    , _toolbarPage(0)
     , _focusArea(FocusArea::GRID)
     , _cursorX(GRID_SNAP * 5)   // start near center
     , _cursorY(GRID_SNAP * 4)
@@ -69,14 +69,21 @@ CircuitCoreApp::CircuitCoreApp()
     , _frameCount(0)
     , _nextNodeId(1)
     , _nextVsIdx(0)
+    , _sensorSliderValue(0.5f)
     , _scopeWriteIdx(0)
     , _probeNode(-1)
+    , _probeNode2(-1)
     , _scopeActive(false)
+    , _scopeTimebase(1)
+    , _meterNodeA(-1)
+    , _meterNodeB(-1)
+    , _meterActive(false)
 {
     _infoBuf[0] = '\0';
-    for (int i = 0; i < static_cast<int>(Tool::TOOL_COUNT); ++i)
+    for (int i = 0; i < TOOLS_PER_PAGE; ++i)
         _toolBtns[i] = nullptr;
     memset(_scopeBuffer, 0, sizeof(_scopeBuffer));
+    memset(_scopeBuffer2, 0, sizeof(_scopeBuffer2));
 }
 
 CircuitCoreApp::~CircuitCoreApp() {
@@ -121,6 +128,7 @@ void CircuitCoreApp::begin() {
     // ── Reset state ──
     _currentTool = Tool::RES;
     _toolbarIdx = 0;
+    _toolbarPage = 0;
     _focusArea = FocusArea::GRID;
     _cursorX = GRID_SNAP * 5;
     _cursorY = GRID_SNAP * 4;
@@ -128,10 +136,17 @@ void CircuitCoreApp::begin() {
     _frameCount = 0;
     _nextNodeId = 1;
     _nextVsIdx = 0;
+    _sensorSliderValue = 0.5f;
     _scopeWriteIdx = 0;
     _probeNode = -1;
+    _probeNode2 = -1;
     _scopeActive = false;
+    _scopeTimebase = 1;
+    _meterNodeA = -1;
+    _meterNodeB = -1;
+    _meterActive = false;
     memset(_scopeBuffer, 0, sizeof(_scopeBuffer));
+    memset(_scopeBuffer2, 0, sizeof(_scopeBuffer2));
 
     // ── Try to auto-load last circuit ──
     autoLoad();
@@ -176,7 +191,8 @@ void CircuitCoreApp::end() {
     _drawObj = nullptr;
     _toolbarObj = nullptr;
     _infoLabel = nullptr;
-    for (int i = 0; i < static_cast<int>(Tool::TOOL_COUNT); ++i)
+    _pageLabel = nullptr;
+    for (int i = 0; i < TOOLS_PER_PAGE; ++i)
         _toolBtns[i] = nullptr;
 
     if (_screen) {
@@ -226,9 +242,32 @@ void CircuitCoreApp::createToolbar() {
     lv_obj_remove_flag(_toolbarObj, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(_toolbarObj, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
-    // Create tool buttons (compact to fit all 11 tools)
-    int btnW = SCREEN_W / NUM_TOOLS;
-    for (int i = 0; i < NUM_TOOLS; ++i) {
+    // Page indicator label (shows "1/3", "2/3", "3/3")
+    _pageLabel = lv_label_create(_toolbarObj);
+    lv_obj_set_style_text_font(_pageLabel, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_pageLabel, lv_color_hex(0xFFD700), LV_PART_MAIN);
+
+    // Build toolbar for initial page
+    rebuildToolbarPage();
+}
+
+void CircuitCoreApp::rebuildToolbarPage() {
+    // Delete existing tool buttons
+    for (int i = 0; i < TOOLS_PER_PAGE; ++i) {
+        if (_toolBtns[i]) {
+            lv_obj_delete(_toolBtns[i]);
+            _toolBtns[i] = nullptr;
+        }
+    }
+
+    int numTools = PAGE_SIZES[_toolbarPage];
+    // Reserve space for page indicator (12px on right)
+    int availW = SCREEN_W - 16;
+    int btnW = availW / numTools;
+
+    const char** labels = PAGE_LABELS[_toolbarPage];
+
+    for (int i = 0; i < numTools; ++i) {
         lv_obj_t* btn = lv_obj_create(_toolbarObj);
         lv_obj_remove_style_all(btn);
         lv_obj_set_pos(btn, i * btnW, 0);
@@ -238,13 +277,34 @@ void CircuitCoreApp::createToolbar() {
         lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
 
         lv_obj_t* lbl = lv_label_create(btn);
-        lv_label_set_text(lbl, TOOL_LABELS[i]);
+        lv_label_set_text(lbl, labels[i]);
         lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, LV_PART_MAIN);
         lv_obj_set_style_text_color(lbl, lv_color_hex(COL_TOOL_DIM), LV_PART_MAIN);
         lv_obj_center(lbl);
 
         _toolBtns[i] = btn;
     }
+
+    // Update page indicator
+    if (_pageLabel) {
+        char pageBuf[8];
+        snprintf(pageBuf, sizeof(pageBuf), "%d/%d", _toolbarPage + 1, NUM_PAGES);
+        lv_label_set_text(_pageLabel, pageBuf);
+        lv_obj_set_pos(_pageLabel, SCREEN_W - 16, 4);
+    }
+
+    updateToolbarHighlight();
+}
+
+CircuitCoreApp::Tool CircuitCoreApp::pageToolAt(int page, int idx) const {
+    // Map (page, idx) to Tool enum
+    int toolIdx = page * TOOLS_PER_PAGE + idx;
+    if (toolIdx >= static_cast<int>(Tool::TOOL_COUNT)) return Tool::RES;
+    return static_cast<Tool>(toolIdx);
+}
+
+int CircuitCoreApp::toolsOnPage(int page) const {
+    return PAGE_SIZES[page];
 }
 
 void CircuitCoreApp::createInfoBar() {
@@ -261,28 +321,41 @@ void CircuitCoreApp::createInfoBar() {
 void CircuitCoreApp::updateInfoBar() {
     if (!_infoLabel) return;
 
-    const char* toolName = TOOL_LABELS[static_cast<int>(_currentTool)];
+    Tool currentPageTool = pageToolAt(_toolbarPage, _toolbarIdx);
     int gx = _cursorX / GRID_SNAP;
     int gy = _cursorY / GRID_SNAP;
 
     if (_focusArea == FocusArea::TOOLBAR) {
-        // Show tooltip for focused toolbar button
-        snprintf(_infoBuf, sizeof(_infoBuf), "%s", TOOL_TOOLTIPS[_toolbarIdx]);
-    } else if (_simRunning) {
-        snprintf(_infoBuf, sizeof(_infoBuf), "SIM [%s] Cursor(%d,%d) Comps:%d",
-                 toolName, gx, gy, _compCount);
+        // Show tooltip for focused toolbar tool
+        const char* labels = PAGE_LABELS[_toolbarPage][_toolbarIdx];
+        // Determine CompType or special tool
+        if (currentPageTool == Tool::RUN) {
+            snprintf(_infoBuf, sizeof(_infoBuf), "RUN/STOP - Toggle simulation");
+        } else if (currentPageTool == Tool::MULTI) {
+            snprintf(_infoBuf, sizeof(_infoBuf), "MULTIMETER - Probe V/I/R");
+        } else {
+            snprintf(_infoBuf, sizeof(_infoBuf), "P%d [%s] Select to place",
+                     _toolbarPage + 1, labels);
+        }
     } else {
-        snprintf(_infoBuf, sizeof(_infoBuf), "EDIT [%s] Cursor(%d,%d) Comps:%d",
-                 toolName, gx, gy, _compCount);
+        int safeIdx = (_toolbarIdx < toolsOnPage(_toolbarPage)) ? _toolbarIdx : 0;
+        const char* label = PAGE_LABELS[_toolbarPage][safeIdx];
+        const char* mode = _simRunning ? "SIM" : "EDIT";
+        snprintf(_infoBuf, sizeof(_infoBuf), "%s [%s] (%d,%d) C:%d",
+                 mode, label, gx, gy, _compCount);
     }
     lv_label_set_text(_infoLabel, _infoBuf);
 }
 
 void CircuitCoreApp::updateToolbarHighlight() {
-    for (int i = 0; i < NUM_TOOLS; ++i) {
-        if (!_toolBtns[i]) continue;
+    int numTools = toolsOnPage(_toolbarPage);
+    int currentToolOnPage = static_cast<int>(_currentTool) - _toolbarPage * TOOLS_PER_PAGE;
 
-        bool isActive = (i == static_cast<int>(_currentTool));
+    for (int i = 0; i < TOOLS_PER_PAGE; ++i) {
+        if (!_toolBtns[i]) continue;
+        if (i >= numTools) continue;
+
+        bool isActive = (i == currentToolOnPage && currentToolOnPage >= 0);
         bool isFocused = (_focusArea == FocusArea::TOOLBAR && i == _toolbarIdx);
 
         uint32_t bgCol = COL_TOOLBAR_BG;
@@ -297,8 +370,9 @@ void CircuitCoreApp::updateToolbarHighlight() {
             uint32_t txtCol = COL_TOOL_DIM;
             if (isActive || isFocused) txtCol = COL_TOOL_TEXT;
 
-            // Special color for RUN button
-            if (i == static_cast<int>(Tool::RUN)) {
+            // Special color for RUN button (page 2, last item)
+            Tool thisTool = pageToolAt(_toolbarPage, i);
+            if (thisTool == Tool::RUN) {
                 txtCol = _simRunning ? COL_RUN_ON : COL_RUN_OFF;
             }
 
@@ -326,8 +400,11 @@ void CircuitCoreApp::handleKeyGrid(const KeyEvent& ev) {
     switch (ev.code) {
         case KeyCode::UP:
             if (_simRunning) {
-                // In SIM_MODE, UP adjusts potentiometer under cursor
+                // In SIM_MODE, UP adjusts potentiometer/sensor under cursor
                 adjustPotAt(_cursorX, _cursorY, true);
+                adjustSensorAt(_cursorX, _cursorY, 0.1f);
+                // Timebase adjustment for scope
+                if (_scopeActive && _scopeTimebase < 8) _scopeTimebase++;
             } else {
                 if (_cursorY >= GRID_SNAP)
                     _cursorY -= GRID_SNAP;
@@ -335,8 +412,11 @@ void CircuitCoreApp::handleKeyGrid(const KeyEvent& ev) {
             break;
         case KeyCode::DOWN:
             if (_simRunning) {
-                // In SIM_MODE, DOWN adjusts potentiometer under cursor
+                // In SIM_MODE, DOWN adjusts potentiometer/sensor under cursor
                 adjustPotAt(_cursorX, _cursorY, false);
+                adjustSensorAt(_cursorX, _cursorY, -0.1f);
+                // Timebase adjustment for scope
+                if (_scopeActive && _scopeTimebase > 1) _scopeTimebase--;
             } else {
                 if (_cursorY < GRID_H - GRID_SNAP)
                     _cursorY += GRID_SNAP;
@@ -352,13 +432,31 @@ void CircuitCoreApp::handleKeyGrid(const KeyEvent& ev) {
             break;
         case KeyCode::ENTER:
             if (_simRunning) {
-                // In SIM_MODE, ENTER probes a node for oscilloscope
-                CircuitComponent* comp = findComponentAt(_cursorX, _cursorY);
-                if (comp) {
-                    _probeNode = comp->nodeA();
-                    _scopeActive = true;
-                    _scopeWriteIdx = 0;
-                    memset(_scopeBuffer, 0, sizeof(_scopeBuffer));
+                if (_currentTool == Tool::MULTI) {
+                    // Multimeter probe mode
+                    probeMultimeter(_cursorX, _cursorY);
+                } else {
+                    // Probe a node for oscilloscope (Ch1 with ENTER, Ch2 with F4+ENTER)
+                    CircuitComponent* comp = findComponentAt(_cursorX, _cursorY);
+                    if (comp) {
+                        if (_probeNode < 0) {
+                            _probeNode = comp->nodeA();
+                            _scopeActive = true;
+                            _scopeWriteIdx = 0;
+                            memset(_scopeBuffer, 0, sizeof(_scopeBuffer));
+                        } else if (_probeNode2 < 0) {
+                            // Second press: assign channel 2
+                            _probeNode2 = comp->nodeA();
+                            memset(_scopeBuffer2, 0, sizeof(_scopeBuffer2));
+                        } else {
+                            // Third press: reset both channels
+                            _probeNode = comp->nodeA();
+                            _probeNode2 = -1;
+                            _scopeWriteIdx = 0;
+                            memset(_scopeBuffer, 0, sizeof(_scopeBuffer));
+                            memset(_scopeBuffer2, 0, sizeof(_scopeBuffer2));
+                        }
+                    }
                 }
             } else {
                 placeComponent();
@@ -386,17 +484,33 @@ void CircuitCoreApp::handleKeyGrid(const KeyEvent& ev) {
 }
 
 void CircuitCoreApp::handleKeyToolbar(const KeyEvent& ev) {
+    int numTools = toolsOnPage(_toolbarPage);
+
     switch (ev.code) {
         case KeyCode::LEFT:
-            if (_toolbarIdx > 0) _toolbarIdx--;
+            if (_toolbarIdx > 0) {
+                _toolbarIdx--;
+            } else if (_toolbarPage > 0) {
+                // Page left
+                _toolbarPage--;
+                _toolbarIdx = toolsOnPage(_toolbarPage) - 1;
+                rebuildToolbarPage();
+            }
             updateToolbarHighlight();
             break;
         case KeyCode::RIGHT:
-            if (_toolbarIdx < NUM_TOOLS - 1) _toolbarIdx++;
+            if (_toolbarIdx < numTools - 1) {
+                _toolbarIdx++;
+            } else if (_toolbarPage < NUM_PAGES - 1) {
+                // Page right
+                _toolbarPage++;
+                _toolbarIdx = 0;
+                rebuildToolbarPage();
+            }
             updateToolbarHighlight();
             break;
         case KeyCode::ENTER: {
-            Tool selected = static_cast<Tool>(_toolbarIdx);
+            Tool selected = pageToolAt(_toolbarPage, _toolbarIdx);
             if (selected == Tool::RUN) {
                 // Toggle simulation
                 if (_simRunning) stopSimulation();
@@ -416,7 +530,6 @@ void CircuitCoreApp::handleKeyToolbar(const KeyEvent& ev) {
             break;
         case KeyCode::AC:
             // AC on toolbar: SystemApp handles MODE for return to menu.
-            // This case intentionally does nothing — SystemApp intercepts it.
             break;
         default:
             break;
@@ -432,79 +545,103 @@ void CircuitCoreApp::placeComponent() {
     // Check if something already exists at this position
     if (findComponentAt(_cursorX, _cursorY)) return;
 
-    CircuitComponent* comp = nullptr;
+    // Map Tool to CompType for factory creation
+    CompType ctype;
+    bool isSpecial = false;
 
     switch (_currentTool) {
-        case Tool::RES:
-            comp = new Resistor(_cursorX, _cursorY, 1000.0f);
-            comp->setNodes(_nextNodeId, _nextNodeId + 1);
-            _nextNodeId += 2;
-            break;
-        case Tool::VCC: {
-            auto* vs = new VoltageSource(_cursorX, _cursorY, 5.0f);
-            vs->setVsIndex(_nextVsIdx++);
-            vs->setNodes(_nextNodeId, 0);  // positive to new node, negative to GND
-            _nextNodeId++;
-            comp = vs;
-            break;
-        }
-        case Tool::GND:
-            comp = new GroundNode(_cursorX, _cursorY);
-            // Ground connects nearby nodes to node 0
-            break;
-        case Tool::LED: {
-            auto* led = new LEDComponent(_cursorX, _cursorY, 2.0f);
-            led->setVsIndex(_nextVsIdx++);
-            led->setNodes(_nextNodeId, _nextNodeId + 1);
-            _nextNodeId += 2;
-            comp = led;
-            break;
-        }
-        case Tool::MCU: {
-            auto* mcu = new MCUComponent(_cursorX, _cursorY);
-            for (int i = 0; i < MCUComponent::PIN_COUNT; ++i) {
-                mcu->setPinNode(i, _nextNodeId++);
-            }
-            comp = mcu;
-            break;
-        }
-        case Tool::WIRE:
-            comp = new WireComponent(_cursorX, _cursorY);
-            comp->setNodes(_nextNodeId, _nextNodeId + 1);
-            _nextNodeId += 2;
-            break;
-        case Tool::POT:
-            comp = new Potentiometer(_cursorX, _cursorY, 10000.0f);
-            comp->setNodes(_nextNodeId, _nextNodeId + 1);
-            _nextNodeId += 2;
-            break;
-        case Tool::BTN:
-            comp = new PushButton(_cursorX, _cursorY);
-            comp->setNodes(_nextNodeId, _nextNodeId + 1);
-            _nextNodeId += 2;
-            break;
-        case Tool::CAP:
-            comp = new Capacitor(_cursorX, _cursorY, 100e-6f);
-            comp->setNodes(_nextNodeId, _nextNodeId + 1);
-            _nextNodeId += 2;
-            break;
-        case Tool::DIODE:
-            comp = new Diode(_cursorX, _cursorY, 0.7f);
-            comp->setNodes(_nextNodeId, _nextNodeId + 1);
-            _nextNodeId += 2;
-            break;
-        case Tool::RUN:
-            // Not a placeable component
-            return;
-        default:
-            return;
+        case Tool::RES:       ctype = CompType::RESISTOR; break;
+        case Tool::VCC:       ctype = CompType::VOLTAGE_SOURCE; break;
+        case Tool::GND:       ctype = CompType::GROUND; break;
+        case Tool::LED:       ctype = CompType::LED; break;
+        case Tool::MCU:       ctype = CompType::MCU; break;
+        case Tool::WIRE:      ctype = CompType::WIRE; break;
+        case Tool::POT:       ctype = CompType::POTENTIOMETER; break;
+        case Tool::BTN:       ctype = CompType::PUSH_BUTTON; break;
+        case Tool::CAP:       ctype = CompType::CAPACITOR; break;
+        case Tool::DIODE:     ctype = CompType::DIODE; break;
+        case Tool::LDR_T:     ctype = CompType::LDR; break;
+        case Tool::THERM:     ctype = CompType::THERMISTOR; break;
+        case Tool::FLEX:      ctype = CompType::FLEX_SENSOR; break;
+        case Tool::FSR_T:     ctype = CompType::FSR; break;
+        case Tool::NPN:       ctype = CompType::NPN_BJT; break;
+        case Tool::PNP:       ctype = CompType::PNP_BJT; break;
+        case Tool::NMOS_T:    ctype = CompType::NMOS; break;
+        case Tool::OPAMP:     ctype = CompType::OP_AMP; break;
+        case Tool::BUZZER_T:  ctype = CompType::BUZZER; break;
+        case Tool::SEG7:      ctype = CompType::SEVEN_SEG; break;
+        case Tool::AND_T:     ctype = CompType::AND_GATE; break;
+        case Tool::OR_T:      ctype = CompType::OR_GATE; break;
+        case Tool::NOT_T:     ctype = CompType::NOT_GATE; break;
+        case Tool::NAND_T:    ctype = CompType::NAND_GATE; break;
+        case Tool::XOR_T:     ctype = CompType::XOR_GATE; break;
+        case Tool::BAT_AA:    ctype = CompType::BATTERY_AA; break;
+        case Tool::BAT_COIN:  ctype = CompType::BATTERY_COIN; break;
+        case Tool::BAT_9V:    ctype = CompType::BATTERY_9V; break;
+        case Tool::MULTI:     isSpecial = true; break;  // not a placeable component
+        case Tool::RUN:       return;  // not a placeable component
+        default:              return;
     }
 
-    if (comp) {
-        _components[_compCount++] = comp;
-        updateInfoBar();
-        if (_drawObj) lv_obj_invalidate(_drawObj);
+    if (isSpecial) return;
+
+    // Use factory to create the component
+    CircuitComponent* comp = ComponentFactory::create(ctype, _cursorX, _cursorY);
+    if (!comp) return;
+
+    // Assign nodes based on component type
+    if (ctype == CompType::GROUND) {
+        // Ground connects to node 0
+    } else if (ctype == CompType::MCU) {
+        auto* mcu = static_cast<MCUComponent*>(comp);
+        for (int i = 0; i < MCUComponent::PIN_COUNT; ++i) {
+            mcu->setPinNode(i, _nextNodeId++);
+        }
+    } else {
+        // Standard 2-terminal component
+        comp->setNodes(_nextNodeId, _nextNodeId + 1);
+        _nextNodeId += 2;
+
+        // Handle 3rd terminal for transistors/op-amps
+        int extra = ComponentFactory::extraNodes(ctype);
+        if (extra > 0) {
+            if (ctype == CompType::NPN_BJT)
+                static_cast<NpnBjt*>(comp)->setNodeC(_nextNodeId++);
+            else if (ctype == CompType::PNP_BJT)
+                static_cast<PnpBjt*>(comp)->setNodeC(_nextNodeId++);
+            else if (ctype == CompType::NMOS)
+                static_cast<NmosFet*>(comp)->setNodeD(_nextNodeId++);
+            else if (ctype == CompType::OP_AMP)
+                static_cast<OpAmp*>(comp)->setNodeInN(_nextNodeId++);
+        }
+
+        // Handle logic gate output node
+        if (ComponentFactory::isLogicGate(ctype)) {
+            auto* gate = static_cast<LogicGate*>(comp);
+            gate->setNodeOut(_nextNodeId++);
+            gate->setVsIndex(_nextVsIdx++);
+        }
     }
+
+    // Assign voltage source index if needed
+    if (ComponentFactory::needsVsIndex(ctype) && !ComponentFactory::isLogicGate(ctype)) {
+        if (ctype == CompType::VOLTAGE_SOURCE)
+            static_cast<VoltageSource*>(comp)->setVsIndex(_nextVsIdx++);
+        else if (ctype == CompType::LED)
+            static_cast<LEDComponent*>(comp)->setVsIndex(_nextVsIdx++);
+        else if (ctype == CompType::OP_AMP)
+            static_cast<OpAmp*>(comp)->setVsIndex(_nextVsIdx++);
+        else if (ctype == CompType::BATTERY_AA)
+            static_cast<BatteryAA*>(comp)->setVsIndex(_nextVsIdx++);
+        else if (ctype == CompType::BATTERY_COIN)
+            static_cast<BatteryCoin*>(comp)->setVsIndex(_nextVsIdx++);
+        else if (ctype == CompType::BATTERY_9V)
+            static_cast<Battery9V*>(comp)->setVsIndex(_nextVsIdx++);
+    }
+
+    _components[_compCount++] = comp;
+    updateInfoBar();
+    if (_drawObj) lv_obj_invalidate(_drawObj);
 }
 
 void CircuitCoreApp::deleteComponentAt(int gx, int gy) {
@@ -576,14 +713,17 @@ void CircuitCoreApp::runMnaTick() {
         CompType t = _components[i]->type();
         if (t == CompType::VOLTAGE_SOURCE) vsCount++;
         if (t == CompType::LED) vsCount++;  // LED uses a VS when ON
+        if (t == CompType::OP_AMP) vsCount++;
+        if (t == CompType::BATTERY_AA || t == CompType::BATTERY_COIN ||
+            t == CompType::BATTERY_9V) vsCount++;
+        if (ComponentFactory::isLogicGate(t)) vsCount++;
     }
     _mna.setVsCount(vsCount);
 
     // Phase 1: Stamp wires (Union-Find merge)
     for (int i = 0; i < _compCount; ++i) {
         if (!_components[i]) continue;
-        if (_components[i]->type() == CompType::WIRE ||
-            _components[i]->type() == CompType::GROUND) {
+        if (ComponentFactory::isWirePhase(_components[i]->type())) {
             _components[i]->stampMatrix(_mna);
         }
     }
@@ -591,11 +731,10 @@ void CircuitCoreApp::runMnaTick() {
     // Phase 2: Clear and re-stamp matrices
     _mna.stampClear();
 
-    // Phase 3: Stamp all non-wire components (includes new types)
+    // Phase 3: Stamp all non-wire components
     for (int i = 0; i < _compCount; ++i) {
         if (!_components[i]) continue;
-        CompType t = _components[i]->type();
-        if (t != CompType::WIRE && t != CompType::GROUND) {
+        if (!ComponentFactory::isWirePhase(_components[i]->type())) {
             _components[i]->stampMatrix(_mna);
         }
     }
@@ -707,6 +846,11 @@ void CircuitCoreApp::onDraw(lv_event_t* e) {
     if (app->_scopeActive && app->_simRunning) {
         app->drawScope(layer, objX, objY);
     }
+
+    // ── Draw multimeter (SIM_MODE) ──
+    if (app->_meterActive && app->_simRunning) {
+        app->drawMultimeter(layer, objX, objY);
+    }
 }
 
 // ══ Oscilloscope ════════════════════════════════════════════════════════════
@@ -714,8 +858,19 @@ void CircuitCoreApp::onDraw(lv_event_t* e) {
 void CircuitCoreApp::updateScope() {
     if (!_scopeActive || _probeNode < 0) return;
 
+    // Only sample based on timebase divisor
+    if ((_frameCount / 2) % _scopeTimebase != 0) return;
+
+    // Channel 1
     float v = _mna.nodeVoltage(_probeNode);
     _scopeBuffer[_scopeWriteIdx] = v;
+
+    // Channel 2 (if active)
+    if (_probeNode2 >= 0) {
+        float v2 = _mna.nodeVoltage(_probeNode2);
+        _scopeBuffer2[_scopeWriteIdx] = v2;
+    }
+
     _scopeWriteIdx = (_scopeWriteIdx + 1) % SCOPE_SAMPLES;
 }
 
@@ -740,20 +895,24 @@ void CircuitCoreApp::drawScope(lv_layer_t* layer, int objX, int objY) {
     bgArea.y2 = scopeY + SCOPE_H;
     lv_draw_rect(layer, &bgDsc, &bgArea);
 
-    // Find voltage range for auto-scaling
-    static constexpr float SCOPE_MIN_RANGE = 0.1f;  // minimum displayable voltage range
+    // Find voltage range for auto-scaling (across both channels)
+    static constexpr float SCOPE_MIN_RANGE = 0.1f;
     float vMin = 1e9f, vMax = -1e9f;
     for (int i = 0; i < SCOPE_SAMPLES; ++i) {
         if (_scopeBuffer[i] < vMin) vMin = _scopeBuffer[i];
         if (_scopeBuffer[i] > vMax) vMax = _scopeBuffer[i];
+        if (_probeNode2 >= 0) {
+            if (_scopeBuffer2[i] < vMin) vMin = _scopeBuffer2[i];
+            if (_scopeBuffer2[i] > vMax) vMax = _scopeBuffer2[i];
+        }
     }
     float vRange = vMax - vMin;
     if (vRange < SCOPE_MIN_RANGE) { vRange = SCOPE_MIN_RANGE; vMin = vMax - SCOPE_MIN_RANGE / 2.0f; }
 
-    // Draw waveform
+    // Draw channel 1 waveform (green)
     lv_draw_line_dsc_t lineDsc;
     lv_draw_line_dsc_init(&lineDsc);
-    lineDsc.color = lv_color_hex(0x3FB950);  // green waveform
+    lineDsc.color = lv_color_hex(0x3FB950);
     lineDsc.width = 1;
 
     for (int i = 0; i < SCOPE_SAMPLES - 1; ++i) {
@@ -773,9 +932,30 @@ void CircuitCoreApp::drawScope(lv_layer_t* layer, int objX, int objY) {
         lv_draw_line(layer, &lineDsc);
     }
 
-    // Probe label
-    char probeBuf[24];
-    snprintf(probeBuf, sizeof(probeBuf), "N%d", _probeNode);
+    // Draw channel 2 waveform (cyan) if active
+    if (_probeNode2 >= 0) {
+        lineDsc.color = lv_color_hex(0x00BFFF);
+        for (int i = 0; i < SCOPE_SAMPLES - 1; ++i) {
+            int idx0 = (_scopeWriteIdx + i) % SCOPE_SAMPLES;
+            int idx1 = (_scopeWriteIdx + i + 1) % SCOPE_SAMPLES;
+
+            float norm0 = (_scopeBuffer2[idx0] - vMin) / vRange;
+            float norm1 = (_scopeBuffer2[idx1] - vMin) / vRange;
+
+            int y0 = scopeY + SCOPE_H - 2 - (int)(norm0 * (SCOPE_H - 4));
+            int y1 = scopeY + SCOPE_H - 2 - (int)(norm1 * (SCOPE_H - 4));
+
+            lineDsc.p1.x = scopeX + i;
+            lineDsc.p1.y = y0;
+            lineDsc.p2.x = scopeX + i + 1;
+            lineDsc.p2.y = y1;
+            lv_draw_line(layer, &lineDsc);
+        }
+    }
+
+    // Probe labels
+    char probeBuf[32];
+    snprintf(probeBuf, sizeof(probeBuf), "Ch1:N%d T:%dx", _probeNode, _scopeTimebase);
     lv_draw_label_dsc_t labDsc;
     lv_draw_label_dsc_init(&labDsc);
     labDsc.color = lv_color_hex(0x3FB950);
@@ -785,9 +965,19 @@ void CircuitCoreApp::drawScope(lv_layer_t* layer, int objX, int objY) {
     lv_area_t labArea;
     labArea.x1 = scopeX + 2;
     labArea.y1 = scopeY + 1;
-    labArea.x2 = scopeX + 40;
+    labArea.x2 = scopeX + SCOPE_W - 2;
     labArea.y2 = scopeY + 10;
     lv_draw_label(layer, &labDsc, &labArea);
+
+    if (_probeNode2 >= 0) {
+        char probeBuf2[16];
+        snprintf(probeBuf2, sizeof(probeBuf2), "Ch2:N%d", _probeNode2);
+        labDsc.color = lv_color_hex(0x00BFFF);
+        labDsc.text  = probeBuf2;
+        labArea.y1 = scopeY + SCOPE_H - 10;
+        labArea.y2 = scopeY + SCOPE_H - 1;
+        lv_draw_label(layer, &labDsc, &labArea);
+    }
 }
 
 // ══ Node Voltage Labels (SIM_MODE) ══════════════════════════════════════════
@@ -853,13 +1043,25 @@ void CircuitCoreApp::drawCurrentDots(lv_layer_t* layer, int objX, int objY) {
             current = static_cast<LEDComponent*>(_components[i])->current();
         } else if (t == CompType::DIODE) {
             current = static_cast<Diode*>(_components[i])->current();
-        } else if (t == CompType::RESISTOR || t == CompType::POTENTIOMETER) {
-            // Estimate current from node voltages
+        } else if (t == CompType::RESISTOR || t == CompType::POTENTIOMETER ||
+                   t == CompType::LDR || t == CompType::THERMISTOR ||
+                   t == CompType::FLEX_SENSOR || t == CompType::FSR) {
+            // All variable-resistance sensors use V/R for current estimate
             float vA = _mna.nodeVoltage(_components[i]->nodeA());
             float vB = _mna.nodeVoltage(_components[i]->nodeB());
-            float r = (t == CompType::RESISTOR)
-                ? static_cast<Resistor*>(_components[i])->resistance()
-                : static_cast<Potentiometer*>(_components[i])->resistance();
+            float r = 1000.0f;  // default
+            if (t == CompType::RESISTOR)
+                r = static_cast<Resistor*>(_components[i])->resistance();
+            else if (t == CompType::POTENTIOMETER)
+                r = static_cast<Potentiometer*>(_components[i])->resistance();
+            else if (t == CompType::LDR)
+                r = static_cast<LDR*>(_components[i])->resistance();
+            else if (t == CompType::THERMISTOR)
+                r = static_cast<Thermistor*>(_components[i])->resistance();
+            else if (t == CompType::FLEX_SENSOR)
+                r = static_cast<FlexSensor*>(_components[i])->resistance();
+            else if (t == CompType::FSR)
+                r = static_cast<FSRComponent*>(_components[i])->resistance();
             if (r > 0.0f) current = fabsf(vA - vB) / r;
         }
 
@@ -900,6 +1102,103 @@ void CircuitCoreApp::adjustPotAt(int gx, int gy, bool up) {
         else    pot->adjustDown();
         if (_drawObj) lv_obj_invalidate(_drawObj);
     }
+}
+
+void CircuitCoreApp::adjustSensorAt(int gx, int gy, float delta) {
+    CircuitComponent* comp = findComponentAt(gx, gy);
+    if (!comp) return;
+
+    _sensorSliderValue += delta;
+    if (_sensorSliderValue < 0.0f) _sensorSliderValue = 0.0f;
+    if (_sensorSliderValue > 1.0f) _sensorSliderValue = 1.0f;
+
+    switch (comp->type()) {
+        case CompType::LDR:
+            static_cast<LDR*>(comp)->setLightLevel(_sensorSliderValue);
+            break;
+        case CompType::THERMISTOR:
+            // Map 0-1 → -20°C to 100°C
+            static_cast<Thermistor*>(comp)->setTemperature(-20.0f + 120.0f * _sensorSliderValue);
+            break;
+        case CompType::FLEX_SENSOR:
+            static_cast<FlexSensor*>(comp)->setBendLevel(_sensorSliderValue);
+            break;
+        case CompType::FSR:
+            static_cast<FSRComponent*>(comp)->setForceLevel(_sensorSliderValue);
+            break;
+        default:
+            return;  // Not a sensor
+    }
+    if (_drawObj) lv_obj_invalidate(_drawObj);
+}
+
+// ══ Multimeter ══════════════════════════════════════════════════════════════
+
+void CircuitCoreApp::probeMultimeter(int gx, int gy) {
+    CircuitComponent* comp = findComponentAt(gx, gy);
+    if (!comp) return;
+
+    if (_meterNodeA < 0) {
+        // First probe
+        _meterNodeA = comp->nodeA();
+        _meterActive = true;
+    } else if (_meterNodeB < 0) {
+        // Second probe
+        _meterNodeB = comp->nodeA();
+    } else {
+        // Reset
+        _meterNodeA = comp->nodeA();
+        _meterNodeB = -1;
+    }
+    if (_drawObj) lv_obj_invalidate(_drawObj);
+}
+
+void CircuitCoreApp::drawMultimeter(lv_layer_t* layer, int objX, int objY) {
+    // Position: top-right corner
+    int mX = objX + GRID_W - 90;
+    int mY = objY + 4;
+
+    lv_draw_rect_dsc_t bgDsc;
+    lv_draw_rect_dsc_init(&bgDsc);
+    bgDsc.bg_color = lv_color_hex(0x0A0A0A);
+    bgDsc.bg_opa   = LV_OPA_90;
+    bgDsc.border_color = lv_color_hex(0xFFD700);
+    bgDsc.border_width = 1;
+    bgDsc.radius = 3;
+
+    lv_area_t bg;
+    bg.x1 = mX; bg.y1 = mY;
+    bg.x2 = mX + 86; bg.y2 = mY + 36;
+    lv_draw_rect(layer, &bgDsc, &bg);
+
+    // Compute readings
+    float vA = (_meterNodeA >= 0) ? _mna.nodeVoltage(_meterNodeA) : 0.0f;
+    float vB = (_meterNodeB >= 0) ? _mna.nodeVoltage(_meterNodeB) : 0.0f;
+    float voltage = vA - vB;
+
+    char line1[32], line2[32];
+    snprintf(line1, sizeof(line1), "V: %.3fV", (double)voltage);
+    if (_meterNodeB >= 0) {
+        snprintf(line2, sizeof(line2), "A:%d B:%d", _meterNodeA, _meterNodeB);
+    } else {
+        snprintf(line2, sizeof(line2), "Probe A: N%d", _meterNodeA);
+    }
+
+    lv_draw_label_dsc_t labDsc;
+    lv_draw_label_dsc_init(&labDsc);
+    labDsc.color = lv_color_hex(0xFFD700);
+    labDsc.font  = &lv_font_unscii_8;
+
+    labDsc.text = line1;
+    lv_area_t la;
+    la.x1 = mX + 4; la.y1 = mY + 3;
+    la.x2 = mX + 82; la.y2 = mY + 15;
+    lv_draw_label(layer, &labDsc, &la);
+
+    labDsc.text = line2;
+    labDsc.color = lv_color_hex(0xA0A0A0);
+    la.y1 = mY + 18; la.y2 = mY + 30;
+    lv_draw_label(layer, &labDsc, &la);
 }
 
 // ══ Persistence (LittleFS) ══════════════════════════════════════════════════
@@ -955,7 +1254,54 @@ void CircuitCoreApp::saveCircuit(const char* filename) {
                 f.printf(",%.9f", (double)static_cast<Capacitor*>(c)->capacitance());
                 break;
             case CompType::DIODE:
-                // No extra data needed
+                break;
+            // New sensor components (save current sensor levels)
+            case CompType::LDR:
+                f.printf(",%.6f", (double)static_cast<LDR*>(c)->lightLevel());
+                break;
+            case CompType::THERMISTOR:
+                f.printf(",%.6f", (double)static_cast<Thermistor*>(c)->temperature());
+                break;
+            case CompType::FLEX_SENSOR:
+                f.printf(",%.6f", (double)static_cast<FlexSensor*>(c)->bendLevel());
+                break;
+            case CompType::FSR:
+                f.printf(",%.6f", (double)static_cast<FSRComponent*>(c)->forceLevel());
+                break;
+            // Transistors (save 3rd node)
+            case CompType::NPN_BJT:
+                f.printf(",%d", static_cast<NpnBjt*>(c)->nodeC());
+                break;
+            case CompType::PNP_BJT:
+                f.printf(",%d", static_cast<PnpBjt*>(c)->nodeC());
+                break;
+            case CompType::NMOS:
+                f.printf(",%d", static_cast<NmosFet*>(c)->nodeD());
+                break;
+            case CompType::OP_AMP:
+                f.printf(",%d,%d",
+                    static_cast<OpAmp*>(c)->nodeInN(),
+                    static_cast<OpAmp*>(c)->vsIndex());
+                break;
+            // Logic gates (save output node and vs index)
+            case CompType::AND_GATE:
+            case CompType::OR_GATE:
+            case CompType::NOT_GATE:
+            case CompType::NAND_GATE:
+            case CompType::XOR_GATE:
+                f.printf(",%d,%d",
+                    static_cast<LogicGate*>(c)->nodeOut(),
+                    static_cast<LogicGate*>(c)->vsIndex());
+                break;
+            // Batteries (save vs index)
+            case CompType::BATTERY_AA:
+                f.printf(",%d", static_cast<BatteryAA*>(c)->vsIndex());
+                break;
+            case CompType::BATTERY_COIN:
+                f.printf(",%d", static_cast<BatteryCoin*>(c)->vsIndex());
+                break;
+            case CompType::BATTERY_9V:
+                f.printf(",%d", static_cast<Battery9V*>(c)->vsIndex());
                 break;
             default:
                 break;
@@ -1036,10 +1382,9 @@ void CircuitCoreApp::loadCircuit(const char* filename) {
             case CompType::GROUND:
                 comp = new GroundNode(gx, gy);
                 break;
-            case CompType::MCU: {
+            case CompType::MCU:
                 comp = new MCUComponent(gx, gy);
                 break;
-            }
             case CompType::POTENTIOMETER: {
                 float r = 10000.0f;
                 sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%f", &r);
@@ -1062,6 +1407,119 @@ void CircuitCoreApp::loadCircuit(const char* filename) {
             }
             case CompType::DIODE:
                 comp = new Diode(gx, gy, 0.7f);
+                break;
+            // New sensor components
+            case CompType::LDR: {
+                float lvl = 0.0f;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%f", &lvl);
+                auto* ldr = new LDR(gx, gy);
+                ldr->setLightLevel(lvl);
+                comp = ldr;
+                break;
+            }
+            case CompType::THERMISTOR: {
+                float tmp = 25.0f;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%f", &tmp);
+                auto* therm = new Thermistor(gx, gy);
+                therm->setTemperature(tmp);
+                comp = therm;
+                break;
+            }
+            case CompType::FLEX_SENSOR: {
+                float bend = 0.0f;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%f", &bend);
+                auto* flex = new FlexSensor(gx, gy);
+                flex->setBendLevel(bend);
+                comp = flex;
+                break;
+            }
+            case CompType::FSR: {
+                float force = 0.0f;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%f", &force);
+                auto* fsr = new FSRComponent(gx, gy);
+                fsr->setForceLevel(force);
+                comp = fsr;
+                break;
+            }
+            // Transistors
+            case CompType::NPN_BJT: {
+                int nc = 0;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%d", &nc);
+                auto* npn = new NpnBjt(gx, gy);
+                npn->setNodeC(nc);
+                comp = npn;
+                break;
+            }
+            case CompType::PNP_BJT: {
+                int nc = 0;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%d", &nc);
+                auto* pnp = new PnpBjt(gx, gy);
+                pnp->setNodeC(nc);
+                comp = pnp;
+                break;
+            }
+            case CompType::NMOS: {
+                int nd = 0;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%d", &nd);
+                auto* mos = new NmosFet(gx, gy);
+                mos->setNodeD(nd);
+                comp = mos;
+                break;
+            }
+            case CompType::OP_AMP: {
+                int nin = 0, vi = 0;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%d,%d", &nin, &vi);
+                auto* opa = new OpAmp(gx, gy);
+                opa->setNodeInN(nin);
+                opa->setVsIndex(vi);
+                comp = opa;
+                break;
+            }
+            // Logic gates
+            case CompType::AND_GATE:
+            case CompType::OR_GATE:
+            case CompType::NOT_GATE:
+            case CompType::NAND_GATE:
+            case CompType::XOR_GATE: {
+                int nOut = 0, vi = 0;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%d,%d", &nOut, &vi);
+                comp = ComponentFactory::create(ctype, gx, gy);
+                if (comp) {
+                    auto* gate = static_cast<LogicGate*>(comp);
+                    gate->setNodeOut(nOut);
+                    gate->setVsIndex(vi);
+                }
+                break;
+            }
+            // Batteries
+            case CompType::BATTERY_AA: {
+                int vi = 0;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%d", &vi);
+                auto* bat = new BatteryAA(gx, gy);
+                bat->setVsIndex(vi);
+                comp = bat;
+                break;
+            }
+            case CompType::BATTERY_COIN: {
+                int vi = 0;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%d", &vi);
+                auto* bat = new BatteryCoin(gx, gy);
+                bat->setVsIndex(vi);
+                comp = bat;
+                break;
+            }
+            case CompType::BATTERY_9V: {
+                int vi = 0;
+                sscanf(line.c_str(), "%*d,%*d,%*d,%*d,%*d,%d", &vi);
+                auto* bat = new Battery9V(gx, gy);
+                bat->setVsIndex(vi);
+                comp = bat;
+                break;
+            }
+            // Simple components (buzzer, 7-seg) - factory defaults
+            case CompType::BUZZER:
+            case CompType::SEVEN_SEG:
+                comp = ComponentFactory::create(ctype, gx, gy);
                 break;
             default:
                 continue;

@@ -28,6 +28,9 @@
 #include "../input/KeyboardManager.h"
 #include "MnaMatrix.h"
 #include "CircuitComponent.h"
+#include "ComponentFactory.h"
+#include "LogicGates.h"
+#include "PowerSystems.h"
 #include "LuaVM.h"
 
 class CircuitCoreApp {
@@ -46,8 +49,12 @@ public:
     bool isToolbarFocused() const { return _focusArea == FocusArea::TOOLBAR; }
 
 private:
-    // ── Tool types (toolbar order) ──────────────────────────────────────
+    // ── Tool types (toolbar order, across pages) ──────────────────────────
+    // Page 0: Basic components (original)
+    // Page 1: Sensors & Semiconductors  
+    // Page 2: Logic Gates & Power
     enum class Tool : uint8_t {
+        // Page 0 — Basic
         RES = 0,   // Resistor
         VCC,       // Voltage Source
         GND,       // Ground
@@ -58,6 +65,28 @@ private:
         BTN,       // Push-Button
         CAP,       // Capacitor
         DIODE,     // Diode
+        // Page 1 — Sensors & Semiconductors
+        LDR_T,     // Light Dependent Resistor
+        THERM,     // Thermistor/TMP36
+        FLEX,      // Flex Sensor
+        FSR_T,     // Force Sensitive Resistor
+        NPN,       // NPN BJT
+        PNP,       // PNP BJT
+        NMOS_T,    // N-Channel MOSFET
+        OPAMP,     // Op-Amp
+        BUZZER_T,  // Buzzer
+        SEG7,      // 7-Segment Display
+        // Page 2 — Logic & Power
+        AND_T,     // AND Gate
+        OR_T,      // OR Gate
+        NOT_T,     // NOT Gate
+        NAND_T,    // NAND Gate
+        XOR_T,     // XOR Gate
+        BAT_AA,    // 1.5V Battery
+        BAT_COIN,  // 3V Battery
+        BAT_9V,    // 9V Battery
+        MULTI,     // Multimeter probe
+        // Control
         RUN,       // Run/Stop simulation
         TOOL_COUNT
     };
@@ -81,14 +110,19 @@ private:
     static constexpr int GRID_SNAP   = 20;
 
     // ── Component storage ───────────────────────────────────────────────
-    static constexpr int MAX_COMPONENTS = 64;
+    static constexpr int MAX_COMPONENTS = 96;
+
+    // ── Toolbar pages (10 tools per page) ───────────────────────────────
+    static constexpr int TOOLS_PER_PAGE = 10;
+    static constexpr int NUM_PAGES      = 3;  // Basic / Sensors+Semi / Logic+Power
 
     // ── LVGL objects ────────────────────────────────────────────────────
     lv_obj_t*       _screen;
     lv_obj_t*       _drawObj;       // grid area with custom draw
     lv_obj_t*       _toolbarObj;    // toolbar container
-    lv_obj_t*       _toolBtns[static_cast<int>(Tool::TOOL_COUNT)];
+    lv_obj_t*       _toolBtns[TOOLS_PER_PAGE]; // visible toolbar buttons (per page)
     lv_obj_t*       _infoLabel;     // bottom info bar
+    lv_obj_t*       _pageLabel;     // toolbar page indicator
     lv_timer_t*     _simTimer;      // 60Hz frame timer (MNA at 30Hz)
     ui::StatusBar   _statusBar;
 
@@ -104,7 +138,8 @@ private:
 
     // ── Editor state ────────────────────────────────────────────────────
     Tool        _currentTool;
-    int         _toolbarIdx;    // focused toolbar button index
+    int         _toolbarIdx;    // focused toolbar button index (within page)
+    int         _toolbarPage;   // current toolbar page (0-2)
     FocusArea   _focusArea;
     int         _cursorX;       // grid-snapped cursor (pixels relative to grid)
     int         _cursorY;
@@ -113,20 +148,30 @@ private:
     int         _nextNodeId;    // next MNA node to assign
     int         _nextVsIdx;     // next voltage source index
 
+    // ── Sensor simulation slider ────────────────────────────────────────
+    float       _sensorSliderValue;  // 0.0 - 1.0 for sensor adjustment
+
     // ── Text buffer for info bar ────────────────────────────────────────
     char        _infoBuf[80];
 
-    // ── Oscilloscope (Mini Scope) ───────────────────────────────────────
+    // ── Oscilloscope (Dual-Trace Scope) ────────────────────────────────
     static constexpr int SCOPE_W       = 80;
     static constexpr int SCOPE_H       = 40;
     static constexpr int SCOPE_SAMPLES = 80;
-    float       _scopeBuffer[SCOPE_SAMPLES]; // ring buffer of voltage samples
-    int         _scopeWriteIdx;              // next write position
-    int         _probeNode;                  // node being probed (-1 = off)
-    bool        _scopeActive;                // scope display enabled
+    float       _scopeBuffer[SCOPE_SAMPLES];   // channel 1 ring buffer
+    float       _scopeBuffer2[SCOPE_SAMPLES];  // channel 2 ring buffer
+    int         _scopeWriteIdx;
+    int         _probeNode;                    // channel 1 probe node
+    int         _probeNode2;                   // channel 2 probe node
+    bool        _scopeActive;
+    int         _scopeTimebase;                // timebase divisor (1-8)
 
-    // ── Tooltip descriptions ────────────────────────────────────────────
-    static const char* TOOL_TOOLTIPS[];
+    // ── Multimeter ──────────────────────────────────────────────────────
+    int         _meterNodeA;        // probe A node (-1 = inactive)
+    int         _meterNodeB;        // probe B node (-1 = inactive)
+    bool        _meterActive;       // multimeter display enabled
+
+    // ── Tooltip descriptions (now provided by ComponentFactory) ────────
 
     // ── UI construction ─────────────────────────────────────────────────
     void createUI();
@@ -166,6 +211,16 @@ private:
     // ── Component interaction ───────────────────────────────────────────
     void toggleButtonAt(int gx, int gy);
     void adjustPotAt(int gx, int gy, bool up);
+    void adjustSensorAt(int gx, int gy, float value);
+
+    // ── Multimeter ──────────────────────────────────────────────────────
+    void drawMultimeter(lv_layer_t* layer, int objX, int objY);
+    void probeMultimeter(int gx, int gy);
+
+    // ── Toolbar pages ───────────────────────────────────────────────────
+    void rebuildToolbarPage();
+    Tool pageToolAt(int page, int idx) const;
+    int  toolsOnPage(int page) const;
 
     // ── Custom draw callback ────────────────────────────────────────────
     static void onDraw(lv_event_t* e);

@@ -5,6 +5,11 @@
  *   stampMatrix() — MNA matrix stamping
  *   draw()        — LVGL vector drawing (replaceable with images)
  *   updateFromSolution() — post-solve state update (LEDs)
+ *
+ * New components added:
+ *   - Sensors: LDR, Thermistor, FlexSensor, FSR (variable resistance)
+ *   - Semiconductors: NPN BJT, PNP BJT, N-MOSFET, Op-Amp
+ *   - Outputs: Buzzer, 7-Segment Display
  */
 
 #include "CircuitComponent.h"
@@ -650,6 +655,637 @@ void Diode::draw(lv_layer_t* layer, int offsetX, int offsetY) {
 
     // Right lead
     dsc.p1.x = cx + 4;  dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SENSORS — Variable Resistance Components
+// ════════════════════════════════════════════════════════════════════════════
+
+// ══ LDR (Light Dependent Resistor) ══════════════════════════════════════════
+// Mathematically equivalent to a potentiometer: R varies with light level.
+// Dark: ~100kΩ, Bright: ~200Ω. Follows inverse power law.
+
+LDR::LDR(int gridX, int gridY, float darkR)
+    : CircuitComponent(CompType::LDR, gridX, gridY)
+    , _darkResistance(darkR)
+    , _resistance(darkR)
+    , _lightLevel(0.0f)
+{}
+
+void LDR::setLightLevel(float level) {
+    _lightLevel = (level < 0.0f) ? 0.0f : (level > 1.0f) ? 1.0f : level;
+    // Inverse power law: R = R_dark * (1 - 0.998 * level)
+    // At level 0.0: R = 100kΩ, at level 1.0: R ≈ 200Ω
+    float factor = 1.0f - 0.998f * _lightLevel;
+    if (factor < 0.002f) factor = 0.002f;
+    _resistance = _darkResistance * factor;
+}
+
+void LDR::stampMatrix(MnaMatrix& mna) {
+    mna.stampResistor(_nodeA, _nodeB, _resistance);
+}
+
+void LDR::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0xCCCC00);  // yellow for LDR
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    // Same zigzag body as resistor (shared drawing pattern)
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 14; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    static const int8_t zigX[] = { -14, -10, -6, -2, 2, 6, 10, 14 };
+    static const int8_t zigY[] = {   0,  -6,  6, -6, 6, -6, 6,  0 };
+    for (int i = 0; i < 7; ++i) {
+        dsc.p1.x = cx + zigX[i]; dsc.p1.y = cy + zigY[i];
+        dsc.p2.x = cx + zigX[i + 1]; dsc.p2.y = cy + zigY[i + 1];
+        lv_draw_line(layer, &dsc);
+    }
+
+    dsc.p1.x = cx + 14; dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // Light arrows (two diagonal arrows pointing at body)
+    dsc.color = lv_color_hex(0xFFFF44);
+    dsc.width = 1;
+    dsc.p1.x = cx - 8; dsc.p1.y = cy - 12;
+    dsc.p2.x = cx - 4; dsc.p2.y = cy - 8;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx - 2; dsc.p1.y = cy - 12;
+    dsc.p2.x = cx + 2; dsc.p2.y = cy - 8;
+    lv_draw_line(layer, &dsc);
+}
+
+// ══ Thermistor (TMP36 Temperature Sensor) ═══════════════════════════════════
+
+Thermistor::Thermistor(int gridX, int gridY, float nominalR)
+    : CircuitComponent(CompType::THERMISTOR, gridX, gridY)
+    , _nominalR(nominalR)
+    , _resistance(nominalR)
+    , _tempC(25.0f)
+{}
+
+void Thermistor::setTemperature(float tempC) {
+    _tempC = tempC;
+    static constexpr float B = 3950.0f;
+    static constexpr float T_NOM = 298.15f;
+    float tK = _tempC + 273.15f;
+    if (tK < 1.0f) tK = 1.0f;
+    _resistance = _nominalR * expf(B * (1.0f / tK - 1.0f / T_NOM));
+    if (_resistance < 10.0f) _resistance = 10.0f;
+    if (_resistance > 1e6f)  _resistance = 1e6f;
+}
+
+void Thermistor::stampMatrix(MnaMatrix& mna) {
+    mna.stampResistor(_nodeA, _nodeB, _resistance);
+}
+
+void Thermistor::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0xFF6633);
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 14; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    static const int8_t zigX[] = { -14, -10, -6, -2, 2, 6, 10, 14 };
+    static const int8_t zigY[] = {   0,  -6,  6, -6, 6, -6, 6,  0 };
+    for (int i = 0; i < 7; ++i) {
+        dsc.p1.x = cx + zigX[i]; dsc.p1.y = cy + zigY[i];
+        dsc.p2.x = cx + zigX[i + 1]; dsc.p2.y = cy + zigY[i + 1];
+        lv_draw_line(layer, &dsc);
+    }
+
+    dsc.p1.x = cx + 14; dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // "T" marker
+    dsc.color = lv_color_hex(0xFF4444);
+    dsc.width = 1;
+    dsc.p1.x = cx - 4; dsc.p1.y = cy - 12;
+    dsc.p2.x = cx + 4; dsc.p2.y = cy - 12;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx; dsc.p1.y = cy - 12;
+    dsc.p2.x = cx; dsc.p2.y = cy - 8;
+    lv_draw_line(layer, &dsc);
+}
+
+// ══ Flex Sensor ═════════════════════════════════════════════════════════════
+
+FlexSensor::FlexSensor(int gridX, int gridY, float flatR)
+    : CircuitComponent(CompType::FLEX_SENSOR, gridX, gridY)
+    , _flatResistance(flatR)
+    , _resistance(flatR)
+    , _bendLevel(0.0f)
+{}
+
+void FlexSensor::setBendLevel(float level) {
+    _bendLevel = (level < 0.0f) ? 0.0f : (level > 1.0f) ? 1.0f : level;
+    _resistance = _flatResistance * (1.0f + 4.0f * _bendLevel);
+}
+
+void FlexSensor::stampMatrix(MnaMatrix& mna) {
+    mna.stampResistor(_nodeA, _nodeB, _resistance);
+}
+
+void FlexSensor::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0x88CC44);
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 10; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    int bend = (int)(4.0f * _bendLevel);
+    dsc.p1.x = cx - 10; dsc.p1.y = cy;
+    dsc.p2.x = cx;      dsc.p2.y = cy - bend;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx;      dsc.p1.y = cy - bend;
+    dsc.p2.x = cx + 10; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    dsc.p1.x = cx + 10; dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    dsc.color = lv_color_hex(0xAAEE66);
+    dsc.width = 1;
+    dsc.p1.x = cx - 3; dsc.p1.y = cy - 10;
+    dsc.p2.x = cx + 3; dsc.p2.y = cy - 10;
+    lv_draw_line(layer, &dsc);
+}
+
+// ══ FSR (Force Sensitive Resistor) ══════════════════════════════════════════
+
+FSRComponent::FSRComponent(int gridX, int gridY, float maxR)
+    : CircuitComponent(CompType::FSR, gridX, gridY)
+    , _maxResistance(maxR)
+    , _resistance(maxR)
+    , _forceLevel(0.0f)
+{}
+
+void FSRComponent::setForceLevel(float level) {
+    _forceLevel = (level < 0.0f) ? 0.0f : (level > 1.0f) ? 1.0f : level;
+    _resistance = _maxResistance / (1.0f + 4999.0f * _forceLevel);
+    if (_resistance < 200.0f) _resistance = 200.0f;
+}
+
+void FSRComponent::stampMatrix(MnaMatrix& mna) {
+    mna.stampResistor(_nodeA, _nodeB, _resistance);
+}
+
+void FSRComponent::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_rect_dsc_t rdsc;
+    lv_draw_rect_dsc_init(&rdsc);
+    rdsc.bg_color = lv_color_hex(0x663399);
+    rdsc.bg_opa   = LV_OPA_60;
+    rdsc.border_color = lv_color_hex(0x9966CC);
+    rdsc.border_width = 2;
+    rdsc.radius = LV_RADIUS_CIRCLE;
+
+    lv_area_t pad;
+    pad.x1 = cx - 8;  pad.y1 = cy - 8;
+    pad.x2 = cx + 8;  pad.y2 = cy + 8;
+    lv_draw_rect(layer, &rdsc, &pad);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0x9966CC);
+    dsc.width = 2;
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 8;  dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 8;  dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SEMICONDUCTORS — Active Components
+// ════════════════════════════════════════════════════════════════════════════
+
+// ══ NPN BJT ═════════════════════════════════════════════════════════════════
+
+NpnBjt::NpnBjt(int gridX, int gridY, float beta)
+    : CircuitComponent(CompType::NPN_BJT, gridX, gridY)
+    , _nodeC(0), _beta(beta), _vbe(0.0f), _saturated(false) {}
+
+void NpnBjt::stampMatrix(MnaMatrix& mna) {
+    if (_vbe > VBE_ON) {
+        mna.stampResistor(_nodeA, _nodeB, R_ON);
+        float rCE = R_ON * (1.0f + 1.0f / _beta);
+        mna.stampResistor(_nodeC, _nodeB, rCE);
+    } else {
+        mna.stampResistor(_nodeA, _nodeB, R_OFF);
+        mna.stampResistor(_nodeC, _nodeB, R_OFF);
+    }
+}
+
+void NpnBjt::updateFromSolution(MnaMatrix& mna) {
+    float vB = mna.nodeVoltage(_nodeA);
+    float vE = mna.nodeVoltage(_nodeB);
+    _vbe = vB - vE;
+    _saturated = (_vbe > VBE_ON);
+}
+
+void NpnBjt::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+    uint32_t color = _saturated ? 0x3FB950 : 0xC0C0C0;
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(color);
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    // Base lead
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 6;  dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+    // Base bar
+    dsc.p1.x = cx - 6; dsc.p1.y = cy - 8;
+    dsc.p2.x = cx - 6; dsc.p2.y = cy + 8;
+    lv_draw_line(layer, &dsc);
+    // Collector
+    dsc.p1.x = cx - 6; dsc.p1.y = cy - 4;
+    dsc.p2.x = cx + 8; dsc.p2.y = cy - 12;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 8;  dsc.p1.y = cy - 12;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy - 12;
+    lv_draw_line(layer, &dsc);
+    // Emitter with arrow
+    dsc.p1.x = cx - 6; dsc.p1.y = cy + 4;
+    dsc.p2.x = cx + 8; dsc.p2.y = cy + 12;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 8;  dsc.p1.y = cy + 12;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy + 12;
+    lv_draw_line(layer, &dsc);
+    // Arrow
+    dsc.width = 1;
+    dsc.p1.x = cx + 4; dsc.p1.y = cy + 6;
+    dsc.p2.x = cx + 8; dsc.p2.y = cy + 12;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 2; dsc.p1.y = cy + 12;
+    dsc.p2.x = cx + 8; dsc.p2.y = cy + 12;
+    lv_draw_line(layer, &dsc);
+}
+
+// ══ PNP BJT ═════════════════════════════════════════════════════════════════
+
+PnpBjt::PnpBjt(int gridX, int gridY, float beta)
+    : CircuitComponent(CompType::PNP_BJT, gridX, gridY)
+    , _nodeC(0), _beta(beta), _veb(0.0f), _saturated(false) {}
+
+void PnpBjt::stampMatrix(MnaMatrix& mna) {
+    if (_veb > VEB_ON) {
+        mna.stampResistor(_nodeA, _nodeB, R_ON);
+        float rCE = R_ON * (1.0f + 1.0f / _beta);
+        mna.stampResistor(_nodeC, _nodeB, rCE);
+    } else {
+        mna.stampResistor(_nodeA, _nodeB, R_OFF);
+        mna.stampResistor(_nodeC, _nodeB, R_OFF);
+    }
+}
+
+void PnpBjt::updateFromSolution(MnaMatrix& mna) {
+    float vE = mna.nodeVoltage(_nodeB);
+    float vB = mna.nodeVoltage(_nodeA);
+    _veb = vE - vB;
+    _saturated = (_veb > VEB_ON);
+}
+
+void PnpBjt::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+    uint32_t color = _saturated ? 0x3FB950 : 0xC0C0C0;
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(color);
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 6;  dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx - 6; dsc.p1.y = cy - 8;
+    dsc.p2.x = cx - 6; dsc.p2.y = cy + 8;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx - 6; dsc.p1.y = cy - 4;
+    dsc.p2.x = cx + 8; dsc.p2.y = cy - 12;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 8;  dsc.p1.y = cy - 12;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy - 12;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx - 6; dsc.p1.y = cy + 4;
+    dsc.p2.x = cx + 8; dsc.p2.y = cy + 12;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 8;  dsc.p1.y = cy + 12;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy + 12;
+    lv_draw_line(layer, &dsc);
+    // PNP arrow towards base
+    dsc.width = 1;
+    dsc.p1.x = cx - 2; dsc.p1.y = cy + 2;
+    dsc.p2.x = cx - 6; dsc.p2.y = cy + 4;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx - 6; dsc.p1.y = cy + 8;
+    dsc.p2.x = cx - 6; dsc.p2.y = cy + 4;
+    lv_draw_line(layer, &dsc);
+}
+
+// ══ N-Channel MOSFET ════════════════════════════════════════════════════════
+
+NmosFet::NmosFet(int gridX, int gridY, float vThreshold)
+    : CircuitComponent(CompType::NMOS, gridX, gridY)
+    , _nodeD(0), _vThreshold(vThreshold), _vgs(0.0f), _conducting(false) {}
+
+void NmosFet::stampMatrix(MnaMatrix& mna) {
+    if (_conducting) {
+        mna.stampResistor(_nodeD, _nodeB, R_ON);
+    } else {
+        mna.stampResistor(_nodeD, _nodeB, R_OFF);
+    }
+    mna.stampResistor(_nodeA, _nodeB, 1e8f);
+}
+
+void NmosFet::updateFromSolution(MnaMatrix& mna) {
+    float vG = mna.nodeVoltage(_nodeA);
+    float vS = mna.nodeVoltage(_nodeB);
+    _vgs = vG - vS;
+    _conducting = (_vgs > _vThreshold);
+}
+
+void NmosFet::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+    uint32_t color = _conducting ? 0x3FB950 : 0xC0C0C0;
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(color);
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    // Gate lead
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 8;  dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+    // Gate plate
+    dsc.p1.x = cx - 8; dsc.p1.y = cy - 8;
+    dsc.p2.x = cx - 8; dsc.p2.y = cy + 8;
+    lv_draw_line(layer, &dsc);
+    // Channel
+    dsc.p1.x = cx - 4; dsc.p1.y = cy - 8;
+    dsc.p2.x = cx - 4; dsc.p2.y = cy + 8;
+    lv_draw_line(layer, &dsc);
+    // Drain
+    dsc.p1.x = cx - 4; dsc.p1.y = cy - 6;
+    dsc.p2.x = cx + 8; dsc.p2.y = cy - 6;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 8;  dsc.p1.y = cy - 6;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy - 6;
+    lv_draw_line(layer, &dsc);
+    // Source
+    dsc.p1.x = cx - 4; dsc.p1.y = cy + 6;
+    dsc.p2.x = cx + 8; dsc.p2.y = cy + 6;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 8;  dsc.p1.y = cy + 6;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy + 6;
+    lv_draw_line(layer, &dsc);
+}
+
+// ══ Op-Amp (uA741) ═════════════════════════════════════════════════════════
+
+OpAmp::OpAmp(int gridX, int gridY, float gain)
+    : CircuitComponent(CompType::OP_AMP, gridX, gridY)
+    , _nodeInN(0), _gain(gain), _vOut(0.0f), _vsIndex(0) {}
+
+void OpAmp::stampMatrix(MnaMatrix& mna) {
+    mna.stampResistor(_nodeA, 0, 1e8f);
+    mna.stampResistor(_nodeInN, 0, 1e8f);
+    mna.stampVoltageSource(_nodeB, 0, _vOut, _vsIndex);
+}
+
+void OpAmp::updateFromSolution(MnaMatrix& mna) {
+    float vP = mna.nodeVoltage(_nodeA);
+    float vN = mna.nodeVoltage(_nodeInN);
+    _vOut = _gain * (vP - vN);
+    if (_vOut > V_SAT) _vOut = V_SAT;
+    if (_vOut < -V_SAT) _vOut = -V_SAT;
+}
+
+void OpAmp::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0xFF8C00);
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    // Triangle body
+    dsc.p1.x = cx - 10; dsc.p1.y = cy - 12;
+    dsc.p2.x = cx - 10; dsc.p2.y = cy + 12;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx - 10; dsc.p1.y = cy - 12;
+    dsc.p2.x = cx + 10; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx - 10; dsc.p1.y = cy + 12;
+    dsc.p2.x = cx + 10; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // Leads
+    dsc.p1.x = cx - 20; dsc.p1.y = cy - 6;
+    dsc.p2.x = cx - 10; dsc.p2.y = cy - 6;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx - 20; dsc.p1.y = cy + 6;
+    dsc.p2.x = cx - 10; dsc.p2.y = cy + 6;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 10; dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // "+"/"-" labels
+    lv_draw_label_dsc_t labdsc;
+    lv_draw_label_dsc_init(&labdsc);
+    labdsc.color = lv_color_hex(0xFFFFFF);
+    labdsc.font  = &lv_font_unscii_8;
+
+    labdsc.text = "+";
+    lv_area_t labArea;
+    labArea.x1 = cx - 9; labArea.y1 = cy - 10;
+    labArea.x2 = cx - 3; labArea.y2 = cy - 2;
+    lv_draw_label(layer, &labdsc, &labArea);
+
+    labdsc.text = "-";
+    labArea.x1 = cx - 9; labArea.y1 = cy + 2;
+    labArea.x2 = cx - 3; labArea.y2 = cy + 10;
+    lv_draw_label(layer, &labdsc, &labArea);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// OUTPUTS
+// ════════════════════════════════════════════════════════════════════════════
+
+// ══ Buzzer ══════════════════════════════════════════════════════════════════
+
+BuzzerComponent::BuzzerComponent(int gridX, int gridY)
+    : CircuitComponent(CompType::BUZZER, gridX, gridY)
+    , _active(false), _current(0.0f) {}
+
+void BuzzerComponent::stampMatrix(MnaMatrix& mna) {
+    mna.stampResistor(_nodeA, _nodeB, IMPEDANCE);
+}
+
+void BuzzerComponent::updateFromSolution(MnaMatrix& mna) {
+    float vDrop = fabsf(mna.nodeVoltage(_nodeA) - mna.nodeVoltage(_nodeB));
+    _active = (vDrop > THRESHOLD_V);
+    _current = vDrop / IMPEDANCE;
+}
+
+void BuzzerComponent::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_rect_dsc_t rdsc;
+    lv_draw_rect_dsc_init(&rdsc);
+    rdsc.bg_color = lv_color_hex(_active ? 0x3FB950 : 0x555555);
+    rdsc.bg_opa   = LV_OPA_80;
+    rdsc.border_color = lv_color_hex(0xC0C0C0);
+    rdsc.border_width = 2;
+    rdsc.radius = LV_RADIUS_CIRCLE;
+
+    lv_area_t body;
+    body.x1 = cx - 8;  body.y1 = cy - 8;
+    body.x2 = cx + 8;  body.y2 = cy + 8;
+    lv_draw_rect(layer, &rdsc, &body);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0xC0C0C0);
+    dsc.width = 2;
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 8;  dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 8;  dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    if (_active) {
+        dsc.color = lv_color_hex(0x3FB950);
+        dsc.width = 1;
+        dsc.p1.x = cx + 10; dsc.p1.y = cy - 6;
+        dsc.p2.x = cx + 14; dsc.p2.y = cy - 2;
+        lv_draw_line(layer, &dsc);
+        dsc.p1.x = cx + 14; dsc.p1.y = cy - 2;
+        dsc.p2.x = cx + 10; dsc.p2.y = cy + 2;
+        lv_draw_line(layer, &dsc);
+    }
+}
+
+// ══ 7-Segment Display ══════════════════════════════════════════════════════
+
+SevenSegment::SevenSegment(int gridX, int gridY)
+    : CircuitComponent(CompType::SEVEN_SEG, gridX, gridY)
+    , _segments(0), _voltage(0.0f), _active(false) {}
+
+void SevenSegment::stampMatrix(MnaMatrix& mna) {
+    mna.stampResistor(_nodeA, _nodeB, R_INTERNAL);
+}
+
+void SevenSegment::updateFromSolution(MnaMatrix& mna) {
+    _voltage = mna.nodeVoltage(_nodeA) - mna.nodeVoltage(_nodeB);
+    _active = (_voltage > LED_VF);
+    if (_active) {
+        int digit = (int)(_voltage);
+        if (digit < 0) digit = 0;
+        if (digit > 9) digit = 9;
+        static const uint8_t DIGIT_MAP[] = {
+            0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F
+        };
+        _segments = DIGIT_MAP[digit];
+    } else {
+        _segments = 0;
+    }
+}
+
+void SevenSegment::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_rect_dsc_t rdsc;
+    lv_draw_rect_dsc_init(&rdsc);
+    rdsc.bg_color = lv_color_hex(0x1A1A1A);
+    rdsc.bg_opa   = LV_OPA_COVER;
+    rdsc.border_color = lv_color_hex(0x404040);
+    rdsc.border_width = 1;
+    rdsc.radius = 2;
+
+    lv_area_t body;
+    body.x1 = cx - 10; body.y1 = cy - 14;
+    body.x2 = cx + 10; body.y2 = cy + 14;
+    lv_draw_rect(layer, &rdsc, &body);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    struct SegDef { int8_t x1, y1, x2, y2; };
+    static const SegDef SEGS[] = {
+        { -6, -10,  6, -10 }, {  6, -10,  6,   0 }, {  6,   0,  6,  10 },
+        { -6,  10,  6,  10 }, { -6,   0, -6,  10 }, { -6, -10, -6,   0 },
+        { -6,   0,  6,   0 },
+    };
+
+    for (int s = 0; s < 7; ++s) {
+        bool on = (_segments >> s) & 1;
+        dsc.color = lv_color_hex(on ? 0xFF2222 : 0x2A2A2A);
+        dsc.p1.x = cx + SEGS[s].x1; dsc.p1.y = cy + SEGS[s].y1;
+        dsc.p2.x = cx + SEGS[s].x2; dsc.p2.y = cy + SEGS[s].y2;
+        lv_draw_line(layer, &dsc);
+    }
+
+    dsc.color = lv_color_hex(0x808080);
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 10; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 10; dsc.p1.y = cy;
     dsc.p2.x = cx + 20; dsc.p2.y = cy;
     lv_draw_line(layer, &dsc);
 }

@@ -1,7 +1,7 @@
 /**
  * MnaMatrix.h — Modified Nodal Analysis (MNA) Engine for CircuitCoreApp.
  *
- * Implements a 32-node SPICE-like circuit solver:
+ * Implements a 48-node SPICE-like circuit solver:
  *   - A·x = z  system (conductance + source stamps)
  *   - Gaussian elimination with partial pivoting
  *   - Parasitic 1e-9 conductance to ground (prevents singular matrices)
@@ -20,10 +20,10 @@
 class MnaMatrix {
 public:
     // ── Constants ────────────────────────────────────────────────────────
-    static constexpr int MAX_NODES    = 32;
-    static constexpr int MAX_VSOURCES = 8;
+    static constexpr int MAX_NODES    = 48;
+    static constexpr int MAX_VSOURCES = 16;
     /** Total matrix dimension: nodes-1 (node 0 = GND) + voltage sources */
-    static constexpr int MAX_DIM      = (MAX_NODES - 1) + MAX_VSOURCES; // 39
+    static constexpr int MAX_DIM      = (MAX_NODES - 1) + MAX_VSOURCES; // 63
 
     MnaMatrix();
     ~MnaMatrix();

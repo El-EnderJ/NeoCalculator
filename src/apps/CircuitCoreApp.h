@@ -171,8 +171,7 @@ private:
     int         _meterNodeB;        // probe B node (-1 = inactive)
     bool        _meterActive;       // multimeter display enabled
 
-    // ── Tooltip descriptions ────────────────────────────────────────────
-    static const char* TOOL_TOOLTIPS[];
+    // ── Tooltip descriptions (now provided by ComponentFactory) ────────
 
     // ── UI construction ─────────────────────────────────────────────────
     void createUI();

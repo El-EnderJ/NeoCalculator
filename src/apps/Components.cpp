@@ -389,3 +389,265 @@ void MCUComponent::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     labArea.y2 = cy + 6;
     lv_draw_label(layer, &labdsc, &labArea);
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Potentiometer (Adjustable Resistor)
+// ══════════════════════════════════════════════════════════════════════════════
+
+Potentiometer::Potentiometer(int gridX, int gridY, float ohms)
+    : CircuitComponent(CompType::POTENTIOMETER, gridX, gridY)
+    , _resistance(ohms)
+{}
+
+void Potentiometer::stampMatrix(MnaMatrix& mna) {
+    mna.stampResistor(_nodeA, _nodeB, _resistance);
+}
+
+void Potentiometer::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0xFFAA00);  // orange for potentiometer
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    // Lead-in line (left)
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 14; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // Zigzag body (same as resistor)
+    static const int8_t zigX[] = { -14, -10, -6, -2, 2, 6, 10, 14 };
+    static const int8_t zigY[] = {   0,  -6,  6, -6, 6, -6, 6,  0 };
+    for (int i = 0; i < 7; ++i) {
+        dsc.p1.x = cx + zigX[i]; dsc.p1.y = cy + zigY[i];
+        dsc.p2.x = cx + zigX[i + 1]; dsc.p2.y = cy + zigY[i + 1];
+        lv_draw_line(layer, &dsc);
+    }
+
+    // Lead-out line (right)
+    dsc.p1.x = cx + 14; dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // Arrow indicator (distinguishes from fixed resistor)
+    dsc.color = lv_color_hex(0xFFDD44);
+    dsc.p1.x = cx; dsc.p1.y = cy - 10;
+    dsc.p2.x = cx; dsc.p2.y = cy - 4;
+    lv_draw_line(layer, &dsc);
+    // Arrow head
+    dsc.p1.x = cx - 3; dsc.p1.y = cy - 6;
+    dsc.p2.x = cx;     dsc.p2.y = cy - 4;
+    lv_draw_line(layer, &dsc);
+    dsc.p1.x = cx + 3; dsc.p1.y = cy - 6;
+    dsc.p2.x = cx;     dsc.p2.y = cy - 4;
+    lv_draw_line(layer, &dsc);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Push-Button (Switch)
+// ══════════════════════════════════════════════════════════════════════════════
+
+PushButton::PushButton(int gridX, int gridY)
+    : CircuitComponent(CompType::PUSH_BUTTON, gridX, gridY)
+    , _pressed(false)
+{}
+
+void PushButton::stampMatrix(MnaMatrix& mna) {
+    float r = _pressed ? CLOSED_RESISTANCE : OPEN_RESISTANCE;
+    mna.stampResistor(_nodeA, _nodeB, r);
+}
+
+void PushButton::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    // Left lead
+    dsc.color = lv_color_hex(0xC0C0C0);
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 8;  dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // Right lead
+    dsc.p1.x = cx + 8;  dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // Left contact dot
+    lv_draw_rect_dsc_t rdsc;
+    lv_draw_rect_dsc_init(&rdsc);
+    rdsc.bg_color = lv_color_hex(0xC0C0C0);
+    rdsc.bg_opa = LV_OPA_COVER;
+    rdsc.radius = 3;
+    lv_area_t dot;
+    dot.x1 = cx - 10; dot.y1 = cy - 2;
+    dot.x2 = cx - 6;  dot.y2 = cy + 2;
+    lv_draw_rect(layer, &rdsc, &dot);
+
+    // Right contact dot
+    dot.x1 = cx + 6;  dot.y1 = cy - 2;
+    dot.x2 = cx + 10; dot.y2 = cy + 2;
+    lv_draw_rect(layer, &rdsc, &dot);
+
+    // Switch bar (angled when open, flat when pressed)
+    if (_pressed) {
+        dsc.color = lv_color_hex(0x3FB950);  // green = closed
+        dsc.p1.x = cx - 8; dsc.p1.y = cy;
+        dsc.p2.x = cx + 8; dsc.p2.y = cy;
+    } else {
+        dsc.color = lv_color_hex(0xFF4444);  // red = open
+        dsc.p1.x = cx - 8; dsc.p1.y = cy;
+        dsc.p2.x = cx + 6; dsc.p2.y = cy - 8;
+    }
+    lv_draw_line(layer, &dsc);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Capacitor (Transient Euler Integration)
+// ══════════════════════════════════════════════════════════════════════════════
+
+Capacitor::Capacitor(int gridX, int gridY, float farads)
+    : CircuitComponent(CompType::CAPACITOR, gridX, gridY)
+    , _capacitance(farads)
+    , _vPrev(0.0f)
+    , _current(0.0f)
+{}
+
+void Capacitor::stampMatrix(MnaMatrix& mna) {
+    // Backward Euler companion model: stamp equivalent conductance + current source
+    mna.stampCapacitor(_nodeA, _nodeB, _capacitance, _vPrev);
+}
+
+void Capacitor::updateFromSolution(MnaMatrix& mna) {
+    float vA = mna.nodeVoltage(_nodeA);
+    float vB = mna.nodeVoltage(_nodeB);
+    float vNow = vA - vB;
+
+    // Compute current: I = C * dV/dt
+    float dt = mna.timeStep();
+    if (dt > 0.0f) {
+        _current = _capacitance * (vNow - _vPrev) / dt;
+    }
+    _vPrev = vNow;
+}
+
+void Capacitor::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0x44BBFF);  // light blue
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    // Left lead
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 3;  dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // Left plate (vertical bar)
+    dsc.width = 3;
+    dsc.p1.x = cx - 3; dsc.p1.y = cy - 7;
+    dsc.p2.x = cx - 3; dsc.p2.y = cy + 7;
+    lv_draw_line(layer, &dsc);
+
+    // Right plate (vertical bar)
+    dsc.p1.x = cx + 3; dsc.p1.y = cy - 7;
+    dsc.p2.x = cx + 3; dsc.p2.y = cy + 7;
+    lv_draw_line(layer, &dsc);
+
+    // Right lead
+    dsc.width = 2;
+    dsc.p1.x = cx + 3;  dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Diode (Piecewise-Linear Rectifier)
+// ══════════════════════════════════════════════════════════════════════════════
+
+Diode::Diode(int gridX, int gridY, float vForward)
+    : CircuitComponent(CompType::DIODE, gridX, gridY)
+    , _vForward(vForward)
+    , _current(0.0f)
+    , _conducting(false)
+{}
+
+void Diode::stampMatrix(MnaMatrix& mna) {
+    if (_conducting) {
+        // ON state: low resistance (forward biased)
+        mna.stampResistor(_nodeA, _nodeB, ON_RESISTANCE);
+    } else {
+        // OFF state: high resistance (reverse biased)
+        mna.stampResistor(_nodeA, _nodeB, OFF_RESISTANCE);
+    }
+}
+
+void Diode::updateFromSolution(MnaMatrix& mna) {
+    float vA = mna.nodeVoltage(_nodeA);
+    float vB = mna.nodeVoltage(_nodeB);
+    float vDrop = vA - vB;
+
+    _conducting = (vDrop > _vForward);
+
+    if (_conducting) {
+        _current = (vDrop - _vForward) / ON_RESISTANCE;
+        if (_current < 0) _current = 0;
+    } else {
+        _current = vDrop / OFF_RESISTANCE;
+    }
+}
+
+void Diode::draw(lv_layer_t* layer, int offsetX, int offsetY) {
+    int cx = px(_gridX, offsetX);
+    int cy = px(_gridY, offsetY);
+
+    uint32_t color = _conducting ? 0x3FB950 : 0x808080;
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(color);
+    dsc.width = 2;
+    dsc.round_start = 1;
+    dsc.round_end   = 1;
+
+    // Left lead
+    dsc.p1.x = cx - 20; dsc.p1.y = cy;
+    dsc.p2.x = cx - 6;  dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    // Triangle (anode)
+    dsc.p1.x = cx - 6; dsc.p1.y = cy - 6;
+    dsc.p2.x = cx + 4; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    dsc.p1.x = cx - 6; dsc.p1.y = cy + 6;
+    dsc.p2.x = cx + 4; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+
+    dsc.p1.x = cx - 6; dsc.p1.y = cy - 6;
+    dsc.p2.x = cx - 6; dsc.p2.y = cy + 6;
+    lv_draw_line(layer, &dsc);
+
+    // Cathode bar
+    dsc.p1.x = cx + 4; dsc.p1.y = cy - 6;
+    dsc.p2.x = cx + 4; dsc.p2.y = cy + 6;
+    lv_draw_line(layer, &dsc);
+
+    // Right lead
+    dsc.p1.x = cx + 4;  dsc.p1.y = cy;
+    dsc.p2.x = cx + 20; dsc.p2.y = cy;
+    lv_draw_line(layer, &dsc);
+}

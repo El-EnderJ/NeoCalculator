@@ -54,6 +54,10 @@ private:
         LED,       // LED
         MCU,       // Microcontroller
         WIRE,      // Wire
+        POT,       // Potentiometer
+        BTN,       // Push-Button
+        CAP,       // Capacitor
+        DIODE,     // Diode
         RUN,       // Run/Stop simulation
         TOOL_COUNT
     };
@@ -112,6 +116,18 @@ private:
     // ── Text buffer for info bar ────────────────────────────────────────
     char        _infoBuf[80];
 
+    // ── Oscilloscope (Mini Scope) ───────────────────────────────────────
+    static constexpr int SCOPE_W       = 80;
+    static constexpr int SCOPE_H       = 40;
+    static constexpr int SCOPE_SAMPLES = 80;
+    float       _scopeBuffer[SCOPE_SAMPLES]; // ring buffer of voltage samples
+    int         _scopeWriteIdx;              // next write position
+    int         _probeNode;                  // node being probed (-1 = off)
+    bool        _scopeActive;                // scope display enabled
+
+    // ── Tooltip descriptions ────────────────────────────────────────────
+    static const char* TOOL_TOOLTIPS[];
+
     // ── UI construction ─────────────────────────────────────────────────
     void createUI();
     void createToolbar();
@@ -132,6 +148,24 @@ private:
     void runMnaTick();
     void startSimulation();
     void stopSimulation();
+
+    // ── Oscilloscope ────────────────────────────────────────────────────
+    void updateScope();
+    void drawScope(lv_layer_t* layer, int objX, int objY);
+
+    // ── Visual enhancements ─────────────────────────────────────────────
+    void drawNodeLabels(lv_layer_t* layer, int objX, int objY);
+    void drawCurrentDots(lv_layer_t* layer, int objX, int objY);
+
+    // ── Persistence (LittleFS) ──────────────────────────────────────────
+    void saveCircuit(const char* filename);
+    void loadCircuit(const char* filename);
+    void autoSave();
+    void autoLoad();
+
+    // ── Component interaction ───────────────────────────────────────────
+    void toggleButtonAt(int gx, int gy);
+    void adjustPotAt(int gx, int gy, bool up);
 
     // ── Custom draw callback ────────────────────────────────────────────
     static void onDraw(lv_event_t* e);

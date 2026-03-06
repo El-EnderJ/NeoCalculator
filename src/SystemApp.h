@@ -34,6 +34,7 @@
 #include "apps/RegressionApp.h"
 #include "apps/MatricesApp.h"
 #include "apps/PythonApp.h"
+#include "apps/SequencesApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -55,6 +56,7 @@ enum class Mode : uint8_t {
     APP_CALCULUS,      // Calculus (derivatives + integrals)
     APP_MATRICES,      // Matrix algebra (LVGL-native)
     APP_REGRESSION,    // Regression analysis (LVGL-native)
+    APP_SEQUENCES,     // Sequences & series
     APP_PYTHON,        // Python shell (placeholder)
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
@@ -103,6 +105,7 @@ private:
     RegressionApp*  _regressionApp;
     MatricesApp*    _matricesApp;
     PythonApp*      _pythonApp;
+    SequencesApp*   _sequencesApp;
 
     // Math Engine
     Tokenizer _tokenizer;

@@ -337,16 +337,12 @@ void CircuitCoreApp::updateInfoBar() {
             snprintf(_infoBuf, sizeof(_infoBuf), "P%d [%s] Select to place",
                      _toolbarPage + 1, labels);
         }
-    } else if (_simRunning) {
-        const char* label = PAGE_LABELS[_toolbarPage][_toolbarIdx < toolsOnPage(_toolbarPage)
-            ? _toolbarIdx : 0];
-        snprintf(_infoBuf, sizeof(_infoBuf), "SIM [%s] (%d,%d) C:%d",
-                 label, gx, gy, _compCount);
     } else {
-        const char* label = PAGE_LABELS[_toolbarPage][_toolbarIdx < toolsOnPage(_toolbarPage)
-            ? _toolbarIdx : 0];
-        snprintf(_infoBuf, sizeof(_infoBuf), "EDIT [%s] (%d,%d) C:%d",
-                 label, gx, gy, _compCount);
+        int safeIdx = (_toolbarIdx < toolsOnPage(_toolbarPage)) ? _toolbarIdx : 0;
+        const char* label = PAGE_LABELS[_toolbarPage][safeIdx];
+        const char* mode = _simRunning ? "SIM" : "EDIT";
+        snprintf(_infoBuf, sizeof(_infoBuf), "%s [%s] (%d,%d) C:%d",
+                 mode, label, gx, gy, _compCount);
     }
     lv_label_set_text(_infoLabel, _infoBuf);
 }

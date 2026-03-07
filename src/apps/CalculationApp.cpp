@@ -751,7 +751,8 @@ void CalculationApp::generateEduSteps() {
     _eduStepLogger.logExpr("Original expression", expr,
                            cas::MethodId::General, "Input");
 
-    // Run simplification passes one at a time (atomic mode)
+    // Run simplification passes one at a time (atomic mode).
+    // Safety limit prevents infinite loops in edge-case expressions.
     cas::SymExpr* current = expr;
     static constexpr int MAX_EDU_STEPS = 20;
 
@@ -776,7 +777,7 @@ void CalculationApp::generateEduSteps() {
             reason = "Simplify";
         }
 
-        // Check for intermediate math errors
+        // FPU guard: evaluate at x=0 to check for math errors (e.g. 1/0)
         double intermediateVal = next->evaluate(0.0);
         if (!std::isfinite(intermediateVal) && next->type != cas::SymExprType::Num) {
             // Skip logging steps with math errors in intermediate results
@@ -925,7 +926,8 @@ void CalculationApp::buildStepsDisplay() {
         if (!step.reason.empty()) {
             lv_obj_t* reasonLbl = lv_label_create(_stepsContainer);
             char reasonBuf[128];
-            snprintf(reasonBuf, sizeof(reasonBuf), "  \xE2\x86\x92 %s", step.reason.c_str());
+            snprintf(reasonBuf, sizeof(reasonBuf), "  " LV_SYMBOL_RIGHT " %s",
+                     step.reason.c_str());
             lv_label_set_text(reasonLbl, reasonBuf);
             lv_obj_set_style_text_font(reasonLbl, &lv_font_montserrat_12, LV_PART_MAIN);
             lv_obj_set_style_text_color(reasonLbl, lv_color_hex(0x4A90D9), LV_PART_MAIN);

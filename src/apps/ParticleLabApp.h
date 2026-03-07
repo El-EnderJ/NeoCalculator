@@ -2,6 +2,9 @@
  * ParticleLabApp.h
  * Falling-sand / Powder Toy style particle simulation for NumOS.
  * App ID 15 — LVGL-native, renders via 2x-upscaled image buffer.
+ *
+ * "The Alchemy Update" — 30+ materials, electronics, phase transitions,
+ * professional UI overlay, Bresenham line tool, save/load.
  */
 
 #pragma once
@@ -65,22 +68,34 @@ private:
     int _cursorY;
 
     // ── Brush ──
-    int  _brushRadius;   // 0=1px, 1=3px(r=1), 2=5px(r=2)
-    bool _brushCircle;   // true=circle, false=square
+    int         _brushRadius;   // 0=1px, 1=3px(r=1), 2=5px(r=2)
+    BrushShape  _brushShape;    // CIRCLE, SQUARE, SPRAY
 
     // ── Selected material ──
     int  _selectedMat;   // index into material palette
 
     // ── Drawing state ──
     bool _drawing;       // ENTER held = drawing
+    int  _drawStartX;    // Bresenham line start X
+    int  _drawStartY;    // Bresenham line start Y
     bool _thermoMode;    // EXE held = thermometer
 
+    // ── Palette overlay ──
+    bool _paletteOpen;   // F3 palette overlay active
+    int  _paletteCurX;   // cursor in palette grid
+    int  _paletteCurY;
+    bool _paused;        // simulation paused
+
     // ── Info label buffer ──
-    char _infoBuf[80];
+    char _infoBuf[120];
 
     // ── Toolbar material palette (selectable materials) ──
-    static constexpr int MAT_PALETTE_COUNT = 11;
+    static constexpr int MAT_PALETTE_COUNT = 28;
     static const uint8_t MAT_PALETTE[MAT_PALETTE_COUNT];
+
+    // ── Palette grid layout ──
+    static constexpr int PAL_COLS = 7;
+    static constexpr int PAL_ROWS = 4;
 
     // ── UI setup ──
     void createUI();
@@ -89,6 +104,11 @@ private:
     // ── Rendering ──
     void renderToBuffer();
     uint16_t getTempGlowColor(uint16_t baseColor, int16_t temp);
+    void renderPaletteOverlay();
+
+    // ── Save/Load ──
+    void saveSandbox();
+    void loadSandbox();
 
     // ── LVGL callbacks ──
     static void onDraw(lv_event_t* e);

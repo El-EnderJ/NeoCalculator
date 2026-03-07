@@ -1751,6 +1751,7 @@ void CircuitCoreApp::performUndo() {
                 comp = ComponentFactory::create(ctype, cd.gridX, cd.gridY); break;
         }
         if (comp) {
+            if (_compCount >= MAX_COMPONENTS) { delete comp; break; }
             comp->setNodes(cd.nodeA, cd.nodeB);
             comp->setLabel(cd.label);
             _components[_compCount++] = comp;
@@ -1793,6 +1794,10 @@ void CircuitCoreApp::drawVoltageHeatmap(lv_layer_t* layer, int objX, int objY) {
 // ══ Circuit Share String ════════════════════════════════════════════════════
 
 void CircuitCoreApp::generateShareString(char* outBuf, int maxLen) {
+    if (maxLen <= 0) return;
+    outBuf[0] = '\0';
+    if (maxLen < 5) return;
+
     // Compact format: T,X,Y,A,B,P1;...
     char raw[512];
     int pos = 0;
@@ -1805,16 +1810,19 @@ void CircuitCoreApp::generateShareString(char* outBuf, int maxLen) {
             p1 = static_cast<Resistor*>(c)->resistance();
         else if (c->type() == CompType::VOLTAGE_SOURCE)
             p1 = static_cast<VoltageSource*>(c)->voltage();
-        int written = snprintf(raw + pos, sizeof(raw) - pos,
+        int remaining = (int)sizeof(raw) - pos;
+        if (remaining <= 0) break;
+        int written = snprintf(raw + pos, remaining,
             "%d,%d,%d,%d,%d,%.1f;",
             typeVal, c->gridX(), c->gridY(), c->nodeA(), c->nodeB(), (double)p1);
-        if (written > 0) pos += written;
+        if (written > 0 && written < remaining) pos += written;
+        else break;
     }
 
     // Simple Base64 encode
     static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     int olen = 0;
-    for (int j = 0; j < pos && olen < maxLen - 5; j += 3) {
+    for (int j = 0; j < pos && olen + 4 < maxLen; j += 3) {
         uint32_t val = (uint8_t)raw[j] << 16;
         if (j + 1 < pos) val |= (uint8_t)raw[j + 1] << 8;
         if (j + 2 < pos) val |= (uint8_t)raw[j + 2];
@@ -1901,6 +1909,7 @@ void CircuitCoreApp::openIDE() {
     lv_obj_set_style_text_font(_ideTextArea, &lv_font_unscii_8, LV_PART_MAIN);
     lv_textarea_set_text(_ideTextArea, "void setup(){\n}\nvoid loop(){\n}");
     lv_textarea_set_one_line(_ideTextArea, false);
+    lv_textarea_set_max_length(_ideTextArea, 480);
 
     // Autocomplete suggestion label
     _ideAutoLabel = lv_label_create(_ideContainer);
@@ -1928,18 +1937,20 @@ void CircuitCoreApp::updateAutoComplete() {
     if (!_ideTextArea || !_ideAutoLabel) return;
 
     const char* text = lv_textarea_get_text(_ideTextArea);
+    if (!text) { lv_label_set_text(_ideAutoLabel, ""); return; }
     int len = (int)strlen(text);
     if (len == 0) { lv_label_set_text(_ideAutoLabel, ""); return; }
 
-    // Find last partial word
+    // Find last partial word (alphabetic characters only)
     int wStart = len - 1;
     while (wStart >= 0 && ((text[wStart] >= 'a' && text[wStart] <= 'z') ||
            (text[wStart] >= 'A' && text[wStart] <= 'Z'))) {
         wStart--;
     }
     wStart++;
+    if (wStart < 0 || wStart >= len) { lv_label_set_text(_ideAutoLabel, ""); return; }
     int wLen = len - wStart;
-    if (wLen < 2) { lv_label_set_text(_ideAutoLabel, ""); return; }
+    if (wLen < 2 || wLen > 32) { lv_label_set_text(_ideAutoLabel, ""); return; }
 
     // Search keywords
     for (int k = 0; IDE_KEYWORDS[k]; ++k) {

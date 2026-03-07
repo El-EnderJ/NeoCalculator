@@ -186,7 +186,7 @@ void ParticleEngine::placeLine(int x0, int y0, int x1, int y1, int radius, Brush
     int err = dx - dy;
     int cx = x0, cy = y0;
 
-    for (int step = 0; step < 500; ++step) { // safety limit
+    for (int step = 0; step < MAX_LINE_STEPS; ++step) {
         placeBrush(cx, cy, radius, shape, mat);
         if (cx == x1 && cy == y1) break;
         int e2 = 2 * err;
@@ -293,7 +293,7 @@ void ParticleEngine::igniteNeighbors(int x, int y, int16_t heatOut) {
         Particle& nb = _grid[PG_IX(nx, ny)];
         // Transfer heat
         nb.temp = (int16_t)(nb.temp + (heatOut >> 2));
-        if (nb.temp > 10000) nb.temp = 10000;
+        if (nb.temp > MAX_TEMP) nb.temp = MAX_TEMP;
         // Ignite flammable materials
         uint8_t flam = MAT_LUT[nb.type].flammability;
         if (flam > 0 && nb.temp > 200 && randInt(256) < flam) {
@@ -615,8 +615,8 @@ void ParticleEngine::updateSpark(int x, int y, Particle& p) {
     uint8_t sparkTimer = (p.flags >> 2) & 0x03;
 
     // Joule heating: spark generates heat in the conductor
-    p.temp = (int16_t)(p.temp + 2);
-    if (p.temp > 10000) p.temp = 10000;
+    p.temp = (int16_t)(p.temp + JOULE_HEAT);
+    if (p.temp > MAX_TEMP) p.temp = MAX_TEMP;
 
     if (sparkTimer == 0) {
         // Spark expires — propagate to conductive neighbors, clear sparked flag
@@ -1036,8 +1036,8 @@ void ParticleEngine::conductHeat() {
             }
 
             // Clamp temperature
-            if (p.temp > 10000) p.temp = 10000;
-            if (p.temp < -273) p.temp = -273;
+            if (p.temp > MAX_TEMP) p.temp = MAX_TEMP;
+            if (p.temp < MIN_TEMP) p.temp = MIN_TEMP;
         }
     }
 }

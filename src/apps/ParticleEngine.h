@@ -28,6 +28,12 @@ static constexpr int NUM_CHUNKS = CHUNKS_X * CHUNKS_Y; // 192
 static constexpr uint8_t PF_UPDATED = 0x01;  // bit 0: updated this frame
 static constexpr uint8_t PF_SPARKED = 0x02;  // bit 1: carrying a spark
 
+// ── Physics constants ──
+static constexpr int16_t MAX_TEMP       = 10000;   // Maximum temperature clamp (C)
+static constexpr int16_t MIN_TEMP       = -273;    // Minimum temperature clamp (C)
+static constexpr int16_t JOULE_HEAT     = 2;       // Joule heating per spark frame (C)
+static constexpr int     MAX_LINE_STEPS = 500;      // Safety limit for Bresenham line
+
 // ── Particle struct: exactly 4 bytes ──
 #pragma pack(push, 1)
 struct Particle {

@@ -192,10 +192,12 @@ void ParticleLabApp::createUI() {
 // updateInfoLabel() — HUD info bar
 // ═══════════════════════════════════════════════════════════════════
 void ParticleLabApp::updateInfoLabel() {
-    static const char* shapeNames[] = { "O", "#", "~" };  // circle, square, spray
+    static const char* shapeNames[(int)BrushShape::SHAPE_COUNT] = { "O", "#", "~" };  // circle, square, spray
     static const char* brushNames[] = { "1px", "3px", "5px" };
     const char* matName = ParticleEngine::getMatName(MAT_PALETTE[_selectedMat]);
-    const char* shape = shapeNames[(int)_brushShape];
+    int shapeIdx = (int)_brushShape;
+    if (shapeIdx < 0 || shapeIdx >= (int)BrushShape::SHAPE_COUNT) shapeIdx = 0;
+    const char* shape = shapeNames[shapeIdx];
 
     if (_thermoMode) {
         const Particle& p = _engine.getParticle(_cursorX, _cursorY);

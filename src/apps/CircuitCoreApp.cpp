@@ -419,6 +419,13 @@ void CircuitCoreApp::updateToolbarHighlight() {
 void CircuitCoreApp::handleKey(const KeyEvent& ev) {
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
+    // Auto-save on inactivity (30s since last edit in EDIT_MODE)
+    if (!_simRunning && _lastEditTime > 0 &&
+        (lv_tick_get() - _lastEditTime > AUTOSAVE_INTERVAL_MS)) {
+        autoSave();
+        _lastEditTime = 0;
+    }
+
     // IDE captures all keys when open
     if (_ideOpen) {
         handleKeyIDE(ev);
@@ -858,14 +865,6 @@ void CircuitCoreApp::onSimTimer(lv_timer_t* timer) {
     // MNA runs at 30Hz (every other frame at 60Hz)
     if (app->_frameCount % 2 == 0) {
         app->runMnaTick();
-    }
-
-    // Auto-save on inactivity (30s since last edit, not running sim)
-    if (app->_lastEditTime > 0 &&
-        (lv_tick_get() - app->_lastEditTime > AUTOSAVE_INTERVAL_MS) &&
-        !app->_simRunning) {
-        app->autoSave();
-        app->_lastEditTime = 0;
     }
 }
 

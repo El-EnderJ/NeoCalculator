@@ -62,7 +62,8 @@ enum class KeyCode : uint8_t {
     ADD, NEG, NUM_0, DOT, ENTER,
     
     // Virtual Keys or extras
-    RIGHT_F5,
+    F5,          // F5 (top-row function key)
+    EXE,         // Execute / Solve (mapped to physical '<' key)
     
     // Virtual keys for functions/constants (via SHIFT combos or serial)
     LN,          // ln (logaritmo natural)

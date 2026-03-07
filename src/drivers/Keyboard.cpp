@@ -22,35 +22,37 @@
 //  R0 (GPIO  1)   7           8           9
 //  R1 (GPIO  2)   4           5           6
 //  R2 (GPIO 41)   1           2           3
-//  R3 (GPIO 42)   0          AC          EXE
+//  R3 (GPIO 42)   0          AC         ENTER
 //  R4 (GPIO 40)   +           -           ×
 //
-// Los slots C3…C9 están marcados con KeyCode::NONE.
-// Para el layout completo previsto (bloques de funciones, trigonometría, etc.),
-// sustituir NONE con los KeyCodes correspondientes al conectar el hardware.
+// Full 5×10 planned layout (C3-C9):
+//   R0 top row:  SHIFT ALPHA MODE SETUP F1 F2 F3 F4 F5 EXE
+//   Top row function keys F1-F5 mapped to C4-C8.
+//   Physical '<' key → EXE (Execute/Solve) at C9.
+//   Physical Enter → ENTER (Place/Select) remains at R3C2.
 //
 const KeyCode Keyboard::_map[Keyboard::ROWS][Keyboard::COLS] = {
     // C0          C1          C2          C3          C4
     // C5          C6          C7          C8          C9
     { KeyCode::NUM_7, KeyCode::NUM_8, KeyCode::NUM_9,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE, KeyCode::NONE },  // Row 0
+      KeyCode::SETUP, KeyCode::F1,    KeyCode::F2,
+      KeyCode::F3,    KeyCode::F4,    KeyCode::F5,    KeyCode::EXE  },  // Row 0
 
     { KeyCode::NUM_4, KeyCode::NUM_5, KeyCode::NUM_6,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE, KeyCode::NONE },  // Row 1
+      KeyCode::NONE,  KeyCode::LEFT,  KeyCode::UP,
+      KeyCode::DOWN,  KeyCode::RIGHT, KeyCode::NONE,  KeyCode::NONE },  // Row 1
 
     { KeyCode::NUM_1, KeyCode::NUM_2, KeyCode::NUM_3,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE, KeyCode::NONE },  // Row 2
+      KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE,
+      KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE },  // Row 2
 
     { KeyCode::NUM_0, KeyCode::AC,     KeyCode::ENTER,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE, KeyCode::NONE },  // Row 3
+      KeyCode::SHIFT, KeyCode::ALPHA,  KeyCode::MODE,
+      KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE },  // Row 3
 
     { KeyCode::ADD,   KeyCode::SUB,   KeyCode::MUL,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE,
-      KeyCode::NONE, KeyCode::NONE, KeyCode::NONE, KeyCode::NONE },  // Row 4
+      KeyCode::DIV,   KeyCode::DEL,   KeyCode::NONE,
+      KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE },  // Row 4
 };
 
 // ── begin() ──────────────────────────────────────────────────────────────────

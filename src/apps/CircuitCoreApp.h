@@ -43,6 +43,9 @@ public:
     void load();
     void handleKey(const KeyEvent& ev);
 
+    /** Auto-save circuit to LittleFS (called from SystemApp before menu transition). */
+    void autoSave();
+
     bool isActive() const { return _screen != nullptr; }
 
     /** True when LVGL focus is on the toolbar (AC should exit to menu). */
@@ -143,6 +146,8 @@ private:
     FocusArea   _focusArea;
     int         _cursorX;       // grid-snapped cursor (pixels relative to grid)
     int         _cursorY;
+    int         _prevCursorX;   // previous cursor position (for invalidation)
+    int         _prevCursorY;
     bool        _simRunning;
     uint32_t    _frameCount;    // for 30Hz MNA decimation
     int         _nextNodeId;    // next MNA node to assign
@@ -224,7 +229,7 @@ private:
     CircuitComponent* findComponentAt(int gx, int gy) const;
 
     // ── Simulation ──────────────────────────────────────────────────────
-    void runMnaTick();
+    bool runMnaTick();   // returns true if circuit state changed
     void startSimulation();
     void stopSimulation();
 
@@ -238,7 +243,6 @@ private:
     // ── Persistence (LittleFS) ──────────────────────────────────────────
     void saveCircuit(const char* filename);
     void loadCircuit(const char* filename);
-    void autoSave();
     void autoLoad();
 
     // ── Component interaction ───────────────────────────────────────────

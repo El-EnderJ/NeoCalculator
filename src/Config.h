@@ -61,6 +61,7 @@ static const uint16_t KEY_AUTOREPEAT_RATE_MS  =  80;  // ms entre REPEAT events
 // ── CAS settings ────────────────────────────────────────────────────────────
 extern bool setting_complex_enabled;   // true = show complex roots, false = "No real solutions"
 extern int  setting_decimal_precision;  // number of decimal digits (6, 8, 10, 12)
+extern bool setting_edu_steps;          // true = step-by-step educational mode for arithmetic
 
 // ── Matriz legacy 6×8 (reservada / compatibilidad con KeyMatrix.h) ───────────
 // Filas: INPUT_PULLUP.  Columnas: OUTPUT activo-LOW.

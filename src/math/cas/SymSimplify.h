@@ -48,9 +48,11 @@ public:
     /// Returns a new (or same) arena-allocated, cons'd expression.
     static SymExpr* simplify(SymExpr* expr, SymExprArena& arena);
 
-private:
-    // ── Single bottom-up recursive pass ─────────────────────────────
+    /// Single bottom-up recursive pass (atomic mode for educational steps).
+    /// Returns the same pointer if no changes were made (pointer identity).
     static SymExpr* simplifyPass(SymExpr* expr, SymExprArena& arena);
+
+private:
 
     // ── Helpers ─────────────────────────────────────────────────────
     static bool isZero(const SymExpr* e);

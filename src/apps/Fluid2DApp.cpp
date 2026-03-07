@@ -24,6 +24,7 @@
 
 #ifdef ARDUINO
   #include <esp_heap_caps.h>
+  #include <LittleFS.h>
 #endif
 
 // ══ Color palette ════════════════════════════════════════════════════════════
@@ -74,22 +75,25 @@ Fluid2DApp::Fluid2DApp()
     , _velY(nullptr), _velYPrev(nullptr)
     , _temp(nullptr), _tempPrev(nullptr)
     , _obstacle(nullptr)
+    , _densB(nullptr), _densBPrev(nullptr)
+    , _smoothObst(nullptr)
     , _diffusion(DEFAULT_DIFF)
     , _viscosity(DEFAULT_VISC)
     , _dt(BASE_DT)
-    , _paused(false)
     , _emitting(false)
     , _cursorX(N / 2), _cursorY(M / 2)
     , _emitterShape(EmitterShape::POINT)
-    , _wallBrush(false)
-    , _vizMode(VizMode::DENSITY)
-    , _palette(Palette::INFERNO)
-    , _showArrows(false)
+    , _brushMode(BrushMode::RED_INK)
+    , _palette(Palette::CLASSIC)
+    , _showTelemetry(false)
+    , _idleFrames(0)
+    , _energyIdx(0)
     , _flowPreset(FlowPreset::NONE)
     , _particles(nullptr)
     , _activeParticles(0)
 {
     _infoBuf[0] = '\0';
+    memset(_energyHistory, 0, sizeof(_energyHistory));
 }
 
 Fluid2DApp::~Fluid2DApp() {
@@ -113,6 +117,9 @@ void Fluid2DApp::begin() {
     _temp     = (float*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
     _tempPrev = (float*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
     _obstacle = (uint8_t*)heap_caps_malloc(SIZE, MALLOC_CAP_SPIRAM);
+    _densB     = (float*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+    _densBPrev = (float*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+    _smoothObst = (float*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
     _particles = (Particle*)heap_caps_malloc(MAX_PARTICLES * sizeof(Particle),
                                               MALLOC_CAP_SPIRAM);
 #else
@@ -125,12 +132,16 @@ void Fluid2DApp::begin() {
     _temp     = new float[SIZE];
     _tempPrev = new float[SIZE];
     _obstacle = new uint8_t[SIZE];
+    _densB     = new float[SIZE];
+    _densBPrev = new float[SIZE];
+    _smoothObst = new float[SIZE];
     _particles = new Particle[MAX_PARTICLES];
 #endif
 
     if (!_dens || !_densPrev || !_velX || !_velXPrev ||
         !_velY || !_velYPrev || !_temp || !_tempPrev ||
-        !_obstacle || !_particles) {
+        !_obstacle || !_densB || !_densBPrev || !_smoothObst ||
+        !_particles) {
         return;  // allocation failure
     }
 
@@ -148,10 +159,11 @@ void Fluid2DApp::begin() {
 
     createUI();
 
-    _paused   = false;
     _emitting = false;
     _cursorX  = N / 2;
     _cursorY  = M / 2;
+
+    autoLoad();
 }
 
 void Fluid2DApp::end() {
@@ -177,6 +189,9 @@ void Fluid2DApp::end() {
         if (_temp)      { heap_caps_free(_temp);      _temp      = nullptr; }
         if (_tempPrev)  { heap_caps_free(_tempPrev);  _tempPrev  = nullptr; }
         if (_obstacle)  { heap_caps_free(_obstacle);  _obstacle  = nullptr; }
+        if (_densB)     { heap_caps_free(_densB);     _densB     = nullptr; }
+        if (_densBPrev) { heap_caps_free(_densBPrev); _densBPrev = nullptr; }
+        if (_smoothObst){ heap_caps_free(_smoothObst);_smoothObst= nullptr; }
         if (_particles) { heap_caps_free(_particles); _particles = nullptr; }
 #else
         delete[] _dens;      _dens      = nullptr;
@@ -188,6 +203,9 @@ void Fluid2DApp::end() {
         delete[] _temp;      _temp      = nullptr;
         delete[] _tempPrev;  _tempPrev  = nullptr;
         delete[] _obstacle;  _obstacle  = nullptr;
+        delete[] _densB;     _densB     = nullptr;
+        delete[] _densBPrev; _densBPrev = nullptr;
+        delete[] _smoothObst;_smoothObst= nullptr;
         delete[] _particles; _particles = nullptr;
 #endif
     }
@@ -223,19 +241,15 @@ void Fluid2DApp::createUI() {
 }
 
 void Fluid2DApp::updateInfoLabel() {
-    const char* palNames[] = { "Inferno", "Ocean", "Toxic", "Classic" };
+    static constexpr const char* palNames[] = { "Classic", "Thermal", "Velocity", "Mixed" };
+    static constexpr const char* brushNames[] = { "RedInk", "BlueInk", "Wall", "Eraser" };
     float avgV = computeAvgVelocity();
     float re   = computeReynolds();
-    int viscIdx = DEFAULT_VISC_IDX;
-    for (int k = 0; k < VISC_PRESET_COUNT; k++) {
-        if (fabsf(_viscosity - VISC_PRESETS[k]) < 1e-7f) { viscIdx = k; break; }
-    }
     snprintf(_infoBuf, sizeof(_infoBuf),
-             "Re:%.0f V:%.1f P:%d %s|%s%s%s",
+             "Re:%.0f V:%.1f P:%d %s|%s%s",
              re, avgV, _activeParticles,
              palNames[(int)_palette],
-             _paused ? "STOP" : "RUN",
-             _wallBrush ? "|WALL" : "",
+             brushNames[(int)_brushMode],
              _emitting ? "|EMIT" : "");
     lv_label_set_text(_infoLabel, _infoBuf);
 }
@@ -246,53 +260,91 @@ void Fluid2DApp::handleKey(const KeyEvent& ev) {
     if (!_screen) return;
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
+    _idleFrames = 0;
+
     switch (ev.code) {
         case KeyCode::UP:
             if (_cursorY > 1) _cursorY--;
-            if (_wallBrush && _obstacle) {
+            if (_brushMode == BrushMode::WALL && _obstacle) {
+                _obstacle[IX(_cursorX, _cursorY)] = 1;
+            } else if (_brushMode == BrushMode::ERASER && _obstacle) {
                 int idx = IX(_cursorX, _cursorY);
-                _obstacle[idx] = _obstacle[idx] ? 0 : 1;
+                _obstacle[idx] = 0;
+                if (_dens) _dens[idx] = 0.0f;
+                if (_densB) _densB[idx] = 0.0f;
             }
             break;
         case KeyCode::DOWN:
             if (_cursorY < M) _cursorY++;
-            if (_wallBrush && _obstacle) {
+            if (_brushMode == BrushMode::WALL && _obstacle) {
+                _obstacle[IX(_cursorX, _cursorY)] = 1;
+            } else if (_brushMode == BrushMode::ERASER && _obstacle) {
                 int idx = IX(_cursorX, _cursorY);
-                _obstacle[idx] = _obstacle[idx] ? 0 : 1;
+                _obstacle[idx] = 0;
+                if (_dens) _dens[idx] = 0.0f;
+                if (_densB) _densB[idx] = 0.0f;
             }
             break;
         case KeyCode::LEFT:
             if (_cursorX > 1) _cursorX--;
-            if (_wallBrush && _obstacle) {
+            if (_brushMode == BrushMode::WALL && _obstacle) {
+                _obstacle[IX(_cursorX, _cursorY)] = 1;
+            } else if (_brushMode == BrushMode::ERASER && _obstacle) {
                 int idx = IX(_cursorX, _cursorY);
-                _obstacle[idx] = _obstacle[idx] ? 0 : 1;
+                _obstacle[idx] = 0;
+                if (_dens) _dens[idx] = 0.0f;
+                if (_densB) _densB[idx] = 0.0f;
             }
             break;
         case KeyCode::RIGHT:
             if (_cursorX < N) _cursorX++;
-            if (_wallBrush && _obstacle) {
+            if (_brushMode == BrushMode::WALL && _obstacle) {
+                _obstacle[IX(_cursorX, _cursorY)] = 1;
+            } else if (_brushMode == BrushMode::ERASER && _obstacle) {
                 int idx = IX(_cursorX, _cursorY);
-                _obstacle[idx] = _obstacle[idx] ? 0 : 1;
+                _obstacle[idx] = 0;
+                if (_dens) _dens[idx] = 0.0f;
+                if (_densB) _densB[idx] = 0.0f;
             }
             break;
 
         case KeyCode::ENTER:
-            if (_wallBrush && _obstacle) {
+            if (_brushMode == BrushMode::WALL && _obstacle) {
                 int idx = IX(_cursorX, _cursorY);
                 _obstacle[idx] = _obstacle[idx] ? 0 : 1;
-            } else {
+            } else if (_brushMode == BrushMode::RED_INK || _brushMode == BrushMode::BLUE_INK) {
                 _emitting = !_emitting;
             }
             updateInfoLabel();
             break;
 
-        case KeyCode::EXE:
-            _paused = !_paused;
-            updateInfoLabel();
+        case KeyCode::EXE: {
+            const float hpForce = 500.0f;
+            const float hpAmount = 200.0f;
+            for (int dj = -2; dj <= 2; ++dj) {
+                for (int di = -2; di <= 2; ++di) {
+                    int ni = _cursorX + di, nj = _cursorY + dj;
+                    if (ni < 1 || ni > N || nj < 1 || nj > M) continue;
+                    if (_obstacle && _obstacle[IX(ni, nj)]) continue;
+                    int idx = IX(ni, nj);
+                    float* targetDens = (_brushMode == BrushMode::BLUE_INK) ? _densBPrev : _densPrev;
+                    if (targetDens) targetDens[idx] += hpAmount;
+                    if (_tempPrev) _tempPrev[idx] += hpAmount * 0.3f;
+                    float dx = (float)di, dy = (float)dj;
+                    float len = sqrtf(dx * dx + dy * dy);
+                    if (len > 0.01f) {
+                        _velXPrev[idx] += hpForce * dx / len;
+                        _velYPrev[idx] += hpForce * dy / len;
+                    } else {
+                        _velYPrev[idx] -= hpForce;
+                    }
+                }
+            }
             break;
+        }
 
         case KeyCode::F1:
-            _vizMode = static_cast<VizMode>(((int)_vizMode + 1) % 3);
+            _brushMode = static_cast<BrushMode>(((int)_brushMode + 1) % 4);
             updateInfoLabel();
             break;
 
@@ -302,14 +354,11 @@ void Fluid2DApp::handleKey(const KeyEvent& ev) {
             break;
 
         case KeyCode::F3:
-            resetFields();
-            initParticles();
-            updateInfoLabel();
+            _showTelemetry = !_showTelemetry;
             break;
 
         case KeyCode::F4:
-            _wallBrush = !_wallBrush;
-            updateInfoLabel();
+            saveScene("autosave.f2d");
             break;
 
         case KeyCode::F5: {
@@ -348,15 +397,18 @@ void Fluid2DApp::handleKey(const KeyEvent& ev) {
 
 void Fluid2DApp::addEmitterForces() {
     if (!_emitting) return;
+    if (_brushMode == BrushMode::WALL || _brushMode == BrushMode::ERASER) return;
 
     const float force  = 200.0f;
     const float amount = 100.0f;
+    float* targetDens = (_brushMode == BrushMode::BLUE_INK) ? _densBPrev : _densPrev;
+    if (!targetDens) return;
 
     auto addAt = [&](int gx, int gy) {
         if (gx < 1 || gx > N || gy < 1 || gy > M) return;
         if (_obstacle && _obstacle[IX(gx, gy)]) return;
         int idx = IX(gx, gy);
-        _densPrev[idx] += amount;
+        targetDens[idx] += amount;
         _tempPrev[idx] += amount * 0.5f;
         float dx = (float)(gx - _cursorX);
         float dy = (float)(gy - _cursorY);
@@ -443,6 +495,9 @@ void Fluid2DApp::resetFields() {
     if (_temp)     memset(_temp,     0, SIZE * sizeof(float));
     if (_tempPrev) memset(_tempPrev, 0, SIZE * sizeof(float));
     if (_obstacle) memset(_obstacle, 0, SIZE);
+    if (_densB)     memset(_densB,     0, SIZE * sizeof(float));
+    if (_densBPrev) memset(_densBPrev, 0, SIZE * sizeof(float));
+    if (_smoothObst) memset(_smoothObst, 0, SIZE * sizeof(float));
     _dt = BASE_DT;
     _flowPreset = FlowPreset::NONE;
 }
@@ -613,6 +668,7 @@ void Fluid2DApp::enforceObstacles(float* u, float* v) {
                 u[IX(i, j)] = 0.0f;
                 v[IX(i, j)] = 0.0f;
                 _dens[IX(i, j)] = 0.0f;
+                if (_densB) _densB[IX(i, j)] = 0.0f;
                 if (_temp) _temp[IX(i, j)] = 0.0f;
             }
         }
@@ -769,6 +825,15 @@ void Fluid2DApp::fluidStep() {
     std::swap(_densPrev, _dens);
     advect(0, _dens, _densPrev, _velX, _velY, _dt);
 
+    // ── DensityB step ──
+    if (_densB && _densBPrev) {
+        addSource(_densB, _densBPrev, _dt);
+        std::swap(_densBPrev, _densB);
+        diffuse(0, _densB, _densBPrev, _diffusion, _dt);
+        std::swap(_densBPrev, _densB);
+        advect(0, _densB, _densBPrev, _velX, _velY, _dt);
+    }
+
     // ── Temperature step (source already consumed above) ──
     std::swap(_tempPrev, _temp);
     diffuse(0, _temp, _tempPrev, _diffusion * 0.5f, _dt);
@@ -789,6 +854,7 @@ void Fluid2DApp::fluidStep() {
     sanitizeField(_velY);
     sanitizeField(_dens);
     sanitizeField(_temp);
+    if (_densB) sanitizeField(_densB);
 
     // ── Particle advection ──
     stepParticles(_dt);
@@ -798,6 +864,7 @@ void Fluid2DApp::fluidStep() {
     memset(_velXPrev, 0, SIZE * sizeof(float));
     memset(_velYPrev, 0, SIZE * sizeof(float));
     memset(_tempPrev, 0, SIZE * sizeof(float));
+    if (_densBPrev) memset(_densBPrev, 0, SIZE * sizeof(float));
 }
 
 // ══ HUD Helpers ══════════════════════════════════════════════════════════════
@@ -906,12 +973,11 @@ lv_color_t Fluid2DApp::classicColor(float t) {
 lv_color_t Fluid2DApp::applyPalette(float d) const {
     float t = std::max(0.0f, std::min(d / 5.0f, 1.0f));
     switch (_palette) {
-        case Palette::INFERNO: return infernoColor(t);
-        case Palette::OCEAN:   return oceanColor(t);
-        case Palette::TOXIC:   return toxicColor(t);
-        case Palette::CLASSIC: return classicColor(t);
+        case Palette::CLASSIC:  return classicColor(t);
+        case Palette::THERMAL:  return infernoColor(t);
+        default:                return classicColor(t);
     }
-    return infernoColor(t);
+    return classicColor(t);
 }
 
 // ══ Blinn-Phong Liquid Shading ═══════════════════════════════════════════════
@@ -1041,8 +1107,23 @@ void Fluid2DApp::onDraw(lv_event_t* e) {
 
             int idx = IX(i, j);
 
-            // Draw obstacle cells
-            if (app->_obstacle && app->_obstacle[idx]) {
+            // Draw obstacle cells (with smooth boundaries)
+            if (app->_smoothObst && app->_smoothObst[idx] > 0.01f) {
+                float obs = app->_smoothObst[idx];
+                if (obs > 0.5f) {
+                    lv_area_t cell = {
+                        (int16_t)px, (int16_t)py,
+                        (int16_t)(px + CELL_W - 1), (int16_t)(py + CELL_H - 1)
+                    };
+                    lv_draw_rect_dsc_t rd;
+                    lv_draw_rect_dsc_init(&rd);
+                    rd.bg_color = lv_color_hex(COL_WALL);
+                    rd.bg_opa = (lv_opa_t)std::min(255, (int)(obs * 255));
+                    rd.radius = 0;
+                    lv_draw_rect(layer, &rd, &cell);
+                    continue;
+                }
+            } else if (app->_obstacle && app->_obstacle[idx]) {
                 lv_area_t cell = {
                     (int16_t)px, (int16_t)py,
                     (int16_t)(px + CELL_W - 1), (int16_t)(py + CELL_H - 1)
@@ -1057,22 +1138,18 @@ void Fluid2DApp::onDraw(lv_event_t* e) {
             }
 
             lv_color_t col;
-            switch (app->_vizMode) {
-                case VizMode::DENSITY:
+            switch (app->_palette) {
+                case Palette::CLASSIC:
+                case Palette::THERMAL:
                     col = app->shadedDensityColor(i, j);
                     break;
-                case VizMode::VELOCITY:
+                case Palette::VELOCITY:
                     col = velocityToColor(app->_velX[idx], app->_velY[idx]);
                     break;
-                case VizMode::VORTICITY: {
-                    float w = 0.0f;
-                    if (i > 1 && i < N && j > 1 && j < M) {
-                        w = (app->_velY[IX(i+1,j)] - app->_velY[IX(i-1,j)]) -
-                            (app->_velX[IX(i,j+1)] - app->_velX[IX(i,j-1)]);
-                    }
-                    col = vorticityToColor(w);
+                case Palette::MIXED:
+                    col = mixedColor(app->_dens[idx],
+                                    app->_densB ? app->_densB[idx] : 0.0f);
                     break;
-                }
             }
 
             if (col.red > 2 || col.green > 2 || col.blue > 2) {
@@ -1143,59 +1220,6 @@ void Fluid2DApp::onDraw(lv_event_t* e) {
         }
     }
 
-    // ── Velocity arrows overlay ──────────────────────────────────────────
-    if (app->_showArrows) {
-        lv_draw_line_dsc_t lineDsc;
-        lv_draw_line_dsc_init(&lineDsc);
-        lineDsc.color = lv_color_hex(0x80FF80);
-        lineDsc.width = 1;
-        lineDsc.opa   = LV_OPA_60;
-
-        for (int j = 2; j <= M; j += 4) {
-            for (int i = 2; i <= N; i += 4) {
-                int idx = IX(i, j);
-                float vx = app->_velX[idx];
-                float vy = app->_velY[idx];
-                float mag = sqrtf(vx * vx + vy * vy);
-                if (mag < 0.1f) continue;
-
-                int px = ox + (i - 1) * CELL_W + CELL_W / 2;
-                int arrowY = oy + (j - 1) * CELL_H + CELL_H / 2;
-
-                float scale = std::min(mag, 5.0f) * 2.0f;
-                int ex = px + (int)(vx / mag * scale);
-                int ey = arrowY + (int)(vy / mag * scale);
-
-                lineDsc.p1.x = px;
-                lineDsc.p1.y = arrowY;
-                lineDsc.p2.x = ex;
-                lineDsc.p2.y = ey;
-                lv_draw_line(layer, &lineDsc);
-            }
-        }
-    }
-
-    // ── EXE pressure ring (when paused) ──────────────────────────────────
-    if (app->_paused) {
-        int cx = ox + (app->_cursorX - 1) * CELL_W + CELL_W / 2;
-        int cy = oy + (app->_cursorY - 1) * CELL_H + CELL_H / 2;
-        int radius = 12;
-
-        lv_draw_rect_dsc_t ringDsc;
-        lv_draw_rect_dsc_init(&ringDsc);
-        ringDsc.bg_opa       = LV_OPA_TRANSP;
-        ringDsc.border_color = lv_color_hex(COL_RING);
-        ringDsc.border_width = 2;
-        ringDsc.border_opa   = LV_OPA_60;
-        ringDsc.radius       = LV_RADIUS_CIRCLE;
-
-        lv_area_t ringArea = {
-            (int16_t)(cx - radius), (int16_t)(cy - radius),
-            (int16_t)(cx + radius), (int16_t)(cy + radius)
-        };
-        lv_draw_rect(layer, &ringDsc, &ringArea);
-    }
-
     // ── Cursor ───────────────────────────────────────────────────────────
     {
         int cx = ox + (app->_cursorX - 1) * CELL_W;
@@ -1205,8 +1229,12 @@ void Fluid2DApp::onDraw(lv_event_t* e) {
         lv_draw_rect_dsc_init(&curDsc);
         curDsc.bg_opa    = LV_OPA_TRANSP;
 
-        if (app->_wallBrush) {
+        if (app->_brushMode == BrushMode::WALL) {
             curDsc.border_color = lv_color_hex(COL_WALL);
+            curDsc.border_width = 2;
+            curDsc.border_opa   = LV_OPA_COVER;
+        } else if (app->_brushMode == BrushMode::ERASER) {
+            curDsc.border_color = lv_color_hex(0xFF4040);
             curDsc.border_width = 2;
             curDsc.border_opa   = LV_OPA_COVER;
         } else {
@@ -1222,6 +1250,90 @@ void Fluid2DApp::onDraw(lv_event_t* e) {
         };
         lv_draw_rect(layer, &curDsc, &curArea);
     }
+
+    // ── Telemetry HUD ───────────────────────────────────────────────────
+    if (app->_showTelemetry) {
+        // Probe tooltip (when idle > 60 frames)
+        if (app->_idleFrames > 60) {
+            int ci = app->_cursorX;
+            int cj = app->_cursorY;
+            int probeIdx = IX(ci, cj);
+            float vx = app->_velX[probeIdx];
+            float vy = app->_velY[probeIdx];
+            float div = app->computeLocalDivergence(ci, cj);
+
+            char probeBuf[64];
+            snprintf(probeBuf, sizeof(probeBuf),
+                     "V:(%.1f,%.1f)\nDiv:%.2f", vx, vy, div);
+
+            int tipPx = ox + (ci - 1) * CELL_W + CELL_W + 4;
+            int tipPy = oy + (cj - 1) * CELL_H - 20;
+            if (tipPx > 260) tipPx = ox + (ci - 1) * CELL_W - 70;
+            if (tipPy < oy) tipPy = oy + 2;
+
+            lv_area_t tipBg = {
+                (int16_t)(tipPx - 2), (int16_t)(tipPy - 2),
+                (int16_t)(tipPx + 68), (int16_t)(tipPy + 22)
+            };
+            lv_draw_rect_dsc_t tipRd;
+            lv_draw_rect_dsc_init(&tipRd);
+            tipRd.bg_color = lv_color_hex(0x000000);
+            tipRd.bg_opa = LV_OPA_50;
+            tipRd.radius = 2;
+            lv_draw_rect(layer, &tipRd, &tipBg);
+
+            lv_draw_label_dsc_t tipLbl;
+            lv_draw_label_dsc_init(&tipLbl);
+            tipLbl.color = lv_color_hex(0xE0E0E0);
+            tipLbl.font = &lv_font_montserrat_10;
+            tipLbl.text = probeBuf;
+            lv_draw_label(layer, &tipLbl, &tipBg);
+        }
+
+        // Sparkline (top-left, 30 samples)
+        {
+            int sparkX = ox + 4;
+            int sparkY = oy + 4;
+            int sparkW = 60;
+            int sparkH = 20;
+
+            lv_area_t sparkBg = {
+                (int16_t)sparkX, (int16_t)sparkY,
+                (int16_t)(sparkX + sparkW), (int16_t)(sparkY + sparkH)
+            };
+            lv_draw_rect_dsc_t sparkRd;
+            lv_draw_rect_dsc_init(&sparkRd);
+            sparkRd.bg_color = lv_color_hex(0x000000);
+            sparkRd.bg_opa = LV_OPA_40;
+            sparkRd.radius = 2;
+            lv_draw_rect(layer, &sparkRd, &sparkBg);
+
+            float maxE = 0.01f;
+            for (int s = 0; s < ENERGY_SAMPLES; ++s) {
+                if (app->_energyHistory[s] > maxE) maxE = app->_energyHistory[s];
+            }
+
+            lv_draw_line_dsc_t sparkLine;
+            lv_draw_line_dsc_init(&sparkLine);
+            sparkLine.color = lv_color_hex(0x00FF80);
+            sparkLine.width = 1;
+            sparkLine.opa = LV_OPA_70;
+
+            for (int s = 0; s < ENERGY_SAMPLES - 1; ++s) {
+                int si  = (app->_energyIdx + s) % ENERGY_SAMPLES;
+                int si1 = (app->_energyIdx + s + 1) % ENERGY_SAMPLES;
+
+                float e0 = app->_energyHistory[si] / maxE;
+                float e1 = app->_energyHistory[si1] / maxE;
+
+                sparkLine.p1.x = sparkX + s * sparkW / ENERGY_SAMPLES;
+                sparkLine.p1.y = sparkY + sparkH - (int)(e0 * (sparkH - 2));
+                sparkLine.p2.x = sparkX + (s + 1) * sparkW / ENERGY_SAMPLES;
+                sparkLine.p2.y = sparkY + sparkH - (int)(e1 * (sparkH - 2));
+                lv_draw_line(layer, &sparkLine);
+            }
+        }
+    }
 }
 
 // ══ Timer Callback ═══════════════════════════════════════════════════════════
@@ -1230,12 +1342,164 @@ void Fluid2DApp::onSimTimer(lv_timer_t* timer) {
     Fluid2DApp* app = static_cast<Fluid2DApp*>(lv_timer_get_user_data(timer));
     if (!app || !app->_screen || !app->_dens) return;
 
-    if (!app->_paused) {
-        app->addEmitterForces();
-        app->applyFlowPresetForces();
+    app->addEmitterForces();
+    app->applyFlowPresetForces();
+
+    // Sub-stepping: if max velocity exceeds threshold, use 2 steps with dt/2
+    float maxV = 0.01f;
+    for (int j = 1; j <= M; ++j) {
+        for (int i = 1; i <= N; ++i) {
+            float v = fabsf(app->_velX[IX(i,j)]) + fabsf(app->_velY[IX(i,j)]);
+            if (v > maxV) maxV = v;
+        }
+    }
+
+    int steps = (maxV > SUBSTEP_THRESHOLD) ? 2 : 1;
+    float origDt = app->_dt;
+    if (steps > 1) app->_dt *= 0.5f;
+
+    for (int s = 0; s < steps; ++s) {
         app->fluidStep();
+    }
+
+    if (steps > 1) app->_dt = origDt;
+
+    // Smooth obstacles for rendering
+    app->smoothObstacles();
+
+    // Update telemetry
+    app->_idleFrames++;
+    if (app->_showTelemetry) {
+        app->_energyHistory[app->_energyIdx] = app->computeTotalEnergy();
+        app->_energyIdx = (app->_energyIdx + 1) % ENERGY_SAMPLES;
     }
 
     app->updateInfoLabel();
     if (app->_drawObj) lv_obj_invalidate(app->_drawObj);
+}
+
+// ══ Mixed Color (Dual-Density Chromatic) ═════════════════════════════════════
+
+lv_color_t Fluid2DApp::mixedColor(float densA, float densB) {
+    float a = std::max(0.0f, std::min(densA / 5.0f, 1.0f));
+    float b = std::max(0.0f, std::min(densB / 5.0f, 1.0f));
+    uint8_t r = (uint8_t)(a * 255);
+    uint8_t g = 0;
+    uint8_t bl = (uint8_t)(b * 255);
+    return lv_color_make(r, g, bl);
+}
+
+// ══ Telemetry Helpers ════════════════════════════════════════════════════════
+
+float Fluid2DApp::computeTotalEnergy() const {
+    float sum = 0.0f;
+    for (int j = 1; j <= M; j += 2) {
+        for (int i = 1; i <= N; i += 2) {
+            int idx = IX(i, j);
+            sum += _velX[idx] * _velX[idx] + _velY[idx] * _velY[idx];
+        }
+    }
+    return sum;
+}
+
+float Fluid2DApp::computeLocalDivergence(int i, int j) const {
+    if (i < 2 || i >= N || j < 2 || j >= M) return 0.0f;
+    return (_velX[IX(i+1,j)] - _velX[IX(i-1,j)]) * 0.5f +
+           (_velY[IX(i,j+1)] - _velY[IX(i,j-1)]) * 0.5f;
+}
+
+// ══ Boundary Smoothing ══════════════════════════════════════════════════════
+
+void Fluid2DApp::smoothObstacles() {
+    if (!_obstacle || !_smoothObst) return;
+    for (int j = 1; j <= M; ++j) {
+        for (int i = 1; i <= N; ++i) {
+            int idx = IX(i, j);
+            float sum = (float)_obstacle[idx];
+            int count = 1;
+            if (i > 1)  { sum += (float)_obstacle[IX(i-1, j)]; count++; }
+            if (i < N)  { sum += (float)_obstacle[IX(i+1, j)]; count++; }
+            if (j > 1)  { sum += (float)_obstacle[IX(i, j-1)]; count++; }
+            if (j < M)  { sum += (float)_obstacle[IX(i, j+1)]; count++; }
+            _smoothObst[idx] = sum / (float)count;
+        }
+    }
+}
+
+// ══ LittleFS Persistence (Scene Manager) ═════════════════════════════════════
+
+void Fluid2DApp::autoSave() {
+    saveScene("autosave.f2d");
+}
+
+void Fluid2DApp::saveScene(const char* name) {
+#ifdef ARDUINO
+    if (!LittleFS.begin(true)) return;
+    if (!LittleFS.exists("/fluid")) {
+        LittleFS.mkdir("/fluid");
+    }
+
+    char path[64];
+    snprintf(path, sizeof(path), "/fluid/%s", name);
+
+    File f = LittleFS.open(path, "w");
+    if (!f) return;
+
+    uint32_t magic = 0x46324430; // "F2D0"
+    f.write((const uint8_t*)&magic, 4);
+
+    f.write((const uint8_t*)&_viscosity, sizeof(float));
+    f.write((const uint8_t*)&_diffusion, sizeof(float));
+    uint8_t pal = (uint8_t)_palette;
+    f.write(&pal, 1);
+
+    if (_obstacle) {
+        f.write(_obstacle, SIZE);
+    }
+
+    f.close();
+#else
+    (void)name;
+#endif
+}
+
+void Fluid2DApp::loadScene(const char* name) {
+#ifdef ARDUINO
+    if (!LittleFS.begin(true)) return;
+
+    char path[64];
+    snprintf(path, sizeof(path), "/fluid/%s", name);
+
+    File f = LittleFS.open(path, "r");
+    if (!f) return;
+
+    uint32_t magic = 0;
+    f.read((uint8_t*)&magic, 4);
+    if (magic != 0x46324430) { f.close(); return; }
+
+    f.read((uint8_t*)&_viscosity, sizeof(float));
+    f.read((uint8_t*)&_diffusion, sizeof(float));
+    uint8_t pal = 0;
+    f.read(&pal, 1);
+    _palette = static_cast<Palette>(pal % (uint8_t(Palette::MIXED) + 1));
+
+    if (_obstacle) {
+        f.read(_obstacle, SIZE);
+    }
+
+    f.close();
+    smoothObstacles();
+    updateInfoLabel();
+#else
+    (void)name;
+#endif
+}
+
+void Fluid2DApp::autoLoad() {
+#ifdef ARDUINO
+    if (!LittleFS.begin(true)) return;
+    if (LittleFS.exists("/fluid/autosave.f2d")) {
+        loadScene("autosave.f2d");
+    }
+#endif
 }

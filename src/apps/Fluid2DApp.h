@@ -18,14 +18,14 @@
  * Custom draw via LV_EVENT_DRAW_MAIN (no lv_canvas).
  *
  * Controls:
- *   - Arrow keys: move emitter cursor
- *   - ENTER: toggle continuous emission
- *   - F1: cycle visualization (density / velocity / vorticity)
- *   - F2: cycle color palette (Inferno / Ocean / Toxic / Classic)
- *   - F3: reset simulation
- *   - F4: toggle wall brush (paint solid obstacles)
+ *   - Arrow keys: move cursor (WALL paints, ERASER clears while moving)
+ *   - ENTER: toggle emission (ink) or toggle wall (WALL mode)
+ *   - F1: cycle brush (RedInk → BlueInk → Wall → Eraser)
+ *   - F2: cycle palette (Classic → Thermal → Velocity → Mixed)
+ *   - F3: toggle telemetry HUD
+ *   - F4: save scene to autosave.f2d
  *   - F5: cycle flow presets (None / Wind Tunnel / Convection Cell)
- *   - EXE: pause / resume simulation (shows pressure ring)
+ *   - EXE (<): high-pressure radial injection at cursor
  *   - 0-9: adjust viscosity (0=Gas … 9=Honey)
  *
  * Part of: NumOS — Physics Simulation Module
@@ -49,6 +49,7 @@ public:
     void end();
     void load();
     void handleKey(const KeyEvent& ev);
+    void autoSave();
 
     bool isActive() const { return _screen != nullptr; }
 
@@ -74,23 +75,27 @@ private:
     static constexpr float BUOY_B        = 0.05f; // density drag coeff
     static constexpr float CFL_MAX       = 5.0f;  // max CFL factor
 
+    // ── Sub-stepping ─────────────────────────────────────────────────────
+    static constexpr float SUBSTEP_THRESHOLD = 10.0f;
+
     // ── Particle system ──────────────────────────────────────────────────
     static constexpr int MAX_PARTICLES   = 256;
     static constexpr int PARTICLE_TAIL   = 3;  // tail length in frames
 
     // ── Visualization modes ──────────────────────────────────────────────
-    enum class VizMode : uint8_t {
-        DENSITY,
-        VELOCITY,
-        VORTICITY
+    enum class BrushMode : uint8_t {
+        RED_INK,
+        BLUE_INK,
+        WALL,
+        ERASER
     };
 
     // ── Color palettes ───────────────────────────────────────────────────
     enum class Palette : uint8_t {
-        INFERNO,
-        OCEAN,
-        TOXIC,
-        CLASSIC
+        CLASSIC,
+        THERMAL,
+        VELOCITY,
+        MIXED
     };
 
     // ── Emitter shapes ───────────────────────────────────────────────────
@@ -133,23 +138,30 @@ private:
     float*  _temp;          // temperature field
     float*  _tempPrev;      // temperature source
     uint8_t* _obstacle;     // obstacle mask (0=fluid, 1=wall)
+    float*  _densB;         // second density field (blue ink)
+    float*  _densBPrev;     // second density source
+    float*  _smoothObst;    // smoothed obstacle boundary
 
     // ── Simulation state ─────────────────────────────────────────────────
     float   _diffusion;     // diffusion rate
     float   _viscosity;     // viscosity
     float   _dt;            // dynamic timestep (CFL-based)
-    bool    _paused;        // simulation paused
     bool    _emitting;      // continuous emission active
 
     // ── Emitter / cursor ─────────────────────────────────────────────────
     int     _cursorX, _cursorY;     // cursor position in grid coords
     EmitterShape _emitterShape;
-    bool    _wallBrush;     // F4 wall brush mode
+    BrushMode _brushMode;
 
     // ── Visualization ────────────────────────────────────────────────────
-    VizMode  _vizMode;
     Palette  _palette;
-    bool     _showArrows;   // velocity arrow overlay
+
+    // ── Telemetry ────────────────────────────────────────────────────────
+    bool    _showTelemetry;
+    int     _idleFrames;
+    static constexpr int ENERGY_SAMPLES = 30;
+    float   _energyHistory[ENERGY_SAMPLES];
+    int     _energyIdx;
 
     // ── Flow presets ─────────────────────────────────────────────────────
     FlowPreset _flowPreset;
@@ -209,10 +221,19 @@ private:
     lv_color_t shadedDensityColor(int i, int j) const;
     static lv_color_t velocityToColor(float vx, float vy);
     static lv_color_t vorticityToColor(float w);
+    static lv_color_t mixedColor(float densA, float densB);
 
     // ── HUD helpers ──────────────────────────────────────────────────────
     float computeAvgVelocity() const;
     float computeReynolds() const;
+    float computeTotalEnergy() const;
+    float computeLocalDivergence(int i, int j) const;
+    void  smoothObstacles();
+
+    // ── Persistence ──────────────────────────────────────────────────────
+    void saveScene(const char* name);
+    void loadScene(const char* name);
+    void autoLoad();
 
     // ── Callbacks ────────────────────────────────────────────────────────
     static void onDraw(lv_event_t* e);

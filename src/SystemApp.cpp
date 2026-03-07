@@ -512,6 +512,7 @@ void SystemApp::handleKey(const KeyEvent &ev) {
         // Fluid2DApp is LVGL-native
         case Mode::APP_FLUID_2D:
             if (ev.code == KeyCode::MODE) {
+                if (_fluid2DApp) _fluid2DApp->autoSave();
                 returnToMenu();
             } else if (_fluid2DApp) {
                 _fluid2DApp->handleKey(ev);

@@ -613,15 +613,15 @@ void Fluid2DApp::onDraw(lv_event_t* e) {
                 if (mag < 0.1f) continue;
 
                 int px = ox + (i - 1) * CELL_W + CELL_W / 2;
-                int py2 = oy + (j - 1) * CELL_H + CELL_H / 2;
+                int arrowY = oy + (j - 1) * CELL_H + CELL_H / 2;
 
                 // Scale arrow length
                 float scale = std::min(mag, 5.0f) * 2.0f;
                 int ex = px + (int)(vx / mag * scale);
-                int ey = py2 + (int)(vy / mag * scale);
+                int ey = arrowY + (int)(vy / mag * scale);
 
                 lineDsc.p1.x = px;
-                lineDsc.p1.y = py2;
+                lineDsc.p1.y = arrowY;
                 lineDsc.p2.x = ex;
                 lineDsc.p2.y = ey;
                 lv_draw_line(layer, &lineDsc);

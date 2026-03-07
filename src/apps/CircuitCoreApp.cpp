@@ -143,6 +143,8 @@ void CircuitCoreApp::begin() {
     _focusArea = FocusArea::GRID;
     _cursorX = GRID_SNAP * 5;
     _cursorY = GRID_SNAP * 4;
+    _prevCursorX = _cursorX;
+    _prevCursorY = _cursorY;
     _simRunning = false;
     _frameCount = 0;
     _nextNodeId = 1;
@@ -175,8 +177,8 @@ void CircuitCoreApp::begin() {
 }
 
 void CircuitCoreApp::end() {
-    // ── Auto-save circuit before cleanup ──
-    autoSave();
+    // ── NOTE: autoSave() is called BEFORE returnToMenu() in SystemApp ──
+    // ── to prevent LittleFS writes from freezing the menu transition. ──
 
     // ── Stop simulation timer ──
     if (_simTimer) {
@@ -780,14 +782,14 @@ void CircuitCoreApp::stopSimulation() {
     updateToolbarHighlight();
 }
 
-void CircuitCoreApp::runMnaTick() {
+bool CircuitCoreApp::runMnaTick() {
     // Scale time step based on simulation speed
     float speedFactor = 1.0f;
     switch (_simSpeed) {
         case SimSpeed::SPEED_1X:  speedFactor = 1.0f; break;
         case SimSpeed::SPEED_05X: speedFactor = 0.5f; break;
         case SimSpeed::SPEED_025X: speedFactor = 0.25f; break;
-        case SimSpeed::PAUSED:    return; // skip entire tick
+        case SimSpeed::PAUSED:    return false; // skip entire tick
     }
     float basedt = _mna.timeStep();
     _mna.setTimeStep(basedt * speedFactor);
@@ -831,6 +833,19 @@ void CircuitCoreApp::runMnaTick() {
     // Phase 4: Solve
     bool ok = _mna.solve();
 
+    // Phase 4b: NaN/Inf protection — prevent LVGL from drawing to invalid coords
+    if (ok) {
+        for (int n = 0; n < MnaMatrix::MAX_NODES; ++n) {
+            float v = _mna.nodeVoltage(n);
+            if (!std::isfinite(v)) {
+                ok = false;
+                snprintf(_infoBuf, sizeof(_infoBuf), "ERR: floating node");
+                if (_infoLabel) lv_label_set_text(_infoLabel, _infoBuf);
+                break;
+            }
+        }
+    }
+
     // Phase 5: Update component state from solution
     if (ok) {
         for (int i = 0; i < _compCount; ++i) {
@@ -850,8 +865,7 @@ void CircuitCoreApp::runMnaTick() {
     // Phase 7: Run Lua VM tick
     _luaVM.tick();
 
-    // Invalidate draw area
-    if (_drawObj) lv_obj_invalidate(_drawObj);
+    return true;  // circuit state changed
 }
 
 // ══ Timer Callback ══════════════════════════════════════════════════════════
@@ -862,9 +876,23 @@ void CircuitCoreApp::onSimTimer(lv_timer_t* timer) {
 
     app->_frameCount++;
 
+    bool needInvalidate = false;
+
     // MNA runs at 30Hz (every other frame at 60Hz)
     if (app->_frameCount % 2 == 0) {
-        app->runMnaTick();
+        needInvalidate = app->runMnaTick();
+    }
+
+    // Also invalidate if cursor moved since last frame
+    if (app->_cursorX != app->_prevCursorX ||
+        app->_cursorY != app->_prevCursorY) {
+        needInvalidate = true;
+        app->_prevCursorX = app->_cursorX;
+        app->_prevCursorY = app->_cursorY;
+    }
+
+    if (needInvalidate && app->_drawObj) {
+        lv_obj_invalidate(app->_drawObj);
     }
 }
 
@@ -880,15 +908,27 @@ void CircuitCoreApp::onDraw(lv_event_t* e) {
     int objX = lv_obj_get_x(obj);
     int objY = lv_obj_get_y(obj);
 
-    // ── Draw grid dots ──
+    // ── Draw grid dots (clipped to LVGL clip area for performance) ──
     lv_draw_rect_dsc_t dotDsc;
     lv_draw_rect_dsc_init(&dotDsc);
     dotDsc.bg_color = lv_color_hex(COL_GRID_DOT);
     dotDsc.bg_opa   = LV_OPA_COVER;
     dotDsc.radius   = 1;
 
-    for (int gx = 0; gx < GRID_W; gx += GRID_SNAP) {
-        for (int gy = 0; gy < GRID_H; gy += GRID_SNAP) {
+    const lv_area_t& clip = layer->_clip_area;
+    // Only iterate grid dots that fall within the current clip area
+    int gxStart = ((clip.x1 - objX) / GRID_SNAP) * GRID_SNAP;
+    if (gxStart < 0) gxStart = 0;
+    int gxEnd = ((clip.x2 - objX) / GRID_SNAP + 1) * GRID_SNAP;
+    if (gxEnd > GRID_W) gxEnd = GRID_W;
+
+    int gyStart = ((clip.y1 - objY) / GRID_SNAP) * GRID_SNAP;
+    if (gyStart < 0) gyStart = 0;
+    int gyEnd = ((clip.y2 - objY) / GRID_SNAP + 1) * GRID_SNAP;
+    if (gyEnd > GRID_H) gyEnd = GRID_H;
+
+    for (int gx = gxStart; gx < gxEnd; gx += GRID_SNAP) {
+        for (int gy = gyStart; gy < gyEnd; gy += GRID_SNAP) {
             lv_area_t dot;
             dot.x1 = objX + gx - 1;
             dot.y1 = objY + gy - 1;

@@ -14,6 +14,18 @@
 #include <cstring>
 #include <cstdio>
 
+#ifdef LUA_AVAILABLE
+#include <lua.hpp>
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Lua instruction-count hook — yields the coroutine every 500k instructions
+// (~5ms on ESP32-S3) to prevent while-true-do-end from starving Core 0.
+// ══════════════════════════════════════════════════════════════════════════════
+static void luaCountHook(lua_State* L, lua_Debug* /*ar*/) {
+    lua_yield(L, 0);
+}
+#endif
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Stub implementation (Lua not available)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -37,10 +49,14 @@ bool LuaVM::init(MnaMatrix* mna, MCUComponent* mcu) {
     _mcu = mcu;
 
 #ifdef LUA_AVAILABLE
-    // TODO: Real Lua initialization
-    // _luaState = luaL_newstate();
-    // luaL_openlibs((lua_State*)_luaState);
-    // Register circuit.readVoltage and circuit.setPin bindings
+    _luaState = luaL_newstate();
+    if (!_luaState) {
+        snprintf(_errorMsg, sizeof(_errorMsg), "Lua alloc failed");
+        return false;
+    }
+    luaL_openlibs(static_cast<lua_State*>(_luaState));
+    // Install instruction counter hook: yield every 500k instructions (~5ms)
+    lua_sethook(static_cast<lua_State*>(_luaState), luaCountHook, LUA_MASKCOUNT, 500000);
     snprintf(_errorMsg, sizeof(_errorMsg), "Lua ready");
     return true;
 #else
@@ -52,7 +68,7 @@ bool LuaVM::init(MnaMatrix* mna, MCUComponent* mcu) {
 void LuaVM::shutdown() {
 #ifdef LUA_AVAILABLE
     if (_luaState) {
-        // lua_close((lua_State*)_luaState);
+        lua_close(static_cast<lua_State*>(_luaState));
         _luaState = nullptr;
     }
 #endif

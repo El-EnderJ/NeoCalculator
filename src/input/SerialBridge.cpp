@@ -176,6 +176,14 @@ void SerialBridge::processChar(int ch) {
         // ── Misc (uppercase C = AC too) ──
         case 'C':  push(KeyCode::AC, "AC"); break;
 
+        // ── EXE (physical '<' key → Execute/Solve) ──
+        case '<':  push(KeyCode::EXE, "EXE"); break;
+
+        // ── Function keys (serial shortcuts) ──
+        case 'F':  push(KeyCode::F1, "F1"); break;
+        case 'G':  push(KeyCode::F2, "F2"); break;
+        // F3-F5 available via extended serial protocol if needed
+
         // Ignore everything else silently
         default: break;
     }

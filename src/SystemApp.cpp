@@ -494,9 +494,11 @@ void SystemApp::handleKey(const KeyEvent &ev) {
         // CircuitCoreApp is LVGL-native
         case Mode::APP_CIRCUIT_CORE:
             if (ev.code == KeyCode::MODE) {
+                if (_circuitCoreApp) _circuitCoreApp->autoSave();
                 returnToMenu();
             } else if (ev.code == KeyCode::AC && _circuitCoreApp &&
                        _circuitCoreApp->isToolbarFocused()) {
+                _circuitCoreApp->autoSave();
                 returnToMenu();
             } else if (_circuitCoreApp) {
                 _circuitCoreApp->handleKey(ev);

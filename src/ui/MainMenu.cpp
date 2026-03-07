@@ -649,9 +649,9 @@ void MainMenu::initStyles() {
     lv_style_set_border_width(&_styleCard, 2);
     lv_style_set_border_color(&_styleCard, lv_color_hex(COL_CARD_BG));
     lv_style_set_border_opa(&_styleCard,   LV_OPA_TRANSP);
-    // Diffuse shadow (req #3: shadow_width 12, spread 2)
-    lv_style_set_shadow_width(&_styleCard,  12);
-    lv_style_set_shadow_opa(&_styleCard,    LV_OPA_10);
+    // Diffuse shadow (optimized: shadow_width 4 for software renderer perf)
+    lv_style_set_shadow_width(&_styleCard,  4);
+    lv_style_set_shadow_opa(&_styleCard,    LV_OPA_20);
     lv_style_set_shadow_color(&_styleCard,  lv_color_hex(0x000000));
     lv_style_set_shadow_ofs_y(&_styleCard,  3);
     lv_style_set_shadow_spread(&_styleCard, 2);
@@ -731,7 +731,7 @@ void MainMenu::onScrollEnd(lv_event_t* e) {
     for (uint32_t i = 0; i < count; ++i) {
         lv_obj_t* card = lv_obj_get_child(self->_grid, i);
         if (!card) continue;
-        lv_obj_set_style_shadow_opa(card, LV_OPA_10, LV_PART_MAIN);   // Restore card diffuse shadow
+        lv_obj_set_style_shadow_opa(card, LV_OPA_20, LV_PART_MAIN);   // Restore card diffuse shadow
 
         if (lv_obj_get_child_count(card) > 0) {
             lv_obj_t* iconBox = lv_obj_get_child(card, 0);
@@ -767,42 +767,42 @@ void MainMenu::onGridDraw(lv_event_t* e) {
     static constexpr int DOT_SPACING = 20;
     static constexpr int DOT_SIZE    = 1;     // 1 px subtle dots
 
-    lv_coord_t scrollY = lv_obj_get_scroll_y(obj);
+    // Static dots: compute in absolute screen coordinates so they do NOT
+    // move with the scroll container.  This eliminates full-screen
+    // invalidations during card scrolling.
     int x0 = objArea.x1;
     int y0 = objArea.y1;
-    int contentH = GRID_H + 120;
 
-    // Compute the first dot row/col that intersects the clip area
-    int firstDy = DOT_SPACING / 2;
-    int firstDx = DOT_SPACING / 2;
+    static constexpr int HALF = DOT_SPACING / 2;
 
-    // Clamp Y iteration to clip area
-    int clipTop    = clip.y1 - y0 + scrollY;
-    int clipBottom = clip.y2 - y0 + scrollY;
-    // Start from the first dot row at or after clipTop
-    int startDy = ((clipTop - firstDy) / DOT_SPACING) * DOT_SPACING + firstDy;
-    if (startDy < firstDy) startDy = firstDy;
-    int endDy = clipBottom + DOT_SPACING;  // one extra for safety
-    if (endDy > contentH) endDy = contentH;
+    // Clamp iteration to LVGL clip area (only visible dots)
+    int clipLeft   = clip.x1 - x0;
+    int clipRight  = clip.x2 - x0;
+    int clipTop    = clip.y1 - y0;
+    int clipBottom = clip.y2 - y0;
 
-    // Clamp X iteration to clip area
-    int clipLeft  = clip.x1 - x0;
-    int clipRight = clip.x2 - x0;
-    int startDx = ((clipLeft - firstDx) / DOT_SPACING) * DOT_SPACING + firstDx;
-    if (startDx < firstDx) startDx = firstDx;
-    int endDx = clipRight + DOT_SPACING;
+    int startDx = ((clipLeft  - HALF) / DOT_SPACING) * DOT_SPACING + HALF;
+    if (startDx < HALF) startDx = HALF;
+    int endDx   = clipRight + DOT_SPACING;
     if (endDx > SCREEN_W) endDx = SCREEN_W;
 
+    int startDy = ((clipTop   - HALF) / DOT_SPACING) * DOT_SPACING + HALF;
+    if (startDy < HALF) startDy = HALF;
+    int objH    = objArea.y2 - objArea.y1;
+    int endDy   = clipBottom + DOT_SPACING;
+    if (endDy > objH) endDy = objH;
+
     for (int dy = startDy; dy < endDy; dy += DOT_SPACING) {
-        int screenY = y0 + dy - scrollY;
-        if (screenY + DOT_SIZE < objArea.y1 || screenY > objArea.y2) continue;
+        int screenY = y0 + dy;
+        if (screenY + DOT_SIZE < clip.y1 || screenY > clip.y2) continue;
 
         for (int dx = startDx; dx < endDx; dx += DOT_SPACING) {
+            int screenX = x0 + dx;
             lv_area_t dot;
-            dot.x1 = x0 + dx;
+            dot.x1 = screenX;
             dot.y1 = screenY;
-            dot.x2 = dot.x1 + DOT_SIZE;
-            dot.y2 = dot.y1 + DOT_SIZE;
+            dot.x2 = screenX + DOT_SIZE;
+            dot.y2 = screenY + DOT_SIZE;
             lv_draw_rect(layer, &dsc, &dot);
         }
     }

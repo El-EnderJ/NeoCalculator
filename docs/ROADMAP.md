@@ -46,6 +46,8 @@
 | **Apr 2026** | **SettingsApp re-entry null crash fix: _statusBar.destroy() added to end()** |
 | **Apr 2026** | **Active production: RAM 29.6% · Flash 20.9% · 11 apps in launcher** |
 | **Mar 2026** | **BridgeDesignerApp (ID 12): Verlet physics bridge simulator with stress analysis, 3 materials, truck/car loads — PSRAM-backed 60Hz engine** |
+| **Mar 2026** | **ParticleLabApp (ID 15) — Alchemy Update: 30+ materials, spark electronics, phase transitions, reaction matrix, Bresenham line tool, LittleFS save/load** |
+| **Mar 2026** | **Active production: RAM 29.7% · Flash 23.2% · 16 apps in launcher** |
 ---
 
 ## Phase 1 — The Foundation (Complete)
@@ -210,13 +212,14 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [x] **Phase 7**: **Documentation** — All .md files updated for unified CalculusApp + SettingsApp, build stats, keyboard 5×10
 - [x] **Phase 8**: **Scientific Apps (Phase 6)** — StatisticsApp, ProbabilityApp, RegressionApp, MatricesApp, SequencesApp, PythonApp
 - [x] **Phase 9**: **Stability** — Boot lazy-init, HOME deferred teardown 250 ms, SettingsApp null crash fix
+- [x] **Phase 10**: **Simulation Apps** — CircuitCoreApp (SPICE), Fluid2DApp (Navier-Stokes), ParticleLabApp (Alchemy Update)
 
-### Build Stats (Production — April 2026)
+### Build Stats (Production — March 2026)
 
 | Resource | Used | Total | % |
 |:--------|------:|------:|:-:|
-| RAM | 97 040 B | 327 680 B | **29.6%** |
-| Flash | 1 370 157 B | 6 553 600 B | **20.9%** |
+| RAM | 97 192 B | 327 680 B | **29.7%** |
+| Flash | 1 518 269 B | 6 553 600 B | **23.2%** |
 
 ---
 
@@ -270,6 +273,36 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [x] 2×2 and 3×3 determinant
 - [x] Inverse by Gauss-Jordan
 - [x] Resolution of the Ax = b system by matrices
+
+### 6.8 ParticleLabApp — The Alchemy Update ✅ Complete
+
+> *Powder-Toy-class cellular automata sandbox with 30+ materials, discrete electronics, and phase transitions.*
+
+#### Material Library (31 materials)
+- [x] **Earth & Glass**: Sand (>1500°C → Molten Glass), Molten Glass (<1000°C → Glass), Stone (inert, heavy), Glass
+- [x] **Organics**: Wood (burns → Smoke), Coal (burns 10× longer than wood), Plant (2% chance to grow near Water)
+- [x] **Thermal Extremes**: Lava (1500°C, cools <800°C → Stone), LN2 (Liquid Nitrogen, -196°C, evaporates >-190°C → Gas)
+- [x] **Electronics**: Wire (conductive), Heater (sparked → 2000°C), Cooler (sparked → -200°C), C4 (sparked → massive explosion)
+- [x] **Advanced Solids**: HEAC (extremely high heat conductor), INSL (heat/electricity insulator, burns), Titan (melts 1668°C, conductive), Iron (melts 1538°C, conductive)
+- [x] **Special**: Clone (reads & replicates adjacent material), Smoke (gas, dissipates), Molten Titan
+
+#### Cellular Automata Engine
+- [x] LUT-driven material properties (color, density, flammability, state, thermal/electric conductivity, phase temps)
+- [x] Spark cycle: conductive materials carry sparks with PF_SPARKED flag, 2-frame propagation, Joule heating
+- [x] Reaction matrix: Water+Lava=Stone+Steam, Acid+Iron=Gas, Water+LN2=Ice
+- [x] Phase transitions: solid→liquid (melting), liquid→gas (boiling), liquid→solid (cooling)
+- [x] Gas diffusion into empty spaces, liquid equalization (aggressive sideways flow)
+- [x] Bitwise PF_UPDATED flag prevents double-update per tick
+
+#### UI / QoL
+- [x] Material palette overlay (F3): pause + grid selector with D-pad navigation
+- [x] Bresenham line tool: hold ENTER and move cursor to draw connected lines
+- [x] Brush shapes: Circle, Square, Spray (random fill ~40% density)
+- [x] InfoBar HUD: MAT name | Brush | Cursor XY | Particle count | Paused state
+- [x] Quick Save (F4) and Quick Load (F5) via LittleFS (`/save.pt`, 76.8 KB grid)
+- [x] Cold glow rendering for sub-zero temperatures
+- [x] Sparked particle visual overlay (yellow tint)
+- [x] Temperature glow (black-body radiation) for hot particles
 
 ---
 

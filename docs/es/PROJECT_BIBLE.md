@@ -346,9 +346,17 @@ Sin esto, la PSRAM acumula allocations entre sesiones de la app.
 | `EquationsApp` | `apps/EquationsApp.cpp/.h` | ✅ | Pro-CAS: 1-var, 2×2, pasos PSRAM |
 | `CalculusApp` | `apps/CalculusApp.cpp/.h` | ✅ | Pro-CAS: derivadas (d/dx) + integrales (∫dx) unificadas, pestañas, pasos |
 | `SettingsApp` | `apps/SettingsApp.cpp/.h` | ✅ | Configuración: raíces complejas, precisión, modo angular |
-| Sequences, Statistics, Regression | — | 🔲 | Pendiente Fase 6 |
-| Table, Probability | — | 🔲 | Pendiente Fase 6 |
-| Python | — | 🔲 | Placeholder (Lua futuro) |
+| `StatisticsApp` | `apps/StatisticsApp.cpp/.h` | ✅ | Listas de datos, media/mediana/σ/s, histograma |
+| `ProbabilityApp` | `apps/ProbabilityApp.cpp/.h` | ✅ | nCr, nPr, n!, binomial, normal, Poisson |
+| `RegressionApp` | `apps/RegressionApp.cpp/.h` | ✅ | Regresión lineal/cuadrática/log/exp, R², dispersión |
+| `MatricesApp` | `apps/MatricesApp.cpp/.h` | ✅ | Editor m×n, +/−/×/transp., det, inversa, Ax=b |
+| `SequencesApp` | `apps/SequencesApp.cpp/.h` | ✅ | Sucesiones aritméticas/geométricas, término N, sumas parciales |
+| `PythonApp` | `apps/PythonApp.cpp/.h` | ⚠️ | Placeholder UI (scripting pendiente) |
+| `PeriodicTableApp` | `apps/PeriodicTableApp.cpp/.h` | ✅ | Tabla periódica, masa molar, balanceo de ecuaciones |
+| `BridgeDesignerApp` | `apps/BridgeDesignerApp.cpp/.h` | ✅ | Simulador de puentes: física Verlet, análisis de estrés |
+| `CircuitCoreApp` | `apps/CircuitCoreApp.cpp/.h` | ✅ | Simulador de circuitos SPICE: MNA, 30 componentes |
+| `Fluid2DApp` | `apps/Fluid2DApp.cpp/.h` | ✅ | Dinámica de fluidos 2D: Navier-Stokes, vorticidad |
+| `ParticleLabApp` | `apps/ParticleLabApp.cpp/.h` | ✅ | Sandbox Powder-Toy: 30+ materiales, electrónica spark, transiciones de fase, guardado/carga |
 
 ### UI
 

@@ -4,6 +4,7 @@
 
 #include "Evaluator.h"
 #include <math.h>
+#include <cmath>
 
 Evaluator::Evaluator()
     : _angleMode(AngleMode::RAD) {}
@@ -144,6 +145,12 @@ EvalResult Evaluator::evaluateRPN(const std::vector<Token> &rpn, VariableContext
                     return res;
                 }
 
+                // FPU sanitization: reject NaN / Inf produced by any function
+                if (!std::isfinite(val)) {
+                    res.errorMessage = "Error: Resultado no finito";
+                    return res;
+                }
+
                 if (!push(stack, sp, val)) {
                     res.errorMessage = "Error: pila llena";
                     return res;
@@ -190,6 +197,12 @@ EvalResult Evaluator::evaluateRPN(const std::vector<Token> &rpn, VariableContext
                         return res;
                 }
 
+                // FPU sanitization: reject NaN / Inf from any operator
+                if (!std::isfinite(val)) {
+                    res.errorMessage = "Error: Resultado no finito";
+                    return res;
+                }
+
                 if (!push(stack, sp, val)) {
                     res.errorMessage = "Error: pila llena";
                     return res;
@@ -210,6 +223,12 @@ EvalResult Evaluator::evaluateRPN(const std::vector<Token> &rpn, VariableContext
 
     if (sp != 1) {
         res.errorMessage = "Operador sin operando previo";
+        return res;
+    }
+
+    // Final FPU sanitization: ensure the result is a valid finite number
+    if (!std::isfinite(stack[0])) {
+        res.errorMessage = "Error: Resultado no finito";
         return res;
     }
 

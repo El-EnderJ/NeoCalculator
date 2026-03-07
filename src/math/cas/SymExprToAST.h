@@ -5,13 +5,23 @@
  * It takes a SymExpr tree (output of SymDiff or SymSimplify) and builds
  * a vpam::MathNode tree suitable for rendering via MathCanvas.
  *
+ * VPAM 2.0 Structural Box Model:
+ *   Each conversion produces a self-contained layout "box" whose width,
+ *   height, and baseline are computed recursively by MathNode::calculateLayout().
+ *   · Fractions center numerator and denominator around the vinculum.
+ *   · Radicals scale the "V" hook and overline to the radicand's size.
+ *   · Powers raise the exponent and apply superscript font scaling.
+ *   · Compound bases in powers are wrapped in parentheses for clarity.
+ *   · Nested structures (fraction in exponent, root in fraction) are
+ *     handled recursively with proper alignment propagation.
+ *
  * Mapping:
  *   SymNum   → NodeNumber / NodeFraction / NodeConstant / NodeRoot
  *   SymVar   → NodeVariable
  *   SymNeg   → "−" prefix (or negative sign on number)
  *   SymAdd   → NodeRow with + / − operators between terms
  *   SymMul   → NodeRow with implicit multiplication (juxtaposition)
- *   SymPow   → NodePower
+ *   SymPow   → NodePower (or NodeRoot for fractional exponents)
  *   SymFunc  → NodeFunction / NodeLogBase
  *
  * Memory: Uses std::unique_ptr (vpam::NodePtr) — standard heap, not arena.

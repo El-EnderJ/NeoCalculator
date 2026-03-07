@@ -25,7 +25,7 @@
  *   · Input is NEVER mutated (pure-functional, Phase 2 contract)
  *   · All returned nodes are cons'd (unique via ConsTable)
  *   · Weight can only stay equal or decrease (no unbounded expansion)
- *   · MAX_PASSES = 8 provides an absolute safety net
+ *   · MAX_PASSES = 10 provides an absolute safety net
  *
  * Part of: NumOS Pro-CAS — Phase 3 (Fixed-Point Simplifier)
  */
@@ -40,7 +40,9 @@ namespace cas {
 class SymSimplify {
 public:
     /// Maximum simplification passes before forced stop.
-    static constexpr int MAX_PASSES = 8;
+    /// Acts as a safety net against infinite rewrite loops in
+    /// edge-case expressions (e.g. oscillating rule interactions).
+    static constexpr int MAX_PASSES = 10;
 
     /// Simplify `expr` via multi-pass fixed-point loop.
     /// Returns a new (or same) arena-allocated, cons'd expression.

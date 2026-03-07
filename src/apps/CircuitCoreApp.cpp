@@ -835,7 +835,7 @@ bool CircuitCoreApp::runMnaTick() {
 
     // Phase 4b: NaN/Inf protection — prevent LVGL from drawing to invalid coords
     if (ok) {
-        for (int n = 1; n < MnaMatrix::MAX_NODES; ++n) {
+        for (int n = 0; n < MnaMatrix::MAX_NODES; ++n) {
             float v = _mna.nodeVoltage(n);
             if (!std::isfinite(v)) {
                 ok = false;

@@ -788,9 +788,9 @@ void MainMenu::onGridDraw(lv_event_t* e) {
 
     int startDy = ((clipTop   - HALF) / DOT_SPACING) * DOT_SPACING + HALF;
     if (startDy < HALF) startDy = HALF;
-    int screenH = objArea.y2 - objArea.y1;
+    int objH    = objArea.y2 - objArea.y1;
     int endDy   = clipBottom + DOT_SPACING;
-    if (endDy > screenH) endDy = screenH;
+    if (endDy > objH) endDy = objH;
 
     for (int dy = startDy; dy < endDy; dy += DOT_SPACING) {
         int screenY = y0 + dy;

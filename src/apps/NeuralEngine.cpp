@@ -377,14 +377,12 @@ int NeuralEngine::getParamCount() const {
     return total;
 }
 
-float NeuralEngine::computeAccuracy(const TrainSample* samples, int count) const {
+float NeuralEngine::computeAccuracy(TrainSample const* samples, int count) {
     if (count == 0 || _numLayers < 2) return 0.0f;
     int correct = 0;
-    // Cast away const for forward (it only writes to mutable internal buffers)
-    NeuralEngine* self = const_cast<NeuralEngine*>(this);
     for (int i = 0; i < count; i++) {
-        self->forward(samples[i].inputs);
-        float out = self->getOutputAt(0);
+        forward(samples[i].inputs);
+        float out = getOutputAt(0);
         float predicted = (out >= 0.5f) ? 1.0f : 0.0f;
         if (fabsf(predicted - samples[i].targets[0]) < 0.1f) {
             correct++;
@@ -438,8 +436,8 @@ int NeuralEngine::serialize(uint8_t* buf, int maxBytes) const {
         return true;
     };
 
-    // Header: magic + version
-    uint32_t magic = 0x4E4E0001; // "NN" v1
+    // Header: magic "NN" + version 0x0001 (4 bytes total)
+    uint32_t magic = 0x4E4E0001; // 'N','N', version 0x0001
     if (!writeVal(&magic, 4)) return 0;
 
     // Topology

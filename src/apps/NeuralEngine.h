@@ -95,7 +95,7 @@ public:
     int   getParamCount() const;
 
     // ── Accuracy (classification) ──
-    float computeAccuracy(const TrainSample* samples, int count) const;
+    float computeAccuracy(const TrainSample* samples, int count);
 
     // ── Topology modification ──
     void addNeuronToLayer(int layer);

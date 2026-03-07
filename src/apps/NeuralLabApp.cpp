@@ -99,7 +99,6 @@ NeuralLabApp::NeuralLabApp()
     , _cursorY(DB_H / 2)
     , _selectedHiddenLayer(1)
     , _animFrame(0)
-    , _enterPressTime(0)
     , _enterHandled(false)
 {
     _infoBuf[0] = '\0';
@@ -1123,19 +1122,20 @@ void NeuralLabApp::handleKey(const KeyEvent& ev) {
             }
             break;
 
-        // ── ENTER: Place point (Blue class) ──
+        // ── ENTER: Place point (Blue=short, Red=long-press) ──
         case KeyCode::ENTER:
             if (_scenario == Scenario::CLASSIFIER || _scenario == Scenario::CIRCULAR ||
                 _scenario == Scenario::SPIRAL) {
                 if (!_enterHandled) {
-                    _enterPressTime = (uint32_t)millis();
                     _enterHandled = true;
                     // Place Blue point (class 1) on short press
                     addClassifierPoint(_cursorX, _cursorY, 1);
                 } else if (ev.action == KeyAction::REPEAT) {
-                    // Long press: replace last point as Red (class 0)
+                    // Long press: change last point to Red (class 0), reset training
                     if (_sampleCount > 0) {
                         _samples[_sampleCount - 1].targets[0] = 0.0f;
+                        _epochCount = 0;
+                        _lastLoss = 1.0f;
                     }
                 }
             }

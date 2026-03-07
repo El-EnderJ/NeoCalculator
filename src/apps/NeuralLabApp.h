@@ -115,7 +115,6 @@ private:
     uint32_t _animFrame;        // frame counter for pulse animation
 
     // ── ENTER long-press detection ──
-    uint32_t _enterPressTime;   // millis() when ENTER was first pressed
     bool     _enterHandled;     // true if point already placed for this press
 
     // ── UI methods ──

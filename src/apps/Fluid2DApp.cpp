@@ -62,6 +62,8 @@ static constexpr uint8_t TAIL_BASE_ALPHA   = 180;
 static constexpr uint8_t TAIL_ALPHA_DECAY  = 50;
 static constexpr float PARTICLE_OPA_SCALE  = 60.0f;
 static constexpr float SPECULAR_INTENSITY  = 120.0f;
+static constexpr int   PROBE_IDLE_FRAMES   = 60;    // 2 seconds at 30 Hz
+static constexpr uint32_t SCENE_FILE_MAGIC = 0x46324430; // "F2D0"
 
 // ══ Constructor / Destructor ═════════════════════════════════════════════════
 
@@ -1254,7 +1256,7 @@ void Fluid2DApp::onDraw(lv_event_t* e) {
     // ── Telemetry HUD ───────────────────────────────────────────────────
     if (app->_showTelemetry) {
         // Probe tooltip (when idle > 60 frames)
-        if (app->_idleFrames > 60) {
+        if (app->_idleFrames > PROBE_IDLE_FRAMES) {
             int ci = app->_cursorX;
             int cj = app->_cursorY;
             int probeIdx = IX(ci, cj);
@@ -1445,7 +1447,7 @@ void Fluid2DApp::saveScene(const char* name) {
     File f = LittleFS.open(path, "w");
     if (!f) return;
 
-    uint32_t magic = 0x46324430; // "F2D0"
+    uint32_t magic = SCENE_FILE_MAGIC;
     f.write((const uint8_t*)&magic, 4);
 
     f.write((const uint8_t*)&_viscosity, sizeof(float));
@@ -1475,13 +1477,13 @@ void Fluid2DApp::loadScene(const char* name) {
 
     uint32_t magic = 0;
     f.read((uint8_t*)&magic, 4);
-    if (magic != 0x46324430) { f.close(); return; }
+    if (magic != SCENE_FILE_MAGIC) { f.close(); return; }
 
     f.read((uint8_t*)&_viscosity, sizeof(float));
     f.read((uint8_t*)&_diffusion, sizeof(float));
     uint8_t pal = 0;
     f.read(&pal, 1);
-    _palette = static_cast<Palette>(pal % (uint8_t(Palette::MIXED) + 1));
+    _palette = static_cast<Palette>(pal % 4);
 
     if (_obstacle) {
         f.read(_obstacle, SIZE);

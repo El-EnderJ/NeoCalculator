@@ -77,7 +77,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     { 12, "Bridge",       0x2E86AB,   0x6BB8D6 },   // Steel blue
     { 13, "Circuit",      0xE91E63,   0xF06292 },   // Pink-red (electronics)
     { 14, "Fluid 2D",   0x1E88E5,   0x64B5F6 },   // Water blue
-    { 15, "ParticleLab",0xFF6F00,   0xFFAB40 },   // Deep orange (sandbox)
+    { 15, "ParticleLab", 0xFF6F00,   0xFFAB40 },   // Deep orange (sandbox)
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);

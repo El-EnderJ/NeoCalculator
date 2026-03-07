@@ -38,6 +38,7 @@
 #include "apps/PeriodicTableApp.h"
 #include "apps/BridgeDesignerApp.h"
 #include "apps/CircuitCoreApp.h"
+#include "apps/Fluid2DApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -64,6 +65,7 @@ enum class Mode : uint8_t {
     APP_PERIODIC_TABLE, // Periodic table & chemistry
     APP_BRIDGE_DESIGNER, // Bridge structural simulator
     APP_CIRCUIT_CORE,    // Circuit simulator (SPICE-like)
+    APP_FLUID_2D,        // 2D fluid simulator (Stable Fluids)
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
@@ -115,6 +117,7 @@ private:
     PeriodicTableApp* _periodicTableApp;
     BridgeDesignerApp* _bridgeDesignerApp;
     CircuitCoreApp*    _circuitCoreApp;
+    Fluid2DApp*        _fluid2DApp;
 
     // Math Engine
     Tokenizer _tokenizer;

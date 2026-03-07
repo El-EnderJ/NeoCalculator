@@ -76,6 +76,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     { 11, "Chemistry",    0x00838F,   0x4DB6AC },   // Cyan-teal
     { 12, "Bridge",       0x2E86AB,   0x6BB8D6 },   // Steel blue
     { 13, "Circuit",      0xE91E63,   0xF06292 },   // Pink-red (electronics)
+    { 14, "Fluid 2D",   0x1E88E5,   0x64B5F6 },   // Water blue
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);
@@ -607,6 +608,28 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             drawLine(cx - 6, cy + 10, cx + 6, cy + 10, 1, light, LV_OPA_80);
             drawLine(cx - 4, cy + 12, cx + 4, cy + 12, 1, light, LV_OPA_60);
             drawLine(cx - 2, cy + 14, cx + 2, cy + 14, 1, light, LV_OPA_40);
+            break;
+        }
+        case 14: {
+            // Fluid 2D: wavy water lines + droplet
+            // Three horizontal waves
+            drawLine(cx - 12, cy - 6, cx - 8, cy - 9, 1, white, LV_OPA_COVER);
+            drawLine(cx - 8, cy - 9, cx - 4, cy - 6, 1, white, LV_OPA_COVER);
+            drawLine(cx - 4, cy - 6, cx,     cy - 9, 1, white, LV_OPA_COVER);
+            drawLine(cx,     cy - 9, cx + 4, cy - 6, 1, white, LV_OPA_COVER);
+            drawLine(cx + 4, cy - 6, cx + 8, cy - 9, 1, white, LV_OPA_COVER);
+            drawLine(cx + 8, cy - 9, cx + 12, cy - 6, 1, white, LV_OPA_COVER);
+            // Second wave
+            drawLine(cx - 12, cy, cx - 6, cy - 3, 1, light, LV_OPA_80);
+            drawLine(cx - 6, cy - 3, cx,    cy, 1, light, LV_OPA_80);
+            drawLine(cx,     cy, cx + 6, cy - 3, 1, light, LV_OPA_80);
+            drawLine(cx + 6, cy - 3, cx + 12, cy, 1, light, LV_OPA_80);
+            // Third wave
+            drawLine(cx - 10, cy + 5, cx - 4, cy + 3, 1, light, LV_OPA_60);
+            drawLine(cx - 4, cy + 3, cx + 4, cy + 5, 1, light, LV_OPA_60);
+            drawLine(cx + 4, cy + 5, cx + 10, cy + 3, 1, light, LV_OPA_60);
+            // Droplet (circle)
+            drawCircle(cx, cy + 11, 3, white, LV_OPA_COVER);
             break;
         }
         default:

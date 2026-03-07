@@ -50,6 +50,18 @@ static constexpr const char* VISC_NAMES[] = {
     "Syrup", "Mud", "Tar", "Lava", "Honey"
 };
 
+static constexpr int VISC_PRESET_COUNT = 10;
+static constexpr int DEFAULT_VISC_IDX  = 2;  // "Smoke" preset
+
+// ══ Particle constants ═══════════════════════════════════════════════════════
+static constexpr float PARTICLE_BASE_LIFE  = 5.0f;
+static constexpr int   PARTICLE_LIFE_VAR   = 5;
+static constexpr int   PARTICLE_SCATTER     = 7;  // prime for spatial distribution
+static constexpr uint8_t TAIL_BASE_ALPHA   = 180;
+static constexpr uint8_t TAIL_ALPHA_DECAY  = 50;
+static constexpr float PARTICLE_OPA_SCALE  = 60.0f;
+static constexpr float SPECULAR_INTENSITY  = 120.0f;
+
 // ══ Constructor / Destructor ═════════════════════════════════════════════════
 
 Fluid2DApp::Fluid2DApp()
@@ -214,8 +226,8 @@ void Fluid2DApp::updateInfoLabel() {
     const char* palNames[] = { "Inferno", "Ocean", "Toxic", "Classic" };
     float avgV = computeAvgVelocity();
     float re   = computeReynolds();
-    int viscIdx = 2; // default
-    for (int k = 0; k < 10; k++) {
+    int viscIdx = DEFAULT_VISC_IDX;
+    for (int k = 0; k < VISC_PRESET_COUNT; k++) {
         if (fabsf(_viscosity - VISC_PRESETS[k]) < 1e-7f) { viscIdx = k; break; }
     }
     snprintf(_infoBuf, sizeof(_infoBuf),
@@ -456,12 +468,12 @@ void Fluid2DApp::spawnParticle(int idx) {
     if (idx < 0 || idx >= MAX_PARTICLES) return;
     Particle& p = _particles[idx];
     p.x = 1.0f + (float)(idx % N);
-    p.y = 1.0f + (float)((idx * 7) % M);
+    p.y = 1.0f + (float)((idx * PARTICLE_SCATTER) % M);
     for (int t = 0; t < PARTICLE_TAIL; ++t) {
         p.prevX[t] = p.x;
         p.prevY[t] = p.y;
     }
-    p.life   = 5.0f + (float)(idx % 5);
+    p.life   = PARTICLE_BASE_LIFE + (float)(idx % PARTICLE_LIFE_VAR);
     p.active = true;
 }
 
@@ -519,9 +531,8 @@ void Fluid2DApp::stepParticles(float dt) {
 // ══ Physics: Vorticity Confinement ═══════════════════════════════════════════
 
 void Fluid2DApp::vorticityConfinement() {
-    // Temporary arrays: use _densPrev (cleared) to store vorticity magnitude
-    // We re-use the source arrays which were already applied
-    float* curl = _tempPrev;  // reuse tempPrev temporarily
+    // Use _tempPrev as scratch (already consumed and zeroed before this call)
+    float* curl = _tempPrev;
 
     // Step 1: Compute curl (vorticity) at each cell
     for (int j = 1; j <= M; ++j) {
@@ -723,6 +734,11 @@ void Fluid2DApp::fluidStep() {
     addSource(_velX, _velXPrev, _dt);
     addSource(_velY, _velYPrev, _dt);
 
+    // Consume temperature source BEFORE vorticity confinement
+    // (vorticityConfinement uses _tempPrev as scratch space)
+    addSource(_temp, _tempPrev, _dt);
+    memset(_tempPrev, 0, SIZE * sizeof(float));
+
     // Vorticity confinement (amplify small-scale eddies)
     vorticityConfinement();
 
@@ -753,9 +769,7 @@ void Fluid2DApp::fluidStep() {
     std::swap(_densPrev, _dens);
     advect(0, _dens, _densPrev, _velX, _velY, _dt);
 
-    // ── Temperature step ──
-    addSource(_temp, _tempPrev, _dt);
-
+    // ── Temperature step (source already consumed above) ──
     std::swap(_tempPrev, _temp);
     diffuse(0, _temp, _tempPrev, _diffusion * 0.5f, _dt);
 
@@ -945,9 +959,9 @@ lv_color_t Fluid2DApp::shadedDensityColor(int i, int j) const {
     float ambient = 0.3f;
     float lit = ambient + 0.7f * diff;
 
-    uint8_t r = (uint8_t)std::min(255.0f, base.red * lit + spec * 120.0f);
-    uint8_t g = (uint8_t)std::min(255.0f, base.green * lit + spec * 120.0f);
-    uint8_t b = (uint8_t)std::min(255.0f, base.blue * lit + spec * 120.0f);
+    uint8_t r = (uint8_t)std::min(255.0f, base.red * lit + spec * SPECULAR_INTENSITY);
+    uint8_t g = (uint8_t)std::min(255.0f, base.green * lit + spec * SPECULAR_INTENSITY);
+    uint8_t b = (uint8_t)std::min(255.0f, base.blue * lit + spec * SPECULAR_INTENSITY);
 
     return lv_color_make(r, g, b);
 }
@@ -1101,7 +1115,7 @@ void Fluid2DApp::onDraw(lv_event_t* e) {
             for (int t = 0; t < PARTICLE_TAIL; ++t) {
                 int tx = ox + (int)((p.prevX[t] - 1.0f) * CELL_W);
                 int ty = oy + (int)((p.prevY[t] - 1.0f) * CELL_H);
-                uint8_t alpha = (uint8_t)(180 - t * 50);
+                uint8_t alpha = (uint8_t)(TAIL_BASE_ALPHA - t * TAIL_ALPHA_DECAY);
                 tailDsc.color = lv_color_hex(COL_PARTICLE);
                 tailDsc.opa   = alpha;
                 if (t == 0) {
@@ -1120,7 +1134,7 @@ void Fluid2DApp::onDraw(lv_event_t* e) {
 
             // Draw particle head (1px dot)
             ptDsc.bg_color = lv_color_hex(COL_PARTICLE);
-            ptDsc.bg_opa   = (uint8_t)std::min(255.0f, p.life * 60.0f);
+            ptDsc.bg_opa   = (uint8_t)std::min(255.0f, p.life * PARTICLE_OPA_SCALE);
             lv_area_t ptArea = {
                 (int16_t)ppx, (int16_t)ppy,
                 (int16_t)(ppx), (int16_t)(ppy)

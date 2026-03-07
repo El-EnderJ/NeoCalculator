@@ -3,7 +3,7 @@
  * Tiny-Backprop MLP engine for NumOS Neural Lab.
  * Supports up to 5 layers (Input, 3 Hidden, Output).
  * Activations: Sigmoid, ReLU, Tanh.
- * Training via manual backpropagation with gradient descent.
+ * Training via SGD with Momentum and optional L2 Regularization.
  *
  * All math uses float (ESP32-S3 FPU accelerated).
  * Weight/bias/delta matrices allocated in PSRAM on Arduino.
@@ -39,6 +39,8 @@ enum class Scenario : uint8_t {
     XOR = 0,
     CLASSIFIER,
     SINE_REGRESSION,
+    CIRCULAR,
+    SPIRAL,
     COUNT
 };
 
@@ -64,9 +66,11 @@ public:
     void setTopology(const int* sizes, int numLayers);
     void setActivation(Activation act);
     void setLearningRate(float lr);
+    void setMomentum(float gamma);
+    void setL2Lambda(float lambda);
 
     // ── Initialization ──
-    void initWeights();        // Xavier/He initialization
+    void initWeights();        // Xavier/He initialization (auto-selects based on activation)
     void freeAll();            // Release all allocations
 
     // ── Forward pass ──
@@ -86,10 +90,20 @@ public:
     float getNeuronOutput(int layer, int neuron) const;
     Activation getActivation() const { return _activation; }
     float getLearningRate() const { return _lr; }
+    float getMomentum() const { return _momentum; }
+    float getL2Lambda() const { return _l2Lambda; }
+    int   getParamCount() const;
+
+    // ── Accuracy (classification) ──
+    float computeAccuracy(const TrainSample* samples, int count);
 
     // ── Topology modification ──
     void addNeuronToLayer(int layer);
     void removeNeuronFromLayer(int layer);
+
+    // ── Save / Load model ──
+    int  serialize(uint8_t* buf, int maxBytes) const;
+    bool deserialize(const uint8_t* buf, int bytes);
 
     // ── Activation math (public for decision boundary) ──
     static float activate(float x, Activation act);
@@ -101,12 +115,18 @@ private:
 
     // ── Activation ──
     Activation _activation;
-    float _lr;  // learning rate
+    float _lr;          // learning rate
+    float _momentum;    // momentum coefficient (gamma)
+    float _l2Lambda;    // L2 regularization strength
 
     // ── Weight matrices: _weights[l][to * fromSize + from] ──
     // l = 0..(numLayers-2), connects layer l -> layer l+1
     float* _weights[NE_MAX_LAYERS - 1];
     float* _biases[NE_MAX_LAYERS - 1];
+
+    // ── Momentum velocity buffers ──
+    float* _vWeights[NE_MAX_LAYERS - 1];
+    float* _vBiases[NE_MAX_LAYERS - 1];
 
     // ── Neuron activations (outputs after activation function) ──
     float _outputs[NE_MAX_LAYERS][NE_MAX_NEURONS];
@@ -121,7 +141,7 @@ private:
     void allocLayer(int l);
     void freeLayer(int l);
     static float activateDerivative(float output, float preact, Activation act);
-    static float heInit(int fanIn);
+    static float randomNormal(float stddev);
 
     // ── Backpropagation ──
     void backward(const float* target);

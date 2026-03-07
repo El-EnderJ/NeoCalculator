@@ -16,7 +16,8 @@
 | **Fase 4** | Migración a LVGL 9.x — HW Bring-Up ESP32-S3 | ✅ Completo | 100% |
 | **Fase 5** | CAS-Lite Engine + EquationsApp | ✅ Completo | 100% |
 | **CAS Elite** | Pro-CAS: BigNum, DAG, Derivadas, Integrales, CalculusApp unificada, SettingsApp | ✅ **Completo** | 100% |
-| **Fase 6** | Apps Científicas Completas | 🔲 Planificado | 0% |
+| **Fase 6** | Apps Científicas Completas | ✅ **Completo** | 100% |
+| **Simulaciones** | ParticleLab (30+ materiales), CircuitCore (SPICE), Fluid2D | ✅ **Completo** | 100% |
 | **Fase 7** | Matrices + Complejos + Bases | 🔲 Planificado | 0% |
 | **Fase 8** | Hardware Final + Conectividad + Scripting | 🔲 Planificado | 0% |
 
@@ -41,6 +42,8 @@
 | **Mar 2026** | **CalculusApp unificada: derivadas + integrales en app única con pestañas d/dx ↔ ∫dx** |
 | **Mar 2026** | **SettingsApp: raíces complejas, precisión decimal, modo angular** |
 | **Mar 2026** | **Producción activa: RAM 28.8% · Flash 19.3% · tests desactivados** |
+| **Mar 2026** | **ParticleLabApp (ID 15) — Alchemy Update: 30+ materiales, electrónica spark, transiciones de fase, matriz de reacciones, herramienta de línea Bresenham, guardado/carga LittleFS** |
+| **Mar 2026** | **Producción activa: RAM 29.7% · Flash 23.2% · 16 apps en launcher** |
 
 ---
 

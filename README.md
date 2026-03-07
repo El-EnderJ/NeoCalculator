@@ -17,8 +17,8 @@
 [![Language](https://img.shields.io/badge/Language-C%2B%2B17-blue?logo=cplusplus&logoColor=white)](https://en.cppreference.com/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Pro--CAS%20Production-brightgreen)](#project-status)
-[![RAM](https://img.shields.io/badge/RAM-28.8%25%20%E2%80%94%2094.5%20KB-informational)](#build-stats)
-[![Flash](https://img.shields.io/badge/Flash-19.3%25%20%E2%80%94%201.26%20MB-informational)](#build-stats)
+[![RAM](https://img.shields.io/badge/RAM-29.7%25%20%E2%80%94%2097.2%20KB-informational)](#build-stats)
+[![Flash](https://img.shields.io/badge/Flash-23.2%25%20%E2%80%94%201.52%20MB-informational)](#build-stats)
 
 <br>
 
@@ -73,6 +73,7 @@
 | **Unified Calculus App** | Symbolic $d/dx$ differentiation (17 rules) and numerical/symbolic $\int dx$ integration (Slagle heuristic: table lookup, linearity, u-substitution, integration by parts/LIATE), tab-based mode switching, automatic simplification, and detailed step-by-step output |
 | **EquationsApp** | Solves linear, quadratic, and 2×2 systems (linear + non-linear via Sylvester resultant) with full step-by-step display |
 | **Bridge Designer** | Real-time structural bridge simulator with Verlet integration physics, stress analysis (green→red beam visualisation), snap-to-grid editor, wood/steel/cable materials, and truck/car load testing — PSRAM-backed, 60 Hz fixed timestep |
+| **Particle Lab** | Powder-Toy-class sandbox: 30+ materials (Sand, Water, Lava, LN2, Wire, Iron, Titan, C4, Clone), spark electronics with Joule heating, phase transitions, reaction matrix (Water+Lava=Stone+Steam), Bresenham line tool, material palette overlay, LittleFS save/load |
 | **Settings App** | System-wide toggles for complex number output (ON/OFF), decimal precision selector (6/8/10/12 digits), and angle-mode display |
 | **Natural Display** | Real fractions, radicals, exponents, 2D cursors — mathematical rendering as it appears on paper |
 | **Graphing: y=f(x)** | Real-time function plotter with zoom, pan, and value table |
@@ -120,6 +121,7 @@
 │  │  │   SettingsApp — Complex roots · Precision · Angle mode      │ │  │
 │  │  └──────────────────────────────────────────────────────────────┘ │  │
 │  │  [ Sequences · Regression · Table · Probability ]                 │  │
+│  │  [ BridgeDesigner · CircuitCore · Fluid2D · ParticleLab ]       │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                          │
 │  ┌──────────────────────────┐  ┌─────────────────────────────────────┐  │
@@ -409,6 +411,10 @@ numOS/
 │   │   ├── EquationsApp.cpp/.h       # Pro-CAS — Equation solver
 │   │   ├── CalculusApp.cpp/.h        # Pro-CAS — Unified symbolic derivatives + integrals
 │   │   ├── BridgeDesignerApp.cpp/.h  # Bridge structural simulator (Verlet physics)
+│   │   ├── CircuitCoreApp.cpp/.h    # Circuit simulator (MNA, 30 components)
+│   │   ├── Fluid2DApp.cpp/.h        # 2D fluid dynamics (Navier-Stokes)
+│   │   ├── ParticleLabApp.cpp/.h    # Powder-Toy sandbox (30+ materials, electronics)
+│   │   ├── ParticleEngine.cpp/.h    # Cellular automata engine (LUT, spark cycle)
 │   │   └── SettingsApp.cpp/.h        # Settings: complex roots, precision, angle mode
 │   ├── display/
 │   │   └── DisplayDriver.cpp/.h      # TFT_eSPI FSPI + LVGL init + DMA flush
@@ -480,8 +486,8 @@ numOS/
 
 | Resource | Used | Total | Percentage |
 |:---------|-----:|------:|:----------:|
-| **RAM** (data + bss) | 94 512 B | 327 680 B | **28.8 %** |
-| **Flash** (program storage) | 1 263 109 B | 6 553 600 B | **19.3 %** |
+| **RAM** (data + bss) | 97 192 B | 327 680 B | **29.7 %** |
+| **Flash** (program storage) | 1 518 269 B | 6 553 600 B | **23.2 %** |
 
 **Flash saved vs test mode:** −39 444 B when deactivating `-DCAS_RUN_TESTS`.
 
@@ -523,8 +529,9 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | **Phase 4** | LVGL 9.x — ESP32-S3 HW bring-up, DMA, animated splash screen, icon launcher | ✅ Complete |
 | **Phase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI | ✅ Complete |
 | **CAS Elite** | CAS-S3-ULTRA: BigNum, hash-consed DAG, SymDiff 17 rules, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver, Unified CalculusApp (d/dx + ∫dx), SettingsApp | ✅ **Complete** |
-| **Phase 6** | Statistics, Regression, Sequences, Probability | 🔲 Planned |
-| **Phase 7** | Matrices, complex numbers, base conversions | 🔲 Planned |
+| **Phase 6** | Statistics, Regression, Sequences, Probability, Matrices, Bridge Designer | ✅ **Complete** |
+| **Simulations** | ParticleLab (30+ materials, electronics), CircuitCore (SPICE), Fluid2D (Navier-Stokes) | ✅ **Complete** |
+| **Phase 7** | Complex numbers, base conversions | 🔲 Planned |
 | **Phase 8** | Physical keyboard, custom PCB, rechargeable battery, 3D enclosure, WiFi OTA | 🔲 Planned |
 
 ---

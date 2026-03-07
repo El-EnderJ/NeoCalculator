@@ -157,7 +157,7 @@ void update();                 // Periodic tick (~60 fps)
 This prevents `StatusBar::create()` from misfiring its `if (_bar) return` guard on dangling pointers  
 when the app is reopened. Every app (`CalculationApp`, `GrapherApp`, `EquationsApp`, `CalculusApp`,  
 `SettingsApp`, `StatisticsApp`, `ProbabilityApp`, `RegressionApp`, `MatricesApp`, `SequencesApp`,  
-`PythonApp`, `PeriodicTableApp`, `BridgeDesignerApp`) follows this pattern.
+`PythonApp`, `PeriodicTableApp`, `BridgeDesignerApp`, `CircuitCoreApp`, `Fluid2DApp`, `ParticleLabApp`) follows this pattern.
 
 **LVGL-native apps**: All current apps → `g_lvglActive = true`.
 
@@ -183,6 +183,57 @@ handleKey(SHOW_STEPS) in RESULT:
 handleKey(MODE) [intercepted by SystemApp]:
   returnToMenu() → end() + begin() [complete reset]
 ```
+
+### 2.5 ParticleLabApp — Alchemy Update Architecture
+
+**ParticleLabApp** (App ID 15) is a Powder-Toy-class cellular automata sandbox running on a 160×120 grid with 2× upscaling to 320×240. The engine processes 31 material types with LUT-driven physics, discrete electronics (spark cycle), phase transitions, and a reaction matrix.
+
+#### Material Categories (31 total)
+
+| Category | Materials |
+|:---------|:----------|
+| **Basic** | Wall, Sand, Water, Fire, Oil, Steam, Ice, Salt, Gunpowder, Acid |
+| **Earth & Glass** | Stone, Glass, Molten Glass (Sand >1500°C → Molten Glass → Glass <1000°C) |
+| **Organics** | Wood (burns → Smoke), Coal (burns 10× longer), Plant (grows near Water) |
+| **Thermal** | Lava (1500°C, cools → Stone <800°C), LN2 (-196°C, evaporates → Gas >-190°C) |
+| **Electronics** | Wire, Heater (sparked → 2000°C), Cooler (sparked → -200°C), C4 (sparked → explode) |
+| **Advanced** | HEAC (high thermal conductor), INSL (heat/electricity blocker, burns), Iron, Titan (melts 1668°C) |
+| **Special** | Clone (reads & replicates neighbor), Smoke, Gas, Molten Titan |
+
+#### Spark Cycle (Electronics)
+
+Conductive materials: `WIRE`, `IRON`, `TITAN`, `HEATER`, `COOLER`, `C4`.  
+Spark propagation uses the `PF_SPARKED` flag (bit 1 of `Particle::flags`):
+1. User places spark on conductive material → `PF_SPARKED` set, timer=2
+2. Each frame: timer decrements, Joule heating applied (+2°C per frame)
+3. Timer reaches 0 → spark propagates to conductive neighbors, flag cleared
+4. Special reactions: HEATER→2000°C, COOLER→-200°C, C4→explosion
+5. INSL blocks spark propagation (electricity insulator)
+
+#### Reaction Matrix
+
+| Reaction | Result |
+|:---------|:-------|
+| Water + Lava | Stone + Steam |
+| Acid + Iron | Gas (dissolves) |
+| Acid + Titan | Gas (slow, resistant) |
+| Water + LN2 | Ice (freezes) |
+
+#### UI Controls
+
+| Key | Action |
+|:----|:-------|
+| D-pad | Move cursor (3× speed on repeat) |
+| ENTER | Draw selected material (Bresenham line when moving) |
+| DEL | Erase |
+| EXE | Toggle thermometer mode |
+| F1 | Cycle brush size (1px/3px/5px) |
+| F2 | Cycle brush shape (Circle/Square/Spray) |
+| F3 | Material palette overlay (pause + grid selector) |
+| F4 | Quick Save to LittleFS (`/save.pt`) |
+| F5 | Quick Load from LittleFS |
+| 1-9 | Quick material select |
+| SOLVE | Clear simulation |
 
 ---
 
@@ -369,6 +420,15 @@ Without this, PSRAM accumulates allocations between app sessions.
 | `PythonApp` | `apps/PythonApp.cpp/.h` | ⚠️ | Placeholder UI (Lua/MicroPython scripting — Phase 8) |
 | `PeriodicTableApp` | `apps/PeriodicTableApp.cpp/.h` | ✅ | Interactive periodic table, molar mass calculator, equation balancer |
 | `BridgeDesignerApp` | `apps/BridgeDesignerApp.cpp/.h` | ✅ | Bridge structural simulator: Verlet physics, stress analysis, truck/car loads, PSRAM-backed |
+| `CircuitCoreApp` | `apps/CircuitCoreApp.cpp/.h` | ✅ | SPICE-like circuit simulator: MNA solve, 30 components, stress/failure, MCU IDE |
+| `Fluid2DApp` | `apps/Fluid2DApp.cpp/.h` | ✅ | Real-time 2D fluid dynamics: Navier-Stokes, dual-density, vorticity, 4 palettes |
+| `ParticleLabApp` | `apps/ParticleLabApp.cpp/.h` | ✅ | Powder-Toy sandbox: 30+ materials, spark electronics, phase transitions, save/load |
+
+### Simulation Engines
+
+| Module | File | Description |
+|:-------|:-----|:------------|
+| `ParticleEngine` | `apps/ParticleEngine.cpp/.h` | Cellular automata: 160×120 grid, 31 materials, LUT-driven, spark cycle, reaction matrix, heat conduction |
 
 ### UI
 
@@ -478,13 +538,16 @@ buf1 = ps_malloc(6400);
 - ⚠️ **PythonApp** — Placeholder UI present; scripting engine pending Phase 8
 - ✅ **Deferred teardown** — HOME key triggers 250 ms deferred end() to let FADE_IN animation complete safely
 - ✅ **85+ CAS tests** — all passing (disabled in production)
+- ✅ **CircuitCoreApp** — SPICE-like circuit simulator with MNA, 30 components, stress/failure system
+- ✅ **Fluid2DApp** — Real-time 2D Navier-Stokes fluid dynamics, vorticity, 4 palettes
+- ✅ **ParticleLabApp (Alchemy Update)** — Powder-Toy sandbox: 30+ materials (Sand, Water, Lava, LN2, Wire, Iron, Titan, C4, Clone, etc.), spark electronics with Joule heating, phase transitions, reaction matrix, Bresenham line tool, material palette overlay, LittleFS save/load
 
 ### Build Stats
 
 | Resource | Used | Total | % |
 |:---------|-----:|------:|:-:|
-| RAM | 97 040 B | 327 680 B | **29.6%** |
-| Flash | 1 370 157 B | 6 553 600 B | **20.9%** |
+| RAM | 97 192 B | 327 680 B | **29.7%** |
+| Flash | 1 518 269 B | 6 553 600 B | **23.2%** |
 
 ### Pending
 

@@ -44,6 +44,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _bridgeDesignerApp(nullptr),
       _circuitCoreApp(nullptr),
       _fluid2DApp(nullptr),
+      _particleLabApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -94,6 +95,7 @@ void SystemApp::begin() {
     _bridgeDesignerApp = new BridgeDesignerApp();
     _circuitCoreApp = new CircuitCoreApp();
     _fluid2DApp = new Fluid2DApp();
+    _particleLabApp = new ParticleLabApp();
 
     // ── LVGL Launcher (show menu before LittleFS I/O) ──
     initApps();
@@ -172,6 +174,7 @@ void SystemApp::update() {
             case Mode::APP_BRIDGE_DESIGNER: if (_bridgeDesignerApp) _bridgeDesignerApp->end(); break;
             case Mode::APP_CIRCUIT_CORE: if (_circuitCoreApp) _circuitCoreApp->end(); break;
             case Mode::APP_FLUID_2D: if (_fluid2DApp) _fluid2DApp->end(); break;
+            case Mode::APP_PARTICLE_LAB: if (_particleLabApp) _particleLabApp->end(); break;
             default: break;
         }
         _pendingTeardownMode = Mode::MENU;  // mark as done
@@ -518,6 +521,14 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _fluid2DApp->handleKey(ev);
             }
             break;
+        // ParticleLabApp is LVGL-native
+        case Mode::APP_PARTICLE_LAB:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_particleLabApp) {
+                _particleLabApp->handleKey(ev);
+            }
+            break;
         case Mode::APP_TABLE:
             handleKeyApp(ev);
             break;
@@ -657,6 +668,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_fluid2DApp) _fluid2DApp->load();
+    } else if (id == 15) {
+        // ParticleLabApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_particleLabApp) _particleLabApp->load();
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -708,6 +724,7 @@ void SystemApp::switchApp(int id) {
         case 12: _mode = Mode::APP_BRIDGE_DESIGNER; break;
         case 13: _mode = Mode::APP_CIRCUIT_CORE; break;
         case 14: _mode = Mode::APP_FLUID_2D;    break;
+        case 15: _mode = Mode::APP_PARTICLE_LAB; break;
         default: _mode = Mode::MENU;            break;
     }
     _redraw = true;

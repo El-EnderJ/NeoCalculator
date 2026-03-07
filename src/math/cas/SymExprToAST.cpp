@@ -2,7 +2,19 @@
  * SymExprToAST.cpp — Converts SymExpr trees back to MathAST for rendering.
  *
  * Maps each SymExpr node type to the corresponding vpam::MathNode subtree.
- * Follows the same rendering patterns as SymToAST (CAS-Lite) for ExactVal.
+ * Uses a structural box model where each node produces a properly sized
+ * and baseline-aligned MathNode tree:
+ *
+ *   · Fractions center numerator/denominator based on the widest element
+ *     and draw the vinculum on the math baseline.
+ *   · Radicals dynamically scale the "V" hook and overline to match the
+ *     radicand's height and width.
+ *   · Powers correctly raise exponents and shrink their font metrics.
+ *   · Nested structures (e.g. fraction inside an exponent) are handled
+ *     recursively with proper alignment propagation.
+ *
+ * All layout computation is delegated to MathNode::calculateLayout(),
+ * which recursively sizes each sub-tree using FontMetrics.
  *
  * Part of: NumOS Pro-CAS — Phase 3 (SymExpr → MathAST bridge)
  */
@@ -403,8 +415,20 @@ NodePtr SymExprToAST::convertPow(const SymPow* p) {
         }
     }
 
-    // Normal power
-    NodePtr baseNode = ensureRow(convert(p->base));
+    // Normal power — structural box model:
+    // The base is wrapped in a Row to establish a self-contained layout box.
+    // The exponent is wrapped similarly; the Power node raises it by
+    // EXP_RAISE (3/5 of base ascent) and applies superscript font scaling.
+    // For compound bases (Add, Mul with >1 factor), wrap in parentheses
+    // to maintain mathematical clarity at any nesting depth.
+    NodePtr baseNode;
+    if (p->base->type == SymExprType::Add ||
+        (p->base->type == SymExprType::Mul &&
+         static_cast<const SymMul*>(p->base)->count > 1)) {
+        baseNode = makeParen(ensureRow(convert(p->base)));
+    } else {
+        baseNode = ensureRow(convert(p->base));
+    }
     NodePtr expNode  = ensureRow(convert(p->exponent));
     return makePower(std::move(baseNode), std::move(expNode));
 }
@@ -441,12 +465,12 @@ NodePtr SymExprToAST::convertFunc(const SymFunc* f) {
         case SymFuncKind::Log10:
             return makeFunction(FuncKind::Log, std::move(argNode));
         case SymFuncKind::Abs: {
-            // |u| rendered as NodeNumber "|" + content + "|"
-            // Simplified: just use the raw text fallback
+            // |u| → rendered with pipe delimiters wrapping the argument
+            // in a parenthesized row for correct baseline alignment.
             auto row = makeRow();
             auto* r = static_cast<NodeRow*>(row.get());
             r->appendChild(makeNumber("|"));
-            appendFlat(r, std::move(argNode));
+            r->appendChild(makeParen(std::move(argNode)));
             r->appendChild(makeNumber("|"));
             return row;
         }

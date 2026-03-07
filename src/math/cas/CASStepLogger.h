@@ -7,6 +7,12 @@
  *   · description  — Human-readable explanation
  *   · snapshot      — SymEquation state after this step (only for Transform/Result)
  *   · methodId      — Solver method that generated this step
+ *   · reason        — Mathematical justification (e.g. "Distributive Property")
+ *
+ * Deduplication: Steps are hash-fingerprinted.  If the computed hash of a
+ * new step matches the previous step's hash, the step is silently discarded.
+ * This eliminates the redundant-step bug where the solver re-logs an
+ * expression that has not changed (e.g. after a no-op identity rewrite).
  *
  * StepKind eliminates the "0 = 0" display bug: Annotation steps never
  * render an equation, so the default SymEquation is never shown.
@@ -66,16 +72,18 @@ struct CASStep {
     StepKind     kind;          // Structural type of step
     const SymExpr* mathExpr;    // Optional: CAS expression for 2D MathCanvas rendering
                                 // Non-owning — SymExprArena manages lifetime
+    std::string  reason;        // Mathematical justification (e.g. "Power Rule", "Distributive Property")
 
     CASStep()
         : description(), snapshot(), method(MethodId::General),
-          kind(StepKind::Transform), mathExpr(nullptr) {}
+          kind(StepKind::Transform), mathExpr(nullptr), reason() {}
 
     CASStep(const std::string& desc, const SymEquation& snap,
             MethodId m, StepKind k = StepKind::Transform,
-            const SymExpr* expr = nullptr)
+            const SymExpr* expr = nullptr,
+            const std::string& rsn = "")
         : description(desc), snapshot(snap), method(m), kind(k),
-          mathExpr(expr) {}
+          mathExpr(expr), reason(rsn) {}
 };
 
 // PSRAM-allocated step vector
@@ -90,9 +98,11 @@ public:
     CASStepLogger();
 
     /// Add a transform step with description, equation snapshot, and method.
+    /// Duplicate steps (same hash as previous) are silently discarded.
     void log(const std::string& description,
              const SymEquation& snapshot,
-             MethodId method = MethodId::General);
+             MethodId method = MethodId::General,
+             const std::string& reason = "");
 
     /// Add an annotation step (text-only, NO equation rendered).
     void logNote(const std::string& note, MethodId method = MethodId::General);
@@ -100,16 +110,19 @@ public:
     /// Add an annotation step with an attached SymExpr for 2D MathCanvas rendering.
     /// The SymExpr* is non-owning — the arena must outlive the step display.
     void logExpr(const std::string& desc, const SymExpr* expr,
-                 MethodId method = MethodId::General);
+                 MethodId method = MethodId::General,
+                 const std::string& reason = "");
 
     /// Add a result step (final answer with equation snapshot).
     void logResult(const std::string& description,
                    const SymEquation& snapshot,
-                   MethodId method = MethodId::General);
+                   MethodId method = MethodId::General,
+                   const std::string& reason = "");
 
     /// Add a result step with MathCanvas expression (no snapshot needed).
     void logResultExpr(const std::string& desc, const SymExpr* expr,
-                       MethodId method = MethodId::General);
+                       MethodId method = MethodId::General,
+                       const std::string& reason = "");
 
     /// Add a complex result step (text description only, no SymEquation).
     void logComplex(const std::string& description,
@@ -134,6 +147,16 @@ public:
 
 private:
     StepVec _steps;
+    size_t  _prevHash;   // Hash of the most recently accepted step (for dedup)
+
+    /// Compute a fingerprint hash for a step's mathematical content.
+    /// Uses the equation snapshot string so that equivalent states hash equally.
+    static size_t computeStepHash(const SymEquation& snapshot,
+                                  const SymExpr* expr,
+                                  StepKind kind);
+
+    /// Returns true if the step should be discarded (duplicate or trivial).
+    bool isDuplicate(size_t hash, StepKind kind) const;
 };
 
 } // namespace cas

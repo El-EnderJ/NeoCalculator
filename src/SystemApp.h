@@ -39,6 +39,7 @@
 #include "apps/BridgeDesignerApp.h"
 #include "apps/CircuitCoreApp.h"
 #include "apps/Fluid2DApp.h"
+#include "apps/ParticleLabApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -66,6 +67,7 @@ enum class Mode : uint8_t {
     APP_BRIDGE_DESIGNER, // Bridge structural simulator
     APP_CIRCUIT_CORE,    // Circuit simulator (SPICE-like)
     APP_FLUID_2D,        // 2D fluid simulator (Stable Fluids)
+    APP_PARTICLE_LAB,    // Falling-sand particle simulator
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
@@ -118,6 +120,7 @@ private:
     BridgeDesignerApp* _bridgeDesignerApp;
     CircuitCoreApp*    _circuitCoreApp;
     Fluid2DApp*        _fluid2DApp;
+    ParticleLabApp*    _particleLabApp;
 
     // Math Engine
     Tokenizer _tokenizer;

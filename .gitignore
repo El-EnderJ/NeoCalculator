@@ -10,3 +10,4 @@ node_modules/
 *.elf
 .piobuild/
 *piobuild*
+fluid2d_plan.md

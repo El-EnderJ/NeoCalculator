@@ -60,7 +60,9 @@ class CircuitComponent {
 public:
     CircuitComponent(CompType type, int gridX, int gridY)
         : _type(type), _gridX(gridX), _gridY(gridY)
-        , _nodeA(0), _nodeB(0), _rotation(0) {}
+        , _nodeA(0), _nodeB(0), _rotation(0)
+        , _isBroken(false), _maxPower(0.5f), _maxVoltage(50.0f)
+    { _label[0] = '\0'; }
     virtual ~CircuitComponent() = default;
 
     /** Stamp this component into the MNA matrix. */
@@ -80,6 +82,9 @@ public:
     /** Update after MNA solve (e.g., LED brightness). */
     virtual void updateFromSolution(MnaMatrix& mna) { (void)mna; }
 
+    /** Check if component is over voltage/power limits; sets _isBroken. */
+    virtual void checkStress(MnaMatrix& mna);
+
     // ── Accessors ────────────────────────────────────────────────────────
     CompType type()   const { return _type; }
     int gridX()       const { return _gridX; }
@@ -87,6 +92,17 @@ public:
     int nodeA()       const { return _nodeA; }
     int nodeB()       const { return _nodeB; }
     int rotation()    const { return _rotation; }
+
+    bool  isBroken()   const { return _isBroken; }
+    void  setIsBroken(bool b) { _isBroken = b; }
+    float maxPower()   const { return _maxPower; }
+    float maxVoltage() const { return _maxVoltage; }
+    const char* label() const { return _label; }
+    void setLabel(const char* s) {
+        int i = 0;
+        if (s) { for (; i < 4 && s[i]; ++i) _label[i] = s[i]; }
+        _label[i] = '\0';
+    }
 
     void setGridPos(int x, int y) { _gridX = x; _gridY = y; }
     void setNodes(int a, int b) { _nodeA = a; _nodeB = b; }
@@ -101,6 +117,10 @@ protected:
     int _gridX, _gridY;  // grid position (in pixels, snapped to CELL_SIZE)
     int _nodeA, _nodeB;  // connected MNA nodes
     int _rotation;       // 0-3 (×90°)
+    bool  _isBroken;     // true if component has been destroyed by overstress
+    float _maxPower;     // maximum power dissipation (Watts)
+    float _maxVoltage;   // maximum voltage across component (Volts)
+    char  _label[5];     // user label (up to 4 chars + null)
 };
 
 // ── Resistor ────────────────────────────────────────────────────────────────

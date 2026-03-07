@@ -78,8 +78,19 @@ CircuitCoreApp::CircuitCoreApp()
     , _meterNodeA(-1)
     , _meterNodeB(-1)
     , _meterActive(false)
+    , _simSpeed(SimSpeed::SPEED_1X)
+    , _voltageHeatmap(false)
+    , _undoHead(0)
+    , _undoCount(0)
+    , _lastEditTime(0)
+    , _ideOpen(false)
+    , _ideTextArea(nullptr)
+    , _ideContainer(nullptr)
+    , _ideAutoLabel(nullptr)
+    , _ideBufferLen(0)
 {
     _infoBuf[0] = '\0';
+    _ideBuffer[0] = '\0';
     for (int i = 0; i < TOOLS_PER_PAGE; ++i)
         _toolBtns[i] = nullptr;
     memset(_scopeBuffer, 0, sizeof(_scopeBuffer));
@@ -145,6 +156,14 @@ void CircuitCoreApp::begin() {
     _meterNodeA = -1;
     _meterNodeB = -1;
     _meterActive = false;
+    _simSpeed = SimSpeed::SPEED_1X;
+    _voltageHeatmap = false;
+    _undoHead = 0;
+    _undoCount = 0;
+    _lastEditTime = 0;
+    _ideOpen = false;
+    _ideBufferLen = 0;
+    _ideBuffer[0] = '\0';
     memset(_scopeBuffer, 0, sizeof(_scopeBuffer));
     memset(_scopeBuffer2, 0, sizeof(_scopeBuffer2));
 
@@ -167,6 +186,9 @@ void CircuitCoreApp::end() {
 
     // ── Shut down Lua VM ──
     _luaVM.shutdown();
+
+    // ── Close IDE if open ──
+    if (_ideOpen) closeIDE();
 
     // ── Free MNA matrices ──
     _mna.deallocate();
@@ -343,6 +365,17 @@ void CircuitCoreApp::updateInfoBar() {
         const char* mode = _simRunning ? "SIM" : "EDIT";
         snprintf(_infoBuf, sizeof(_infoBuf), "%s [%s] (%d,%d) C:%d",
                  mode, label, gx, gy, _compCount);
+        if (_simRunning) {
+            int len = (int)strlen(_infoBuf);
+            const char* spd = "";
+            switch (_simSpeed) {
+                case SimSpeed::SPEED_1X:  spd = " 1x"; break;
+                case SimSpeed::SPEED_05X: spd = " 0.5x"; break;
+                case SimSpeed::SPEED_025X: spd = " 0.25x"; break;
+                case SimSpeed::PAUSED:    spd = " PAUSE"; break;
+            }
+            snprintf(_infoBuf + len, sizeof(_infoBuf) - len, "%s", spd);
+        }
     }
     lv_label_set_text(_infoLabel, _infoBuf);
 }
@@ -385,6 +418,19 @@ void CircuitCoreApp::updateToolbarHighlight() {
 
 void CircuitCoreApp::handleKey(const KeyEvent& ev) {
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
+
+    // Auto-save on inactivity (30s since last edit in EDIT_MODE)
+    if (!_simRunning && _lastEditTime > 0 &&
+        (lv_tick_get() - _lastEditTime > AUTOSAVE_INTERVAL_MS)) {
+        autoSave();
+        _lastEditTime = 0;
+    }
+
+    // IDE captures all keys when open
+    if (_ideOpen) {
+        handleKeyIDE(ev);
+        return;
+    }
 
     switch (_focusArea) {
         case FocusArea::GRID:
@@ -431,12 +477,12 @@ void CircuitCoreApp::handleKeyGrid(const KeyEvent& ev) {
                 _cursorX += GRID_SNAP;
             break;
         case KeyCode::ENTER:
-            if (_simRunning) {
+            if (_ideOpen) {
+                handleKeyIDE(ev);
+            } else if (_simRunning) {
                 if (_currentTool == Tool::MULTI) {
-                    // Multimeter probe mode
                     probeMultimeter(_cursorX, _cursorY);
                 } else {
-                    // Probe a node for oscilloscope (Ch1 with ENTER, Ch2 with F4+ENTER)
                     CircuitComponent* comp = findComponentAt(_cursorX, _cursorY);
                     if (comp) {
                         if (_probeNode < 0) {
@@ -445,11 +491,9 @@ void CircuitCoreApp::handleKeyGrid(const KeyEvent& ev) {
                             _scopeWriteIdx = 0;
                             memset(_scopeBuffer, 0, sizeof(_scopeBuffer));
                         } else if (_probeNode2 < 0) {
-                            // Second press: assign channel 2
                             _probeNode2 = comp->nodeA();
                             memset(_scopeBuffer2, 0, sizeof(_scopeBuffer2));
                         } else {
-                            // Third press: reset both channels
                             _probeNode = comp->nodeA();
                             _probeNode2 = -1;
                             _scopeWriteIdx = 0;
@@ -459,11 +503,41 @@ void CircuitCoreApp::handleKeyGrid(const KeyEvent& ev) {
                     }
                 }
             } else {
-                placeComponent();
+                // EDIT mode: check if component exists at cursor for property editing
+                CircuitComponent* existing = findComponentAt(_cursorX, _cursorY);
+                if (existing) {
+                    if (existing->type() == CompType::MCU) {
+                        openIDE();
+                    } else {
+                        openPropertyEditor(existing);
+                    }
+                } else {
+                    placeComponent();
+                }
             }
             break;
         case KeyCode::DEL:
+            saveUndoSnapshot();
             deleteComponentAt(_cursorX, _cursorY);
+            _lastEditTime = lv_tick_get();
+            break;
+        case KeyCode::F1:
+            if (_simRunning) {
+                // Cycle simulation speed
+                _simSpeed = static_cast<SimSpeed>((static_cast<uint8_t>(_simSpeed) + 1) % 4);
+            }
+            break;
+        case KeyCode::F2:
+            if (_simRunning) {
+                _voltageHeatmap = !_voltageHeatmap;
+            } else {
+                // Show share string in info bar
+                generateShareString(_infoBuf, sizeof(_infoBuf));
+                if (_infoLabel) lv_label_set_text(_infoLabel, _infoBuf);
+            }
+            break;
+        case KeyCode::F3:
+            performUndo();
             break;
         case KeyCode::F4:
             // Toggle push-button under cursor
@@ -585,6 +659,9 @@ void CircuitCoreApp::placeComponent() {
 
     if (isSpecial) return;
 
+    // Save undo snapshot before modification
+    saveUndoSnapshot();
+
     // Use factory to create the component
     CircuitComponent* comp = ComponentFactory::create(ctype, _cursorX, _cursorY);
     if (!comp) return;
@@ -640,6 +717,7 @@ void CircuitCoreApp::placeComponent() {
     }
 
     _components[_compCount++] = comp;
+    _lastEditTime = lv_tick_get();
     updateInfoBar();
     if (_drawObj) lv_obj_invalidate(_drawObj);
 }
@@ -703,6 +781,17 @@ void CircuitCoreApp::stopSimulation() {
 }
 
 void CircuitCoreApp::runMnaTick() {
+    // Scale time step based on simulation speed
+    float speedFactor = 1.0f;
+    switch (_simSpeed) {
+        case SimSpeed::SPEED_1X:  speedFactor = 1.0f; break;
+        case SimSpeed::SPEED_05X: speedFactor = 0.5f; break;
+        case SimSpeed::SPEED_025X: speedFactor = 0.25f; break;
+        case SimSpeed::PAUSED:    return; // skip entire tick
+    }
+    float basedt = _mna.timeStep();
+    _mna.setTimeStep(basedt * speedFactor);
+
     // Reset Union-Find
     _mna.ufReset();
 
@@ -745,10 +834,15 @@ void CircuitCoreApp::runMnaTick() {
     // Phase 5: Update component state from solution
     if (ok) {
         for (int i = 0; i < _compCount; ++i) {
-            if (_components[i])
+            if (_components[i]) {
                 _components[i]->updateFromSolution(_mna);
+                _components[i]->checkStress(_mna);
+            }
         }
     }
+
+    // Restore base time step
+    _mna.setTimeStep(basedt);
 
     // Phase 6: Update oscilloscope
     updateScope();
@@ -811,9 +905,14 @@ void CircuitCoreApp::onDraw(lv_event_t* e) {
         }
     }
 
-    // ── Draw current animation dots (SIM_MODE) ──
+    // ── Draw current animation arrows (SIM_MODE) ──
     if (app->_simRunning) {
-        app->drawCurrentDots(layer, objX, objY);
+        app->drawCurrentArrows(layer, objX, objY);
+    }
+
+    // ── Draw voltage heatmap (SIM_MODE) ──
+    if (app->_voltageHeatmap && app->_simRunning) {
+        app->drawVoltageHeatmap(layer, objX, objY);
     }
 
     // ── Draw node voltage labels (SIM_MODE) ──
@@ -1021,24 +1120,24 @@ void CircuitCoreApp::drawNodeLabels(lv_layer_t* layer, int objX, int objY) {
     }
 }
 
-// ══ Current Animation Dots ══════════════════════════════════════════════════
+// ══ Current Animation Arrows ════════════════════════════════════════════════
 
-void CircuitCoreApp::drawCurrentDots(lv_layer_t* layer, int objX, int objY) {
-    // Animated dots along components with current > 1mA
-    uint32_t animPhase = _frameCount % 8;  // 8-frame animation cycle
+void CircuitCoreApp::drawCurrentArrows(lv_layer_t* layer, int objX, int objY) {
+    uint32_t animPhase = _frameCount % 8;
 
-    lv_draw_rect_dsc_t dotDsc;
-    lv_draw_rect_dsc_init(&dotDsc);
-    dotDsc.bg_color = lv_color_hex(0xFFFF00);  // bright yellow dots
-    dotDsc.bg_opa   = LV_OPA_COVER;
-    dotDsc.radius   = 2;
+    lv_draw_line_dsc_t arrowDsc;
+    lv_draw_line_dsc_init(&arrowDsc);
+    arrowDsc.color = lv_color_hex(0xFFFF00);
+    arrowDsc.width = 1;
 
     for (int i = 0; i < _compCount; ++i) {
         if (!_components[i]) continue;
+        if (_components[i]->isBroken()) continue;
         CompType t = _components[i]->type();
 
-        // Determine current through component
         float current = 0.0f;
+        float vA = _mna.nodeVoltage(_components[i]->nodeA());
+        float vB = _mna.nodeVoltage(_components[i]->nodeB());
         if (t == CompType::LED) {
             current = static_cast<LEDComponent*>(_components[i])->current();
         } else if (t == CompType::DIODE) {
@@ -1046,10 +1145,7 @@ void CircuitCoreApp::drawCurrentDots(lv_layer_t* layer, int objX, int objY) {
         } else if (t == CompType::RESISTOR || t == CompType::POTENTIOMETER ||
                    t == CompType::LDR || t == CompType::THERMISTOR ||
                    t == CompType::FLEX_SENSOR || t == CompType::FSR) {
-            // All variable-resistance sensors use V/R for current estimate
-            float vA = _mna.nodeVoltage(_components[i]->nodeA());
-            float vB = _mna.nodeVoltage(_components[i]->nodeB());
-            float r = 1000.0f;  // default
+            float r = 1000.0f;
             if (t == CompType::RESISTOR)
                 r = static_cast<Resistor*>(_components[i])->resistance();
             else if (t == CompType::POTENTIOMETER)
@@ -1065,21 +1161,26 @@ void CircuitCoreApp::drawCurrentDots(lv_layer_t* layer, int objX, int objY) {
             if (r > 0.0f) current = fabsf(vA - vB) / r;
         }
 
-        // Only show dots if current > 1mA
         if (current < 0.001f) continue;
 
         int cx = objX + _components[i]->gridX();
         int cy = objY + _components[i]->gridY();
+        // Direction: conventional current from high to low voltage
+        int dir = (vA >= vB) ? 1 : -1;
 
-        // Draw 2-3 moving dots along the component's horizontal extent
-        for (int d = 0; d < 3; ++d) {
-            int dotX = cx - 16 + (int)((animPhase + d * 3) % 8) * 4;
-            lv_area_t dot;
-            dot.x1 = dotX - 1;
-            dot.y1 = cy - 1;
-            dot.x2 = dotX + 1;
-            dot.y2 = cy + 1;
-            lv_draw_rect(layer, &dotDsc, &dot);
+        // Draw 2 animated triangular arrows along component
+        for (int d = 0; d < 2; ++d) {
+            int ax = cx - 12 + (int)((animPhase + d * 4) % 8) * 3;
+            // Triangle arrow pointing in direction of current
+            arrowDsc.p1.x = ax;           arrowDsc.p1.y = cy - 3;
+            arrowDsc.p2.x = ax + 4 * dir; arrowDsc.p2.y = cy;
+            lv_draw_line(layer, &arrowDsc);
+            arrowDsc.p1.x = ax;           arrowDsc.p1.y = cy + 3;
+            arrowDsc.p2.x = ax + 4 * dir; arrowDsc.p2.y = cy;
+            lv_draw_line(layer, &arrowDsc);
+            arrowDsc.p1.x = ax;           arrowDsc.p1.y = cy - 3;
+            arrowDsc.p2.x = ax;           arrowDsc.p2.y = cy + 3;
+            lv_draw_line(layer, &arrowDsc);
         }
     }
 }
@@ -1305,6 +1406,10 @@ void CircuitCoreApp::saveCircuit(const char* filename) {
                 break;
             default:
                 break;
+        }
+        // Write label if set
+        if (c->label()[0] != '\0') {
+            f.printf(",L:%s", c->label());
         }
         f.println();
     }
@@ -1562,4 +1667,343 @@ void CircuitCoreApp::autoLoad() {
         loadCircuit("autosave.dat");
     }
 #endif
+}
+
+// ══ Undo/Redo ═══════════════════════════════════════════════════════════════
+
+void CircuitCoreApp::saveUndoSnapshot() {
+    UndoSnapshot& snap = _undoBuffer[_undoHead];
+    snap.compCount = _compCount;
+    for (int i = 0; i < _compCount && i < MAX_COMPONENTS; ++i) {
+        CircuitComponent* c = _components[i];
+        if (!c) { snap.comps[i].typeVal = -1; continue; }
+        auto& cd = snap.comps[i];
+        cd.typeVal = static_cast<int>(c->type());
+        cd.gridX = c->gridX();
+        cd.gridY = c->gridY();
+        cd.nodeA = c->nodeA();
+        cd.nodeB = c->nodeB();
+        cd.param1 = 0.0f;
+        cd.param2 = 0.0f;
+        cd.extra1 = 0;
+        cd.extra2 = 0;
+        strncpy(cd.label, c->label(), sizeof(cd.label) - 1);
+        cd.label[sizeof(cd.label) - 1] = '\0';
+        // Save type-specific params
+        switch (c->type()) {
+            case CompType::RESISTOR:
+                cd.param1 = static_cast<Resistor*>(c)->resistance(); break;
+            case CompType::VOLTAGE_SOURCE:
+                cd.param1 = static_cast<VoltageSource*>(c)->voltage();
+                cd.extra1 = static_cast<VoltageSource*>(c)->vsIndex(); break;
+            case CompType::LED:
+                cd.param1 = static_cast<LEDComponent*>(c)->forwardVoltage();
+                cd.extra1 = static_cast<LEDComponent*>(c)->vsIndex(); break;
+            case CompType::POTENTIOMETER:
+                cd.param1 = static_cast<Potentiometer*>(c)->resistance(); break;
+            case CompType::CAPACITOR:
+                cd.param1 = static_cast<Capacitor*>(c)->capacitance(); break;
+            default: break;
+        }
+    }
+    _undoHead = (_undoHead + 1) % MAX_UNDO;
+    if (_undoCount < MAX_UNDO) _undoCount++;
+}
+
+void CircuitCoreApp::performUndo() {
+    if (_undoCount <= 0) return;
+    _undoCount--;
+    _undoHead = (_undoHead - 1 + MAX_UNDO) % MAX_UNDO;
+
+    const UndoSnapshot& snap = _undoBuffer[_undoHead];
+
+    // Delete current components
+    for (int i = 0; i < _compCount; ++i) {
+        delete _components[i];
+        _components[i] = nullptr;
+    }
+    _compCount = 0;
+
+    // Recreate from snapshot
+    for (int i = 0; i < snap.compCount && i < MAX_COMPONENTS; ++i) {
+        const auto& cd = snap.comps[i];
+        if (cd.typeVal < 0) continue;
+        CompType ctype = static_cast<CompType>(cd.typeVal);
+        CircuitComponent* comp = nullptr;
+        switch (ctype) {
+            case CompType::RESISTOR:
+                comp = new Resistor(cd.gridX, cd.gridY, cd.param1); break;
+            case CompType::VOLTAGE_SOURCE: {
+                auto* vs = new VoltageSource(cd.gridX, cd.gridY, cd.param1);
+                vs->setVsIndex(cd.extra1);
+                comp = vs; break;
+            }
+            case CompType::LED: {
+                auto* led = new LEDComponent(cd.gridX, cd.gridY, cd.param1);
+                led->setVsIndex(cd.extra1);
+                comp = led; break;
+            }
+            case CompType::POTENTIOMETER:
+                comp = new Potentiometer(cd.gridX, cd.gridY, cd.param1); break;
+            case CompType::CAPACITOR:
+                comp = new Capacitor(cd.gridX, cd.gridY, cd.param1); break;
+            default:
+                comp = ComponentFactory::create(ctype, cd.gridX, cd.gridY); break;
+        }
+        if (comp) {
+            if (_compCount >= MAX_COMPONENTS) { delete comp; break; }
+            comp->setNodes(cd.nodeA, cd.nodeB);
+            comp->setLabel(cd.label);
+            _components[_compCount++] = comp;
+        }
+    }
+    updateInfoBar();
+    if (_drawObj) lv_obj_invalidate(_drawObj);
+}
+
+// ══ Voltage Heatmap ════════════════════════════════════════════════════════
+
+void CircuitCoreApp::drawVoltageHeatmap(lv_layer_t* layer, int objX, int objY) {
+    for (int i = 0; i < _compCount; ++i) {
+        if (!_components[i]) continue;
+        if (_components[i]->type() != CompType::WIRE) continue;
+
+        int nodeA = _components[i]->nodeA();
+        float v = _mna.nodeVoltage(nodeA);
+        // Map voltage to color: 0V=blue, 2.5V=green, 5V=red
+        float norm = v / 5.0f;
+        if (norm < 0.0f) norm = 0.0f;
+        if (norm > 1.0f) norm = 1.0f;
+        uint8_t r = (uint8_t)(norm * 255);
+        uint8_t b = (uint8_t)((1.0f - norm) * 255);
+        uint8_t g = (uint8_t)((norm < 0.5f ? norm * 2.0f : (1.0f - norm) * 2.0f) * 200);
+
+        int cx = objX + _components[i]->gridX();
+        int cy = objY + _components[i]->gridY();
+
+        lv_draw_line_dsc_t dsc;
+        lv_draw_line_dsc_init(&dsc);
+        dsc.color = lv_color_make(r, g, b);
+        dsc.width = 3;
+        dsc.p1.x = cx - 20; dsc.p1.y = cy;
+        dsc.p2.x = cx + 20; dsc.p2.y = cy;
+        lv_draw_line(layer, &dsc);
+    }
+}
+
+// ══ Circuit Share String ════════════════════════════════════════════════════
+
+void CircuitCoreApp::generateShareString(char* outBuf, int maxLen) {
+    if (maxLen <= 0) return;
+    outBuf[0] = '\0';
+    if (maxLen < 5) return;
+
+    // Compact format: T,X,Y,A,B,P1;...
+    char raw[512];
+    int pos = 0;
+    for (int i = 0; i < _compCount && pos < (int)sizeof(raw) - 40; ++i) {
+        if (!_components[i]) continue;
+        CircuitComponent* c = _components[i];
+        int typeVal = static_cast<int>(c->type());
+        float p1 = 0.0f;
+        if (c->type() == CompType::RESISTOR)
+            p1 = static_cast<Resistor*>(c)->resistance();
+        else if (c->type() == CompType::VOLTAGE_SOURCE)
+            p1 = static_cast<VoltageSource*>(c)->voltage();
+        int remaining = (int)sizeof(raw) - pos;
+        if (remaining <= 0) break;
+        int written = snprintf(raw + pos, remaining,
+            "%d,%d,%d,%d,%d,%.1f;",
+            typeVal, c->gridX(), c->gridY(), c->nodeA(), c->nodeB(), (double)p1);
+        if (written > 0 && written < remaining) pos += written;
+        else break;
+    }
+
+    // Simple Base64 encode
+    static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int olen = 0;
+    for (int j = 0; j < pos && olen + 4 < maxLen; j += 3) {
+        uint32_t val = (uint8_t)raw[j] << 16;
+        if (j + 1 < pos) val |= (uint8_t)raw[j + 1] << 8;
+        if (j + 2 < pos) val |= (uint8_t)raw[j + 2];
+        outBuf[olen++] = b64[(val >> 18) & 0x3F];
+        outBuf[olen++] = b64[(val >> 12) & 0x3F];
+        outBuf[olen++] = (j + 1 < pos) ? b64[(val >> 6) & 0x3F] : '=';
+        outBuf[olen++] = (j + 2 < pos) ? b64[val & 0x3F] : '=';
+    }
+    outBuf[olen] = '\0';
+}
+
+// ══ Property Editor ════════════════════════════════════════════════════════
+
+void CircuitCoreApp::openPropertyEditor(CircuitComponent* comp) {
+    if (!comp) return;
+    // Show component info in info bar as property display
+    char propBuf[80];
+    switch (comp->type()) {
+        case CompType::RESISTOR:
+            snprintf(propBuf, sizeof(propBuf), "R=%.0f Ohm [UP/DN]",
+                     (double)static_cast<Resistor*>(comp)->resistance());
+            break;
+        case CompType::VOLTAGE_SOURCE:
+            snprintf(propBuf, sizeof(propBuf), "V=%.1fV",
+                     (double)static_cast<VoltageSource*>(comp)->voltage());
+            break;
+        case CompType::CAPACITOR:
+            snprintf(propBuf, sizeof(propBuf), "C=%.1fuF",
+                     (double)(static_cast<Capacitor*>(comp)->capacitance() * 1e6));
+            break;
+        case CompType::POTENTIOMETER:
+            snprintf(propBuf, sizeof(propBuf), "POT=%.0f Ohm [UP/DN]",
+                     (double)static_cast<Potentiometer*>(comp)->resistance());
+            break;
+        default:
+            snprintf(propBuf, sizeof(propBuf), "%s @ (%d,%d)",
+                     ComponentFactory::label(comp->type()),
+                     comp->gridX() / GRID_SNAP, comp->gridY() / GRID_SNAP);
+            break;
+    }
+    if (_infoLabel) lv_label_set_text(_infoLabel, propBuf);
+}
+
+// ══ IDE (Programming Editor for MCU) ════════════════════════════════════════
+
+static const char* IDE_KEYWORDS[] = {
+    "Serial", "digitalWrite", "digitalRead", "analogRead", "analogWrite",
+    "pinMode", "delay", "millis", "setup", "loop", "HIGH", "LOW",
+    "INPUT", "OUTPUT", "int", "float", "void", "if", "else", "for",
+    "while", "return", nullptr
+};
+
+void CircuitCoreApp::openIDE() {
+    if (_ideOpen) return;
+    _ideOpen = true;
+    _ideBufferLen = 0;
+    _ideBuffer[0] = '\0';
+
+    // Create overlay container
+    _ideContainer = lv_obj_create(_screen);
+    lv_obj_set_pos(_ideContainer, 10, GRID_Y + 5);
+    lv_obj_set_size(_ideContainer, SCREEN_W - 20, GRID_H - 10);
+    lv_obj_set_style_bg_color(_ideContainer, lv_color_hex(0x1E1E2E), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_ideContainer, LV_OPA_90, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_ideContainer, lv_color_hex(0x58A6FF), LV_PART_MAIN);
+    lv_obj_set_style_border_width(_ideContainer, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(_ideContainer, 4, LV_PART_MAIN);
+    lv_obj_remove_flag(_ideContainer, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Title label
+    lv_obj_t* title = lv_label_create(_ideContainer);
+    lv_label_set_text(title, "MCU IDE");
+    lv_obj_set_style_text_color(title, lv_color_hex(0x58A6FF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_pos(title, 4, 2);
+
+    // Text area
+    _ideTextArea = lv_textarea_create(_ideContainer);
+    lv_obj_set_pos(_ideTextArea, 4, 14);
+    lv_obj_set_size(_ideTextArea, lv_obj_get_width(_ideContainer) - 8,
+                    lv_obj_get_height(_ideContainer) - 30);
+    lv_obj_set_style_bg_color(_ideTextArea, lv_color_hex(0x0D1117), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_ideTextArea, lv_color_hex(0xE0E0E0), LV_PART_MAIN);
+    lv_obj_set_style_text_font(_ideTextArea, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_textarea_set_text(_ideTextArea, "void setup(){\n}\nvoid loop(){\n}");
+    lv_textarea_set_one_line(_ideTextArea, false);
+    lv_textarea_set_max_length(_ideTextArea, 480);
+
+    // Autocomplete suggestion label
+    _ideAutoLabel = lv_label_create(_ideContainer);
+    lv_label_set_text(_ideAutoLabel, "");
+    lv_obj_set_style_text_color(_ideAutoLabel, lv_color_hex(0x606060), LV_PART_MAIN);
+    lv_obj_set_style_text_font(_ideAutoLabel, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_pos(_ideAutoLabel, 4, lv_obj_get_height(_ideContainer) - 14);
+
+    if (_infoLabel) lv_label_set_text(_infoLabel, "IDE: F4=Accept AC=Close");
+}
+
+void CircuitCoreApp::closeIDE() {
+    if (!_ideOpen) return;
+    _ideOpen = false;
+    if (_ideContainer) {
+        lv_obj_delete(_ideContainer);
+        _ideContainer = nullptr;
+    }
+    _ideTextArea = nullptr;
+    _ideAutoLabel = nullptr;
+    updateInfoBar();
+}
+
+void CircuitCoreApp::updateAutoComplete() {
+    if (!_ideTextArea || !_ideAutoLabel) return;
+
+    const char* text = lv_textarea_get_text(_ideTextArea);
+    if (!text) { lv_label_set_text(_ideAutoLabel, ""); return; }
+    int len = (int)strlen(text);
+    if (len == 0) { lv_label_set_text(_ideAutoLabel, ""); return; }
+
+    // Find last partial word (alphabetic characters only)
+    int wStart = len - 1;
+    while (wStart >= 0 && ((text[wStart] >= 'a' && text[wStart] <= 'z') ||
+           (text[wStart] >= 'A' && text[wStart] <= 'Z'))) {
+        wStart--;
+    }
+    wStart++;
+    if (wStart < 0 || wStart >= len) { lv_label_set_text(_ideAutoLabel, ""); return; }
+    int wLen = len - wStart;
+    if (wLen < 2 || wLen > 32) { lv_label_set_text(_ideAutoLabel, ""); return; }
+
+    // Search keywords
+    for (int k = 0; IDE_KEYWORDS[k]; ++k) {
+        if (strncmp(text + wStart, IDE_KEYWORDS[k], wLen) == 0 &&
+            (int)strlen(IDE_KEYWORDS[k]) > wLen) {
+            lv_label_set_text(_ideAutoLabel, IDE_KEYWORDS[k]);
+            return;
+        }
+    }
+    lv_label_set_text(_ideAutoLabel, "");
+}
+
+void CircuitCoreApp::handleKeyIDE(const KeyEvent& ev) {
+    if (!_ideOpen || !_ideTextArea) return;
+
+    switch (ev.code) {
+        case KeyCode::AC:
+            closeIDE();
+            break;
+        case KeyCode::F4: {
+            // Accept autocomplete suggestion
+            if (_ideAutoLabel) {
+                const char* suggestion = lv_label_get_text(_ideAutoLabel);
+                if (suggestion && suggestion[0]) {
+                    const char* text = lv_textarea_get_text(_ideTextArea);
+                    int len = (int)strlen(text);
+                    int wStart = len - 1;
+                    while (wStart >= 0 && ((text[wStart] >= 'a' && text[wStart] <= 'z') ||
+                           (text[wStart] >= 'A' && text[wStart] <= 'Z'))) {
+                        wStart--;
+                    }
+                    wStart++;
+                    int wLen = len - wStart;
+                    // Delete partial word and insert full suggestion
+                    for (int d = 0; d < wLen; ++d)
+                        lv_textarea_delete_char((_ideTextArea));
+                    lv_textarea_add_text(_ideTextArea, suggestion);
+                    lv_label_set_text(_ideAutoLabel, "");
+                }
+            }
+            break;
+        }
+        case KeyCode::ENTER:
+            lv_textarea_add_char(_ideTextArea, '\n');
+            updateAutoComplete();
+            break;
+        default:
+            // For letter/number keys, the char gets mapped from keycode
+            if (ev.code >= KeyCode::NUM_0 && ev.code <= KeyCode::NUM_9) {
+                char ch = '0' + (static_cast<int>(ev.code) - static_cast<int>(KeyCode::NUM_0));
+                lv_textarea_add_char(_ideTextArea, ch);
+                updateAutoComplete();
+            }
+            break;
+    }
 }

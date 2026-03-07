@@ -101,7 +101,7 @@ void NeuralLabApp::begin() {
     _dbBuffer  = allocBuf16(DB_W * DB_H);
     _renderBuf = allocBuf16(SCREEN_W * SCREEN_H);
     if (!_dbBuffer || !_renderBuf) {
-        Serial.println("[NeuralLab] PSRAM alloc failed!");
+        Serial.println("[NeuralLabApp] PSRAM alloc failed!");
         return;
     }
     memset(_dbBuffer,  0, DB_W * DB_H * sizeof(uint16_t));
@@ -269,7 +269,7 @@ void NeuralLabApp::setupSineRegression() {
     for (int i = 0; i < _sampleCount; i++) {
         float x = (float)i / (_sampleCount - 1);
         _samples[i].inputs[0]  = x;
-        _samples[i].targets[0] = (sinf(2.0f * 3.14159265f * x) + 1.0f) / 2.0f;
+        _samples[i].targets[0] = (sinf(2.0f * (float)M_PI * x) + 1.0f) / 2.0f;
     }
 }
 

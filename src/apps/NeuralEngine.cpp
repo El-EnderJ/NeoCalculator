@@ -110,7 +110,7 @@ float NeuralEngine::heInit(int fanIn) {
     float u1 = ((float)rand() / RAND_MAX);
     float u2 = ((float)rand() / RAND_MAX);
     if (u1 < 1e-7f) u1 = 1e-7f;
-    float z = sqrtf(-2.0f * logf(u1)) * cosf(2.0f * 3.14159265f * u2);
+    float z = sqrtf(-2.0f * logf(u1)) * cosf(2.0f * (float)M_PI * u2);
     float stddev = sqrtf(2.0f / (float)fanIn);
     return z * stddev;
 }

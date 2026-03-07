@@ -10,9 +10,14 @@
  */
 
 #include "CASStepLogger.h"
+#include <cstdint>      // uintptr_t
 #include <functional>   // std::hash
 
 namespace cas {
+
+// Hash mixing constants (SplitMix64 / FNV-derived)
+static constexpr size_t EXPR_HASH_MULTIPLIER = 0x9e3779b97f4a7c15ULL;
+static constexpr size_t KIND_HASH_MULTIPLIER = 0x517cc1b727220a95ULL;
 
 // ────────────────────────────────────────────────────────────────────
 // Constructor
@@ -37,11 +42,12 @@ size_t CASStepLogger::computeStepHash(const SymEquation& snapshot,
     // Mix in the expression pointer hash when available (hash-consed
     // pointers are unique per structure, so this is meaningful).
     if (expr) {
-        h ^= reinterpret_cast<size_t>(expr) * 0x9e3779b97f4a7c15ULL;
+        h ^= static_cast<size_t>(reinterpret_cast<uintptr_t>(expr))
+             * EXPR_HASH_MULTIPLIER;
     }
     // Mix in kind so that a Transform and a Result with the same
     // snapshot are not considered duplicates.
-    h ^= static_cast<size_t>(kind) * 0x517cc1b727220a95ULL;
+    h ^= static_cast<size_t>(kind) * KIND_HASH_MULTIPLIER;
     return h;
 }
 

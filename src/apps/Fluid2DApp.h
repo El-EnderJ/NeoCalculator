@@ -1,10 +1,17 @@
 /**
  * Fluid2DApp.h — Real-Time 2D Fluid Simulator for NumOS.
  *
- * LVGL-native app implementing Jos Stam's "Stable Fluids" algorithm:
+ * LVGL-native app implementing Jos Stam's "Stable Fluids" algorithm
+ * with professional-grade physical enhancements:
  *   - Semi-Lagrangian advection (unconditionally stable)
  *   - Gauss-Seidel diffusion solver
  *   - Pressure projection (Helmholtz-Hodge decomposition)
+ *   - Vorticity confinement (small-scale eddy amplification)
+ *   - Thermal buoyancy (temperature-driven convection)
+ *   - CFL-based dynamic timestep for stability
+ *   - Lagrangian particle overlay
+ *   - Internal wall obstacles
+ *   - Blinn-Phong liquid shading with density-gradient normals
  *
  * Grid: 64×48 cells mapped to 320×240 display (5×5 px per cell).
  * Physics tick at ~30 Hz via lv_timer_t.
@@ -14,11 +21,12 @@
  *   - Arrow keys: move emitter cursor
  *   - ENTER: toggle continuous emission
  *   - F1: cycle visualization (density / velocity / vorticity)
- *   - F2: toggle velocity arrows overlay
+ *   - F2: cycle color palette (Inferno / Ocean / Toxic / Classic)
  *   - F3: reset simulation
- *   - F4: cycle emitter shape (point / cross / ring)
- *   - EXE: pause / resume simulation
- *   - 0-9: adjust viscosity / diffusion
+ *   - F4: toggle wall brush (paint solid obstacles)
+ *   - F5: cycle flow presets (None / Wind Tunnel / Convection Cell)
+ *   - EXE: pause / resume simulation (shows pressure ring)
+ *   - 0-9: adjust viscosity (0=Gas … 9=Honey)
  *
  * Part of: NumOS — Physics Simulation Module
  */
@@ -57,10 +65,18 @@ private:
     static constexpr int SCREEN_H = 240;
 
     // ── Simulation constants ─────────────────────────────────────────────
-    static constexpr float DT           = 1.0f / 30.0f;
-    static constexpr int   GS_ITERS     = 4;   // Gauss-Seidel iterations
-    static constexpr float DEFAULT_DIFF = 0.0001f;
-    static constexpr float DEFAULT_VISC = 0.0001f;
+    static constexpr float BASE_DT       = 1.0f / 30.0f;
+    static constexpr int   GS_ITERS      = 4;   // Gauss-Seidel iterations
+    static constexpr float DEFAULT_DIFF  = 0.0001f;
+    static constexpr float DEFAULT_VISC  = 0.0001f;
+    static constexpr float VORT_EPSILON  = 0.5f;  // vorticity confinement
+    static constexpr float BUOY_A        = 0.1f;  // thermal buoyancy coeff
+    static constexpr float BUOY_B        = 0.05f; // density drag coeff
+    static constexpr float CFL_MAX       = 5.0f;  // max CFL factor
+
+    // ── Particle system ──────────────────────────────────────────────────
+    static constexpr int MAX_PARTICLES   = 256;
+    static constexpr int PARTICLE_TAIL   = 3;  // tail length in frames
 
     // ── Visualization modes ──────────────────────────────────────────────
     enum class VizMode : uint8_t {
@@ -69,11 +85,35 @@ private:
         VORTICITY
     };
 
+    // ── Color palettes ───────────────────────────────────────────────────
+    enum class Palette : uint8_t {
+        INFERNO,
+        OCEAN,
+        TOXIC,
+        CLASSIC
+    };
+
     // ── Emitter shapes ───────────────────────────────────────────────────
     enum class EmitterShape : uint8_t {
         POINT,
         CROSS,
         RING
+    };
+
+    // ── Flow presets ─────────────────────────────────────────────────────
+    enum class FlowPreset : uint8_t {
+        NONE,
+        WIND_TUNNEL,
+        CONVECTION_CELL
+    };
+
+    // ── Particle ─────────────────────────────────────────────────────────
+    struct Particle {
+        float x, y;        // position in grid coords
+        float prevX[PARTICLE_TAIL];
+        float prevY[PARTICLE_TAIL];
+        float life;         // remaining life (0 = dead)
+        bool  active;
     };
 
     // ── LVGL objects ─────────────────────────────────────────────────────
@@ -84,34 +124,42 @@ private:
     ui::StatusBar   _statusBar;
 
     // ── Fluid grids (allocated dynamically) ──────────────────────────────
-    // Density field
     float*  _dens;          // current density
     float*  _densPrev;      // previous density (source term)
-
-    // Velocity field (X component)
-    float*  _velX;
+    float*  _velX;          // velocity X
     float*  _velXPrev;
-
-    // Velocity field (Y component)
-    float*  _velY;
+    float*  _velY;          // velocity Y
     float*  _velYPrev;
+    float*  _temp;          // temperature field
+    float*  _tempPrev;      // temperature source
+    uint8_t* _obstacle;     // obstacle mask (0=fluid, 1=wall)
 
     // ── Simulation state ─────────────────────────────────────────────────
     float   _diffusion;     // diffusion rate
     float   _viscosity;     // viscosity
+    float   _dt;            // dynamic timestep (CFL-based)
     bool    _paused;        // simulation paused
     bool    _emitting;      // continuous emission active
 
     // ── Emitter / cursor ─────────────────────────────────────────────────
     int     _cursorX, _cursorY;     // cursor position in grid coords
     EmitterShape _emitterShape;
+    bool    _wallBrush;     // F4 wall brush mode
 
     // ── Visualization ────────────────────────────────────────────────────
-    VizMode _vizMode;
-    bool    _showArrows;    // velocity arrow overlay
+    VizMode  _vizMode;
+    Palette  _palette;
+    bool     _showArrows;   // velocity arrow overlay
+
+    // ── Flow presets ─────────────────────────────────────────────────────
+    FlowPreset _flowPreset;
+
+    // ── Particle system ──────────────────────────────────────────────────
+    Particle* _particles;
+    int       _activeParticles;
 
     // ── Text buffer ──────────────────────────────────────────────────────
-    char    _infoBuf[80];
+    char    _infoBuf[128];
 
     // ── Indexing helper ──────────────────────────────────────────────────
     static inline int IX(int x, int y) { return x + (N + 2) * y; }
@@ -122,23 +170,49 @@ private:
 
     // ── Fluid solver (Jos Stam "Stable Fluids") ──────────────────────────
     void fluidStep();
-    void addSource(float* field, const float* source);
-    void diffuse(int b, float* x, const float* x0, float diff);
+    void addSource(float* field, const float* source, float dt);
+    void diffuse(int b, float* x, const float* x0, float diff, float dt);
     void advect(int b, float* d, const float* d0,
-                const float* u, const float* v);
+                const float* u, const float* v, float dt);
     void project(float* u, float* v, float* p, float* div);
     void setBoundary(int b, float* x);
 
+    // ── Physics enhancements ─────────────────────────────────────────────
+    void vorticityConfinement();
+    void applyBuoyancy(float dt);
+    float computeCFLdt() const;
+    void sanitizeField(float* field);
+
+    // ── Obstacles ────────────────────────────────────────────────────────
+    void enforceObstacles(float* u, float* v);
+    void setupWindTunnel();
+    void setupConvectionCell();
+
     // ── Emitter ──────────────────────────────────────────────────────────
     void addEmitterForces();
+    void applyFlowPresetForces();
+
+    // ── Particles ────────────────────────────────────────────────────────
+    void initParticles();
+    void stepParticles(float dt);
+    void spawnParticle(int idx);
 
     // ── Reset ────────────────────────────────────────────────────────────
     void resetFields();
 
     // ── Rendering helpers ────────────────────────────────────────────────
-    static lv_color_t densityToColor(float d);
+    lv_color_t applyPalette(float d) const;
+    static lv_color_t infernoColor(float t);
+    static lv_color_t oceanColor(float t);
+    static lv_color_t toxicColor(float t);
+    static lv_color_t classicColor(float t);
+    lv_color_t shadedDensityColor(int i, int j) const;
     static lv_color_t velocityToColor(float vx, float vy);
     static lv_color_t vorticityToColor(float w);
+
+    // ── HUD helpers ──────────────────────────────────────────────────────
+    float computeAvgVelocity() const;
+    float computeReynolds() const;
 
     // ── Callbacks ────────────────────────────────────────────────────────
     static void onDraw(lv_event_t* e);

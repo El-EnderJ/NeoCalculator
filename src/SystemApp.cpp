@@ -45,6 +45,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _circuitCoreApp(nullptr),
       _fluid2DApp(nullptr),
       _particleLabApp(nullptr),
+      _neuralLabApp(nullptr),
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -96,6 +97,7 @@ void SystemApp::begin() {
     _circuitCoreApp = new CircuitCoreApp();
     _fluid2DApp = new Fluid2DApp();
     _particleLabApp = new ParticleLabApp();
+    _neuralLabApp = new NeuralLabApp();
 
     // ── LVGL Launcher (show menu before LittleFS I/O) ──
     initApps();
@@ -175,6 +177,7 @@ void SystemApp::update() {
             case Mode::APP_CIRCUIT_CORE: if (_circuitCoreApp) _circuitCoreApp->end(); break;
             case Mode::APP_FLUID_2D: if (_fluid2DApp) _fluid2DApp->end(); break;
             case Mode::APP_PARTICLE_LAB: if (_particleLabApp) _particleLabApp->end(); break;
+            case Mode::APP_NEURAL_LAB: if (_neuralLabApp) _neuralLabApp->end(); break;
             default: break;
         }
         _pendingTeardownMode = Mode::MENU;  // mark as done
@@ -210,6 +213,8 @@ void SystemApp::update() {
         // LVGL handles CircuitCoreApp rendering
     } else if (_mode == Mode::APP_FLUID_2D) {
         // LVGL handles Fluid2DApp rendering
+    } else if (_mode == Mode::APP_NEURAL_LAB) {
+        // LVGL handles NeuralLabApp rendering
     } else if (_mode == Mode::MENU) {
         // LVGL maneja el renderizado del menú via lv_timer_handler() en main.cpp
         _redraw = false;
@@ -245,6 +250,8 @@ void SystemApp::render() {
         case Mode::APP_BRIDGE_DESIGNER: break; // LVGL-native — no-op
         case Mode::APP_CIRCUIT_CORE: break;    // LVGL-native — no-op
         case Mode::APP_SEQUENCES:    break;    // LVGL-native — no-op
+        case Mode::APP_PARTICLE_LAB: break;    // LVGL-native — no-op
+        case Mode::APP_NEURAL_LAB:   break;    // LVGL-native — no-op
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
         // APP_TABLE placeholder
@@ -529,6 +536,14 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 _particleLabApp->handleKey(ev);
             }
             break;
+        // NeuralLabApp is LVGL-native
+        case Mode::APP_NEURAL_LAB:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_neuralLabApp) {
+                _neuralLabApp->handleKey(ev);
+            }
+            break;
         case Mode::APP_TABLE:
             handleKeyApp(ev);
             break;
@@ -673,6 +688,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_particleLabApp) _particleLabApp->load();
+    } else if (id == 16) {
+        // NeuralLabApp es LVGL-native
+        g_lvglActive = true;
+        switchApp(id);
+        if (_neuralLabApp) _neuralLabApp->load();
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -725,6 +745,7 @@ void SystemApp::switchApp(int id) {
         case 13: _mode = Mode::APP_CIRCUIT_CORE; break;
         case 14: _mode = Mode::APP_FLUID_2D;    break;
         case 15: _mode = Mode::APP_PARTICLE_LAB; break;
+        case 16: _mode = Mode::APP_NEURAL_LAB; break;
         default: _mode = Mode::MENU;            break;
     }
     _redraw = true;

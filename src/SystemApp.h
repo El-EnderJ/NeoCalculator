@@ -40,6 +40,7 @@
 #include "apps/CircuitCoreApp.h"
 #include "apps/Fluid2DApp.h"
 #include "apps/ParticleLabApp.h"
+#include "apps/NeuralLabApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -68,6 +69,7 @@ enum class Mode : uint8_t {
     APP_CIRCUIT_CORE,    // Circuit simulator (SPICE-like)
     APP_FLUID_2D,        // 2D fluid simulator (Stable Fluids)
     APP_PARTICLE_LAB,    // Falling-sand particle simulator
+    APP_NEURAL_LAB,      // Neural network playground
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
@@ -121,6 +123,7 @@ private:
     CircuitCoreApp*    _circuitCoreApp;
     Fluid2DApp*        _fluid2DApp;
     ParticleLabApp*    _particleLabApp;
+    NeuralLabApp*      _neuralLabApp;
 
     // Math Engine
     Tokenizer _tokenizer;

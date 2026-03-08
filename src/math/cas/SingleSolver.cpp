@@ -29,10 +29,23 @@
 #include "../../Config.h"
 #include <cmath>
 #include <cstdlib>
+#include <utility>
 
 namespace cas {
 
 using vpam::ExactVal;
+
+namespace {
+
+template <typename TutorFn>
+SolveResult runTutorWithLoggedSteps(TutorFn&& tutorFn) {
+    PedagogicalLogger tutorLog;
+    SolveResult result = tutorFn(tutorLog);
+    result.steps = std::move(tutorLog);
+    return result;
+}
+
+} // namespace
 
 // ────────────────────────────────────────────────────────────────────
 // Constructor
@@ -55,13 +68,19 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable,
         int16_t deg = normalized.lhs.degree();
 
         if (deg == 1) {
-            return solveLinearTutor(eq, variable, result.steps, arena);
+            return runTutorWithLoggedSteps([&](PedagogicalLogger& tutorLog) {
+                return solveLinearTutor(eq, variable, tutorLog, arena);
+            });
         }
         if (deg == 2) {
-            return solveQuadraticTutor(eq, variable, result.steps, arena);
+            return runTutorWithLoggedSteps([&](PedagogicalLogger& tutorLog) {
+                return solveQuadraticTutor(eq, variable, tutorLog, arena);
+            });
         }
         if (deg == 3) {
-            return solveCubicTutor(eq, variable, result.steps, arena);
+            return runTutorWithLoggedSteps([&](PedagogicalLogger& tutorLog) {
+                return solveCubicTutor(eq, variable, tutorLog, arena);
+            });
         }
     }
 
@@ -140,7 +159,9 @@ SymEquation SingleSolver::normalize(const SymEquation& eq, PedagogicalLogger& lo
 bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& result,
                                SymExprArena* arena) {
     if (arena) {
-        result = solveLinearTutor(eq, var, result.steps, arena);
+        result = runTutorWithLoggedSteps([&](PedagogicalLogger& tutorLog) {
+            return solveLinearTutor(eq, var, tutorLog, arena);
+        });
         return result.ok;
     }
 
@@ -225,7 +246,9 @@ bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& 
                                   SymExprArena* arena) {
     // Tutor mode: full step-by-step when arena is available
     if (arena) {
-        result = solveQuadraticTutor(eq, var, result.steps, arena);
+        result = runTutorWithLoggedSteps([&](PedagogicalLogger& tutorLog) {
+            return solveQuadraticTutor(eq, var, tutorLog, arena);
+        });
         return result.ok;
     }
 

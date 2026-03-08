@@ -5,8 +5,11 @@
 #include "TutorTemplateTest.h"
 #include "../src/math/cas/SymPoly.h"
 #include "../src/math/cas/SymEquation.h"
+#include "../src/math/cas/SymExpr.h"
 #include "../src/math/cas/SingleSolver.h"
 #include "../src/math/cas/SymExprArena.h"
+#include "../src/math/cas/OmniSolver.h"
+#include "../src/math/cas/SystemSolver.h"
 #include <cmath>
 
 #ifdef ARDUINO
@@ -71,6 +74,11 @@ void runTutorTests() {
         
         // The tutor generates many more steps than the compact solver (~10 steps)
         check("QuadTutor x²-5x+6=0 has >= 8 steps", res.steps.count() >= 8);
+        std::string quadDump = res.steps.dump();
+        check("QuadTutor suppresses raw original-equation label",
+              quadDump.find("Original equation") == std::string::npos);
+        check("QuadTutor suppresses raw normalization noise",
+              quadDump.find("Moving and grouping all terms to the left side") == std::string::npos);
         
         PRINTLN("  === Tutor Steps for x^2 - 5x + 6 = 0 ===");
         PRINT(res.steps.dump().c_str());
@@ -119,7 +127,69 @@ void runTutorTests() {
         PRINT(res.steps.dump().c_str());
     }
 
-    // ── Test 4: 3x² - 7x + 2 = 0 (Stress: Fractional root) ──────
+    // ── Test 4: ln(x) = 1 (Logarithmic tutor) ──────────────────────
+    {
+        SymExprArena arena;
+        OmniSolver solver;
+        SymExpr* lhs = symFunc(arena, SymFuncKind::Ln, symVar(arena, 'x'));
+        SymExpr* rhs = symInt(arena, 1);
+        OmniResult res = solver.solve(lhs, rhs, 'x', arena);
+
+        check("LogTutor ln(x)=1 ok", res.ok);
+        check("LogTutor ln(x)=1 count == 1", res.solutions.size() == 1);
+        if (!res.solutions.empty()) {
+            check("LogTutor ln(x)=1 root ≈ e",
+                  std::abs(res.solutions[0].numeric - std::exp(1.0)) < 0.01);
+        }
+        check("LogTutor logs conversion step",
+              res.steps.dump().find("Converting the logarithmic equation to exponential form") != std::string::npos);
+    }
+
+    // ── Test 5: 2·e^x = 4 (Exponential tutor) ──────────────────────
+    {
+        SymExprArena arena;
+        OmniSolver solver;
+        SymExpr* lhs = symMul(arena, symInt(arena, 2),
+                              symFunc(arena, SymFuncKind::Exp, symVar(arena, 'x')));
+        SymExpr* rhs = symInt(arena, 4);
+        OmniResult res = solver.solve(lhs, rhs, 'x', arena);
+
+        check("ExpTutor 2e^x=4 ok", res.ok);
+        check("ExpTutor 2e^x=4 count == 1", res.solutions.size() == 1);
+        if (!res.solutions.empty()) {
+            check("ExpTutor 2e^x=4 root ≈ ln(2)",
+                  std::abs(res.solutions[0].numeric - std::log(2.0)) < 0.01);
+        }
+        check("ExpTutor logs logarithm step",
+              res.steps.dump().find("Taking logarithms on both sides") != std::string::npos);
+    }
+
+    // ── Test 6: sqrt(x+1) = x-1 (Radical tutor + extraneous) ───────
+    {
+        SymExprArena arena;
+        OmniSolver solver;
+        SymExpr* lhs = symPow(arena,
+                              symAdd(arena, symVar(arena, 'x'), symInt(arena, 1)),
+                              symFrac(arena, 1, 2));
+        SymExpr* rhs = symAdd(arena, symVar(arena, 'x'), symInt(arena, -1));
+        OmniResult res = solver.solve(lhs, rhs, 'x', arena);
+
+        check("RadicalTutor sqrt(x+1)=x-1 ok", res.ok);
+        check("RadicalTutor sqrt(x+1)=x-1 count == 1", res.solutions.size() == 1);
+        if (!res.solutions.empty()) {
+            double numeric = res.solutions[0].isExact
+                ? res.solutions[0].exact.toDouble()
+                : res.solutions[0].numeric;
+            check("RadicalTutor sqrt(x+1)=x-1 root ≈ 3", std::abs(numeric - 3.0) < 0.01);
+        }
+        std::string radicalDump = res.steps.dump();
+        check("RadicalTutor reports extraneous false candidate",
+              radicalDump.find("FALSE") != std::string::npos);
+        check("RadicalTutor reports true candidate",
+              radicalDump.find("TRUE") != std::string::npos);
+    }
+
+    // ── Test 7: 3x² - 7x + 2 = 0 (Stress: Fractional root) ──────
     {
         SymPoly lhs('x');
         lhs.terms().push_back(SymTerm::variable('x', 3, 1, 2));   // 3x²
@@ -143,7 +213,7 @@ void runTutorTests() {
         check("Stress Quad found 1/3", foundThird);
     }
 
-    // ── Test 5: x³ - 6x² + 11x - 6 = 0 (Stress: Cubic/Ruffini) ──
+    // ── Test 8: x³ - 6x² + 11x - 6 = 0 (Stress: Cubic/Ruffini) ──
     {
         SymPoly lhs('x');
         lhs.terms().push_back(SymTerm::variable('x', 1, 1, 3));   // x³
@@ -163,7 +233,7 @@ void runTutorTests() {
         check("Cubic has Ruffini steps", res.steps.count() > 10);
     }
 
-    // ── Test 6: 2x + 3y = 8, x - y = 1 (Stress: 2x2 Cramer) ──────
+    // ── Test 9: 2x + 3y = 8, x - y = 1 (Stress: 2x2 Cramer) ──────
     {
         LinEq eq1 = LinEq::from2(2, 3, 8);
         LinEq eq2 = LinEq::from2(1, -1, 1);

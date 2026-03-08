@@ -13,6 +13,7 @@
 #include "OmniSolver.h"
 #include "SymDiff.h"
 #include "SymSimplify.h"
+#include "TutorTemplates.h"
 
 #include <cmath>
 #include <cstdio>
@@ -193,6 +194,14 @@ SymExpr* OmniSolver::applyInverse(SymFuncKind kind, SymExpr* val,
 
 OmniResult OmniSolver::solve(SymExpr* lhs, SymExpr* rhs, char var,
                               SymExprArena& arena) {
+    OmniResult tutorResult;
+    if (solveLogarithmicTutor(lhs, rhs, var, arena, tutorResult) ||
+        solveExponentialTutor(lhs, rhs, var, arena, tutorResult) ||
+        solveRadicalTutor(lhs, rhs, var, arena, tutorResult))
+    {
+        return tutorResult;
+    }
+
     // Normalize to f(x) = 0: f(x) = lhs - rhs
     SymExpr* f;
     if (rhs->type == SymExprType::Num &&

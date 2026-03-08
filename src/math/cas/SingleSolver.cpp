@@ -50,6 +50,21 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable,
     result.variable = variable;
     result.ok       = false;
 
+    if (arena) {
+        SymEquation normalized = eq.moveAllToLHS();
+        int16_t deg = normalized.lhs.degree();
+
+        if (deg == 1) {
+            return solveLinearTutor(eq, variable, result.steps, arena);
+        }
+        if (deg == 2) {
+            return solveQuadraticTutor(eq, variable, result.steps, arena);
+        }
+        if (deg == 3) {
+            return solveCubicTutor(eq, variable, result.steps, arena);
+        }
+    }
+
     // Step 0 — Log the original equation with VPAM snapshot
     result.steps.log("Original equation", eq, MethodId::General);
 
@@ -90,8 +105,6 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable,
         if (solveQuadratic(normalized, variable, result, arena)) {
             result.ok = true;
         }
-    } else if (deg == 3 && arena) {
-        result = solveCubicTutor(normalized, variable, result.steps, arena);
     } else {
         result.steps.logAction(
             SolveAction::NEWTON_START,

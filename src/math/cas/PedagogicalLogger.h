@@ -73,6 +73,15 @@ enum class SolveAction : uint8_t {
     QUAD_SEPARATE_ROOTS,            ///< Separate into x₁ and x₂ expressions
     QUAD_SIMPLIFY_ROOT,             ///< Simplify one root fraction
 
+    // ── Tutor: Transcendental / Radical ─────────────────────────────
+    RADICAL_ISOLATE,                ///< Isolate the radical term
+    RADICAL_SQUARE_BOTH_SIDES,      ///< Square both sides of a radical equation
+    RADICAL_CHECK_EXTRANEOUS,       ///< Check candidate solutions in the original equation
+    LOG_APPLY_PROPERTIES,           ///< Combine compatible logarithms before solving
+    LOG_CONVERT_TO_EXPONENTIAL,     ///< Rewrite logarithmic equation in exponential form
+    EXP_EQUAL_BASES,                ///< Solve exponential equation by matching bases
+    EXP_LOG_BOTH_SIDES,             ///< Solve exponential equation by taking logarithms
+
     // ── Tutor: Cubic (Ruffini) ─────────────────────────────────────
     CUBIC_TRY_ROOT,                 ///< "Testing x = r..."
     CUBIC_ROOT_FOUND,               ///< "P(r) = 0 → x₁ = r"

@@ -182,6 +182,44 @@ std::string PedagogicalLogger::buildPhrase(SolveAction action,
         return std::string("Simplifying ") + v + idxBuf + ":";
     }
 
+    // ── Tutor: Transcendental / Radical ────────────────────────────
+
+    case SolveAction::RADICAL_ISOLATE:
+        return "Isolating the radical term:";
+
+    case SolveAction::RADICAL_SQUARE_BOTH_SIDES:
+        return "Squaring both sides to remove the radical:";
+
+    case SolveAction::RADICAL_CHECK_EXTRANEOUS: {
+        const CASNumber* candidate = findVal(ctx, "candidate");
+        const CASNumber* lhs = findVal(ctx, "lhs");
+        const CASNumber* rhs = findVal(ctx, "rhs");
+        const CASNumber* valid = findVal(ctx, "valid");
+        std::string phrase = "Checking the candidate in the original equation";
+        if (candidate) {
+            phrase += " at " + v + " = " + candidate->toString();
+        }
+        if (lhs && rhs) {
+            phrase += ": " + lhs->toString() + " = " + rhs->toString();
+        }
+        if (valid) {
+            phrase += valid->isZero() ? "  FALSE ❌" : "  TRUE ✅";
+        }
+        return phrase;
+    }
+
+    case SolveAction::LOG_APPLY_PROPERTIES:
+        return "Applying logarithm properties to combine the terms:";
+
+    case SolveAction::LOG_CONVERT_TO_EXPONENTIAL:
+        return "Converting the logarithmic equation to exponential form:";
+
+    case SolveAction::EXP_EQUAL_BASES:
+        return "Rewriting both sides with the same base:";
+
+    case SolveAction::EXP_LOG_BOTH_SIDES:
+        return "Taking logarithms on both sides:";
+
     // ── Tutor: Cubic (Ruffini) ──────────────────────────────────────
 
     case SolveAction::CUBIC_TRY_ROOT: {
@@ -240,6 +278,7 @@ void PedagogicalLogger::logAction(SolveAction action,
 
     // ── Transform steps (algebraic manipulation with equation snapshot) ──
     case SolveAction::NORMALIZE_TO_STANDARD_FORM:
+    case SolveAction::PRESENT_ORIGINAL_EQUATION:
     case SolveAction::LINEAR_ISOLATE_VARIABLE:
     case SolveAction::LINEAR_DIVIDE_BY_COEFFICIENT:
         if (ctx.snapshot) {
@@ -454,6 +493,13 @@ void PedagogicalLogger::logAction(SolveAction action,
     case SolveAction::QUAD_COMPUTE_SQRT_VALUE:
     case SolveAction::QUAD_SEPARATE_ROOTS:
     case SolveAction::QUAD_SIMPLIFY_ROOT:
+    case SolveAction::RADICAL_ISOLATE:
+    case SolveAction::RADICAL_SQUARE_BOTH_SIDES:
+    case SolveAction::RADICAL_CHECK_EXTRANEOUS:
+    case SolveAction::LOG_APPLY_PROPERTIES:
+    case SolveAction::LOG_CONVERT_TO_EXPONENTIAL:
+    case SolveAction::EXP_EQUAL_BASES:
+    case SolveAction::EXP_LOG_BOTH_SIDES:
     case SolveAction::CUBIC_TRY_ROOT:
     case SolveAction::CUBIC_ROOT_FOUND:
     case SolveAction::CUBIC_SYNTHETIC_DIVISION:

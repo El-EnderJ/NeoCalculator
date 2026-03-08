@@ -13,6 +13,11 @@
  *   · Línea separadora entre expresión y resultado
  *   · Zona inferior con MathCanvas para el resultado
  *
+ * Educational Mode (setting_edu_steps):
+ *   · When enabled, arithmetic expressions are broken down step-by-step
+ *   · Uses CAS SymSimplify in atomic mode (one transformation at a time)
+ *   · F2: View Steps — opens scrollable step viewer
+ *
  * Flujo:
  *   1. begin() → crea pantalla LVGL + 2 MathCanvas + AST raíz
  *   2. handleKey() → traduce KeyCode a acciones del CursorController
@@ -26,10 +31,14 @@
 
 #include <lvgl.h>
 #include <vector>
+#include <memory>
 #include "../math/MathAST.h"
 #include "../math/CursorController.h"
 #include "../math/MathEvaluator.h"
 #include "../math/VariableManager.h"
+#include "../math/cas/CASStepLogger.h"
+#include "../math/cas/SymExpr.h"
+#include "../math/cas/SymExprArena.h"
 #include "../ui/MathRenderer.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
@@ -99,6 +108,21 @@ private:
     int  _historyIndex;                      ///< -1 = nueva expresión, 0..N-1 = historial
     static constexpr int MAX_HISTORY = 50;   ///< Máximo de entradas guardadas
 
+    // ── Educational step-by-step mode ────────────────────────────────────
+    cas::CASStepLogger     _eduStepLogger;   ///< Step logger for educational mode
+    cas::SymExprArena      _eduArena;        ///< Arena for CAS expressions
+    bool                   _hasEduSteps;     ///< Steps available for viewing
+
+    // Step viewer UI
+    bool                   _stepViewerActive; ///< Step viewer is visible
+    lv_obj_t*              _stepsContainer;   ///< Scrollable step list container
+
+    struct StepRenderData {
+        vpam::NodePtr    nodeData;   ///< Owns the MathAST tree
+        vpam::MathCanvas canvas;     ///< LVGL widget for 2D rendering
+    };
+    std::vector<std::unique_ptr<StepRenderData>> _stepRenderers;
+
     // ── Estado ───────────────────────────────────────────────────────────
     // (KeyboardManager singleton gestiona SHIFT/ALPHA/LOCK/STO)
 
@@ -119,4 +143,10 @@ private:
 
     /// Ejecuta la acción STO: guarda Ans en la variable indicada
     void executeStore(char varName);
+
+    // ── Educational step-by-step helpers ─────────────────────────────────
+    void generateEduSteps();          ///< Generate step-by-step breakdown
+    void openStepViewer();            ///< Show step viewer screen
+    void closeStepViewer();           ///< Return from step viewer
+    void buildStepsDisplay();         ///< Build LVGL step list items
 };

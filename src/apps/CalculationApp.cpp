@@ -17,6 +17,10 @@
 
 #include "CalculationApp.h"
 #include "../input/KeyCodes.h"
+#include "../Config.h"
+#include "../math/cas/ASTFlattener.h"
+#include "../math/cas/SymSimplify.h"
+#include "../math/cas/SymExprToAST.h"
 #ifdef NATIVE_SIM
   #include <cstdio>
 #endif
@@ -49,6 +53,9 @@ CalculationApp::CalculationApp()
     , _resultMode(vpam::ResultMode::Symbolic)
     , _resultRow(nullptr)
     , _historyIndex(-1)
+    , _hasEduSteps(false)
+    , _stepViewerActive(false)
+    , _stepsContainer(nullptr)
 {
 }
 
@@ -72,6 +79,8 @@ void CalculationApp::begin() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculationApp::end() {
+    closeStepViewer();
+
     _mathCanvas.stopCursorBlink();
     _mathCanvas.destroy();
     _resultCanvas.destroy();
@@ -81,6 +90,7 @@ void CalculationApp::end() {
         lv_obj_delete(_screen);
         _screen      = nullptr;
         _resultSep   = nullptr;
+        _stepsContainer = nullptr;
     }
 
     _rootNode.reset();
@@ -88,6 +98,10 @@ void CalculationApp::end() {
     _resultNode.reset();
     _resultRow = nullptr;
     _hasResult = false;
+
+    _eduStepLogger.clear();
+    _eduArena.reset();
+    _hasEduSteps = false;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -188,6 +202,28 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 #endif
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
+    // ── Step viewer active: intercept keys for scroll/back ──────────────
+    if (_stepViewerActive) {
+        switch (ev.code) {
+            case KeyCode::UP:
+                if (_stepsContainer)
+                    lv_obj_scroll_by(_stepsContainer, 0, 30, LV_ANIM_ON);
+                break;
+            case KeyCode::DOWN:
+                if (_stepsContainer)
+                    lv_obj_scroll_by(_stepsContainer, 0, -30, LV_ANIM_ON);
+                break;
+            case KeyCode::AC:
+            case KeyCode::DEL:
+            case KeyCode::F2:
+                closeStepViewer();
+                break;
+            default:
+                break;
+        }
+        return;
+    }
+
     auto& km = vpam::KeyboardManager::instance();
 
     // ── Modificadores: SHIFT / ALPHA / STO ──────────────────────────────
@@ -249,6 +285,16 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
     bool changed = true;
 
     switch (effectiveCode) {
+        // ── Step viewer (F2) ──
+        case KeyCode::F2:
+            if (_stepViewerActive) {
+                closeStepViewer();
+            } else if (_hasEduSteps && _hasResult) {
+                openStepViewer();
+            }
+            changed = false;
+            break;
+
         // ── Dígitos ──
         case KeyCode::NUM_0: clearResult(); _cursor.insertDigit('0'); break;
         case KeyCode::NUM_1: clearResult(); _cursor.insertDigit('1'); break;
@@ -479,6 +525,14 @@ void CalculationApp::evaluateExpression() {
     // Ocultar cursor de la expresión
     _mathCanvas.stopCursorBlink();
 
+    // Generate educational steps if enabled
+    _eduStepLogger.clear();
+    _eduArena.reset();
+    _hasEduSteps = false;
+    if (setting_edu_steps && _lastResult.ok) {
+        generateEduSteps();
+    }
+
     // Mostrar resultado
     showResult();
 }
@@ -515,6 +569,11 @@ void CalculationApp::showResult() {
 
     _resultCanvas.invalidate();
     _mathCanvas.invalidate();
+
+    // Show F2 hint in status bar when edu steps are available
+    if (_hasEduSteps) {
+        _statusBar.setTitle("F2: View Steps");
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -528,9 +587,17 @@ void CalculationApp::clearResult() {
     _resultNode.reset();
     _resultRow = nullptr;
 
+    // Clear educational steps
+    _eduStepLogger.clear();
+    _eduArena.reset();
+    _hasEduSteps = false;
+
     // Ocultar separador y canvas de resultado
     if (_resultSep) lv_obj_add_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
     if (_resultCanvas.obj()) lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+
+    // Restore title
+    _statusBar.setTitle("Calculation");
 
     // Restaurar cursor
     _mathCanvas.startCursorBlink();
@@ -656,4 +723,227 @@ void CalculationApp::executeStore(char varName) {
 
     // Intentar persistir en flash
     vm.saveToFlash();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// generateEduSteps() — Generate step-by-step breakdown of arithmetic
+//
+// Converts the VPAM AST to a CAS SymExpr, then uses SymSimplify
+// in single-pass mode to produce atomic simplification steps.
+// Each intermediate expression is logged with a reason string.
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculationApp::generateEduSteps() {
+    if (!_rootRow) return;
+
+    _eduStepLogger.clear();
+    _eduArena.reset();
+    _hasEduSteps = false;
+
+    // Convert VPAM AST → CAS SymExpr tree
+    cas::ASTFlattener flattener;
+    flattener.setVariable('x');
+    flattener.setArena(&_eduArena);
+    cas::SymExpr* expr = flattener.flattenToExpr(_rootRow);
+    if (!expr) return;
+
+    // Log the original expression
+    _eduStepLogger.logExpr("Original expression", expr,
+                           cas::MethodId::General, "Input");
+
+    // Run simplification passes one at a time (atomic mode).
+    // Safety limit prevents infinite loops in edge-case expressions.
+    cas::SymExpr* current = expr;
+    static constexpr int MAX_EDU_STEPS = 20;
+
+    for (int step = 0; step < MAX_EDU_STEPS; ++step) {
+        cas::SymExpr* next = cas::SymSimplify::simplifyPass(current, _eduArena);
+
+        // Fixed point reached — no more simplifications
+        if (next == current) break;
+
+        // Determine reason based on the transformation type
+        std::string reason;
+        if (next->type == cas::SymExprType::Num) {
+            reason = "Evaluate result";
+        } else if (current->type == cas::SymExprType::Pow ||
+                   (current->type == cas::SymExprType::Add && next->type != cas::SymExprType::Add)) {
+            reason = "Solve exponent";
+        } else if (current->type == cas::SymExprType::Mul ||
+                   (current->type == cas::SymExprType::Add &&
+                    next->type == cas::SymExprType::Add)) {
+            reason = "Simplify terms";
+        } else {
+            reason = "Simplify";
+        }
+
+        // FPU guard: evaluate at x=0 to check for math errors (e.g. 1/0)
+        double intermediateVal = next->evaluate(0.0);
+        if (!std::isfinite(intermediateVal) && next->type != cas::SymExprType::Num) {
+            // Skip logging steps with math errors in intermediate results
+            current = next;
+            continue;
+        }
+
+        _eduStepLogger.logExpr(next->toString(), next,
+                               cas::MethodId::General, reason);
+
+        current = next;
+    }
+
+    // Log final result
+    if (current != expr && _eduStepLogger.count() > 1) {
+        _hasEduSteps = true;
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// openStepViewer() — Show the step-by-step viewer screen
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculationApp::openStepViewer() {
+    if (_stepViewerActive || !_hasEduSteps) return;
+    _stepViewerActive = true;
+
+    // Hide the main expression/result canvases
+    if (_mathCanvas.obj()) lv_obj_add_flag(_mathCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+    if (_resultCanvas.obj()) lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+    if (_resultSep) lv_obj_add_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
+
+    _statusBar.setTitle("Steps");
+
+    // Create scrollable steps container
+    int barH = ui::StatusBar::HEIGHT + 1;
+    _stepsContainer = lv_obj_create(_screen);
+    lv_obj_set_size(_stepsContainer, SCREEN_W, SCREEN_H - barH);
+    lv_obj_set_pos(_stepsContainer, 0, barH);
+    lv_obj_set_style_bg_color(_stepsContainer, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_stepsContainer, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_stepsContainer, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_stepsContainer, PAD, LV_PART_MAIN);
+    lv_obj_set_flex_flow(_stepsContainer, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(_stepsContainer, 4, LV_PART_MAIN);
+    lv_obj_add_flag(_stepsContainer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(_stepsContainer, LV_DIR_VER);
+
+    buildStepsDisplay();
+    lv_obj_scroll_to_y(_stepsContainer, 0, LV_ANIM_OFF);
+    lv_obj_invalidate(_screen);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// closeStepViewer() — Return from step viewer to normal calculator view
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculationApp::closeStepViewer() {
+    if (!_stepViewerActive) return;
+    _stepViewerActive = false;
+
+    // Clean up step renderers
+    _stepRenderers.clear();
+
+    // Remove steps container
+    if (_stepsContainer) {
+        lv_obj_delete(_stepsContainer);
+        _stepsContainer = nullptr;
+    }
+
+    // Restore main UI
+    if (_mathCanvas.obj()) lv_obj_remove_flag(_mathCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+    if (_hasResult) {
+        if (_resultCanvas.obj()) lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+        if (_resultSep) lv_obj_remove_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
+        _statusBar.setTitle("F2: View Steps");
+    } else {
+        _statusBar.setTitle("Calculation");
+    }
+
+    lv_obj_invalidate(_screen);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// buildStepsDisplay() — Build LVGL widgets for each step
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculationApp::buildStepsDisplay() {
+    _stepRenderers.clear();
+    if (!_stepsContainer) return;
+
+    lv_obj_clean(_stepsContainer);
+
+    const auto& steps = _eduStepLogger.steps();
+
+    if (steps.empty()) {
+        lv_obj_t* lbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(lbl, "No steps available.");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0x808080), LV_PART_MAIN);
+        return;
+    }
+
+    static constexpr int CANVAS_W = SCREEN_W - 2 * PAD - 16;
+
+    // Helper: create a MathCanvas from a NodePtr
+    auto emitCanvas = [&](vpam::NodePtr node) {
+        if (!node) return;
+        node = cas::SymExprToAST::ensureRow(std::move(node));
+        auto srd = std::make_unique<StepRenderData>();
+        srd->nodeData = std::move(node);
+        srd->canvas.create(_stepsContainer);
+
+        auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
+        srd->canvas.setExpression(row, nullptr);
+        row->calculateLayout(srd->canvas.normalMetrics());
+
+        int16_t w = row->layout().width + 24;
+        int16_t h = row->layout().ascent + row->layout().descent + 8;
+        if (w > CANVAS_W) w = CANVAS_W;
+        if (h < 22) h = 22;
+        lv_obj_set_size(srd->canvas.obj(), w, h);
+        srd->canvas.invalidate();
+        _stepRenderers.push_back(std::move(srd));
+    };
+
+    // Iterate all steps
+    for (size_t i = 0; i < steps.size(); ++i) {
+        const auto& step = steps[i];
+
+        // Step number and description
+        if (!step.description.empty()) {
+            char buf[200];
+            snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
+                     step.description.c_str());
+
+            lv_obj_t* descLbl = lv_label_create(_stepsContainer);
+            lv_label_set_text(descLbl, buf);
+            lv_obj_set_width(descLbl, SCREEN_W - 2 * PAD - 8);
+            lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
+            lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+            lv_obj_set_style_text_color(descLbl, lv_color_hex(0x1A1A1A), LV_PART_MAIN);
+        }
+
+        // Reason label (right side / below)
+        if (!step.reason.empty()) {
+            lv_obj_t* reasonLbl = lv_label_create(_stepsContainer);
+            char reasonBuf[128];
+            snprintf(reasonBuf, sizeof(reasonBuf), "  " LV_SYMBOL_RIGHT " %s",
+                     step.reason.c_str());
+            lv_label_set_text(reasonLbl, reasonBuf);
+            lv_obj_set_style_text_font(reasonLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+            lv_obj_set_style_text_color(reasonLbl, lv_color_hex(0x4A90D9), LV_PART_MAIN);
+        }
+
+        // MathCanvas for CAS expression
+        if (step.mathExpr) {
+            vpam::NodePtr astNode = cas::SymExprToAST::convert(step.mathExpr);
+            emitCanvas(std::move(astNode));
+        }
+    }
+
+    // Footer hint
+    lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
+    lv_label_set_text(hintLbl,
+                      LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    F2/AC: Back");
+    lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hintLbl, lv_color_hex(0x808080), LV_PART_MAIN);
 }

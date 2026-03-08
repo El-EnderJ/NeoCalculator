@@ -117,6 +117,7 @@ void SettingsApp::createUI() {
     const char* labels[NUM_ITEMS] = {
         "Complex numbers",
         "Decimal precision",
+        "Step-by-step mode",
     };
 
     for (int i = 0; i < NUM_ITEMS; ++i) {
@@ -197,6 +198,15 @@ void SettingsApp::updateValues() {
     snprintf(buf, sizeof(buf), "%d digits", setting_decimal_precision);
     lv_label_set_text(_values[1], buf);
     lv_obj_set_style_text_color(_values[1], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+
+    // Step-by-step educational mode
+    if (setting_edu_steps) {
+        lv_label_set_text(_values[2], "ON");
+        lv_obj_set_style_text_color(_values[2], lv_color_hex(COL_VALUE_ON), LV_PART_MAIN);
+    } else {
+        lv_label_set_text(_values[2], "OFF");
+        lv_obj_set_style_text_color(_values[2], lv_color_hex(COL_VALUE_OFF), LV_PART_MAIN);
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -221,6 +231,10 @@ void SettingsApp::toggleCurrent() {
             setting_decimal_precision = PRECISIONS[idx];
             break;
         }
+
+        case 2:  // Step-by-step educational mode toggle
+            setting_edu_steps = !setting_edu_steps;
+            break;
     }
 
     updateValues();

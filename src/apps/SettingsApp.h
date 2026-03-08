@@ -4,7 +4,7 @@
  * LVGL-native app with clean NumWorks-inspired UI:
  *   - Complex roots toggle (ON/OFF)
  *   - Decimal precision selector (6/8/10/12)
- *   - Angle mode display (informational)
+ *   - Step-by-step educational mode toggle (ON/OFF)
  *
  * Part of: NumOS — System Settings
  */
@@ -29,7 +29,7 @@ public:
     bool isActive() const { return _screen != nullptr; }
 
 private:
-    static constexpr int NUM_ITEMS = 2;
+    static constexpr int NUM_ITEMS = 3;
     static constexpr int SCREEN_W  = 320;
     static constexpr int SCREEN_H  = 240;
     static constexpr int PAD       = 12;

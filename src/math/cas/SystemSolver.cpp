@@ -20,6 +20,7 @@
 #include "SymPolyMulti.h"
 #include "OmniSolver.h"
 #include "SymSimplify.h"
+#include "TutorTemplates.h"
 #include <cmath>
 #include <cstdlib>
 
@@ -158,7 +159,11 @@ SystemMethod SystemSolver::analyzeAndChoose(const LinEq& eq1, const LinEq& eq2) 
 // ════════════════════════════════════════════════════════════════════
 
 SystemResult SystemSolver::solve2x2(const LinEq& eq1, const LinEq& eq2,
-                                     char var1, char var2) {
+                                     char var1, char var2, SymExprArena* arena) {
+    if (arena) {
+        return solveSystem2x2Tutor(eq1, eq2, var1, var2, arena);
+    }
+    
     SystemResult result;
     result.numVars = 2;
     result.vars[0] = var1;

@@ -466,6 +466,22 @@ void MathCanvas::computeCursorPosition(int16_t baseX, int16_t baseY) {
                 // Variable (part of lower limit for summation, e.g. "n=1")
                 search(sm->variable(), lowerX, lowerY, fmLim, fmLim.superscript());
             }
+            else if (node->type() == NodeType::Subscript) {
+                auto* sub = static_cast<const NodeSubscript*>(node);
+                const auto& baseL = sub->base()->layout();
+
+                // Base (fuente normal)
+                search(sub->base(), x, yBaseline, fm, fmSmall);
+                if (result.found) return;
+
+                // Subscript (fuente reducida, bajada)
+                FontMetrics fmSub = fm.superscript();
+                int16_t subDrop = static_cast<int16_t>(
+                    std::max(static_cast<int>(fm.descent * NodeSubscript::SUB_DROP_NUM / NodeSubscript::SUB_DROP_DEN), 2));
+                int16_t subX = static_cast<int16_t>(x + baseL.width);
+                int16_t subBaseline = static_cast<int16_t>(yBaseline + subDrop);
+                search(sub->subscript(), subX, subBaseline, fmSub, fmSub.superscript());
+            }
         }
     };
 
@@ -580,6 +596,10 @@ void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
             break;
         case NodeType::Summation:
             drawSummation(layer, static_cast<const NodeSummation*>(node),
+                          x, yBaseline, fm, font, depth);
+            break;
+        case NodeType::Subscript:
+            drawSubscript(layer, static_cast<const NodeSubscript*>(node),
                           x, yBaseline, fm, font, depth);
             break;
     }
@@ -1164,6 +1184,35 @@ void MathCanvas::drawSummation(lv_layer_t* layer, const NodeSummation* node,
     // ── Body expression (right of symbol) ──
     int16_t bodyX = static_cast<int16_t>(x + symColW + NodeSummation::BODY_GAP);
     drawNode(layer, node->body(), bodyX, yBaseline, fm, font, depth + 1);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// drawSubscript — Generic subscript: base_subscript (e.g., x₁, x₂)
+//
+//    ┌base┐┌sub┐   El subíndice se baja ~33% del descent
+//    │ x  ││ 1 │   Fuente reducida (~70%)
+//    └────┘└───┘
+//
+// Layout mirrors NodeLogBase subscript positioning.
+// ════════════════════════════════════════════════════════════════════════════
+
+void MathCanvas::drawSubscript(lv_layer_t* layer, const NodeSubscript* node,
+                                int16_t x, int16_t yBaseline,
+                                const FontMetrics& fm, const lv_font_t* font,
+                                int depth) {
+    const auto& baseL = node->base()->layout();
+
+    // ── Base (fuente normal) ──
+    drawNode(layer, node->base(), x, yBaseline, fm, font, depth + 1);
+
+    // ── Subíndice (fuente reducida, bajada) ──
+    FontMetrics fmSub = fm.superscript();
+    int16_t subDrop = static_cast<int16_t>(
+        std::max(static_cast<int>(fm.descent * NodeSubscript::SUB_DROP_NUM
+                                  / NodeSubscript::SUB_DROP_DEN), 2));
+    int16_t subX = static_cast<int16_t>(x + baseL.width);
+    int16_t subBaseline = static_cast<int16_t>(yBaseline + subDrop);
+    drawNode(layer, node->subscript(), subX, subBaseline, fmSub, _fontSmall, depth + 1);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

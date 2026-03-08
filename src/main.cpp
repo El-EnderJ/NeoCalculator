@@ -31,6 +31,7 @@ bool setting_complex_enabled = true;int  setting_decimal_precision = 10;
   #include "../tests/OmniSolverTest.h"
   #include "../tests/CalculusStressTest.h"
   #include "../tests/BigIntTest.h"
+  #include "../tests/TutorTemplateTest.h"
 #endif
 
 // ---- Objetos globales ----
@@ -68,6 +69,7 @@ void setup() {
     cas::runOmniSolverTests();
     cas::runCalculusStressTest();
     cas::runBigIntTests();
+    cas::runTutorTests();
 #endif
 
     // -- 1. PSRAM --

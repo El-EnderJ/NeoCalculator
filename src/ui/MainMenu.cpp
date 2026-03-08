@@ -45,6 +45,8 @@ static constexpr int ICON_SIZE     = 44;
 static constexpr int ICON_RADIUS   = 10;
 static constexpr int CARD_PAD      = 6;
 static constexpr int ROW_H         = 78;
+static constexpr int CARD_W        = 94;   // 3×94 + 2×6(gap) + 2×8(pad) = 310 ≤ 320
+static constexpr int CARD_H        = ROW_H; // icon(44)+label(18)+padding(16)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NumWorks colour palette
@@ -190,6 +192,14 @@ int MainMenu::focusedCardId() const {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void MainMenu::create() {
+    // Memory safety: destroy any previous state if create() is re-called
+    if (_screen) {
+        if (_group)  { lv_group_delete(_group); _group  = nullptr; }
+        lv_obj_delete(_screen);   _screen    = nullptr;
+        _grid      = nullptr;
+        _firstCard = nullptr;
+    }
+
     initStyles();
 
     _screen = lv_obj_create(nullptr);
@@ -203,10 +213,18 @@ void MainMenu::create() {
     buildStatusBar();
     buildGrid();
 
-    // Focus the first card so the blue selection border is visible on boot
+    // Force LVGL to resolve all flex card positions NOW — without this the
+    // layout is computed lazily at the next render frame, so the card
+    // coordinates are still (0,0) and lv_obj_scroll_to_view() is a no-op.
+    Serial.println("[GUI] Forcing layout update...");
+    lv_obj_update_layout(_grid);
+
+    // Focus IDs 0 and snap the container to the top without animation so
+    // "Calculation" is always dead-center-visible on power-on.
     if (_firstCard) {
         lv_group_focus_obj(_firstCard);
-        Serial.printf("[GUI] Initial focus on first card: %p\n", (void*)_firstCard);
+        lv_obj_scroll_to_view(_firstCard, LV_ANIM_OFF);
+        Serial.println("[GUI] Initial scroll to App ID 0: Done.");
     }
 }
 
@@ -256,15 +274,7 @@ void MainMenu::buildStatusBar() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void MainMenu::buildGrid() {
-    static lv_coord_t col_dsc[] = {
-        LV_PCT(33), LV_PCT(33), LV_PCT(34),
-        LV_GRID_TEMPLATE_LAST
-    };
-    static lv_coord_t row_dsc[] = {
-        ROW_H, ROW_H, ROW_H, ROW_H, ROW_H,
-        LV_GRID_TEMPLATE_LAST
-    };
-
+    // No static col_dsc/row_dsc arrays — Flex ROW_WRAP creates rows dynamically.
     _grid = lv_obj_create(_screen);
     lv_obj_set_pos(_grid, 0, STATUS_BAR_H);
     lv_obj_set_size(_grid, SCREEN_W, GRID_H);
@@ -286,8 +296,16 @@ void MainMenu::buildGrid() {
     lv_obj_set_style_radius(_grid,   2,                        LV_PART_SCROLLBAR);
     lv_obj_set_style_width(_grid,    3,                        LV_PART_SCROLLBAR);
 
-    lv_obj_set_layout(_grid, LV_LAYOUT_GRID);
-    lv_obj_set_grid_dsc_array(_grid, col_dsc, row_dsc);
+    // Flex layout: ROW_WRAP creates new rows automatically — no descriptor arrays.
+    lv_obj_set_layout(_grid, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(_grid, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(_grid,
+        LV_FLEX_ALIGN_CENTER,   // main axis:  centre cards within each row
+        LV_FLEX_ALIGN_CENTER,   // cross axis: centre item height within row
+        LV_FLEX_ALIGN_START);   // track cross: rows start from TOP — prevents startup scroll-to-middle glitch
+
+    // Elastic overscroll bounce at edges (smoother feel)
+    lv_obj_add_flag(_grid, LV_OBJ_FLAG_SCROLL_ELASTIC);
 
     // NOTE: lv_gridnav removed — each card is added individually to _group.
     // Standard LVGL group navigation moves focus directly on cards, which
@@ -303,7 +321,13 @@ void MainMenu::buildGrid() {
 
     _firstCard = nullptr;
     for (int i = 0; i < APP_COUNT; ++i) {
-        lv_obj_t* card = buildCard(_grid, APPS[i], i % 3, i / 3);
+        // Bounds guard: APP_COUNT must never exceed the APPS[] array length
+        if (i >= static_cast<int>(sizeof(APPS) / sizeof(APPS[0]))) {
+            Serial.printf("[GUI] WARN: APP_COUNT(%d) > APPS[] size — skipping id %d\n",
+                          APP_COUNT, i);
+            break;
+        }
+        lv_obj_t* card = buildCard(_grid, APPS[i]);
         if (i == 0) _firstCard = card;   // Remember first for initial focus
     }
 }
@@ -312,15 +336,13 @@ void MainMenu::buildGrid() {
 // buildCard()
 // ═══════════════════════════════════════════════════════════════════════════════
 
-lv_obj_t* MainMenu::buildCard(lv_obj_t* parent,
-                               const AppEntry& app,
-                               int col, int row)
+lv_obj_t* MainMenu::buildCard(lv_obj_t* parent, const AppEntry& app)
 {
     lv_obj_t* card = lv_obj_create(parent);
 
-    lv_obj_set_grid_cell(card,
-        LV_GRID_ALIGN_STRETCH, col, 1,
-        LV_GRID_ALIGN_STRETCH, row, 1);
+    // Explicit size so Flex ROW_WRAP places exactly 3 cards per row.
+    // Formula: 3×CARD_W + 2×CARD_GAP_COL + 2×GRID_PAD = 310 ≤ 320.
+    lv_obj_set_size(card, CARD_W, CARD_H);
 
     lv_obj_set_layout(card, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);

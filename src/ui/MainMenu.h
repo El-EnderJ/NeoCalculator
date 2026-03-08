@@ -55,13 +55,14 @@ private:
     // ── UI construction ──────────────────────────────────────────────────
     void buildStatusBar();
     void buildGrid();
-    lv_obj_t* buildCard(lv_obj_t* parent, const AppEntry& app,
-                         int col, int row);
+    lv_obj_t* buildCard(lv_obj_t* parent, const AppEntry& app);
     lv_obj_t* cardById(int appId) const;
     int focusedCardId() const;
 
     /** Creates a geometric vector icon inside `parent` based on app id. */
     void createAppIcon(lv_obj_t* parent, const AppEntry& app);
+
+    // Flex layout: col/row params no longer required (dynamic wrapping)
 
     // ── Styles ───────────────────────────────────────────────────────────
     void initStyles();

@@ -188,9 +188,10 @@ void NodeOperator::calculateLayout(const FontMetrics& fm) {
 
 const char* NodeOperator::symbol() const {
     switch (_op) {
-        case OpKind::Add: return "+";
-        case OpKind::Sub: return "-";              // ASCII hyphen-minus (U+002D)
-        case OpKind::Mul: return "\xc3\x97";       // × (U+00D7)
+        case OpKind::Add:       return "+";
+        case OpKind::Sub:       return "-";              // ASCII hyphen-minus (U+002D)
+        case OpKind::Mul:       return "\xc3\x97";       // × (U+00D7)
+        case OpKind::PlusMinus: return "\xc2\xb1";       // ± (U+00B1)
     }
     return "?";
 }
@@ -887,6 +888,70 @@ void NodeSummation::calculateLayout(const FontMetrics& fm) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  N o d e S u b s c r i p t
+// ════════════════════════════════════════════════════════════════════════════
+NodeSubscript::NodeSubscript() : MathNode(NodeType::Subscript) {
+    _base = makeEmptyRow();
+    _base->setParent(this);
+    _subscript = makeEmptyRow();
+    _subscript->setParent(this);
+}
+
+NodeSubscript::NodeSubscript(NodePtr base, NodePtr subscript)
+    : MathNode(NodeType::Subscript)
+{
+    setBase(std::move(base));
+    setSubscript(std::move(subscript));
+}
+
+void NodeSubscript::calculateLayout(const FontMetrics& fm) {
+    // 1. Base en fuente normal
+    _base->calculateLayout(fm);
+    const auto& baseL = _base->layout();
+
+    // 2. Subíndice en fuente reducida (same scale as superscript, ~70%)
+    FontMetrics fmSub = fm.superscript();
+    _subscript->calculateLayout(fmSub);
+    const auto& subL = _subscript->layout();
+
+    // 3. Ancho: base + subíndice (pegados, sin gap)
+    _layout.width = baseL.width + subL.width;
+
+    // 4. Descenso del subíndice:
+    //    El tope del subíndice queda a SUB_DROP_NUM/SUB_DROP_DEN del descent
+    //    bajo el baseline. (Mirrors NodeLogBase layout)
+    int16_t subDrop = (fm.descent * SUB_DROP_NUM) / SUB_DROP_DEN;
+    if (subDrop < 2) subDrop = 2;  // mínimo sensato
+
+    // El fondo del subíndice está a subDrop + subL.descent bajo el baseline
+    int16_t subBottom = subDrop + subL.descent;
+
+    // 5. Ascent: de la base (el subíndice no sube)
+    _layout.ascent = baseL.ascent;
+
+    // 6. Descent: mayor entre base y subíndice
+    _layout.descent = std::max(baseL.descent, subBottom);
+}
+
+MathNode* NodeSubscript::child(int index) const {
+    if (index == 0) return _base.get();
+    if (index == 1) return _subscript.get();
+    return nullptr;
+}
+
+void NodeSubscript::setBase(NodePtr node) {
+    _base = node ? std::move(node) : makeEmptyRow();
+    _base->setParent(this);
+}
+
+void NodeSubscript::setSubscript(NodePtr node) {
+    _subscript = node ? std::move(node) : makeEmptyRow();
+    _subscript->setParent(this);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════════════
 //  F a c t o r y   H e l p e r s
 // ════════════════════════════════════════════════════════════════════════════
 NodePtr makeRow() {
@@ -975,6 +1040,13 @@ NodePtr makeSummation(NodePtr lower, NodePtr upper,
                                                std::move(body), std::move(variable));
     }
     return std::make_unique<NodeSummation>();
+}
+
+NodePtr makeSubscript(NodePtr base, NodePtr subscript) {
+    if (base || subscript) {
+        return std::make_unique<NodeSubscript>(std::move(base), std::move(subscript));
+    }
+    return std::make_unique<NodeSubscript>();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1128,6 +1200,16 @@ std::string dumpTree(const MathNode* node, int indent) {
             out += dumpTree(node->child(3), indent + 2);
             break;
         }
+        case NodeType::Subscript: {
+            out += "Subscript" + metrics() + "\n";
+            appendIndent(out, indent + 1);
+            out += "base:\n";
+            out += dumpTree(node->child(0), indent + 2);
+            appendIndent(out, indent + 1);
+            out += "sub:\n";
+            out += dumpTree(node->child(1), indent + 2);
+            break;
+        }
     }
 
     return out;
@@ -1210,6 +1292,11 @@ NodePtr cloneNode(const MathNode* node) {
             auto* sm = static_cast<const NodeSummation*>(node);
             return makeSummation(cloneNode(sm->lower()), cloneNode(sm->upper()),
                                  cloneNode(sm->body()), cloneNode(sm->variable()));
+        }
+        case NodeType::Subscript: {
+            auto* sub = static_cast<const NodeSubscript*>(node);
+            return makeSubscript(cloneNode(sub->base()),
+                                 cloneNode(sub->subscript()));
         }
     }
     return nullptr;  // unreachable

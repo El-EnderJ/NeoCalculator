@@ -66,15 +66,17 @@ enum class NodeType : uint8_t {
     PeriodicDecimal,  // Decimal periódico con overline (solo resultado)
     DefIntegral,      // Definite integral: ∫[lower,upper] expr d(var)
     Summation,        // Summation series: ∑[lower,upper] expr (var=n)
+    Subscript,        // Generic subscript: base_subscript (e.g. x₁, x₂)
 };
 
 // ════════════════════════════════════════════════════════════════════════════
 // OpKind — Tipo de operador binario
 // ════════════════════════════════════════════════════════════════════════════
 enum class OpKind : uint8_t {
-    Add,   // +
-    Sub,   // −  (resta, no signo negativo)
-    Mul,   // ×
+    Add,       // +
+    Sub,       // −  (resta, no signo negativo)
+    Mul,       // ×
+    PlusMinus, // ±  (plus-minus, for quadratic formula)
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -725,6 +727,45 @@ private:
 };
 
 // ════════════════════════════════════════════════════════════════════════════
+// NodeSubscript — Generic subscript: base_subscript (e.g., x₁, x₂)
+//
+// Visually: base + subscript bajado respecto al baseline
+//   base      → NodeRow (contenido principal, ej. "x")
+//   subscript → NodeRow (subíndice, ej. "1", "2")
+//
+// Layout:
+//   ┌base┐┌sub┐   El subíndice se baja ~33% del descent (como NodeLogBase)
+//   │ x  ││ 1 │   La fuente del subíndice es ~70% de la normal.
+//   └────┘└───┘
+//
+// Used by the Educational Tutor Engine for x₁, x₂ in quadratic solutions.
+// ════════════════════════════════════════════════════════════════════════════
+class NodeSubscript : public MathNode {
+public:
+    NodeSubscript();
+    NodeSubscript(NodePtr base, NodePtr subscript);
+
+    void calculateLayout(const FontMetrics& fm) override;
+
+    int       childCount()     const override { return 2; }
+    MathNode* child(int index) const override;
+
+    MathNode* base()      const { return _base.get(); }
+    MathNode* subscript() const { return _subscript.get(); }
+
+    void setBase(NodePtr node);
+    void setSubscript(NodePtr node);
+
+    /// Ratio de descenso del subíndice (mirrors NodeLogBase)
+    static constexpr int16_t SUB_DROP_NUM = 1;   // numerador
+    static constexpr int16_t SUB_DROP_DEN = 3;   // denominador → 1/3 = 33%
+
+private:
+    NodePtr _base;
+    NodePtr _subscript;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
 // Factory helpers — Creación rápida de nodos
 // ════════════════════════════════════════════════════════════════════════════
 NodePtr makeRow();
@@ -765,6 +806,9 @@ NodePtr makePeriodicDecimal(const std::string& intPart,
 /// Integral definida con límites, cuerpo y variable opcionales
 NodePtr makeDefIntegral(NodePtr lower = nullptr, NodePtr upper = nullptr,
                         NodePtr body = nullptr, NodePtr variable = nullptr);
+
+/// Subscript genérico: base con subíndice (ej. x₁, x₂)
+NodePtr makeSubscript(NodePtr base = nullptr, NodePtr subscript = nullptr);
 
 /// Sumatorio con límites, cuerpo y variable opcionales
 NodePtr makeSummation(NodePtr lower = nullptr, NodePtr upper = nullptr,

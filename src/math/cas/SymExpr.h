@@ -83,6 +83,8 @@ enum class SymExprType : uint8_t {
     Mul,
     Pow,
     Func,
+    PlusMinus,   // Display-only: lhs ± rhs
+    Subscript,   // Display-only: base_sub
 };
 
 class SymExpr {
@@ -351,6 +353,60 @@ public:
 };
 
 // ════════════════════════════════════════════════════════════════════
+// SymPlusMinus — Display-only binary ± operator (IMMUTABLE)
+// ════════════════════════════════════════════════════════════════════
+
+class SymPlusMinus : public SymExpr {
+public:
+    SymExpr* const lhs;
+    SymExpr* const rhs;
+
+    SymPlusMinus(SymExpr* l, SymExpr* r)
+        : SymExpr(SymExprType::PlusMinus, computeHashStatic(l, r)),
+          lhs(l), rhs(r) {}
+
+    double      evaluate(double varVal) const override { return 0.0; } // Display only
+    SymExpr*    clone(SymExprArena& arena) const override;
+    std::string toString() const override { return "(±)"; }
+    bool        containsVar(char v) const override { return (lhs && lhs->containsVar(v)) || (rhs && rhs->containsVar(v)); }
+    bool        isPolynomial() const override { return false; }
+
+    static size_t computeHashStatic(const SymExpr* l, const SymExpr* r) {
+        size_t h = hashMix(0x08);
+        h = hashCombine(h, l ? l->_hash : 0);
+        h = hashCombine(h, r ? r->_hash : 0);
+        return h;
+    }
+};
+
+// ════════════════════════════════════════════════════════════════════
+// SymSubscript — Display-only subscript (IMMUTABLE)
+// ════════════════════════════════════════════════════════════════════
+
+class SymSubscript : public SymExpr {
+public:
+    SymExpr* const base;
+    SymExpr* const subscript;
+
+    SymSubscript(SymExpr* b, SymExpr* sub)
+        : SymExpr(SymExprType::Subscript, computeHashStatic(b, sub)),
+          base(b), subscript(sub) {}
+
+    double      evaluate(double varVal) const override { return 0.0; } // Display only
+    SymExpr*    clone(SymExprArena& arena) const override;
+    std::string toString() const override { return "(_)"; }
+    bool        containsVar(char v) const override { return (base && base->containsVar(v)) || (subscript && subscript->containsVar(v)); }
+    bool        isPolynomial() const override { return false; }
+
+    static size_t computeHashStatic(const SymExpr* b, const SymExpr* sub) {
+        size_t h = hashMix(0x09);
+        h = hashCombine(h, b ? b->_hash : 0);
+        h = hashCombine(h, sub ? sub->_hash : 0);
+        return h;
+    }
+};
+
+// ════════════════════════════════════════════════════════════════════
 // Canonical ordering comparator
 //
 // Defines the total order for commutative children (Add terms,
@@ -483,6 +539,18 @@ inline SymExpr* symPow(SymExprArena& a, SymExpr* base, SymExpr* exp) {
 /// Function node (cons'd)
 inline SymExpr* symFunc(SymExprArena& a, SymFuncKind kind, SymExpr* arg) {
     auto* node = a.create<SymFunc>(kind, arg);
+    return a.consTable().getOrCreate(node);
+}
+
+/// PlusMinus node (cons'd)
+inline SymExpr* symPlusMinus(SymExprArena& a, SymExpr* lhs, SymExpr* rhs) {
+    auto* node = a.create<SymPlusMinus>(lhs, rhs);
+    return a.consTable().getOrCreate(node);
+}
+
+/// Subscript node (cons'd)
+inline SymExpr* symSubscript(SymExprArena& a, SymExpr* base, SymExpr* sub) {
+    auto* node = a.create<SymSubscript>(base, sub);
     return a.consTable().getOrCreate(node);
 }
 

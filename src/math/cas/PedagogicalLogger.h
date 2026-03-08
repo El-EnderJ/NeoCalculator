@@ -65,6 +65,26 @@ enum class SolveAction : uint8_t {
     QUAD_COMPUTE_COMPLEX_PARTS,     ///< Real and imaginary components
     QUAD_PRESENT_COMPLEX_ROOTS,     ///< x = re ± im·i
 
+    // ── Tutor: Expanded Quadratic ──────────────────────────────────
+    QUAD_SHOW_GENERAL_FORMULA,      ///< Show generic x = (-b ± √(b²-4ac))/2a
+    QUAD_SUBSTITUTE_VALUES,         ///< Substitute numeric a,b,c into formula
+    QUAD_SIMPLIFY_UNDER_RADICAL,    ///< Simplify b²-4ac step by step
+    QUAD_COMPUTE_SQRT_VALUE,        ///< √D = numeric value
+    QUAD_SEPARATE_ROOTS,            ///< Separate into x₁ and x₂ expressions
+    QUAD_SIMPLIFY_ROOT,             ///< Simplify one root fraction
+
+    // ── Tutor: Cubic (Ruffini) ─────────────────────────────────────
+    CUBIC_TRY_ROOT,                 ///< "Testing x = r..."
+    CUBIC_ROOT_FOUND,               ///< "P(r) = 0 → x₁ = r"
+    CUBIC_SYNTHETIC_DIVISION,       ///< Show Ruffini table
+    CUBIC_RESULTING_QUADRATIC,      ///< Resulting quadratic after division
+
+    // ── Tutor: System 2x2 (Cramer) ─────────────────────────────────
+    SYSTEM_SHOW_MATRIX,             ///< "Representing the system as a matrix:"
+    SYSTEM_CRAMER_DETERMINANT,      ///< "Calculating the main determinant D:"
+    SYSTEM_CRAMER_DX_DY,            ///< "Calculating Dx and Dy:"
+    SYSTEM_CRAMER_SOLUTION,         ///< "x = Dx/D, y = Dy/D"
+
     // ── Newton-Raphson ─────────────────────────────────────────────
     NEWTON_START,                   ///< Explain numeric fallback
     NEWTON_CONVERGED,               ///< Found a root
@@ -84,6 +104,7 @@ struct ActionContext {
     int          numValues = 0;              ///< How many values/labels are set
 
     const SymEquation* snapshot = nullptr;   ///< Optional equation state
+    SymExpr*     customExpr = nullptr;       ///< Custom MathAST tree for complex steps
     int          degree = 0;                 ///< Equation degree (for type identification)
     int          solutionIndex = 0;          ///< Which solution (1, 2, ...)
     int          iterCount = 0;              ///< Newton iteration count
@@ -96,6 +117,7 @@ struct ActionContext {
     ActionContext& solIdx(int i) { solutionIndex = i; return *this; }
     ActionContext& iters(int n) { iterCount = n; return *this; }
     ActionContext& snap(const SymEquation* eq) { snapshot = eq; return *this; }
+    ActionContext& expr(SymExpr* e) { customExpr = e; return *this; }
     ActionContext& withArena(SymExprArena* a) { arena = a; return *this; }
 
     ActionContext& val(const char* label, const CASNumber& v) {

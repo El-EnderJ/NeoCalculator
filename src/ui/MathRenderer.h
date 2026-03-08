@@ -235,6 +235,11 @@ private:
                        const FontMetrics& fm, const lv_font_t* font,
                        int depth = 0);
 
+    void drawSubscript(lv_layer_t* layer, const NodeSubscript* node,
+                       int16_t x, int16_t yBaseline,
+                       const FontMetrics& fm, const lv_font_t* font,
+                       int depth = 0);
+
     // ── Cursor ───────────────────────────────────────────────────────────
     void drawCursor(lv_layer_t* layer);
     void computeCursorPosition(int16_t baseX, int16_t baseY);

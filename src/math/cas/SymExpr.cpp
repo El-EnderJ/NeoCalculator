@@ -301,6 +301,18 @@ bool SymFunc::containsVar(char v) const {
 // SymFunc::isPolynomial() → always false (defined inline in header)
 
 // ════════════════════════════════════════════════════════════════════
+// SymPlusMinus & SymSubscript (Display-only)
+// ════════════════════════════════════════════════════════════════════
+
+SymExpr* SymPlusMinus::clone(SymExprArena& arena) const {
+    return arena.create<SymPlusMinus>(lhs->clone(arena), rhs->clone(arena));
+}
+
+SymExpr* SymSubscript::clone(SymExprArena& arena) const {
+    return arena.create<SymSubscript>(base->clone(arena), subscript->clone(arena));
+}
+
+// ════════════════════════════════════════════════════════════════════
 // toSymPoly() — Convert polynomial SymExpr tree → SymPoly
 // ════════════════════════════════════════════════════════════════════
 
@@ -368,6 +380,8 @@ static SymPoly exprToPolyImpl(const SymExpr* expr, char var) {
             return result;
         }
 
+        case SymExprType::PlusMinus:
+        case SymExprType::Subscript:
         case SymExprType::Func:
         default:
             return SymPoly::fromConstant(vpam::ExactVal::fromInt(0));

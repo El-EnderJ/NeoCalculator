@@ -139,7 +139,7 @@ public:
     /// Solve a 2×2 system of linear equations.
     /// Variables default to x, y.
     SystemResult solve2x2(const LinEq& eq1, const LinEq& eq2,
-                          char var1 = 'x', char var2 = 'y');
+                          char var1 = 'x', char var2 = 'y', SymExprArena* arena = nullptr);
 
     /// Solve a 3×3 system via Gaussian Elimination.
     /// Variables default to x, y, z.

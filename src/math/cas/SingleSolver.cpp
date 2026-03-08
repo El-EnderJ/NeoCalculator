@@ -23,6 +23,7 @@
  */
 
 #include "SingleSolver.h"
+#include "TutorTemplates.h"
 #include "CASNumber.h"
 #include "PedagogicalLogger.h"
 #include "../../Config.h"
@@ -89,6 +90,8 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable,
         if (solveQuadratic(normalized, variable, result, arena)) {
             result.ok = true;
         }
+    } else if (deg == 3 && arena) {
+        result = solveCubicTutor(normalized, variable, result.steps, arena);
     } else {
         result.steps.logAction(
             SolveAction::NEWTON_START,
@@ -123,6 +126,11 @@ SymEquation SingleSolver::normalize(const SymEquation& eq, PedagogicalLogger& lo
 
 bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& result,
                                SymExprArena* arena) {
+    if (arena) {
+        result = solveLinearTutor(eq, var, result.steps, arena);
+        return result.ok;
+    }
+
     const SymPoly& f = eq.lhs;
 
     // Extract coefficients as CASNumber (from ExactVal bridge)
@@ -202,6 +210,12 @@ bool SingleSolver::solveLinear(const SymEquation& eq, char var, SolveResult& res
 
 bool SingleSolver::solveQuadratic(const SymEquation& eq, char var, SolveResult& result,
                                   SymExprArena* arena) {
+    // Tutor mode: full step-by-step when arena is available
+    if (arena) {
+        result = solveQuadraticTutor(eq, var, result.steps, arena);
+        return result.ok;
+    }
+
     const SymPoly& f = eq.lhs;
 
     // ── Extract coefficients via CASNumber ──────────────────────────

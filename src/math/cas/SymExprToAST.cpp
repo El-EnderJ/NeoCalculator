@@ -186,6 +186,10 @@ NodePtr SymExprToAST::convert(const SymExpr* expr) {
             return convertPow(static_cast<const SymPow*>(expr));
         case SymExprType::Func:
             return convertFunc(static_cast<const SymFunc*>(expr));
+        case SymExprType::PlusMinus:
+            return convertPlusMinus(static_cast<const SymPlusMinus*>(expr));
+        case SymExprType::Subscript:
+            return convertSubscript(static_cast<const SymSubscript*>(expr));
         default:
             return makeNumber("?");
     }
@@ -488,6 +492,40 @@ NodePtr SymExprToAST::convertFunc(const SymFunc* f) {
         default:
             return makeNumber("?");
     }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// convertPlusMinus — SymPlusMinus → NodeRow with ± operator
+// ════════════════════════════════════════════════════════════════════
+
+NodePtr SymExprToAST::convertPlusMinus(const SymPlusMinus* pm) {
+    auto row = makeRow();
+    auto* r = static_cast<NodeRow*>(row.get());
+    
+    // We don't prepend "0 ±" if LHS is empty. We assume the tutor builds it cleanly.
+    if (pm->lhs) {
+        appendFlat(r, convert(pm->lhs));
+    }
+    
+    r->appendChild(makeOperator(OpKind::PlusMinus));
+    
+    // If rhs is negative, parens are usually needed, but tutor logic should handle it.
+    if (pm->rhs) {
+        appendFlat(r, convert(pm->rhs));
+    }
+    
+    return row;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// convertSubscript — SymSubscript → NodeSubscript
+// ════════════════════════════════════════════════════════════════════
+
+NodePtr SymExprToAST::convertSubscript(const SymSubscript* sub) {
+    // Both base and subscript need to be single nodes OR wrapped in Row
+    NodePtr baseNode = ensureRow(convert(sub->base));
+    NodePtr subNode  = ensureRow(convert(sub->subscript));
+    return makeSubscript(std::move(baseNode), std::move(subNode));
 }
 
 } // namespace cas

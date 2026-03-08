@@ -1263,7 +1263,8 @@ void EquationsApp::solveSystem() {
     if (linearOk) {
         cas::SystemSolver sysSolver;
         if (numEqs == 2) {
-            _systemResult = sysSolver.solve2x2(linEqs[0], linEqs[1]);
+            _arena.reset();
+            _systemResult = sysSolver.solve2x2(linEqs[0], linEqs[1], 'x', 'y', &_arena);
         } else {
             _systemResult = sysSolver.solve3x3(
                 linEqs[0], linEqs[1], linEqs[2]);

@@ -57,6 +57,8 @@ private:
     static vpam::NodePtr convertMul(const SymMul* m);
     static vpam::NodePtr convertPow(const SymPow* p);
     static vpam::NodePtr convertFunc(const SymFunc* f);
+    static vpam::NodePtr convertPlusMinus(const SymPlusMinus* pm);
+    static vpam::NodePtr convertSubscript(const SymSubscript* sub);
 
     /// Helper: render an ExactVal as AST (reuses SymToAST pattern).
     static vpam::NodePtr renderExactVal(const vpam::ExactVal& val);

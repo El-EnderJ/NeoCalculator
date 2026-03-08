@@ -155,6 +155,71 @@ std::string PedagogicalLogger::buildPhrase(SolveAction action,
     case SolveAction::NEWTON_NO_CONVERGENCE:
         return "Newton-Raphson did not converge to a real root.";
 
+    // ── Tutor: Expanded Quadratic ──────────────────────────────────
+
+    case SolveAction::QUAD_SHOW_GENERAL_FORMULA:
+        return "The quadratic formula states:";
+
+    case SolveAction::QUAD_SUBSTITUTE_VALUES:
+        return "Substituting the coefficient values:";
+
+    case SolveAction::QUAD_SIMPLIFY_UNDER_RADICAL:
+        return "Simplifying under the radical:";
+
+    case SolveAction::QUAD_COMPUTE_SQRT_VALUE:
+        return "Computing the square root:";
+
+    case SolveAction::QUAD_SEPARATE_ROOTS: {
+        std::string label = "Separating into " + v;
+        // Use subscript numbers in text as Unicode
+        label += "\xe2\x82\x81 and " + v + "\xe2\x82\x82:";  // ₁ and ₂
+        return label;
+    }
+
+    case SolveAction::QUAD_SIMPLIFY_ROOT: {
+        char idxBuf[4];
+        snprintf(idxBuf, sizeof(idxBuf), "%d", ctx.solutionIndex);
+        return std::string("Simplifying ") + v + idxBuf + ":";
+    }
+
+    // ── Tutor: Cubic (Ruffini) ──────────────────────────────────────
+
+    case SolveAction::CUBIC_TRY_ROOT: {
+        const CASNumber* r = findVal(ctx, "root");
+        if (r) {
+            return "Testing " + v + " = " + r->toString() + " as a potential root...";
+        }
+        return "Testing a rational root candidate...";
+    }
+
+    case SolveAction::CUBIC_ROOT_FOUND: {
+        const CASNumber* r = findVal(ctx, "root");
+        if (r) {
+            return "P(" + r->toString() + ") = 0, so " + v +
+                   "\xe2\x82\x81 = " + r->toString();
+        }
+        return "Root found by rational root test.";
+    }
+
+    case SolveAction::CUBIC_SYNTHETIC_DIVISION:
+        return "Performing synthetic (Ruffini) division:";
+
+    case SolveAction::CUBIC_RESULTING_QUADRATIC:
+        return "The resulting quadratic factor is:";
+
+    // ── Tutor: System 2x2 (Cramer) ──────────────────────────────────
+    case SolveAction::SYSTEM_SHOW_MATRIX:
+        return "Writing the system in matrix form:";
+
+    case SolveAction::SYSTEM_CRAMER_DETERMINANT:
+        return "Calculating the main determinant D:";
+
+    case SolveAction::SYSTEM_CRAMER_DX_DY:
+        return "Calculating determinants Dx and Dy:";
+
+    case SolveAction::SYSTEM_CRAMER_SOLUTION:
+        return "Finding values for x and y:";
+
     } // switch
 
     return "Unknown action";
@@ -381,6 +446,29 @@ void PedagogicalLogger::logAction(SolveAction action,
         }
         break;
     }
+
+    // ── Tutor: all new tutor actions are annotations ────────────────
+    case SolveAction::QUAD_SHOW_GENERAL_FORMULA:
+    case SolveAction::QUAD_SUBSTITUTE_VALUES:
+    case SolveAction::QUAD_SIMPLIFY_UNDER_RADICAL:
+    case SolveAction::QUAD_COMPUTE_SQRT_VALUE:
+    case SolveAction::QUAD_SEPARATE_ROOTS:
+    case SolveAction::QUAD_SIMPLIFY_ROOT:
+    case SolveAction::CUBIC_TRY_ROOT:
+    case SolveAction::CUBIC_ROOT_FOUND:
+    case SolveAction::CUBIC_SYNTHETIC_DIVISION:
+    case SolveAction::CUBIC_RESULTING_QUADRATIC:
+    case SolveAction::SYSTEM_SHOW_MATRIX:
+    case SolveAction::SYSTEM_CRAMER_DETERMINANT:
+    case SolveAction::SYSTEM_CRAMER_DX_DY:
+    case SolveAction::SYSTEM_CRAMER_SOLUTION:
+        // These use SymExpr math chunks built by the TutorTemplate
+        if (ctx.customExpr) {
+            logExpr(phrase, ctx.customExpr, method);
+        } else {
+            logNote(phrase, method);
+        }
+        break;
 
     // ── All other actions are annotations (text-only) ───────────────
     default:

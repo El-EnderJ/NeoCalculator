@@ -22,6 +22,10 @@ namespace cas {
 
 using vpam::ExactVal;
 
+static constexpr int64_t RADICAL_NUMERATOR = 1;
+static constexpr int64_t RADICAL_DENOMINATOR = 2;
+static constexpr double SOLUTION_TOLERANCE = 1e-6;
+
 // ════════════════════════════════════════════════════════════════════
 // Helpers
 // ════════════════════════════════════════════════════════════════════
@@ -69,19 +73,19 @@ static bool isHalfPower(const SymExpr* expr, SymExpr*& inner) {
     auto* num = static_cast<const SymNum*>(pow->exponent);
     if (!num->isPureRational()) return false;
     vpam::ExactVal ev = num->toExactVal();
-    if (ev.num == 1 && ev.den == 2) {
+    if (ev.num == RADICAL_NUMERATOR && ev.den == RADICAL_DENOMINATOR) {
         inner = pow->base;
         return true;
     }
     return false;
 }
 
-static bool extractRadicalSide(SymExpr* expr, char var, SymExpr*& radicalExpr,
+static bool extractRadicalSide(SymExpr* expr,
+                               SymExpr*& radicalExpr,
                                SymExpr*& radicalInner, SymExpr*& otherTerms) {
     radicalExpr = nullptr;
     radicalInner = nullptr;
     otherTerms = nullptr;
-    (void)var;
 
     SymExpr* inner = nullptr;
     if (isHalfPower(expr, inner)) {
@@ -661,7 +665,7 @@ static bool valuesMatch(SymExpr* lhs, SymExpr* rhs, double x) {
     double lhsVal = lhs->evaluate(x);
     double rhsVal = rhs->evaluate(x);
     if (!std::isfinite(lhsVal) || !std::isfinite(rhsVal)) return false;
-    return std::abs(lhsVal - rhsVal) < 1e-6;
+    return std::abs(lhsVal - rhsVal) < SOLUTION_TOLERANCE;
 }
 
 bool solveLogarithmicTutor(SymExpr* lhs, SymExpr* rhs, char var,
@@ -831,6 +835,8 @@ bool solveExponentialTutor(SymExpr* lhs, SymExpr* rhs, char var,
                 .expr(symAdd(arena, exponent, symNeg(arena, targetRhs))),
             MethodId::General);
     } else {
+        // `isolatedRhs` is guaranteed constant here, so evaluating at x = 0 is
+        // simply a convenient way to obtain its numeric value for the log domain check.
         if (isNumericExpr(isolatedRhs, var) && isolatedRhs->evaluate(0.0) <= 0.0) {
             return false;
         }
@@ -871,9 +877,9 @@ bool solveRadicalTutor(SymExpr* lhs, SymExpr* rhs, char var,
     SymExpr* extraTerms = nullptr;
     SymExpr* otherSide = nullptr;
 
-    if (extractRadicalSide(lhs, var, radicalExpr, radicalInner, extraTerms)) {
+    if (extractRadicalSide(lhs, radicalExpr, radicalInner, extraTerms)) {
         otherSide = rhs;
-    } else if (extractRadicalSide(rhs, var, radicalExpr, radicalInner, extraTerms)) {
+    } else if (extractRadicalSide(rhs, radicalExpr, radicalInner, extraTerms)) {
         otherSide = lhs;
     } else {
         return false;

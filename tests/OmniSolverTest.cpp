@@ -147,6 +147,25 @@ void runOmniSolverTests() {
         arena.reset();
     }
 
+    {
+        // Equation: x^2 - 5x + 6 = 0
+        auto* lhs = symAdd3(arena,
+            symPow(arena, symVar(arena, 'x'), symInt(arena, 2)),
+            symMul(arena, symInt(arena, -5), symVar(arena, 'x')),
+            symInt(arena, 6));
+        auto* rhs = symInt(arena, 0);
+
+        OmniSolver solver;
+        OmniResult r = solver.solve(lhs, rhs, 'x', arena);
+
+        check("B5 tutor-backed quadratic solve ok", r.ok);
+        check("B6 tutor-backed quadratic keeps steps", r.steps.count() >= 8);
+        check("B7 tutor-backed quadratic includes formula step",
+              r.steps.dump().find("The quadratic formula states:") != std::string::npos);
+
+        arena.reset();
+    }
+
     // ════════════════════════════════════════════════════════════════
     // C) Inverse path: ln(x) = 1 → x = e
     // ════════════════════════════════════════════════════════════════

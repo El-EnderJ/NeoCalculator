@@ -582,27 +582,95 @@ buf1 = ps_malloc(6400);
 
 ## 8. How to Add a New App
 
+Follow these steps to add a new LVGL-native app and ensure it integrates with the
+refactored `MainMenu` (Flex `ROW_WRAP`) and `SystemApp` lifecycle.
+
+1) Create the app files
+
+ - `src/apps/MyApp.h`
+ - `src/apps/MyApp.cpp`
+
+Implement the public interface used by `SystemApp`:
+
 ```cpp
-// 1. Create src/apps/MyApp.h and MyApp.cpp
 class MyApp {
 public:
-    void begin();                 // Create LVGL screen, init state
+    void begin();                 // Create LVGL screen, init state (lazy)
     void end();                   // Destroy screen, free resources
-    void load();                  // App visible
+    void load();                  // Make app visible: calls begin() if needed
     void handleKey(KeyCode key);  // Input
-    void update();                // Tick ~60fps
+    void update();                // Periodic tick (~60 fps)
 };
-
-// 2. In SystemApp.h:
-#include "apps/MyApp.h"
-MyApp _myApp;
-
-// 3. In SystemApp::begin() — register in launcher:
-_apps[N] = { "My App", Icons::myIconData, &_myApp, /*lvgl=*/true };
-
-// 4. In ui/Icons.h — add 48×48 bitmap:
-constexpr uint16_t myIconData[] = { /* RGB565 pixels */ };
 ```
+
+2) Register the app in `SystemApp`
+
+ - Include the header in `src/SystemApp.h` and add an instance/pointer according to the project's pattern:
+
+```cpp
+#include "apps/MyApp.h"
+MyApp* _myApp = nullptr; // or MyApp _myApp; depending on lifetime pattern
+```
+
+ - Initialize in `SystemApp::begin()` (lazy LVGL allowed):
+
+```cpp
+_myApp = new MyApp();
+```
+
+ - Add a teardown case in the deferred teardown switch so `end()` is called safely after animations:
+
+```cpp
+case Mode::APP_MYAPP:
+    if (_myApp) _myApp->end();
+    break;
+```
+
+3) Add the launcher entry
+
+Open `src/ui/MainMenu.cpp` and add an `AppEntry` to the `APPS[]` array. Example:
+
+```cpp
+// APPS[] entry — keep IDs contiguous with Mode enum
+{ 14, "Fluid 2D", 0x1E88E5, 0x64B5F6 },
+```
+
+Notes:
+ - The launcher now uses Flex wrapping; explicitly sized cards (`CARD_W = 94`, `CARD_H = 78`) produce
+   predictable wrapping (3 cards per row on a 320 px wide screen with small gaps).
+ - After creating the launcher, the code performs `lv_obj_update_layout(_grid)` before focusing
+   the first card and calling `lv_obj_scroll_to_view(..., LV_ANIM_OFF)` to ensure coordinates are ready.
+
+4) Add icon and resources
+
+ - Add a small 48×48 icon in `src/ui/Icons.h` or use the geometric vector icon system already present in `MainMenu`.
+
+5) LVGL requirements & flags
+
+ - Ensure `lv_conf.h` includes `LV_USE_FLEX` (Flex is already used by the launcher).
+ - No `lv_canvas` change is required for image blitting (we use `lv_draw_image()` with PSRAM buffer when needed).
+
+6) Final build & validation
+
+ - Build the project and flash.
+ - On first load, the launcher ensures the first card is focused and visible by calling:
+
+```cpp
+lv_obj_update_layout(_grid);
+lv_group_focus_obj(_firstCard);
+lv_obj_scroll_to_view(_firstCard, LV_ANIM_OFF);
+```
+
+ - Test navigation wrap-around (left/right wrap, up/down wrap) and deferred teardown (returnToMenu() should not call `end()` immediately).
+
+7) Cross references
+
+ - `src/ui/MainMenu.h` / `src/ui/MainMenu.cpp` — launcher implementation
+ - `src/SystemApp.h` / `src/SystemApp.cpp` — dispatcher and deferred teardown
+ - `docs/UI_CHANGES.md` — migration notes and startup fix
+ - `docs/fluid2d_plan.md` — example app integration (Fluid2D)
+
+---
 
 ---
 

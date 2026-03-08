@@ -60,6 +60,10 @@
 - **Full Pro-CAS Engine** — Advanced symbolic algebra: immutable DAG with hash-consing (`ConsTable`), overflow-safe bignum arithmetic (`CASInt`/`CASRational`), multi-pass fixed-point simplifier, symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), and non-linear equation/system solving via Sylvester resultant. All memory managed in PSRAM with an STL-compatible allocator.
 - **Natural Display V.P.A.M.** — Formulae rendered as they appear on paper: real stacked fractions, radical symbols (√), genuine superscripts, 2D navigation with a structural smart cursor.
 - **Modern LVGL 9.x Interface** — Smooth transitions, animated splash screen, NumWorks-style launcher with icons and a 3×N grid, apps with multiple states and clean lifecycle management.
+ - **Modern LVGL 9.x Interface** — Smooth transitions, animated splash screen, NumWorks-style launcher.
+    Recent launcher refactor: the launcher now uses LVGL Flex `ROW_WRAP` (dynamic rows) with fixed card sizing
+    instead of a static grid descriptor. See `docs/UI_CHANGES.md` for developer migration notes and
+    `docs/fluid2d_plan.md` for an example app (Fluid2D) integrated into the new APPS[] schema.
 - **Custom Math Engine** — Complete pipeline: Tokenizer → Shunting-Yard Parser → RPN Evaluator + Visual AST, implemented from scratch in C++17.
 - **Modular App Architecture** — Each application is a self-contained module with explicit lifecycle (`begin/end/load/handleKey`), orchestrated by `SystemApp`.
 

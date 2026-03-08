@@ -42,8 +42,16 @@ Migración completa del sistema NumOS de renderizado directo a TFT (legacy) a **
 - ✅ Mapeo KeyCode → LV_KEY_* (LEFT, RIGHT, UP, DOWN, ENTER, ESC, etc.)
 - ✅ Compatible con gridnav para navegación 2D automática
 
-### 5. **Menú Principal LVGL** (`src/ui/MainMenu.*`)
-- ✅ **Layout:** Grid 3 columnas + scroll vertical
+-### 5. **Menú Principal LVGL** (`src/ui/MainMenu.*`)
+- ✅ **Layout (updated):** Flex `ROW_WRAP` + scroll vertical
+  - The MainMenu was refactored from a fixed `LV_LAYOUT_GRID` with static `col_dsc`/`row_dsc`
+    descriptors to a dynamic `LV_LAYOUT_FLEX` with `LV_FLEX_FLOW_ROW_WRAP`.
+  - Cards now use an explicit fixed size (recommended `94×78 px`) and the container uses
+    `lv_obj_set_flex_flow(_menuContainer, LV_FLEX_FLOW_ROW_WRAP)` together with
+    `lv_obj_set_flex_align(..., LV_FLEX_ALIGN_START)` for top-aligned rows.
+  - This prevents layout overflow/crash when adding more apps and simplifies responsive wrapping.
+  - Developer note: call `lv_obj_update_layout()` after creating the container before
+    calling `lv_group_focus_obj()` or `lv_obj_scroll_to_view()` to force coordinates to be calculated.
 - ✅ **10 Apps:** Calculation, Grapher, Table, Statistics, Probability, Solver, Sequence, Regression, Python, Settings
 - ✅ **Estética NumWorks:**
   - Header dorado (0xFFB527) 40px de altura

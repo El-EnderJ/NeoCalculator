@@ -50,6 +50,26 @@ static bool isSameEquation(const SymEquation& a, const SymEquation& b) {
     return a.toString() == b.toString();
 }
 
+static bool hasLikeTerms(const SymPoly& poly) {
+    for (size_t i = 0; i < poly.terms().size(); ++i) {
+        const SymTerm& lhs = poly.terms()[i];
+        for (size_t j = i + 1; j < poly.terms().size(); ++j) {
+            if (lhs.isLikeTerm(poly.terms()[j])) return true;
+        }
+    }
+    return false;
+}
+
+static SymEquation moveAllToLHSRaw(const SymEquation& eq) {
+    SymPoly rawLhs = eq.lhs;
+    SymPoly negRhs = eq.rhs.negate();
+    rawLhs.terms().reserve(rawLhs.terms().size() + negRhs.terms().size());
+    for (const auto& term : negRhs.terms()) {
+        rawLhs.terms().push_back(term);
+    }
+    return SymEquation(rawLhs, SymPoly::fromConstant(vpam::ExactVal::fromInt(0)));
+}
+
 static void logTutorSetup(PedagogicalLogger& log, const SymEquation& original,
                           const SymEquation& normalized, char var, int degree) {
     log.logAction(SolveAction::PRESENT_ORIGINAL_EQUATION,
@@ -60,6 +80,88 @@ static void logTutorSetup(PedagogicalLogger& log, const SymEquation& original,
     }
     log.logAction(SolveAction::IDENTIFY_EQUATION_TYPE,
                   ActionContext().var(var).deg(degree), MethodId::General);
+}
+
+static void logTutorEntry(PedagogicalLogger& log, const SymEquation& original,
+                          const SymEquation& normalized, char var, int degree) {
+    if (log.count() == 0) {
+        logTutorSetup(log, original, normalized, var, degree);
+    } else {
+        log.logAction(SolveAction::IDENTIFY_EQUATION_TYPE,
+                      ActionContext().var(var).deg(degree), MethodId::General);
+    }
+}
+
+static SymExpr* buildSignedMonomialExpr(SymExprArena& arena,
+                                        const CASNumber& coeff,
+                                        SymExpr* factor,
+                                        bool showUnitCoeff = true) {
+    CASNumber absCoeff = CASNumber::abs(coeff);
+    SymExpr* term = nullptr;
+
+    if (!factor) {
+        term = symFromCAS(arena, absCoeff);
+    } else if (!showUnitCoeff && absCoeff.isOne()) {
+        term = factor;
+    } else {
+        term = symMulRaw(arena, symFromCAS(arena, absCoeff), factor);
+    }
+
+    return coeff.isNegative() ? symNeg(arena, term) : term;
+}
+
+static SymExpr* buildQuadraticDisplayExpr(SymExprArena& arena,
+                                          char var,
+                                          const CASNumber& a,
+                                          const CASNumber& b,
+                                          const CASNumber& c) {
+    SymExpr* x = symVar(arena, var);
+    SymExpr* x2 = symPow(arena, x, symInt(arena, 2));
+
+    std::vector<SymExpr*> terms;
+    terms.reserve(3);
+
+    if (!a.isZero()) terms.push_back(buildSignedMonomialExpr(arena, a, x2));
+    if (!b.isZero()) terms.push_back(buildSignedMonomialExpr(arena, b, x));
+    if (!c.isZero() || terms.empty()) terms.push_back(buildSignedMonomialExpr(arena, c, nullptr));
+
+    SymExpr* expr = terms.front();
+    for (size_t i = 1; i < terms.size(); ++i) {
+        expr = symAddRaw(arena, expr, terms[i]);
+    }
+    return expr;
+}
+
+static SymExpr* makeRawFractionExpr(SymExprArena& arena, SymExpr* numerator, SymExpr* denominator) {
+    return symMulRaw(arena, numerator, symPow(arena, denominator, symInt(arena, -1)));
+}
+
+void preProcessEquationTutor(SymEquation& eq, PedagogicalLogger& log) {
+    SymEquation rawMoved = moveAllToLHSRaw(eq);
+    SymEquation normalized = eq.moveAllToLHS();
+
+    bool needsSetToZero = !eq.rhs.isZero();
+    bool needsCombine = hasLikeTerms(rawMoved.lhs);
+
+    if (!needsSetToZero && !needsCombine) {
+        return;
+    }
+
+    char var = eq.var();
+    log.logAction(SolveAction::PRESENT_ORIGINAL_EQUATION,
+                  ActionContext().var(var).snap(&eq), MethodId::General);
+
+    if (needsSetToZero) {
+        log.logAction(SolveAction::PRE_SET_TO_ZERO,
+                      ActionContext().var(var).snap(&rawMoved), MethodId::General);
+    }
+
+    if (needsCombine) {
+        log.logAction(SolveAction::PRE_COMBINE_TERMS,
+                      ActionContext().var(var).snap(&normalized), MethodId::General);
+    }
+
+    eq = normalized;
 }
 
 static bool isNumericExpr(const SymExpr* expr, char var) {
@@ -248,7 +350,7 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
     result.ok = false;
 
     SymEquation normalized = eq.moveAllToLHS();
-    logTutorSetup(log, eq, normalized, var, 2);
+    logTutorEntry(log, eq, normalized, var, 2);
 
     const SymPoly& f = normalized.lhs;
     
@@ -268,7 +370,11 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
     ctx.val("a", a).val("b", b).val("c", c);
     
     // ── 1. Type & Coefficients (using preexisting actions) ──────────
-    log.logAction(SolveAction::QUAD_IDENTIFY_COEFFICIENTS, ctx, MethodId::Quadratic);
+    ActionContext coeffCtx = ctx;
+    if (arena) {
+        coeffCtx.expr(buildQuadraticDisplayExpr(*arena, var, a, b, c));
+    }
+    log.logAction(SolveAction::QUAD_IDENTIFY_COEFFICIENTS, coeffCtx, MethodId::Quadratic);
     
     if (!arena) {
         // Fallback if no arena provided (shouldn't happen in visual mode)
@@ -286,17 +392,17 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         // b²
         SymExpr* b2 = symPow(*arena, bVar, symInt(*arena, 2));
         // 4ac
-        SymExpr* fourAC = symMul3(*arena, symInt(*arena, 4), aVar, cVar);
+        SymExpr* fourAC = symMul3Raw(*arena, symInt(*arena, 4), aVar, cVar);
         // b² - 4ac
-        SymExpr* discrim = symAdd(*arena, b2, symNeg(*arena, fourAC));
+        SymExpr* discrim = symAddRaw(*arena, b2, symNeg(*arena, fourAC));
         // √(b² - 4ac)
         SymExpr* sqrtD = symPow(*arena, discrim, symFrac(*arena, 1, 2));
         // -b ± √(b² - 4ac)
         SymExpr* num = symPlusMinus(*arena, negB, sqrtD);
         // 2a
-        SymExpr* den = symMul(*arena, symInt(*arena, 2), aVar);
+        SymExpr* den = symMulRaw(*arena, symInt(*arena, 2), aVar);
         // Fraction
-        SymExpr* frac = symMul(*arena, num, symPow(*arena, den, symInt(*arena, -1)));
+        SymExpr* frac = makeRawFractionExpr(*arena, num, den);
         
         log.logAction(SolveAction::QUAD_SHOW_GENERAL_FORMULA, ctx.expr(frac), MethodId::Quadratic);
     }
@@ -309,12 +415,12 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         
         SymExpr* negB = symNeg(*arena, bNum);
         SymExpr* b2 = symPow(*arena, bNum, symInt(*arena, 2));
-        SymExpr* fourAC = symMul3(*arena, symInt(*arena, 4), aNum, cNum);
-        SymExpr* discrim = symAdd(*arena, b2, symNeg(*arena, fourAC));
+        SymExpr* fourAC = symMul3Raw(*arena, symInt(*arena, 4), aNum, cNum);
+        SymExpr* discrim = symAddRaw(*arena, b2, symNeg(*arena, fourAC));
         SymExpr* sqrtD = symPow(*arena, discrim, symFrac(*arena, 1, 2));
         SymExpr* num = symPlusMinus(*arena, negB, sqrtD);
-        SymExpr* den = symMul(*arena, symInt(*arena, 2), aNum);
-        SymExpr* frac = symMul(*arena, num, symPow(*arena, den, symInt(*arena, -1)));
+        SymExpr* den = symMulRaw(*arena, symInt(*arena, 2), aNum);
+        SymExpr* frac = makeRawFractionExpr(*arena, num, den);
         
         log.logAction(SolveAction::QUAD_SUBSTITUTE_VALUES, ctx.expr(frac), MethodId::Quadratic);
     }
@@ -336,7 +442,7 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         SymExpr* sqrtDSym = symPow(*arena, dSym, symFrac(*arena, 1, 2));
         SymExpr* num     = symPlusMinus(*arena, negBSym, sqrtDSym);
         SymExpr* denSym  = symFromCAS(*arena, twoAVal);
-        SymExpr* frac    = symMul(*arena, num, symPow(*arena, denSym, symInt(*arena, -1)));
+        SymExpr* frac    = makeRawFractionExpr(*arena, num, denSym);
         
         log.logAction(SolveAction::QUAD_SIMPLIFY_UNDER_RADICAL, ctx.expr(frac), MethodId::Quadratic);
     }
@@ -386,7 +492,7 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         SymExpr* sqrtDNum = symFromCAS(*arena, sqrtDVal);
         SymExpr* num     = symPlusMinus(*arena, negBSym, sqrtDNum);
         SymExpr* denSym  = symFromCAS(*arena, twoAVal);
-        SymExpr* frac    = symMul(*arena, num, symPow(*arena, denSym, symInt(*arena, -1)));
+        SymExpr* frac    = makeRawFractionExpr(*arena, num, denSym);
         
         log.logAction(SolveAction::QUAD_COMPUTE_SQRT_VALUE, ctx.expr(frac), MethodId::Quadratic);
     }
@@ -410,12 +516,13 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         SymExpr* denSym = symFromCAS(*arena, twoAVal);
         
         // x₁ = (-b + √D) / 2a
-        SymExpr* num1 = symAdd(*arena, symFromCAS(*arena, negBVal), symFromCAS(*arena, sqrtDVal));
-        SymExpr* root1Expr = symMul(*arena, num1, symPow(*arena, denSym, symInt(*arena, -1)));
+        SymExpr* num1 = symAddRaw(*arena, symFromCAS(*arena, negBVal), symFromCAS(*arena, sqrtDVal));
+        SymExpr* root1Expr = makeRawFractionExpr(*arena, num1, denSym);
         
         // x₂ = (-b - √D) / 2a
-        SymExpr* num2 = symAdd(*arena, symFromCAS(*arena, negBVal), symNeg(*arena, symFromCAS(*arena, sqrtDVal)));
-        SymExpr* root2Expr = symMul(*arena, num2, symPow(*arena, denSym, symInt(*arena, -1)));
+        SymExpr* num2 = symAddRaw(*arena, symFromCAS(*arena, negBVal),
+                                  symNeg(*arena, symFromCAS(*arena, sqrtDVal)));
+        SymExpr* root2Expr = makeRawFractionExpr(*arena, num2, denSym);
         
         // Emulate equations: x₁ = ... , x₂ = ...
         SymExpr* xVar = symVar(*arena, var);
@@ -479,7 +586,7 @@ SolveResult solveLinearTutor(const SymEquation& eq, char var,
     result.ok = false;
 
     SymEquation normalized = eq.moveAllToLHS();
-    logTutorSetup(log, eq, normalized, var, 1);
+    logTutorEntry(log, eq, normalized, var, 1);
 
     const SymPoly& f = normalized.lhs;
     CASNumber a = CASNumber::fromExactVal(f.coeffAtExact(1));
@@ -545,7 +652,7 @@ SolveResult solveCubicTutor(const SymEquation& eq, char var,
     result.ok = false;
 
     SymEquation normalized = eq.moveAllToLHS();
-    logTutorSetup(log, eq, normalized, var, 3);
+    logTutorEntry(log, eq, normalized, var, 3);
 
     const SymPoly& f = normalized.lhs;
     CASNumber a = CASNumber::fromExactVal(f.coeffAtExact(3));
@@ -608,14 +715,7 @@ SolveResult solveCubicTutor(const SymEquation& eq, char var,
     
     // Build synthetic division step (we just log the Ruffini quadratic)
     // Residual: qA x² + qB x + qC = 0
-    SymExpr* xVar = symVar(*arena, var);
-    SymExpr* qaSym = symFromCAS(*arena, qA);
-    SymExpr* qbSym = symFromCAS(*arena, qB);
-    SymExpr* qcSym = symFromCAS(*arena, qC);
-    
-    SymExpr* ax2 = symMul(*arena, qaSym, symPow(*arena, xVar, symInt(*arena, 2)));
-    SymExpr* bx  = symMul(*arena, qbSym, xVar);
-    SymExpr* poly = symAdd3(*arena, ax2, bx, qcSym);
+    SymExpr* poly = buildQuadraticDisplayExpr(*arena, var, qA, qB, qC);
     
     log.logAction(SolveAction::CUBIC_RESULTING_QUADRATIC, 
         ActionContext().var(var).withArena(arena).expr(poly), MethodId::General);

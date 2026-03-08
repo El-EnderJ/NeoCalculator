@@ -45,6 +45,10 @@ enum class SolveAction : uint8_t {
     PRESENT_ORIGINAL_EQUATION,      ///< Log the starting equation
     NORMALIZE_TO_STANDARD_FORM,     ///< Rearrange to f(x) = 0
     IDENTIFY_EQUATION_TYPE,         ///< "Quadratic", "Linear", etc.
+    PRE_EXPAND_POWER,               ///< Expand powers before polynomial solving
+    PRE_DISTRIBUTE,                 ///< Distribute products to remove parentheses
+    PRE_SET_TO_ZERO,                ///< Move all terms to the left side
+    PRE_COMBINE_TERMS,              ///< Combine like terms after preprocessing
 
     // ── Linear solver ──────────────────────────────────────────────
     LINEAR_IDENTIFY_COEFFICIENTS,   ///< Identify a and b in ax + b = 0

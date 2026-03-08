@@ -642,8 +642,33 @@ void MathCanvas::drawOperator(lv_layer_t* layer, const NodeOperator* node,
                               const FontMetrics& fm, const lv_font_t* font) {
     // El operador tiene padding: OP_PAD | símbolo | OP_PAD
     int16_t textX = static_cast<int16_t>(x + NodeOperator::OP_PAD);
-    drawText(layer, textX, yBaseline, node->symbol(), font,
-             lv_color_hex(0x333333));
+    lv_color_t color = lv_color_hex(0x333333);
+
+    if (node->op() == OpKind::PlusMinus) {
+        int16_t glyphW = std::max<int16_t>(fm.charWidth - 2, 6);
+        int16_t glyphCenterX = static_cast<int16_t>(textX + glyphW / 2);
+        int16_t axisY = static_cast<int16_t>(yBaseline - fm.axisHeight());
+        int16_t minusHalfW = static_cast<int16_t>(std::max<int16_t>(glyphW / 2, 3));
+        int16_t plusCenterY = static_cast<int16_t>(axisY - std::max<int16_t>(fm.ascent / 3, 3));
+        int16_t plusHalf = static_cast<int16_t>(std::max<int16_t>(glyphW / 5, 2));
+        int16_t stroke = static_cast<int16_t>(std::max<int16_t>(1, glyphW / 8));
+
+        drawLine(layer,
+                 static_cast<int16_t>(glyphCenterX - minusHalfW), axisY,
+                 static_cast<int16_t>(glyphCenterX + minusHalfW), axisY,
+                 stroke, color);
+        drawLine(layer,
+                 static_cast<int16_t>(glyphCenterX - plusHalf), plusCenterY,
+                 static_cast<int16_t>(glyphCenterX + plusHalf), plusCenterY,
+                 stroke, color);
+        drawLine(layer,
+                 glyphCenterX, static_cast<int16_t>(plusCenterY - plusHalf),
+                 glyphCenterX, static_cast<int16_t>(plusCenterY + plusHalf),
+                 stroke, color);
+        return;
+    }
+
+    drawText(layer, textX, yBaseline, node->symbol(), font, color);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

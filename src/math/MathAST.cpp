@@ -923,8 +923,9 @@ void NodeSubscript::calculateLayout(const FontMetrics& fm) {
     int16_t subDrop = (fm.descent * SUB_DROP_NUM) / SUB_DROP_DEN;
     if (subDrop < 2) subDrop = 2;  // mínimo sensato
 
-    // El fondo del subíndice está a subDrop + subL.descent bajo el baseline
-    int16_t subBottom = subDrop + subL.descent;
+    // Reservar todo el alto del subíndice una vez bajado, no solo su descent.
+    // Esto evita clipping y colisión con el siguiente carácter.
+    int16_t subBottom = subDrop + subL.ascent + subL.descent;
 
     // 5. Ascent: de la base (el subíndice no sube)
     _layout.ascent = baseL.ascent;

@@ -45,6 +45,13 @@ SolveResult runTutorWithLoggedSteps(TutorFn&& tutorFn) {
     return result;
 }
 
+template <typename TutorFn>
+SolveResult runTutorWithLoggedSteps(PedagogicalLogger& tutorLog, TutorFn&& tutorFn) {
+    SolveResult result = tutorFn(tutorLog);
+    result.steps = std::move(tutorLog);
+    return result;
+}
+
 } // namespace
 
 // ────────────────────────────────────────────────────────────────────
@@ -64,22 +71,26 @@ SolveResult SingleSolver::solve(const SymEquation& eq, char variable,
     result.ok       = false;
 
     if (arena) {
-        SymEquation normalized = eq.moveAllToLHS();
+        SymEquation tutorEq = eq;
+        PedagogicalLogger tutorLog;
+        preProcessEquationTutor(tutorEq, tutorLog);
+
+        SymEquation normalized = tutorEq.moveAllToLHS();
         int16_t deg = normalized.lhs.degree();
 
         if (deg == 1) {
-            return runTutorWithLoggedSteps([&](PedagogicalLogger& tutorLog) {
-                return solveLinearTutor(eq, variable, tutorLog, arena);
+            return runTutorWithLoggedSteps(tutorLog, [&](PedagogicalLogger& log) {
+                return solveLinearTutor(tutorEq, variable, log, arena);
             });
         }
         if (deg == 2) {
-            return runTutorWithLoggedSteps([&](PedagogicalLogger& tutorLog) {
-                return solveQuadraticTutor(eq, variable, tutorLog, arena);
+            return runTutorWithLoggedSteps(tutorLog, [&](PedagogicalLogger& log) {
+                return solveQuadraticTutor(tutorEq, variable, log, arena);
             });
         }
         if (deg == 3) {
-            return runTutorWithLoggedSteps([&](PedagogicalLogger& tutorLog) {
-                return solveCubicTutor(eq, variable, tutorLog, arena);
+            return runTutorWithLoggedSteps(tutorLog, [&](PedagogicalLogger& log) {
+                return solveCubicTutor(tutorEq, variable, log, arena);
             });
         }
     }

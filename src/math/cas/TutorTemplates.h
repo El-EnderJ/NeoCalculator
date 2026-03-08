@@ -22,6 +22,10 @@ class SymExprArena;
 class SymExpr;
 struct OmniResult;
 
+/// Pre-process an equation into standard polynomial form while logging
+/// pedagogical normalization steps when they are needed.
+void preProcessEquationTutor(SymEquation& eq, PedagogicalLogger& log);
+
 /// Quadratic Tutor: Generates step-by-step educational steps for ax² + bx + c = 0
 /// Emits steps showing the generic quadratic formula, substitution of coefficients,
 /// simplification under the radical, separation of roots, and final values.

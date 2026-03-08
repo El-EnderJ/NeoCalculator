@@ -90,6 +90,24 @@ bool ConsTable::structurallyEqual(const SymExpr* a, const SymExpr* b) {
             return fa->kind == fb->kind && fa->argument == fb->argument;
         }
 
+        case SymExprType::Paren: {
+            const auto* pa = static_cast<const SymParen*>(a);
+            const auto* pb = static_cast<const SymParen*>(b);
+            return pa->child == pb->child;
+        }
+
+        case SymExprType::PlusMinus: {
+            const auto* pa = static_cast<const SymPlusMinus*>(a);
+            const auto* pb = static_cast<const SymPlusMinus*>(b);
+            return pa->lhs == pb->lhs && pa->rhs == pb->rhs;
+        }
+
+        case SymExprType::Subscript: {
+            const auto* sa = static_cast<const SymSubscript*>(a);
+            const auto* sb = static_cast<const SymSubscript*>(b);
+            return sa->base == sb->base && sa->subscript == sb->subscript;
+        }
+
         default:
             return false;
     }

@@ -83,6 +83,7 @@ enum class SymExprType : uint8_t {
     Mul,
     Pow,
     Func,
+    Paren,       // Display-only: (expr)
     PlusMinus,   // Display-only: lhs ± rhs
     Subscript,   // Display-only: base_sub
 };
@@ -353,6 +354,37 @@ public:
 };
 
 // ════════════════════════════════════════════════════════════════════
+// SymParen — Display-only parenthesized expression (IMMUTABLE)
+// ════════════════════════════════════════════════════════════════════
+
+class SymParen : public SymExpr {
+public:
+    SymExpr* const child;
+
+    explicit SymParen(SymExpr* c)
+        : SymExpr(SymExprType::Paren, computeHashStatic(c)), child(c) {}
+
+    double      evaluate(double varVal) const override { return child ? child->evaluate(varVal) : 0.0; }
+    SymExpr*    clone(SymExprArena& arena) const override;
+    std::string toString() const override {
+        if (!child) return "()";
+        std::string inner = child->toString();
+        if (inner.size() >= 2 && inner.front() == '(' && inner.back() == ')') {
+            return inner;
+        }
+        return "(" + inner + ")";
+    }
+    bool        containsVar(char v) const override { return child && child->containsVar(v); }
+    bool        isPolynomial() const override { return child && child->isPolynomial(); }
+
+    static size_t computeHashStatic(const SymExpr* c) {
+        size_t h = hashMix(0x0A);
+        h = hashCombine(h, c ? c->_hash : 0);
+        return h;
+    }
+};
+
+// ════════════════════════════════════════════════════════════════════
 // SymPlusMinus — Display-only binary ± operator (IMMUTABLE)
 // ════════════════════════════════════════════════════════════════════
 
@@ -589,6 +621,12 @@ inline SymExpr* symPow(SymExprArena& a, SymExpr* base, SymExpr* exp) {
 /// Function node (cons'd)
 inline SymExpr* symFunc(SymExprArena& a, SymFuncKind kind, SymExpr* arg) {
     auto* node = a.create<SymFunc>(kind, arg);
+    return a.consTable().getOrCreate(node);
+}
+
+/// Display-only parenthesis node (cons'd)
+inline SymExpr* symParen(SymExprArena& a, SymExpr* child) {
+    auto* node = a.create<SymParen>(child);
     return a.consTable().getOrCreate(node);
 }
 

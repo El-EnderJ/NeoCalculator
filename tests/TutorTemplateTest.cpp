@@ -39,6 +39,13 @@ static void check(const char* name, bool condition) {
     PRINTLN(name);
 }
 
+static const CASStep* findStepByDescription(const StepVec& steps, const char* description) {
+    for (const auto& step : steps) {
+        if (step.description == description) return &step;
+    }
+    return nullptr;
+}
+
 void runTutorTests() {
     _passed = 0;
     _failed = 0;
@@ -79,6 +86,11 @@ void runTutorTests() {
               quadDump.find("Original equation") == std::string::npos);
         check("QuadTutor suppresses raw normalization noise",
               quadDump.find("Moving and grouping all terms to the left side") == std::string::npos);
+        check("QuadTutor uses ASCII root labels",
+              quadDump.find("Separating into x1 and x2:") != std::string::npos);
+        check("QuadTutor avoids Unicode subscript glyphs in labels",
+              quadDump.find("₁") == std::string::npos &&
+              quadDump.find("₂") == std::string::npos);
 
         const auto& quadSteps = res.steps.steps();
         const SymExpr* coeffExpr = nullptr;
@@ -102,6 +114,33 @@ void runTutorTests() {
                   negBxPos != std::string::npos &&
                   cPos != std::string::npos &&
                   negBxPos < cPos);
+        }
+
+        const CASStep* substitutionStep =
+            findStepByDescription(quadSteps, "Substituting the coefficient values:");
+        check("QuadTutor logs substitution math expression", substitutionStep && substitutionStep->mathExpr);
+        if (substitutionStep && substitutionStep->mathExpr &&
+            substitutionStep->mathExpr->type == SymExprType::Mul) {
+            const auto* mulExpr = static_cast<const SymMul*>(substitutionStep->mathExpr);
+            check("QuadTutor substitution keeps fraction structure", mulExpr->count == 2);
+            if (mulExpr->count == 2 &&
+                mulExpr->factors[0]->type == SymExprType::PlusMinus &&
+                mulExpr->factors[1]->type == SymExprType::Pow) {
+                const auto* numerator = static_cast<const SymPlusMinus*>(mulExpr->factors[0]);
+                const auto* reciprocalDen = static_cast<const SymPow*>(mulExpr->factors[1]);
+                check("QuadTutor wraps negated negative b as -(-5)",
+                      numerator->lhs->toString() == "(-(-5))");
+                check("QuadTutor wraps b squared as (-5)^2",
+                      numerator->rhs->type == SymExprType::Pow &&
+                      static_cast<const SymPow*>(numerator->rhs)->base->type == SymExprType::Add &&
+                      static_cast<const SymAdd*>(static_cast<const SymPow*>(numerator->rhs)->base)->terms[0]->toString() == "((-5)^2)");
+                check("QuadTutor separates numeric multiplication in 4ac",
+                      numerator->rhs->type == SymExprType::Pow &&
+                      static_cast<const SymPow*>(numerator->rhs)->base->type == SymExprType::Add &&
+                      static_cast<const SymAdd*>(static_cast<const SymPow*>(numerator->rhs)->base)->terms[1]->toString() == "(-(4 * (1) * (6)))");
+                check("QuadTutor separates numeric multiplication in 2a",
+                      reciprocalDen->base->toString() == "(2 * (1))");
+            }
         }
         
         PRINTLN("  === Tutor Steps for x^2 - 5x + 6 = 0 ===");

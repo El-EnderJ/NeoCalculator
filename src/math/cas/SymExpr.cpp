@@ -2,7 +2,7 @@
  * SymExpr.cpp — Implementation of immutable symbolic expression DAG.
  *
  * Implements evaluate(), clone(), toString(), containsVar(),
- * isPolynomial(), and toSymPoly() for all 7 concrete SymExpr types.
+ * isPolynomial(), and toSymPoly() for all concrete SymExpr types.
  *
  * Phase 2: all members are const.  clone() bypasses ConsTable
  * (creates a deep copy without dedup — useful for cross-arena cloning).
@@ -301,8 +301,12 @@ bool SymFunc::containsVar(char v) const {
 // SymFunc::isPolynomial() → always false (defined inline in header)
 
 // ════════════════════════════════════════════════════════════════════
-// SymPlusMinus & SymSubscript (Display-only)
+// SymParen, SymPlusMinus & SymSubscript (Display-only)
 // ════════════════════════════════════════════════════════════════════
+
+SymExpr* SymParen::clone(SymExprArena& arena) const {
+    return arena.create<SymParen>(child ? child->clone(arena) : nullptr);
+}
 
 SymExpr* SymPlusMinus::clone(SymExprArena& arena) const {
     return arena.create<SymPlusMinus>(lhs->clone(arena), rhs->clone(arena));
@@ -380,6 +384,8 @@ static SymPoly exprToPolyImpl(const SymExpr* expr, char var) {
             return result;
         }
 
+        case SymExprType::Paren:
+            return exprToPolyImpl(static_cast<const SymParen*>(expr)->child, var);
         case SymExprType::PlusMinus:
         case SymExprType::Subscript:
         case SymExprType::Func:

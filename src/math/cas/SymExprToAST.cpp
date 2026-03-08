@@ -186,6 +186,8 @@ NodePtr SymExprToAST::convert(const SymExpr* expr) {
             return convertPow(static_cast<const SymPow*>(expr));
         case SymExprType::Func:
             return convertFunc(static_cast<const SymFunc*>(expr));
+        case SymExprType::Paren:
+            return convertParen(static_cast<const SymParen*>(expr));
         case SymExprType::PlusMinus:
             return convertPlusMinus(static_cast<const SymPlusMinus*>(expr));
         case SymExprType::Subscript:
@@ -492,6 +494,11 @@ NodePtr SymExprToAST::convertFunc(const SymFunc* f) {
         default:
             return makeNumber("?");
     }
+}
+
+NodePtr SymExprToAST::convertParen(const SymParen* p) {
+    if (!p || !p->child) return makeParen(makeRow());
+    return makeParen(ensureRow(convert(p->child)));
 }
 
 // ════════════════════════════════════════════════════════════════════

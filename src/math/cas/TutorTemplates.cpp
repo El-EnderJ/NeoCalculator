@@ -40,6 +40,38 @@ static SymExpr* symFromCAS(SymExprArena& arena, const CASNumber& n) {
     return symNum(arena, ev);
 }
 
+static bool isNegativeNumericExpr(const SymExpr* expr) {
+    if (!expr) return false;
+    if (expr->type == SymExprType::Num) {
+        return static_cast<const SymNum*>(expr)->toExactVal().toDouble() < 0.0;
+    }
+    return expr->type == SymExprType::Neg;
+}
+
+static bool needsSubstitutionParens(const SymExpr* expr) {
+    if (!expr) return false;
+    if (expr->type == SymExprType::Paren) return false;
+    if (isNegativeNumericExpr(expr)) return true;
+
+    switch (expr->type) {
+        case SymExprType::Num:
+        case SymExprType::Var:
+        case SymExprType::Subscript:
+            return false;
+        default:
+            return true;
+    }
+}
+
+static SymExpr* wrapForSubstitution(SymExpr* val, SymExprArena& arena) {
+    return needsSubstitutionParens(val) ? symParen(arena, val) : val;
+}
+
+static SymExpr* wrapNumericFactorForProduct(SymExpr* val, SymExprArena& arena) {
+    if (!val) return val;
+    return (val->type == SymExprType::Paren) ? val : symParen(arena, val);
+}
+
 static void appendSteps(CASStepLogger& dst, const CASStepLogger& src) {
     for (const auto& step : src.steps()) {
         dst.copyStep(step);
@@ -412,14 +444,19 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         SymExpr* aNum = symFromCAS(*arena, a);
         SymExpr* bNum = symFromCAS(*arena, b);
         SymExpr* cNum = symFromCAS(*arena, c);
+        SymExpr* aSub = wrapForSubstitution(aNum, *arena);
+        SymExpr* bSub = wrapForSubstitution(bNum, *arena);
+        SymExpr* cSub = wrapForSubstitution(cNum, *arena);
+        SymExpr* aProd = wrapNumericFactorForProduct(aSub, *arena);
+        SymExpr* cProd = wrapNumericFactorForProduct(cSub, *arena);
         
-        SymExpr* negB = symNeg(*arena, bNum);
-        SymExpr* b2 = symPow(*arena, bNum, symInt(*arena, 2));
-        SymExpr* fourAC = symMul3Raw(*arena, symInt(*arena, 4), aNum, cNum);
+        SymExpr* negB = symNeg(*arena, bSub);
+        SymExpr* b2 = symPow(*arena, bSub, symInt(*arena, 2));
+        SymExpr* fourAC = symMul3Raw(*arena, symInt(*arena, 4), aProd, cProd);
         SymExpr* discrim = symAddRaw(*arena, b2, symNeg(*arena, fourAC));
         SymExpr* sqrtD = symPow(*arena, discrim, symFrac(*arena, 1, 2));
         SymExpr* num = symPlusMinus(*arena, negB, sqrtD);
-        SymExpr* den = symMulRaw(*arena, symInt(*arena, 2), aNum);
+        SymExpr* den = symMulRaw(*arena, symInt(*arena, 2), aProd);
         SymExpr* frac = makeRawFractionExpr(*arena, num, den);
         
         log.logAction(SolveAction::QUAD_SUBSTITUTE_VALUES, ctx.expr(frac), MethodId::Quadratic);

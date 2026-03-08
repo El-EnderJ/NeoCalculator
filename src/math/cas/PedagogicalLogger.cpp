@@ -223,10 +223,7 @@ std::string PedagogicalLogger::buildPhrase(SolveAction action,
         return "Computing the square root:";
 
     case SolveAction::QUAD_SEPARATE_ROOTS: {
-        std::string label = "Separating into " + v;
-        // Use subscript numbers in text as Unicode
-        label += "\xe2\x82\x81 and " + v + "\xe2\x82\x82:";  // ₁ and ₂
-        return label;
+        return "Separating into " + v + "1 and " + v + "2:";
     }
 
     case SolveAction::QUAD_SIMPLIFY_ROOT: {
@@ -287,7 +284,7 @@ std::string PedagogicalLogger::buildPhrase(SolveAction action,
         const CASNumber* r = findVal(ctx, "root");
         if (r) {
             return "P(" + r->toString() + ") = 0, so " + v +
-                   "\xe2\x82\x81 = " + r->toString();
+                   "1 = " + r->toString();
         }
         return "Root found by rational root test.";
     }

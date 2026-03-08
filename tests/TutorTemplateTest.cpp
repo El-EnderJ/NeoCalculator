@@ -121,13 +121,13 @@ void runTutorTests() {
         check("QuadTutor logs substitution math expression", substitutionStep && substitutionStep->mathExpr);
         if (substitutionStep && substitutionStep->mathExpr &&
             substitutionStep->mathExpr->type == SymExprType::Mul) {
-            const auto* frac = static_cast<const SymMul*>(substitutionStep->mathExpr);
-            check("QuadTutor substitution keeps fraction structure", frac->count == 2);
-            if (frac->count == 2 &&
-                frac->factors[0]->type == SymExprType::PlusMinus &&
-                frac->factors[1]->type == SymExprType::Pow) {
-                const auto* numerator = static_cast<const SymPlusMinus*>(frac->factors[0]);
-                const auto* reciprocalDen = static_cast<const SymPow*>(frac->factors[1]);
+            const auto* mulExpr = static_cast<const SymMul*>(substitutionStep->mathExpr);
+            check("QuadTutor substitution keeps fraction structure", mulExpr->count == 2);
+            if (mulExpr->count == 2 &&
+                mulExpr->factors[0]->type == SymExprType::PlusMinus &&
+                mulExpr->factors[1]->type == SymExprType::Pow) {
+                const auto* numerator = static_cast<const SymPlusMinus*>(mulExpr->factors[0]);
+                const auto* reciprocalDen = static_cast<const SymPow*>(mulExpr->factors[1]);
                 check("QuadTutor wraps negated negative b as -(-5)",
                       numerator->lhs->toString() == "(-(-5))");
                 check("QuadTutor wraps b squared as (-5)^2",

@@ -17,6 +17,7 @@
 #include "SymExpr.h"
 #include "SymExprArena.h"
 #include <cstdio>
+#include <vector>
 
 namespace cas {
 
@@ -26,6 +27,46 @@ namespace cas {
 
 static SymExpr* symFromCAS(SymExprArena& arena, const CASNumber& n) {
     return symNum(arena, n.toExactVal());
+}
+
+static SymExpr* buildSignedMonomialExpr(SymExprArena& arena,
+                                        const CASNumber& coeff,
+                                        SymExpr* factor,
+                                        bool showUnitCoeff = true) {
+    CASNumber absCoeff = CASNumber::abs(coeff);
+    SymExpr* term = nullptr;
+
+    if (!factor) {
+        term = symFromCAS(arena, absCoeff);
+    } else if (!showUnitCoeff && absCoeff.isOne()) {
+        term = factor;
+    } else {
+        term = symMulRaw(arena, symFromCAS(arena, absCoeff), factor);
+    }
+
+    return coeff.isNegative() ? symNeg(arena, term) : term;
+}
+
+static SymExpr* buildQuadraticDisplayExpr(SymExprArena& arena,
+                                          char var,
+                                          const CASNumber& a,
+                                          const CASNumber& b,
+                                          const CASNumber& c) {
+    SymExpr* x = symVar(arena, var);
+    SymExpr* x2 = symPow(arena, x, symInt(arena, 2));
+
+    std::vector<SymExpr*> terms;
+    terms.reserve(3);
+
+    if (!a.isZero()) terms.push_back(buildSignedMonomialExpr(arena, a, x2));
+    if (!b.isZero()) terms.push_back(buildSignedMonomialExpr(arena, b, x));
+    if (!c.isZero() || terms.empty()) terms.push_back(buildSignedMonomialExpr(arena, c, nullptr));
+
+    SymExpr* expr = terms.front();
+    for (size_t i = 1; i < terms.size(); ++i) {
+        expr = symAddRaw(arena, expr, terms[i]);
+    }
+    return expr;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -72,6 +113,18 @@ std::string PedagogicalLogger::buildPhrase(SolveAction action,
                  ctx.degree, v.c_str());
         return buf;
     }
+
+    case SolveAction::PRE_EXPAND_POWER:
+        return "Expanding powers first:";
+
+    case SolveAction::PRE_DISTRIBUTE:
+        return "Removing parentheses by distributing:";
+
+    case SolveAction::PRE_SET_TO_ZERO:
+        return "Moving all terms to the left to equate to zero:";
+
+    case SolveAction::PRE_COMBINE_TERMS:
+        return "Combining like terms:";
 
     // ── Linear ─────────────────────────────────────────────────────
 
@@ -279,10 +332,16 @@ void PedagogicalLogger::logAction(SolveAction action,
     // ── Transform steps (algebraic manipulation with equation snapshot) ──
     case SolveAction::NORMALIZE_TO_STANDARD_FORM:
     case SolveAction::PRESENT_ORIGINAL_EQUATION:
+    case SolveAction::PRE_EXPAND_POWER:
+    case SolveAction::PRE_DISTRIBUTE:
+    case SolveAction::PRE_SET_TO_ZERO:
+    case SolveAction::PRE_COMBINE_TERMS:
     case SolveAction::LINEAR_ISOLATE_VARIABLE:
     case SolveAction::LINEAR_DIVIDE_BY_COEFFICIENT:
         if (ctx.snapshot) {
             log(phrase, *ctx.snapshot, method);
+        } else if (ctx.customExpr) {
+            logExpr(phrase, ctx.customExpr, method);
         } else {
             logNote(phrase, method);
         }
@@ -333,19 +392,13 @@ void PedagogicalLogger::logAction(SolveAction action,
                 if (sqDVal && !sqDVal->isZero()) {
                     // D > 0: show (-b + sqrt(D)) / 2a with actual values
                     SymExpr* sqDSym = symFromCAS(*ar, *sqDVal);
-                    // Bypass canonical sort: negB first, then sqrtD
-                    auto** arr = static_cast<SymExpr**>(
-                        ar->allocRaw(2 * sizeof(SymExpr*)));
-                    arr[0] = negBSym;
-                    arr[1] = sqDSym;
-                    SymExpr* num = ar->create<SymAdd>(
-                        const_cast<SymExpr* const*>(arr), uint16_t(2));
-                    SymExpr* frac = symMul(*ar, num,
+                    SymExpr* num = symAddRaw(*ar, negBSym, sqDSym);
+                    SymExpr* frac = symMulRaw(*ar, num,
                         symPow(*ar, twoASym, symInt(*ar, -1)));
                     logExpr(phrase, frac, method);
                 } else {
                     // D = 0: show -b / (2a) with actual values
-                    SymExpr* frac = symMul(*ar, negBSym,
+                    SymExpr* frac = symMulRaw(*ar, negBSym,
                         symPow(*ar, twoASym, symInt(*ar, -1)));
                     logExpr(phrase, frac, method);
                 }
@@ -373,11 +426,7 @@ void PedagogicalLogger::logAction(SolveAction action,
                 CASNumber ac4_val = CASNumber::mul(CASNumber::fromInt(4),
                                       CASNumber::mul(*a, *c));
                 SymExpr* fourACSym = symFromCAS(*ar, ac4_val);
-                // b^2 - 4ac — bypass canonical sort to preserve visual order
-                auto** arr = static_cast<SymExpr**>(ar->allocRaw(2 * sizeof(SymExpr*)));
-                arr[0] = b2;                       // b² first
-                arr[1] = symNeg(*ar, fourACSym);   // -4ac (as computed value) second
-                SymExpr* discExpr = ar->create<SymAdd>(const_cast<SymExpr* const*>(arr), uint16_t(2));
+                SymExpr* discExpr = symAddRaw(*ar, b2, symNeg(*ar, fourACSym));
 
                 // Single step: text + MathCanvas expression
                 logExpr(phrase, discExpr, method);
@@ -422,8 +471,8 @@ void PedagogicalLogger::logAction(SolveAction action,
                 SymExpr* twoASym = symFromCAS(*ar, *twoA);
 
                 // Build: (negB + sqrtD) / twoA   (for x1)
-                SymExpr* num = symAdd(*ar, negBSym, sqDSym);
-                SymExpr* frac = symMul(*ar, num,
+                SymExpr* num = symAddRaw(*ar, negBSym, sqDSym);
+                SymExpr* frac = symMulRaw(*ar, num,
                     symPow(*ar, twoASym, symInt(*ar, -1)));
                 // Single step: text + MathCanvas expression
                 logExpr(phrase, frac, method);
@@ -462,21 +511,12 @@ void PedagogicalLogger::logAction(SolveAction action,
             const CASNumber* a = findVal(ctx, "a");
             const CASNumber* b = findVal(ctx, "b");
             const CASNumber* c = findVal(ctx, "c");
-            if (a && b && c) {
-                // Build: a*x^2 + b*x + c = 0 with actual values
-                SymExpr* x = symVar(*ar, ctx.variable);
-                SymExpr* aSym = symFromCAS(*ar, *a);
-                SymExpr* bSym = symFromCAS(*ar, *b);
-                SymExpr* cSym = symFromCAS(*ar, *c);
-
-                // a*x^2
-                SymExpr* ax2 = symMul(*ar, aSym, symPow(*ar, x, symInt(*ar, 2)));
-                // b*x
-                SymExpr* bx = symMul(*ar, bSym, x);
-                // a*x^2 + b*x + c
-                SymExpr* poly = symAdd3(*ar, ax2, bx, cSym);
-                // Single step: text + MathCanvas expression
-                logExpr(phrase, poly, method);
+            if (ctx.customExpr) {
+                logExpr(phrase, ctx.customExpr, method);
+            } else if (a && b && c) {
+                logExpr(phrase,
+                        buildQuadraticDisplayExpr(*ar, ctx.variable, *a, *b, *c),
+                        method);
             } else {
                 logNote(phrase, method);
             }

@@ -156,6 +156,16 @@ void runSymExprTests() {
                 approx(sum3->evaluate(10.0), 17.0));
         seCheck("SymAdd toString contains '+'",
                 sum3->toString().find('+') != std::string::npos);
+
+        auto* canonical = static_cast<SymAdd*>(
+            symAdd(arena, symInt(arena, 5), symVar(arena, 'x')));
+        auto* raw = static_cast<SymAdd*>(
+            symAddRaw(arena, symInt(arena, 5), symVar(arena, 'x')));
+        seCheck("SymAdd canonical sorts variable before constant",
+                canonical->terms[0]->type == SymExprType::Var);
+        seCheck("SymAddRaw preserves insertion order",
+                raw->terms[0]->type == SymExprType::Num &&
+                raw->terms[1]->type == SymExprType::Var);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -178,6 +188,16 @@ void runSymExprTests() {
                 approx(prod3->evaluate(3.0), 30.0));
         seCheck("SymMul toString contains '*'",
                 prod3->toString().find('*') != std::string::npos);
+
+        auto* canonical = static_cast<SymMul*>(
+            symMul(arena, symInt(arena, 2), symVar(arena, 'x')));
+        auto* raw = static_cast<SymMul*>(
+            symMulRaw(arena, symInt(arena, 2), symVar(arena, 'x')));
+        seCheck("SymMul canonical sorts variable before constant",
+                canonical->factors[0]->type == SymExprType::Var);
+        seCheck("SymMulRaw preserves insertion order",
+                raw->factors[0]->type == SymExprType::Num &&
+                raw->factors[1]->type == SymExprType::Var);
     }
 
     // ══════════════════════════════════════════════════════════════

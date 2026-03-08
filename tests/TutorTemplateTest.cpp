@@ -79,6 +79,30 @@ void runTutorTests() {
               quadDump.find("Original equation") == std::string::npos);
         check("QuadTutor suppresses raw normalization noise",
               quadDump.find("Moving and grouping all terms to the left side") == std::string::npos);
+
+        const auto& quadSteps = res.steps.steps();
+        const SymExpr* coeffExpr = nullptr;
+        for (const auto& step : quadSteps) {
+            if (step.description == "Identifying coefficients:") {
+                coeffExpr = step.mathExpr;
+                break;
+            }
+        }
+        check("QuadTutor identifies coefficients with math expression", coeffExpr != nullptr);
+        if (coeffExpr) {
+            std::string coeffText = coeffExpr->toString();
+            size_t x2Pos = coeffText.find("(1 * (x^2))");
+            size_t negBxPos = coeffText.find("(-(5 * x))");
+            size_t cPos = coeffText.rfind("6");
+            check("QuadTutor keeps x² term before -5x term",
+                  x2Pos != std::string::npos &&
+                  negBxPos != std::string::npos &&
+                  x2Pos < negBxPos);
+            check("QuadTutor keeps constant after variable terms",
+                  negBxPos != std::string::npos &&
+                  cPos != std::string::npos &&
+                  negBxPos < cPos);
+        }
         
         PRINTLN("  === Tutor Steps for x^2 - 5x + 6 = 0 ===");
         PRINT(res.steps.dump().c_str());
@@ -246,6 +270,28 @@ void runTutorTests() {
         check("Stress 2x2 x ≈ 2.2", std::abs(res.solutions[0].toDouble() - 2.2) < 0.01);
         check("Stress 2x2 y ≈ 1.2", std::abs(res.solutions[1].toDouble() - 1.2) < 0.01);
         check("Stress 2x2 has Cramer steps", res.steps.count() >= 4);
+    }
+
+    // ── Test 10: Pre-processing logs set-to-zero and combine-like-terms ─────
+    {
+        SymPoly lhs('x');
+        lhs.terms().push_back(SymTerm::variable('x', 1, 1, 2));   // x²
+        lhs.terms().push_back(SymTerm::variable('x', 1, 1, 1));   // +x
+
+        SymPoly rhs('x');
+        rhs.terms().push_back(SymTerm::variable('x', 6, 1, 1));   // 6x
+        rhs.terms().push_back(SymTerm::constant(vpam::ExactVal::fromInt(-6))); // -6
+
+        SymEquation eq(lhs, rhs);
+        SymExprArena arena;
+        SingleSolver solver;
+        SolveResult res = solver.solve(eq, 'x', &arena);
+
+        std::string dump = res.steps.dump();
+        check("PreProcess logs set-to-zero step",
+              dump.find("Moving all terms to the left to equate to zero") != std::string::npos);
+        check("PreProcess logs combine-like-terms step",
+              dump.find("Combining like terms") != std::string::npos);
     }
 
     PRINT("\nTotal Passed: "); PRINTLN(std::to_string(_passed).c_str());

@@ -476,6 +476,15 @@ inline SymExpr* symAdd(SymExprArena& a, SymExpr* lhs, SymExpr* rhs) {
     return a.consTable().getOrCreate(node);
 }
 
+/// Binary addition (2 terms, cons'd preserving insertion order)
+inline SymExpr* symAddRaw(SymExprArena& a, SymExpr* lhs, SymExpr* rhs) {
+    auto** arr = static_cast<SymExpr**>(a.allocRaw(2 * sizeof(SymExpr*)));
+    arr[0] = lhs;
+    arr[1] = rhs;
+    auto* node = a.create<SymAdd>(const_cast<SymExpr* const*>(arr), static_cast<uint16_t>(2));
+    return a.consTable().getOrCreate(node);
+}
+
 /// Ternary addition (3 terms, cons'd with canonical sort)
 inline SymExpr* symAdd3(SymExprArena& a, SymExpr* t0, SymExpr* t1, SymExpr* t2) {
     auto** arr = static_cast<SymExpr**>(a.allocRaw(3 * sizeof(SymExpr*)));
@@ -489,11 +498,27 @@ inline SymExpr* symAdd3(SymExprArena& a, SymExpr* t0, SymExpr* t1, SymExpr* t2) 
     return a.consTable().getOrCreate(node);
 }
 
+/// Ternary addition (3 terms, cons'd preserving insertion order)
+inline SymExpr* symAdd3Raw(SymExprArena& a, SymExpr* t0, SymExpr* t1, SymExpr* t2) {
+    auto** arr = static_cast<SymExpr**>(a.allocRaw(3 * sizeof(SymExpr*)));
+    arr[0] = t0;
+    arr[1] = t1;
+    arr[2] = t2;
+    auto* node = a.create<SymAdd>(const_cast<SymExpr* const*>(arr), static_cast<uint16_t>(3));
+    return a.consTable().getOrCreate(node);
+}
+
 /// N-ary addition from pre-allocated array (cons'd with canonical sort)
 inline SymExpr* symAddN(SymExprArena& a, SymExpr** arr, uint16_t count) {
     std::sort(arr, arr + count, [](SymExpr* x, SymExpr* y) {
         return symCanonicalLess(x, y);
     });
+    auto* node = a.create<SymAdd>(const_cast<SymExpr* const*>(arr), count);
+    return a.consTable().getOrCreate(node);
+}
+
+/// N-ary addition from pre-allocated array (cons'd preserving insertion order)
+inline SymExpr* symAddNRaw(SymExprArena& a, SymExpr** arr, uint16_t count) {
     auto* node = a.create<SymAdd>(const_cast<SymExpr* const*>(arr), count);
     return a.consTable().getOrCreate(node);
 }
@@ -504,6 +529,15 @@ inline SymExpr* symMul(SymExprArena& a, SymExpr* lhs, SymExpr* rhs) {
     arr[0] = lhs;
     arr[1] = rhs;
     if (symCanonicalLess(arr[1], arr[0])) std::swap(arr[0], arr[1]);
+    auto* node = a.create<SymMul>(const_cast<SymExpr* const*>(arr), static_cast<uint16_t>(2));
+    return a.consTable().getOrCreate(node);
+}
+
+/// Binary multiplication (2 factors, cons'd preserving insertion order)
+inline SymExpr* symMulRaw(SymExprArena& a, SymExpr* lhs, SymExpr* rhs) {
+    auto** arr = static_cast<SymExpr**>(a.allocRaw(2 * sizeof(SymExpr*)));
+    arr[0] = lhs;
+    arr[1] = rhs;
     auto* node = a.create<SymMul>(const_cast<SymExpr* const*>(arr), static_cast<uint16_t>(2));
     return a.consTable().getOrCreate(node);
 }
@@ -521,11 +555,27 @@ inline SymExpr* symMul3(SymExprArena& a, SymExpr* f0, SymExpr* f1, SymExpr* f2) 
     return a.consTable().getOrCreate(node);
 }
 
+/// Ternary multiplication (3 factors, cons'd preserving insertion order)
+inline SymExpr* symMul3Raw(SymExprArena& a, SymExpr* f0, SymExpr* f1, SymExpr* f2) {
+    auto** arr = static_cast<SymExpr**>(a.allocRaw(3 * sizeof(SymExpr*)));
+    arr[0] = f0;
+    arr[1] = f1;
+    arr[2] = f2;
+    auto* node = a.create<SymMul>(const_cast<SymExpr* const*>(arr), static_cast<uint16_t>(3));
+    return a.consTable().getOrCreate(node);
+}
+
 /// N-ary multiplication from pre-allocated array (cons'd with canonical sort)
 inline SymExpr* symMulN(SymExprArena& a, SymExpr** arr, uint16_t count) {
     std::sort(arr, arr + count, [](SymExpr* x, SymExpr* y) {
         return symCanonicalLess(x, y);
     });
+    auto* node = a.create<SymMul>(const_cast<SymExpr* const*>(arr), count);
+    return a.consTable().getOrCreate(node);
+}
+
+/// N-ary multiplication from pre-allocated array (cons'd preserving insertion order)
+inline SymExpr* symMulNRaw(SymExprArena& a, SymExpr** arr, uint16_t count) {
     auto* node = a.create<SymMul>(const_cast<SymExpr* const*>(arr), count);
     return a.consTable().getOrCreate(node);
 }

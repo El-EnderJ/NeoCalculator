@@ -10,12 +10,21 @@
 
 #include "TutorTemplates.h"
 #include "CASNumber.h"
+#include "OmniSolver.h"
 #include "SymExpr.h"
 #include "SymExprArena.h"
+#include "SymSimplify.h"
+
+#include <cmath>
+#include <vector>
 
 namespace cas {
 
 using vpam::ExactVal;
+
+static constexpr int64_t RADICAL_NUMERATOR = 1;
+static constexpr int64_t RADICAL_DENOMINATOR = 2;
+static constexpr double SOLUTION_TOLERANCE = 1e-6;
 
 // ════════════════════════════════════════════════════════════════════
 // Helpers
@@ -29,6 +38,193 @@ static SymExpr* symFromCAS(SymExprArena& arena, const CASNumber& n) {
         return symMul(arena, num, symPow(arena, den, symInt(arena, -1)));
     }
     return symNum(arena, ev);
+}
+
+static void appendSteps(CASStepLogger& dst, const CASStepLogger& src) {
+    for (const auto& step : src.steps()) {
+        dst.copyStep(step);
+    }
+}
+
+static bool isSameEquation(const SymEquation& a, const SymEquation& b) {
+    return a.toString() == b.toString();
+}
+
+static void logTutorSetup(PedagogicalLogger& log, const SymEquation& original,
+                          const SymEquation& normalized, char var, int degree) {
+    log.logAction(SolveAction::PRESENT_ORIGINAL_EQUATION,
+                  ActionContext().var(var).snap(&original), MethodId::General);
+    if (!isSameEquation(original, normalized)) {
+        log.logAction(SolveAction::NORMALIZE_TO_STANDARD_FORM,
+                      ActionContext().var(var).snap(&normalized), MethodId::General);
+    }
+    log.logAction(SolveAction::IDENTIFY_EQUATION_TYPE,
+                  ActionContext().var(var).deg(degree), MethodId::General);
+}
+
+static bool isNumericExpr(const SymExpr* expr, char var) {
+    return expr && !expr->containsVar(var);
+}
+
+static bool isHalfPower(const SymExpr* expr, SymExpr*& inner) {
+    if (!expr || expr->type != SymExprType::Pow) return false;
+    auto* pow = static_cast<const SymPow*>(expr);
+    if (pow->exponent->type != SymExprType::Num) return false;
+    auto* num = static_cast<const SymNum*>(pow->exponent);
+    if (!num->isPureRational()) return false;
+    vpam::ExactVal ev = num->toExactVal();
+    if (ev.num == RADICAL_NUMERATOR && ev.den == RADICAL_DENOMINATOR) {
+        inner = pow->base;
+        return true;
+    }
+    return false;
+}
+
+static bool extractRadicalSide(SymExpr* expr,
+                               SymExpr*& radicalExpr,
+                               SymExpr*& radicalInner, SymExpr*& otherTerms) {
+    radicalExpr = nullptr;
+    radicalInner = nullptr;
+    otherTerms = nullptr;
+
+    SymExpr* inner = nullptr;
+    if (isHalfPower(expr, inner)) {
+        radicalExpr = expr;
+        radicalInner = inner;
+        otherTerms = nullptr;
+        return true;
+    }
+
+    if (expr && expr->type == SymExprType::Add) {
+        auto* add = static_cast<SymAdd*>(expr);
+        SymExpr* foundRad = nullptr;
+        SymExpr* foundInner = nullptr;
+        std::vector<SymExpr*> rest;
+        for (uint16_t i = 0; i < add->count; ++i) {
+            SymExpr* term = add->terms[i];
+            SymExpr* termInner = nullptr;
+            if (!foundRad && isHalfPower(term, termInner)) {
+                foundRad = term;
+                foundInner = termInner;
+            } else {
+                rest.push_back(term);
+            }
+        }
+        if (foundRad && !rest.empty()) {
+            radicalExpr = foundRad;
+            radicalInner = foundInner;
+            if (rest.size() == 1) {
+                otherTerms = rest[0];
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool isLogFunc(SymExpr* expr, SymFuncKind& kind, SymExpr*& arg) {
+    if (!expr || expr->type != SymExprType::Func) return false;
+    auto* fn = static_cast<SymFunc*>(expr);
+    if (fn->kind != SymFuncKind::Ln && fn->kind != SymFuncKind::Log10) return false;
+    kind = fn->kind;
+    arg = fn->argument;
+    return true;
+}
+
+static bool collectLogArgs(SymExpr* expr, SymFuncKind& kind, std::vector<SymExpr*>& args) {
+    SymExpr* arg = nullptr;
+    SymFuncKind currentKind = SymFuncKind::Ln;
+    if (isLogFunc(expr, currentKind, arg)) {
+        if (args.empty()) {
+            kind = currentKind;
+        } else if (kind != currentKind) {
+            return false;
+        }
+        args.push_back(arg);
+        return true;
+    }
+
+    if (!expr || expr->type != SymExprType::Add) return false;
+    auto* add = static_cast<SymAdd*>(expr);
+    for (uint16_t i = 0; i < add->count; ++i) {
+        if (!collectLogArgs(add->terms[i], kind, args)) {
+            return false;
+        }
+    }
+    return !args.empty();
+}
+
+static SymExpr* multiplyArgs(SymExprArena& arena, const std::vector<SymExpr*>& args) {
+    if (args.empty()) return symInt(arena, 1);
+    SymExpr* out = args[0];
+    for (size_t i = 1; i < args.size(); ++i) {
+        out = symMul(arena, out, args[i]);
+    }
+    return out;
+}
+
+static SymExpr* makeExponentialValue(SymExprArena& arena, SymFuncKind kind, SymExpr* rhs) {
+    if (kind == SymFuncKind::Ln) {
+        return symFunc(arena, SymFuncKind::Exp, rhs);
+    }
+    return symPow(arena, symInt(arena, 10), rhs);
+}
+
+static bool isExponentialForm(SymExpr* expr, char var, SymExpr*& scale,
+                              SymExpr*& base, SymExpr*& exponent, bool& naturalBase) {
+    scale = nullptr;
+    base = nullptr;
+    exponent = nullptr;
+    naturalBase = false;
+
+    if (!expr) return false;
+
+    if (expr->type == SymExprType::Func) {
+        auto* fn = static_cast<SymFunc*>(expr);
+        if (fn->kind == SymFuncKind::Exp) {
+            base = nullptr;
+            exponent = fn->argument;
+            naturalBase = true;
+            return true;
+        }
+    }
+
+    if (expr->type == SymExprType::Pow) {
+        auto* pw = static_cast<SymPow*>(expr);
+        if (!pw->base->containsVar(var) && pw->exponent->containsVar(var)) {
+            base = pw->base;
+            exponent = pw->exponent;
+            naturalBase = false;
+            return true;
+        }
+    }
+
+    if (expr->type == SymExprType::Mul) {
+        auto* mul = static_cast<SymMul*>(expr);
+        for (uint16_t i = 0; i < mul->count; ++i) {
+            SymExpr* factor = mul->factors[i];
+            SymExpr* localScale = nullptr;
+            SymExpr* localBase = nullptr;
+            SymExpr* localExponent = nullptr;
+            bool localNatural = false;
+            if (isExponentialForm(factor, var, localScale, localBase, localExponent, localNatural)) {
+                for (uint16_t j = 0; j < mul->count; ++j) {
+                    if (j == i) continue;
+                    if (mul->factors[j]->containsVar(var)) return false;
+                }
+                if (mul->count == 2) {
+                    scale = (i == 0) ? mul->factors[1] : mul->factors[0];
+                }
+                base = localBase;
+                exponent = localExponent;
+                naturalBase = localNatural;
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -50,9 +246,11 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
     SolveResult result;
     result.variable = var;
     result.ok = false;
-    
-    // We already know it's degree 2 (SingleSolver determines this)
-    const SymPoly& f = eq.lhs;
+
+    SymEquation normalized = eq.moveAllToLHS();
+    logTutorSetup(log, eq, normalized, var, 2);
+
+    const SymPoly& f = normalized.lhs;
     
     // ── Extract exact coefficients ──────────────────────────────────
     CASNumber a = CASNumber::fromExactVal(f.coeffAtExact(2));
@@ -70,7 +268,6 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
     ctx.val("a", a).val("b", b).val("c", c);
     
     // ── 1. Type & Coefficients (using preexisting actions) ──────────
-    // IDENTIFY_EQUATION_TYPE is logged by SingleSolver before calling us.
     log.logAction(SolveAction::QUAD_IDENTIFY_COEFFICIENTS, ctx, MethodId::Quadratic);
     
     if (!arena) {
@@ -280,8 +477,11 @@ SolveResult solveLinearTutor(const SymEquation& eq, char var,
     SolveResult result;
     result.variable = var;
     result.ok = false;
-    
-    const SymPoly& f = eq.lhs;
+
+    SymEquation normalized = eq.moveAllToLHS();
+    logTutorSetup(log, eq, normalized, var, 1);
+
+    const SymPoly& f = normalized.lhs;
     CASNumber a = CASNumber::fromExactVal(f.coeffAtExact(1));
     CASNumber b = CASNumber::fromExactVal(f.coeffAtExact(0));
     
@@ -343,9 +543,11 @@ SolveResult solveCubicTutor(const SymEquation& eq, char var,
     SolveResult result;
     result.variable = var;
     result.ok = false;
-    
-    // We already know it's degree 3 (SingleSolver classification)
-    const SymPoly& f = eq.lhs;
+
+    SymEquation normalized = eq.moveAllToLHS();
+    logTutorSetup(log, eq, normalized, var, 3);
+
+    const SymPoly& f = normalized.lhs;
     CASNumber a = CASNumber::fromExactVal(f.coeffAtExact(3));
     CASNumber b = CASNumber::fromExactVal(f.coeffAtExact(2));
     CASNumber c = CASNumber::fromExactVal(f.coeffAtExact(1));
@@ -358,8 +560,6 @@ SolveResult solveCubicTutor(const SymEquation& eq, char var,
     
     ActionContext ctx;
     ctx.var(var).deg(3).withArena(arena);
-    
-    log.logAction(SolveAction::IDENTIFY_EQUATION_TYPE, ctx, MethodId::Newton); // We use Newton or general? General fallback to Tutor
     
     // We try to find an integer root in [-10, 10]
     bool foundObj = false;
@@ -459,6 +659,292 @@ SolveResult solveCubicTutor(const SymEquation& eq, char var,
     }
     
     return result;
+}
+
+static bool valuesMatch(SymExpr* lhs, SymExpr* rhs, double x) {
+    double lhsVal = lhs->evaluate(x);
+    double rhsVal = rhs->evaluate(x);
+    if (!std::isfinite(lhsVal) || !std::isfinite(rhsVal)) return false;
+    return std::abs(lhsVal - rhsVal) < SOLUTION_TOLERANCE;
+}
+
+bool solveLogarithmicTutor(SymExpr* lhs, SymExpr* rhs, char var,
+                           SymExprArena& arena, OmniResult& result) {
+    result = OmniResult();
+    result.variable = var;
+
+    SymFuncKind kind = SymFuncKind::Ln;
+    std::vector<SymExpr*> args;
+    SymExpr* otherSide = nullptr;
+
+    if (collectLogArgs(lhs, kind, args) && isNumericExpr(rhs, var)) {
+        otherSide = rhs;
+    } else {
+        args.clear();
+        if (!collectLogArgs(rhs, kind, args) || !isNumericExpr(lhs, var)) {
+            return false;
+        }
+        otherSide = lhs;
+    }
+
+    PedagogicalLogger log;
+    result.classification = EquationClass::SimpleInverse;
+
+    log.logNote(
+        std::string("This is a logarithmic equation. The base is ") +
+        ((kind == SymFuncKind::Ln) ? "e" : "10") +
+        ", and we identify the argument before solving.",
+        MethodId::General);
+
+    SymExpr* combinedArg = (args.size() == 1) ? args[0] : multiplyArgs(arena, args);
+    if (args.size() > 1) {
+        log.logAction(
+            SolveAction::LOG_APPLY_PROPERTIES,
+            ActionContext().var(var).withArena(&arena)
+                .expr(symFunc(arena, kind, combinedArg)),
+            MethodId::General);
+    }
+
+    SymExpr* transformedRhs = nullptr;
+    SymFuncKind rhsKind = SymFuncKind::Ln;
+    SymExpr* rhsArg = nullptr;
+    if (isLogFunc(otherSide, rhsKind, rhsArg) && rhsKind == kind) {
+        transformedRhs = rhsArg;
+    } else {
+        transformedRhs = makeExponentialValue(arena, kind, otherSide);
+    }
+
+    log.logAction(
+        SolveAction::LOG_CONVERT_TO_EXPONENTIAL,
+        ActionContext().var(var).withArena(&arena)
+            .expr(symAdd(arena, combinedArg, symNeg(arena, transformedRhs))),
+        MethodId::General);
+
+    OmniSolver solver;
+    OmniResult nested = solver.solve(combinedArg, transformedRhs, var, arena);
+    if (!nested.ok) {
+        return false;
+    }
+
+    appendSteps(log, nested.steps);
+    for (const auto& candidate : nested.solutions) {
+        double x = candidate.isExact ? candidate.exact.toDouble() : candidate.numeric;
+        if (valuesMatch(lhs, rhs, x)) {
+            result.solutions.push_back(candidate);
+        }
+    }
+    appendSteps(result.steps, log);
+    result.ok = !result.solutions.empty();
+    if (!result.ok && !nested.solutions.empty()) {
+        result.error = "No solution satisfies the original logarithmic equation";
+    }
+    result.hasComplexRoots = nested.hasComplexRoots;
+    result.complexReal = nested.complexReal;
+    result.complexImagMag = nested.complexImagMag;
+    return true;
+}
+
+bool solveExponentialTutor(SymExpr* lhs, SymExpr* rhs, char var,
+                           SymExprArena& arena, OmniResult& result) {
+    result = OmniResult();
+    result.variable = var;
+
+    SymExpr* expSide = nullptr;
+    SymExpr* otherSide = nullptr;
+    SymExpr* offset = nullptr;
+    SymExpr* scale = nullptr;
+    SymExpr* base = nullptr;
+    SymExpr* exponent = nullptr;
+    bool naturalBase = false;
+
+    auto trySide = [&](SymExpr* candidate, SymExpr* opposite) -> bool {
+        SymExpr* localScale = nullptr;
+        SymExpr* localBase = nullptr;
+        SymExpr* localExponent = nullptr;
+        bool localNatural = false;
+
+        if (isExponentialForm(candidate, var, localScale, localBase, localExponent, localNatural)) {
+            expSide = candidate;
+            otherSide = opposite;
+            scale = localScale;
+            base = localBase;
+            exponent = localExponent;
+            naturalBase = localNatural;
+            offset = nullptr;
+            return true;
+        }
+
+        if (candidate && candidate->type == SymExprType::Add) {
+            auto* add = static_cast<SymAdd*>(candidate);
+            if (add->count == 2) {
+                for (uint16_t i = 0; i < add->count; ++i) {
+                    if (isExponentialForm(add->terms[i], var, localScale, localBase,
+                                          localExponent, localNatural)) {
+                        SymExpr* otherTerm = add->terms[1 - i];
+                        if (otherTerm->containsVar(var)) return false;
+                        expSide = add->terms[i];
+                        otherSide = opposite;
+                        scale = localScale;
+                        base = localBase;
+                        exponent = localExponent;
+                        naturalBase = localNatural;
+                        offset = otherTerm;
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    };
+
+    if (!trySide(lhs, rhs) && !trySide(rhs, lhs)) {
+        return false;
+    }
+
+    PedagogicalLogger log;
+    result.classification = EquationClass::SimpleInverse;
+
+    SymExpr* isolatedRhs = otherSide;
+    if (offset) {
+        isolatedRhs = SymSimplify::simplify(symAdd(arena, otherSide, symNeg(arena, offset)), arena);
+    }
+    if (scale) {
+        isolatedRhs = SymSimplify::simplify(
+            symMul(arena, isolatedRhs, symPow(arena, scale, symInt(arena, -1))), arena);
+    }
+
+    SymExpr* targetRhs = nullptr;
+    bool matchedBases = false;
+    if (naturalBase && isolatedRhs->type == SymExprType::Func &&
+        static_cast<SymFunc*>(isolatedRhs)->kind == SymFuncKind::Exp) {
+        targetRhs = static_cast<SymFunc*>(isolatedRhs)->argument;
+        matchedBases = true;
+    } else if (!naturalBase && isolatedRhs->type == SymExprType::Pow) {
+        auto* rhsPow = static_cast<SymPow*>(isolatedRhs);
+        if (rhsPow->base == base) {
+            targetRhs = rhsPow->exponent;
+            matchedBases = true;
+        }
+    }
+
+    if (matchedBases) {
+        log.logAction(
+            SolveAction::EXP_EQUAL_BASES,
+            ActionContext().var(var).withArena(&arena)
+                .expr(symAdd(arena, exponent, symNeg(arena, targetRhs))),
+            MethodId::General);
+    } else {
+        // `isolatedRhs` is guaranteed constant here, so evaluating at x = 0 is
+        // simply a convenient way to obtain its numeric value for the log domain check.
+        if (isNumericExpr(isolatedRhs, var) && isolatedRhs->evaluate(0.0) <= 0.0) {
+            return false;
+        }
+        targetRhs = naturalBase
+            ? symFunc(arena, SymFuncKind::Ln, isolatedRhs)
+            : SymSimplify::simplify(
+                  symMul(arena,
+                         symFunc(arena, SymFuncKind::Ln, isolatedRhs),
+                         symPow(arena, symFunc(arena, SymFuncKind::Ln, base), symInt(arena, -1))),
+                  arena);
+        log.logAction(
+            SolveAction::EXP_LOG_BOTH_SIDES,
+            ActionContext().var(var).withArena(&arena)
+                .expr(targetRhs),
+            MethodId::General);
+    }
+
+    OmniSolver solver;
+    OmniResult nested = solver.solve(exponent, targetRhs, var, arena);
+    if (!nested.ok) {
+        return false;
+    }
+
+    appendSteps(log, nested.steps);
+    appendSteps(result.steps, log);
+    result.solutions = nested.solutions;
+    result.ok = true;
+    return true;
+}
+
+bool solveRadicalTutor(SymExpr* lhs, SymExpr* rhs, char var,
+                       SymExprArena& arena, OmniResult& result) {
+    result = OmniResult();
+    result.variable = var;
+
+    SymExpr* radicalExpr = nullptr;
+    SymExpr* radicalInner = nullptr;
+    SymExpr* extraTerms = nullptr;
+    SymExpr* otherSide = nullptr;
+
+    if (extractRadicalSide(lhs, radicalExpr, radicalInner, extraTerms)) {
+        otherSide = rhs;
+    } else if (extractRadicalSide(rhs, radicalExpr, radicalInner, extraTerms)) {
+        otherSide = lhs;
+    } else {
+        return false;
+    }
+
+    PedagogicalLogger log;
+    result.classification = EquationClass::MixedTranscendental;
+
+    SymExpr* isolatedRhs = otherSide;
+    if (extraTerms) {
+        isolatedRhs = SymSimplify::simplify(symAdd(arena, otherSide, symNeg(arena, extraTerms)), arena);
+    }
+
+    log.logAction(
+        SolveAction::RADICAL_ISOLATE,
+        ActionContext().var(var).withArena(&arena)
+            .expr(symAdd(arena, radicalExpr, symNeg(arena, isolatedRhs))),
+        MethodId::General);
+
+    SymExpr* squaredRhs = SymSimplify::simplify(
+        symPow(arena, isolatedRhs, symInt(arena, 2)), arena);
+    log.logAction(
+        SolveAction::RADICAL_SQUARE_BOTH_SIDES,
+        ActionContext().var(var).withArena(&arena)
+            .expr(symAdd(arena, radicalInner, symNeg(arena, squaredRhs))),
+        MethodId::General);
+
+    OmniSolver solver;
+    OmniResult nested = solver.solve(radicalInner, squaredRhs, var, arena);
+    if (!nested.ok) {
+        return false;
+    }
+
+    appendSteps(log, nested.steps);
+
+    for (const auto& candidate : nested.solutions) {
+        double x = candidate.isExact ? candidate.exact.toDouble() : candidate.numeric;
+        double lhsVal = lhs->evaluate(x);
+        double rhsVal = rhs->evaluate(x);
+        bool valid = valuesMatch(lhs, rhs, x);
+
+        log.logAction(
+            SolveAction::RADICAL_CHECK_EXTRANEOUS,
+            ActionContext().var(var).withArena(&arena)
+                .val("candidate", CASNumber::fromDouble(x))
+                .val("lhs", CASNumber::fromDouble(lhsVal))
+                .val("rhs", CASNumber::fromDouble(rhsVal))
+                .val("valid", CASNumber::fromInt(valid ? 1 : 0)),
+            MethodId::General);
+
+        if (valid) {
+            result.solutions.push_back(candidate);
+        }
+    }
+
+    appendSteps(result.steps, log);
+
+    if (result.solutions.empty()) {
+        result.error = "All candidates were extraneous";
+        result.ok = false;
+        return true;
+    }
+
+    result.ok = true;
+    return true;
 }
 
 // ════════════════════════════════════════════════════════════════════

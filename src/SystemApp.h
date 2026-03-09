@@ -41,6 +41,7 @@
 #include "apps/Fluid2DApp.h"
 #include "apps/ParticleLabApp.h"
 #include "apps/NeuralLabApp.h"
+#include "apps/OpticsLabApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -70,6 +71,7 @@ enum class Mode : uint8_t {
     APP_FLUID_2D,        // 2D fluid simulator (Stable Fluids)
     APP_PARTICLE_LAB,    // Falling-sand particle simulator
     APP_NEURAL_LAB,      // Neural network playground
+    APP_OPTICS_LAB,      // 2D optical ray-tracing simulator
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
@@ -124,6 +126,7 @@ private:
     Fluid2DApp*        _fluid2DApp;
     ParticleLabApp*    _particleLabApp;
     NeuralLabApp*      _neuralLabApp;
+    OpticsLabApp*      _opticsLabApp;
 
     // Math Engine
     Tokenizer _tokenizer;

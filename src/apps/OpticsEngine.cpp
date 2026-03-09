@@ -82,9 +82,8 @@ void OpticalElement::getPrincipalPlanes(float& h1, float& h2) const {
     h2 = (1.0f - M.A) / M.C;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// OpticsEngine
-// ═══════════════════════════════════════════════════════════════════════════
+/// How far before the object X the ray fan starts (mm).
+static constexpr float RAY_ORIGIN_OFFSET_MM = 5.0f;
 
 OpticsEngine::OpticsEngine() {
     resetScene();
@@ -160,7 +159,8 @@ bool OpticsEngine::snellRefract(const Vector2D& vIn,
                                  float n1, float n2,
                                  Vector2D& vOut) const {
     float cos_i = -(vIn.dot(n_hat));   // should be > 0
-    if (cos_i < 0.0f) cos_i = -cos_i; // safety clamp
+    if (cos_i < 0.0f) cos_i = -cos_i; // n_hat may point the wrong way if the ray
+                                        // approaches from the transmitted side — flip
 
     float eta     = n1 / n2;
     float sin2_t  = eta * eta * (1.0f - cos_i * cos_i);
@@ -353,7 +353,7 @@ void OpticsEngine::traceRays() {
         }
 
         Ray r;
-        r.origin    = { _objectX - 5.0f, h };  // slightly left of object
+        r.origin    = { _objectX - RAY_ORIGIN_OFFSET_MM, h };  // slightly left of object
         r.direction = { 1.0f, 0.0f };           // parallel to optical axis
         r.wavelength = 5.876e-4f;               // sodium-D (mm)
         r.n_current  = 1.0f;

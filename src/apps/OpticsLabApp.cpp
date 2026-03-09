@@ -22,6 +22,11 @@
 #  include <new>
 #endif
 
+/// Minimum allowed refractive index (must be > 1 for a real medium).
+static constexpr float OPT_MIN_REFRACTIVE_INDEX = 1.01f;
+/// Minimum allowed lens center thickness (mm).
+static constexpr float OPT_MIN_THICKNESS_MM = 0.5f;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Memory helpers (PSRAM on device, heap on desktop)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -226,7 +231,7 @@ void OpticsLabApp::createUI() {
     lv_obj_set_style_text_color(_infoLabel,
                                  lv_color_hex(0xAAAAAA), 0);
     lv_obj_set_style_bg_opa(_infoLabel, LV_OPA_TRANSP, 0);
-    lv_label_set_text(_infoLabel, "UP/DN:sel  LR:move  +/-:R  */÷:n  F1:mode");
+    lv_label_set_text(_infoLabel, "UP/DN:sel  LR:move  +/-:R  \xC3\x97/\xC3\xB7:n  F1:mode");
 
     // ── Simulation timer (~30 FPS) ────────────────────────────────────
     _simTimer = lv_timer_create(onSimTimer, 33, this);
@@ -307,12 +312,12 @@ void OpticsLabApp::handleKey(const KeyEvent& ev) {
             if (idx >= 0 && _engine.element(idx).type == ElementType::LENS) {
                 if (!_altMode) {
                     _engine.element(idx).n -= 0.01f;
-                    if (_engine.element(idx).n < 1.01f)
-                        _engine.element(idx).n = 1.01f;
+                    if (_engine.element(idx).n < OPT_MIN_REFRACTIVE_INDEX)
+                        _engine.element(idx).n = OPT_MIN_REFRACTIVE_INDEX;
                 } else {
                     _engine.element(idx).thickness -= 0.5f;
-                    if (_engine.element(idx).thickness < 0.5f)
-                        _engine.element(idx).thickness = 0.5f;
+                    if (_engine.element(idx).thickness < OPT_MIN_THICKNESS_MM)
+                        _engine.element(idx).thickness = OPT_MIN_THICKNESS_MM;
                 }
             }
             break;
@@ -465,11 +470,11 @@ void OpticsLabApp::renderRays() {
         float frac = (total > 1)
                      ? (float)ri / (total - 1)
                      : 0.5f;  // 0 = top, 1 = bottom
-        float dist_from_centre = fabsf(frac - 0.5f) * 2.0f;  // 0…1
+        float dist_from_center = fabsf(frac - 0.5f) * 2.0f;  // 0…1
 
-        // Colour: golden-yellow to orange, dimmed for off-axis rays
+        // Color: golden-yellow to orange, dimmed for off-axis rays
         uint8_t r_col = 255;
-        uint8_t g_col = (uint8_t)(215 - (int)(dist_from_centre * 130));
+        uint8_t g_col = (uint8_t)(215 - (int)(dist_from_center * 130));
         uint8_t b_col = 0;
 
         uint16_t rayCol    = optRGB(r_col, g_col, b_col);

@@ -17,10 +17,11 @@
 #include <cstdint>
 #include <cmath>
 
-// ── Buffer / layout constants ───────────────────────────────────────────────
+/// Minimum radius threshold below which a surface is treated as flat (mm).
+static constexpr float OPT_MIN_RADIUS_MM = 0.5f;
 static constexpr int OPT_BUF_W      = 320;
 static constexpr int OPT_BUF_H      = 216;  // SCREEN_H(240) - STATUS_H(24)
-static constexpr int OPT_VIEWPORT_H = 156;  // 180px total - 24px status bar
+static constexpr int OPT_VIEWPORT_H = 156;  // OPT_BUF_H(216) - OPT_TELEMETRY_H(60) = 156px
 static constexpr int OPT_TELEMETRY_H = 60;
 static constexpr int OPT_AXIS_ROW   = OPT_VIEWPORT_H / 2;  // 78 — optical axis
 
@@ -185,14 +186,14 @@ inline void optDrawLens(uint16_t* buf,
 
         // Sag of front surface (x shifts right for biconvex R1 > 0)
         float sag1 = 0.0f;
-        if (fabsf(R1_mm) > 0.01f && fabsf(y_mm) < fabsf(R1_mm)) {
+        if (fabsf(R1_mm) > OPT_MIN_RADIUS_MM && fabsf(y_mm) < fabsf(R1_mm)) {
             float under = R1_mm * R1_mm - y_mm * y_mm;
             if (under >= 0.0f)
                 sag1 = R1_mm - (R1_mm > 0 ? 1 : -1) * sqrtf(under);
         }
         // Sag of rear surface
         float sag2 = 0.0f;
-        if (fabsf(R2_mm) > 0.01f && fabsf(y_mm) < fabsf(R2_mm)) {
+        if (fabsf(R2_mm) > OPT_MIN_RADIUS_MM && fabsf(y_mm) < fabsf(R2_mm)) {
             float under = R2_mm * R2_mm - y_mm * y_mm;
             if (under >= 0.0f)
                 sag2 = R2_mm - (R2_mm > 0 ? 1 : -1) * sqrtf(under);
@@ -201,7 +202,7 @@ inline void optDrawLens(uint16_t* buf,
         // pixel x range
         // Front surface at xPx + sag1 * scale_x (scale_x ≈ same unit here)
         // We use scale_y as approx for scale_x — caller should pass matched scale
-        // The centre of the lens body runs from xPx to xPx + thickPx
+        // The center of the lens body runs from xPx to xPx + thickPx
         int x_front = xPx + (int)(sag1 * scale_y * 0.5f); // approximate scale
         int x_rear  = xPx + thickPx + (int)(sag2 * scale_y * 0.5f);
         if (x_front > x_rear) { int t = x_front; x_front = x_rear; x_rear = t; }

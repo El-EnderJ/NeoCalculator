@@ -19,6 +19,7 @@
 | **Phase 6** | Complete Scientific Apps | ✅ **Complete** | 100% |
 | **Phase 7** | Matrices + Complex + Bases | 🔲 Planned | 0% |
 | **Phase 8** | Final Hardware + Connectivity + Scripting | 🔲 Planned | 0% |
+| **Phase 9** | NeoLanguage — Hybrid Symbolic Programming Language | 🚧 In Progress | 30% |
 
 ---
 
@@ -50,6 +51,7 @@
 | **Mar 2026** | **ParticleLabApp (ID 15) — Alchemy Update: 30+ materials, spark electronics, phase transitions, reaction matrix, Bresenham line tool, LittleFS save/load** |
 | **Mar 2026** | **Active production: RAM 29.7% · Flash 23.2% · 16 apps in launcher** |
 | **Mar 2026** | **OpticsLabApp (ID 17): 2D ray-tracing visualiser added — OpticsEngine (ABCD, Snell, paraxial + exact trace)** |
+| **Mar 2026** | **NeoLanguageApp (ID 18): NeoLanguage compiler frontend — NeoLexer, NeoAST, NeoParser; two-tab IDE (Editor + Console)** |
 ---
 
 ## Phase 1 — The Foundation (Complete)
@@ -402,6 +404,71 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ---
 
+## Phase 9 — NeoLanguage: Hybrid Symbolic Programming Language (🚧 In Progress)
+
+> *Objective: Give NumOS a native, hybrid programming language that blends Python's clean syntax with Wolfram Language's native symbolic mathematics — running directly on the ESP32-S3.*
+
+### 9.1 Compiler Frontend (Phase 1 — Complete)
+
+**NeoLexer** (`src/apps/NeoLexer.h` / `NeoLexer.cpp`)
+- [x] State-machine tokenizer with 40+ token types
+- [x] Python-style INDENT / DEDENT generation from indentation levels
+- [x] Math-first operators: `+`, `-`, `*`, `/`, `^`, `**` (power), `:=` (delayed assignment)
+- [x] Keywords: `def`, `if`, `elif`, `else`, `while`, `for`, `in`, `return`, `and`, `or`, `not`, `True`, `False`, `None`
+- [x] String literals with escape sequences
+- [x] Single-line comments with `#`
+- [x] Line & column tracking in every Token (precise error reporting)
+- [x] PSRAM-backed token list (`PSRAMAllocator<Token>`)
+- [x] Error tokens with descriptive messages (no crashes)
+
+**NeoAST** (`src/apps/NeoAST.h`)
+- [x] `NeoArena` bump allocator using `heap_caps_malloc(MALLOC_CAP_SPIRAM)` (PSRAM) with `std::malloc` fallback for non-Arduino builds
+- [x] Complete node hierarchy (13 node kinds): `Number`, `Symbol`, `BinaryOp`, `UnaryOp`, `FunctionCall`, `Assignment`, `If`, `While`, `ForIn`, `FunctionDef`, `Return`, `SymExprWrapper`, `Program`
+- [x] `NumberNode`: stores `double` value + exact CASRational (int64 numerator/denominator) + raw text
+- [x] `AssignmentNode`: distinguishes `=` (standard) from `:=` (delayed/symbolic, Wolfram-style)
+- [x] `SymExprWrapperNode`: CAS integration hook holding a `void* symexpr_ptr` to a Pro-CAS `SymExpr` DAG node + string `repr`
+- [x] All nodes carry `line` and `col` for error messages
+
+**NeoParser** (`src/apps/NeoParser.h` / `NeoParser.cpp`)
+- [x] Recursive descent parser with Pratt expression parser (precedence climbing)
+- [x] Symbolic semantics: undefined variables parsed as `SymbolNode` (not errors)
+- [x] Dual function-definition syntax: `def f(x): return x^2 + 1` and `f(x) := x^2 + 1`
+- [x] Full control flow: `if`/`elif`/`else` chains, `while`, `for x in iterable`
+- [x] Panic-mode error recovery: `syncToNextStatement()` skips to next `NEWLINE`/`DEDENT`
+- [x] Iterative program-body loop to avoid stack overflow on ESP32
+- [x] Correct operator precedences: `^` > `* /` > `+ -` > comparisons > `and`/`or`
+
+**NeoLanguageApp** (`src/apps/NeoLanguageApp.h` / `NeoLanguageApp.cpp`)
+- [x] Two-tab LVGL IDE: **Editor** (code textarea) + **Console** (output/errors)
+- [x] F5 = compile: tokenize → parse → display AST summary in console
+- [x] F1 = insert 4-space tab indent
+- [x] MODE = exit (SystemApp handles return-to-menu)
+- [x] Dark Catppuccin-Mocha colour palette (editor `#1E1E2E`, console `#11111B`)
+- [x] Monospaced `lv_font_unscii_8` for editor and console
+- [x] Arena reset on each compile run (no memory accumulation between runs)
+
+### 9.2 Compiler Middle-End (Planned)
+- [ ] Semantic analysis: scope checking, type inference, undefined variable detection
+- [ ] CAS integration: auto-convert `SymbolNode` subtrees to `SymExpr` DAG nodes
+- [ ] Constant folding and algebraic simplification pass
+- [ ] Symbolic evaluation: `x := 3`, then `x^2 + 1` → `10`
+
+### 9.3 Compiler Back-End / Interpreter (Planned)
+- [ ] Tree-walking interpreter (NeoEval) with variable environment
+- [ ] Standard library: `sin`, `cos`, `tan`, `sqrt`, `abs`, `range`, `len`, `print`
+- [ ] CAS bridge: call `SymDiff`, `SymIntegrate`, `SymSimplify` from NeoLanguage code
+- [ ] Native print → console textarea output
+- [ ] LittleFS script storage (load/save `.neo` files)
+- [ ] REPL mode in Console tab
+
+### 9.4 Language Extensions (Planned)
+- [ ] Matrix literals: `[[1,2],[3,4]]` → `MatrixNode`
+- [ ] Unit annotations: `9.8 [m/s^2]`
+- [ ] Pattern matching: Wolfram-style `f[x_] := ...`
+- [ ] Lambda expressions: `fn := x -> x^2 + 1`
+
+---
+
 ## Long-Term Vision — The World's Best Open-Source Calculator
 
 **NumOS aims to demonstrate that a 15 € hardware open-source calculator can surpass the features of 180 € commercial calculators.**
@@ -430,4 +497,4 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 *NumOS — Open-source scientific calculator OS for ESP32-S3.*
 *Every commit is a step towards the best scientific calculator in the world.*
 
-*Last update: March 2026*
+*Last update: March 2026 — NeoLanguage Phase 1 (compiler frontend) complete*

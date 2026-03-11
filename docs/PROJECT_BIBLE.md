@@ -23,6 +23,7 @@
 9. [How to Add a Math Function](#9-how-to-add-a-math-function)
 10. [How to Extend the Pro-CAS](#10-how-to-extend-the-pro-cas)
 11. [Troubleshooting](#11-troubleshooting)
+12. [NeoLanguage — Compiler Frontend Architecture](#12-neolanguage--compiler-frontend-architecture)
 
 ---
 
@@ -764,4 +765,132 @@ steps.add(StepType::INFO, "Cardano's Method (degree 3)");
 ---
 
 *NumOS — Open-source scientific calculator OS for ESP32-S3 N16R8.*
-*Master documentation — last update: April 2026*
+*Master documentation — last update: March 2026 (NeoLanguage Phase 1 added)*
+
+---
+
+## 12. NeoLanguage — Compiler Frontend Architecture
+
+> **NeoLanguage** is a hybrid programming language for NumOS that blends Python's clean, indentation-based syntax with Wolfram Language's native symbolic mathematics. Phase 1 implements the complete compiler frontend: Lexer, AST, and Parser.
+
+### 12.1 Language Overview
+
+| Feature | Detail |
+|:--------|:-------|
+| **Syntax** | Python-inspired indentation-based blocks (INDENT/DEDENT tokens) |
+| **Assignment** | `=` standard evaluation; `:=` delayed/symbolic (Wolfram-style) |
+| **Variables** | Undefined variables become `SymbolNode` (no errors) |
+| **Functions** | `def f(x): return x^2 + 1` or `f(x) := x^2 + 1` |
+| **Control flow** | `if/elif/else`, `while`, `for x in iterable` |
+| **Power** | `^` or `**` (both supported) |
+| **CAS hook** | `SymExprWrapperNode` holds pointer to Pro-CAS `SymExpr` DAG |
+| **Memory** | All AST nodes allocated from `NeoArena` (PSRAM bump allocator) |
+
+### 12.2 File Map
+
+| File | Purpose |
+|:-----|:--------|
+| `src/apps/NeoAST.h` | Node hierarchy + `NeoArena` PSRAM bump allocator |
+| `src/apps/NeoLexer.h` | Tokenizer header (40+ token types, INDENT/DEDENT) |
+| `src/apps/NeoLexer.cpp` | State-machine tokenizer implementation |
+| `src/apps/NeoParser.h` | Recursive-descent + Pratt parser header |
+| `src/apps/NeoParser.cpp` | Full parser with all statement/expression forms |
+| `src/apps/NeoLanguageApp.h` | Two-tab LVGL IDE app header |
+| `src/apps/NeoLanguageApp.cpp` | IDE implementation (Editor + Console tabs) |
+
+### 12.3 NeoArena — PSRAM Bump Allocator
+
+```cpp
+// NeoArena allocates AST nodes from PSRAM to protect 320 KB internal SRAM.
+// Usage:
+NeoArena arena(64 * 1024);               // 64 KB PSRAM block
+auto* node = arena.make<NumberNode>();    // placement-new in arena
+arena.reset();                           // free all at once (O(1))
+```
+
+`NeoArena` uses `heap_caps_malloc(MALLOC_CAP_SPIRAM)` on Arduino builds, falls back to `std::malloc` on native/emulator builds. Nodes are never freed individually — the arena is reset as a unit between compile runs.
+
+### 12.4 NeoLexer — State-Machine Tokenizer
+
+```
+Source string  →  NeoLexer::tokenize()  →  std::vector<Token, PSRAMAllocator<Token>>
+```
+
+The lexer handles Python-style significant indentation:
+- Blank lines and comment-only lines do **not** trigger INDENT/DEDENT.
+- An `indent_stack` tracks historical indentation levels.
+- An increase in indent emits `INDENT`; a decrease emits one or more `DEDENT` tokens.
+- Each `Token` carries `{type, value, line, col}` for precise error messages.
+
+### 12.5 NeoParser — Recursive Descent + Pratt
+
+```
+Token list  →  NeoParser::parse()  →  ProgramNode* (allocated in NeoArena)
+```
+
+**Expression precedence** (lowest to highest):
+
+| Level | Operators |
+|:------|:----------|
+| 1 | `or` |
+| 2 | `and` |
+| 3 | `not` (unary) |
+| 4 | `== != < <= > >=` |
+| 5 | `+ -` |
+| 6 | `* /` |
+| 7 | `^` `**` (right-assoc) |
+| 8 | unary `-` |
+| 9 | Primary: literal, identifier, `(expr)`, call |
+
+**Symbolic semantics**: an identifier not followed by `(` is parsed as `SymbolNode`, not an error. This enables expressions like `x^2 + 3*y` to parse cleanly even if `x` and `y` are not defined.
+
+**Error recovery**: on a syntax error, `syncToNextStatement()` advances the token stream until a `NEWLINE`, `DEDENT`, or `END_OF_FILE` token, then sets an error flag. Parsing continues to collect further errors without crashing.
+
+### 12.6 AST Node Hierarchy
+
+```
+NeoNode (base: kind, line, col)
+├── NumberNode      — double value, exact CASRational, raw_text
+├── SymbolNode      — string name  (CAS-ready: undefined vars → symbolic)
+├── BinaryOpNode    — OpKind {Add,Sub,Mul,Div,Pow,Eq,...}, left*, right*
+├── UnaryOpNode     — OpKind {Neg, Not}, operand*
+├── FunctionCallNode— string name, vector<NeoNode*> args
+├── AssignmentNode  — string target, NeoNode* value, bool is_delayed
+├── IfNode          — condition*, then_body[], else_body[]
+├── WhileNode       — condition*, body[]
+├── ForInNode       — string var, iterable*, body[]
+├── FunctionDefNode — string name, params[], body[], bool is_one_liner
+├── ReturnNode      — NeoNode* value (nullable)
+├── SymExprWrapperNode — void* symexpr_ptr, string repr  ← CAS integration hook
+└── ProgramNode     — vector<NeoNode*> statements
+```
+
+### 12.7 CAS Integration Hook
+
+`SymExprWrapperNode` is the bridge between NeoLanguage and the Pro-CAS engine:
+
+```cpp
+// Create a SymExprWrapperNode from an existing SymExpr DAG node:
+auto* wrap = arena.make<SymExprWrapperNode>();
+wrap->symexpr_ptr = static_cast<void*>(symExprPtr);
+wrap->repr        = symExprPtr->toString();   // human-readable
+```
+
+Future interpreter phases will populate `symexpr_ptr` automatically when an expression subtree can be evaluated symbolically by the CAS.
+
+### 12.8 App ID & Launcher Entry
+
+| Property | Value |
+|:---------|:------|
+| **App ID** | 18 |
+| **Mode** | `Mode::APP_NEO_LANGUAGE` |
+| **App pointer** | `SystemApp::_neoLangApp` (`NeoLanguageApp*`) |
+| **Launcher name** | "NeoLang" |
+| **Colour** | `0xF44336` / `0xFF7961` (red) |
+
+### 12.9 Known Limitations (Phase 1)
+
+- The parser produces an AST but there is no interpreter yet (Phase 2).
+- `SymExprWrapperNode::symexpr_ptr` is always `nullptr` until the CAS bridge is implemented.
+- The editor textarea on ESP32 accepts key input via `handleKey()` only (no touch).
+- Long programs (>4 KB) may cause the LVGL textarea to slow down; future versions will use a line-buffer model.

@@ -42,6 +42,7 @@
 #include "apps/ParticleLabApp.h"
 #include "apps/NeuralLabApp.h"
 #include "apps/OpticsLabApp.h"
+#include "apps/NeoLanguageApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -72,6 +73,7 @@ enum class Mode : uint8_t {
     APP_PARTICLE_LAB,    // Falling-sand particle simulator
     APP_NEURAL_LAB,      // Neural network playground
     APP_OPTICS_LAB,      // 2D optical ray-tracing simulator
+    APP_NEO_LANGUAGE,    // NeoLanguage compiler frontend IDE
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
@@ -127,6 +129,7 @@ private:
     ParticleLabApp*    _particleLabApp;
     NeuralLabApp*      _neuralLabApp;
     OpticsLabApp*      _opticsLabApp;
+    NeoLanguageApp*    _neoLangApp;
 
     // Math Engine
     Tokenizer _tokenizer;

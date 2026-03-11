@@ -244,7 +244,7 @@ NeoValue NeoInterpreter::evalFunctionCall(FunctionCallNode* node, NeoEnv& env) {
 
     // Try built-in functions first
     NeoValue result;
-    if (evalBuiltin(node->name, args, result)) return result;
+    if (evalBuiltin(node->name, args, result, env)) return result;
 
     // Look up user-defined function in environment
     const NeoValue* funcVal = env.lookup(node->name);
@@ -297,8 +297,9 @@ NeoValue NeoInterpreter::evalFunctionCall(FunctionCallNode* node, NeoEnv& env) {
 // ════════════════════════════════════════════════════════════════════
 
 bool NeoInterpreter::evalBuiltin(const std::string& name,
-                                  const std::vector<NeoValue>& args,
-                                  NeoValue& result) {
+                                   const std::vector<NeoValue>& args,
+                                   NeoValue& result,
+                                   NeoEnv& env) {
     using namespace cas;
 
     // ── Single-argument math functions ───────────────────────────
@@ -366,37 +367,15 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
         return false;
     }
 
-    // ── print / println ─────────────────────────────────────────
-    // No-op in embedded context (output is handled by caller).
-    if (name == "print" || name == "println") {
-        if (!args.empty()) {
-            result = args[0];  // return first argument
-        } else {
-            result = NeoValue::makeNull();
-        }
-        return true;
-    }
+    // ── print / println and type: delegate to NeoStdLib for callback support ─
+    // (These were previously handled here as no-ops; NeoStdLib now routes
+    //  them through the host print callback so output appears in the console.)
 
-    // ── type() ──────────────────────────────────────────────────
-    if (name == "type") {
-        if (args.size() != 1) return false;
-        const char* typeName = nullptr;
-        switch (args[0].type()) {
-            case NeoValue::Type::Null:     typeName = "None";     break;
-            case NeoValue::Type::Boolean:  typeName = "bool";     break;
-            case NeoValue::Type::Number:   typeName = "number";   break;
-            case NeoValue::Type::Exact:    typeName = "exact";    break;
-            case NeoValue::Type::Symbolic: typeName = "symbolic"; break;
-            case NeoValue::Type::Function: typeName = "function"; break;
-            default:                       typeName = "unknown";  break;
-        }
-        // Return a Number encoding the type ordinal (0-5) as the runtime
-        // value; the type name is available via toString().
-        result = NeoValue::makeNumber(static_cast<double>(
-            static_cast<int>(args[0].type())));
-        (void)typeName;
-        return true;
-    }
+    // ── All remaining built-ins: delegate to NeoStdLib ───────────
+    // This handles: diff, integrate, solve, simplify, expand,
+    //               plot, clear_plot, print, println, type,
+    //               vars, input_num, msg_box
+    if (_stdlib.callBuiltin(name, args, result, env, _symArena)) return true;
 
     return false;  // Not a built-in
 }

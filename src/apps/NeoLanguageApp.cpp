@@ -6,18 +6,29 @@
  *   · switchTab hides/shows panels
  *   · handleKey dispatches by focus region
  *
- * F5 runs the compiler frontend and shows results in the console tab.
- * MODE exits the app (caller SystemApp returns to menu).
- * F1 inserts 4 spaces (tab-indent).
+ * Phase 3 additions:
+ *   · NeoStdLib integration (diff, integrate, solve, plot, etc.)
+ *   · Graphics Mode overlay (plot overlay using SymExpr::evaluate directly)
+ *   · print() callback routes to console textarea
+ *   · Persistence: F2 save / F3 load from /neolang.nl
+ *   · SymExprArena soft-reset at >70% usage
  *
- * Part of: NeoCalculator / NumOS — NeoLanguage frontend
+ * Part of: NeoCalculator / NumOS — NeoLanguage Phase 3 (Standard Library)
  */
 
 #include "NeoLanguageApp.h"
 #include <cstring>
 #include <cstdio>
 #include <cctype>
+#include <cmath>
 #include <string>
+
+#ifdef ARDUINO
+  #include <LittleFS.h>
+  #include <esp_heap_caps.h>
+#else
+  #include "../hal/FileSystem.h"
+#endif
 
 // ── LVGL helper — create a plain container ───────────────────────
 static lv_obj_t* makePanel(lv_obj_t* parent,
@@ -59,6 +70,8 @@ NeoLanguageApp::NeoLanguageApp()
     , _tabBar(nullptr)
     , _panelEditor(nullptr), _editor(nullptr)
     , _panelConsole(nullptr), _console(nullptr)
+    , _plotOverlay(nullptr), _plotCanvas(nullptr), _plotHintLabel(nullptr)
+    , _plotDrawBuf{}, _plotBuf(nullptr), _plotMode(false)
     , _activeTab(Tab::EDITOR)
     , _focus(Focus::TAB_BAR)
     , _tabIdx(0)
@@ -83,10 +96,13 @@ void NeoLanguageApp::begin() {
     _activeTab = Tab::EDITOR;
     _focus     = Focus::TAB_BAR;
     _tabIdx    = 0;
+    _plotMode  = false;
     switchTab(_activeTab);
+    loadFromFlash();  // Restore last editor session
 }
 
 void NeoLanguageApp::end() {
+    hidePlot();  // Dismiss any active plot overlay
     _statusBar.destroy();
     if (_screen) {
         lv_obj_delete(_screen);
@@ -249,6 +265,12 @@ void NeoLanguageApp::handleKey(const KeyEvent& ev) {
     // Only act on PRESS or REPEAT events
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
+    // Graphics Mode: any key dismisses the plot overlay
+    if (_plotMode) {
+        hidePlot();
+        return;
+    }
+
     // Global: MODE exits the app
     if (ev.code == KeyCode::MODE) {
         end();
@@ -352,9 +374,9 @@ void NeoLanguageApp::handleEditorKey(const KeyEvent& ev) {
         case KeyCode::ALPHA_F: insertChar('f'); break;
         case KeyCode::VAR_X:   insertChar('x'); break;
         case KeyCode::VAR_Y:   insertChar('y'); break;
-        // ── Function-key letter shortcuts ─────────────────────────
-        case KeyCode::F2:      insertChar(':'); break;
-        case KeyCode::F3:      insertChar(' '); break;
+        // ── Function-key shortcuts ────────────────────────────────
+        case KeyCode::F2:      saveToFlash();  break;  // F2 = save to flash
+        case KeyCode::F3:      loadFromFlash(); break; // F3 = load from flash
         case KeyCode::F4:      insertChar('#'); break;
         // ── Trig keys mapped to common identifier letters ─────────
         case KeyCode::SIN:      insertChar('s'); break;
@@ -529,7 +551,41 @@ void NeoLanguageApp::dumpNode(NeoNode* node, std::string& out, int depth) {
 }
 
 // ═════════════════════════════════════════════════════════════════
-// runCode — tokenize + parse + display summary
+// buildHostCallbacks
+// ═════════════════════════════════════════════════════════════════
+
+NeoHostCallbacks NeoLanguageApp::buildHostCallbacks() {
+    NeoHostCallbacks cbs{};
+    cbs.userdata = this;
+
+    // print() → append to console textarea
+    cbs.onPrint = [](const char* text, void* ud) {
+        auto* app = static_cast<NeoLanguageApp*>(ud);
+        app->appendConsole(text);
+    };
+
+    // msg_box() → print to console (full dialog would require LVGL msgbox)
+    cbs.onMsgBox = [](const char* title, const char* content, void* ud) {
+        auto* app = static_cast<NeoLanguageApp*>(ud);
+        char buf[256];
+        std::snprintf(buf, sizeof(buf), "[%s] %s\n", title, content);
+        app->appendConsole(buf);
+    };
+
+    // input_num() — not yet interactive; returns 0 and prints a notice
+    cbs.onInputNum = [](const char* prompt, void* ud) -> double {
+        auto* app = static_cast<NeoLanguageApp*>(ud);
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "[input_num] '%s' = 0 (not interactive)\n", prompt);
+        app->appendConsole(buf);
+        return 0.0;
+    };
+
+    return cbs;
+}
+
+// ═════════════════════════════════════════════════════════════════
+// runCode — tokenize + parse + interpret
 // ═════════════════════════════════════════════════════════════════
 
 void NeoLanguageApp::runCode() {
@@ -545,6 +601,20 @@ void NeoLanguageApp::runCode() {
 
     clearConsole();
     appendConsole("[NeoLang] Running...\n");
+
+    // ── Memory protection: soft-reset SymExprArena if >70% used ──
+    {
+        auto st = _symArena.stats();
+        size_t capacity = _symArena.totalAllocated();
+        // estimatedUsed() needs the block size used during arena construction
+        // (32 KB, matching the NeoLanguageApp constructor: SymExprArena(32*1024))
+        static constexpr size_t SYM_ARENA_BLOCK_SIZE = 32 * 1024;
+        size_t used = st.estimatedUsed(SYM_ARENA_BLOCK_SIZE);
+        if (capacity > 0 && (float)used / (float)capacity > ARENA_RESET_THRESHOLD) {
+            _symArena.reset();
+            appendConsole("[SYM] Arena soft-reset (>70% used)\n");
+        }
+    }
 
     // ── Tokenise ─────────────────────────────────────────────────
     std::string source(src);
@@ -574,6 +644,10 @@ void NeoLanguageApp::runCode() {
     // ── Interpret ─────────────────────────────────────────────────
     _symArena.reset();
     NeoInterpreter interp(_symArena);
+
+    // Connect host callbacks (print, msg_box, input_num)
+    interp.setHostCallbacks(buildHostCallbacks());
+
     NeoEnv globalEnv;
 
     if (root) {
@@ -592,7 +666,8 @@ void NeoLanguageApp::runCode() {
                 continue;
             }
 
-            // Show non-Null results
+            // Show non-Null results (but skip print output — it's already
+            // been sent to the console via the onPrint callback)
             if (!val.isNull()) {
                 std::string s = val.toString();
                 // Limit output length per result
@@ -611,4 +686,257 @@ void NeoLanguageApp::runCode() {
     // Switch to console so the user sees results
     _focus = Focus::CONTENT;
     switchTab(Tab::CONSOLE);
+
+    // ── Graphics Mode: check for pending plot request ──────────────
+    const NeoPlotRequest& req = interp.plotRequest();
+    if (req.pending && req.expr) {
+        showPlot(req);
+        interp.clearPlotRequest();
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// Graphics Mode — plot overlay
+// ═════════════════════════════════════════════════════════════════
+//
+// Design note: the plot uses SymExpr::evaluate(x) directly, NOT
+// GrapherApp's string-based evaluator.  This fully decouples
+// NeoLanguage from GrapherApp: upgrading GrapherApp requires no
+// changes here.
+
+void NeoLanguageApp::showPlot(const NeoPlotRequest& req) {
+    if (!_screen || _plotMode) return;
+
+    // ── Allocate pixel buffer ────────────────────────────────────
+    const int BUF_SIZE = PLOT_W * PLOT_H * 2;  // RGB565, 2 bytes/pixel
+#ifdef ARDUINO
+    _plotBuf = (uint8_t*)heap_caps_malloc(BUF_SIZE, MALLOC_CAP_SPIRAM);
+#else
+    _plotBuf = (uint8_t*)malloc(BUF_SIZE);
+#endif
+    if (!_plotBuf) {
+        appendConsole("[plot] Not enough memory for plot buffer.\n");
+        return;
+    }
+    memset(_plotBuf, 0, BUF_SIZE);
+
+    // ── Create overlay container ─────────────────────────────────
+    _plotOverlay = lv_obj_create(_screen);
+    lv_obj_set_pos(_plotOverlay, 0, BAR_H);
+    lv_obj_set_size(_plotOverlay, PLOT_W, PLOT_H + PLOT_HINT_H);
+    lv_obj_set_style_bg_color(_plotOverlay, lv_color_hex(COL_PLOT_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_plotOverlay, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_plotOverlay, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(_plotOverlay, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_plotOverlay, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_plotOverlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    // ── Image object backed by our pixel buffer ──────────────────
+    static lv_image_dsc_t imgDsc;
+    memset(&imgDsc, 0, sizeof(imgDsc));
+    imgDsc.header.w  = PLOT_W;
+    imgDsc.header.h  = PLOT_H;
+    imgDsc.header.cf = LV_COLOR_FORMAT_RGB565;
+    imgDsc.data_size = (uint32_t)BUF_SIZE;
+    imgDsc.data      = _plotBuf;
+
+    _plotCanvas = lv_image_create(_plotOverlay);
+    lv_obj_set_pos(_plotCanvas, 0, 0);
+    lv_obj_set_size(_plotCanvas, PLOT_W, PLOT_H);
+    lv_image_set_src(_plotCanvas, &imgDsc);
+
+    // ── Hint label ───────────────────────────────────────────────
+    _plotHintLabel = lv_label_create(_plotOverlay);
+    lv_obj_set_pos(_plotHintLabel, 0, PLOT_H + 2);
+    lv_obj_set_size(_plotHintLabel, PLOT_W, PLOT_HINT_H);
+    lv_label_set_text(_plotHintLabel, "Press any key to return");
+    lv_obj_set_style_text_color(_plotHintLabel, lv_color_hex(COL_TAB_TXT_I), LV_PART_MAIN);
+    lv_obj_set_style_text_font(_plotHintLabel, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_set_style_text_align(_plotHintLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+    // ── Render the plot ──────────────────────────────────────────
+    renderPlot(req.expr, req.xMin, req.xMax);
+
+    // Refresh the image widget so LVGL re-reads the pixel buffer
+    lv_image_set_src(_plotCanvas, &imgDsc);
+    lv_obj_invalidate(_plotCanvas);
+
+    _plotMode = true;
+}
+
+void NeoLanguageApp::hidePlot() {
+    if (!_plotMode) return;
+    _plotMode = false;
+
+    if (_plotOverlay) {
+        lv_obj_delete(_plotOverlay);
+        _plotOverlay    = nullptr;
+        _plotCanvas     = nullptr;
+        _plotHintLabel  = nullptr;
+    }
+    if (_plotBuf) {
+#ifdef ARDUINO
+        heap_caps_free(_plotBuf);
+#else
+        free(_plotBuf);
+#endif
+        _plotBuf = nullptr;
+    }
+}
+
+// Render a function expressed as a SymExpr* into the pixel buffer.
+//
+// Key design: uses SymExpr::evaluate(x) directly — independent of any
+// string-evaluator or GrapherApp internal.  If GrapherApp is upgraded,
+// this function does not need to change.
+
+void NeoLanguageApp::renderPlot(cas::SymExpr* expr, double xMin, double xMax) {
+    if (!_plotBuf || !expr) return;
+
+    const int W = PLOT_W;
+    const int H = PLOT_H;
+
+    // ── Compute y range by sampling ──────────────────────────────
+    double yMin =  1e30, yMax = -1e30;
+    for (int i = 0; i <= PLOT_SAMPLE_PTS; ++i) {
+        double x = xMin + (xMax - xMin) * i / PLOT_SAMPLE_PTS;
+        double y = expr->evaluate(x);
+        if (std::isnan(y) || std::isinf(y)) continue;
+        if (y < yMin) yMin = y;
+        if (y > yMax) yMax = y;
+    }
+    // Ensure a usable range
+    if (yMax <= yMin) { yMin -= 5.0; yMax += 5.0; }
+    double yRange = yMax - yMin;
+    double xRange = xMax - xMin;
+
+    // ── RGB565 pixel helpers ──────────────────────────────────────
+    auto setPixel = [&](int px, int py, uint32_t rgb) {
+        if (px < 0 || px >= W || py < 0 || py >= H) return;
+        uint16_t r = (rgb >> 16) & 0xFF;
+        uint16_t g = (rgb >>  8) & 0xFF;
+        uint16_t b = (rgb      ) & 0xFF;
+        uint16_t c = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+        int idx = (py * W + px) * 2;
+        _plotBuf[idx]     = (uint8_t)(c >> 8);
+        _plotBuf[idx + 1] = (uint8_t)(c & 0xFF);
+    };
+
+    // ── Draw background ───────────────────────────────────────────
+    for (int py = 0; py < H; ++py)
+        for (int px = 0; px < W; ++px)
+            setPixel(px, py, COL_PLOT_BG);
+
+    // ── Draw axes ────────────────────────────────────────────────
+    // X-axis (y=0 line)
+    if (yMin <= 0.0 && yMax >= 0.0) {
+        int yZero = (int)((1.0 - (0.0 - yMin) / yRange) * H);
+        for (int px = 0; px < W; ++px) setPixel(px, yZero, COL_PLOT_AXIS);
+    }
+    // Y-axis (x=0 line)
+    if (xMin <= 0.0 && xMax >= 0.0) {
+        int xZero = (int)((-xMin) / xRange * W);
+        for (int py = 0; py < H; ++py) setPixel(xZero, py, COL_PLOT_AXIS);
+    }
+
+    // ── Draw curve ───────────────────────────────────────────────
+    double prevY = std::numeric_limits<double>::quiet_NaN();
+    int    prevPy = 0;
+
+    for (int px = 0; px < W; ++px) {
+        double x  = xMin + (double)px / W * xRange;
+        double y  = expr->evaluate(x);
+
+        if (std::isnan(y) || std::isinf(y)) {
+            prevY = std::numeric_limits<double>::quiet_NaN();
+            continue;
+        }
+
+        int py = (int)((1.0 - (y - yMin) / yRange) * H);
+
+        // Connect with previous pixel using vertical line segment
+        if (!std::isnan(prevY) && std::abs(py - prevPy) < H) {
+            int y0 = (py < prevPy) ? py : prevPy;
+            int y1 = (py > prevPy) ? py : prevPy;
+            for (int vy = y0; vy <= y1; ++vy)
+                setPixel(px, vy, COL_PLOT_LINE);
+        } else {
+            setPixel(px, py, COL_PLOT_LINE);
+        }
+
+        prevY  = y;
+        prevPy = py;
+    }
+
+    // ── Axis labels ───────────────────────────────────────────────
+    // (Omitted in this lightweight renderer to avoid font dependency.
+    //  Axis values are shown as part of the hint text if needed.)
+}
+
+// ═════════════════════════════════════════════════════════════════
+// Persistence — save/load editor content via LittleFS
+// ═════════════════════════════════════════════════════════════════
+
+static constexpr const char* NEOLANG_FILE = "/neolang.nl";
+
+void NeoLanguageApp::saveToFlash() {
+    if (!_editor) return;
+    const char* src = lv_textarea_get_text(_editor);
+    if (!src) return;
+
+#ifdef ARDUINO
+    if (!LittleFS.begin(true)) {
+        appendConsole("[save] LittleFS unavailable.\n");
+        return;
+    }
+    File f = LittleFS.open(NEOLANG_FILE, "w");
+#else
+    File f = LittleFS.open(NEOLANG_FILE, "w");
+#endif
+    if (!f) {
+        appendConsole("[save] Could not open file.\n");
+        return;
+    }
+    size_t len = strlen(src);
+    f.write((const uint8_t*)src, len);
+    f.close();
+
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "[save] %zu bytes to %s\n", len, NEOLANG_FILE);
+    appendConsole(buf);
+}
+
+void NeoLanguageApp::loadFromFlash() {
+#ifdef ARDUINO
+    if (!LittleFS.begin(true)) return;
+    if (!LittleFS.exists(NEOLANG_FILE)) return;
+    File f = LittleFS.open(NEOLANG_FILE, "r");
+#else
+    if (!LittleFS.exists(NEOLANG_FILE)) return;
+    File f = LittleFS.open(NEOLANG_FILE, "r");
+#endif
+    if (!f) return;
+
+    // Read up to 4 KB — use heap to avoid stack pressure on ESP32
+    static constexpr size_t MAX_LOAD = 4096;
+#ifdef ARDUINO
+    char* buf = (char*)heap_caps_malloc(MAX_LOAD + 1, MALLOC_CAP_SPIRAM);
+#else
+    char* buf = (char*)malloc(MAX_LOAD + 1);
+#endif
+    if (!buf) { f.close(); return; }
+
+    size_t bytesRead = f.read((uint8_t*)buf, MAX_LOAD);
+    f.close();
+
+    if (bytesRead > 0 && _editor) {
+        buf[bytesRead] = '\0';
+        lv_textarea_set_text(_editor, buf);
+    }
+
+#ifdef ARDUINO
+    heap_caps_free(buf);
+#else
+    free(buf);
+#endif
 }

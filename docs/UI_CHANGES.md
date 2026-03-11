@@ -63,3 +63,15 @@ This sequence guarantees `Calculation` (App ID 0) is visible and focused at star
 - Fluid2D plan: `docs/fluid2d_plan.md`
 - Migration notes (LVGL): `MIGRACIÓN_LVGL.md`
 
+## New apps to note
+
+- `OpticsLab` (App ID 17) was added and registered in `src/ui/MainMenu.cpp` as:
+
+```cpp
+{ 17, "OpticsLab",  0x00838F,   0x4DD0E1 },   // Teal (Optics)
+```
+
+Ensure `SystemApp` includes `OpticsLabApp* _opticsLabApp;` and the deferred teardown
+case `Mode::APP_OPTICS_LAB` exists (see `src/SystemApp.cpp`). See `docs/OPTICS_LAB.md` for
+developer and user notes.
+

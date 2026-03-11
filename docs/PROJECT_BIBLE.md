@@ -6,6 +6,8 @@
 > **Language**: C++17 · **Pro-CAS Engine**: Active Production
 > **Last Update**: April 2026
 
+**Website / Project site:** https://neocalculator.tech (also available as the repo `index.html` and CNAME)
+
 ---
 
 ## Table of Contents
@@ -418,6 +420,7 @@ Without this, PSRAM accumulates allocations between app sessions.
 | `MatricesApp` | `apps/MatricesApp.cpp/.h` | ✅ | m×n editor, +/−/×/transp., det, inverse, Ax=b |
 | `SequencesApp` | `apps/SequencesApp.cpp/.h` | ✅ | Arithmetic/geometric sequences, Nth term, partial sums |
 | `PythonApp` | `apps/PythonApp.cpp/.h` | ⚠️ | Placeholder UI (Lua/MicroPython scripting — Phase 8) |
+| `OpticsLabApp` | `apps/OpticsLabApp.cpp/.h` | ✅ | 2D ray-tracing visualiser: OpticsEngine core (ABCD matrices, Snell refraction, paraxial/exact ray tracing), scene editor, presets |
 | `PeriodicTableApp` | `apps/PeriodicTableApp.cpp/.h` | ✅ | Interactive periodic table, molar mass calculator, equation balancer |
 | `BridgeDesignerApp` | `apps/BridgeDesignerApp.cpp/.h` | ✅ | Bridge structural simulator: Verlet physics, stress analysis, truck/car loads, PSRAM-backed |
 | `CircuitCoreApp` | `apps/CircuitCoreApp.cpp/.h` | ✅ | SPICE-like circuit simulator: MNA solve, 30 components, stress/failure, MCU IDE |

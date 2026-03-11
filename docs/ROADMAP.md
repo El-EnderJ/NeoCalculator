@@ -1,6 +1,6 @@
 # NumOS — Project Roadmap
 
-> **Last update:** April 2026
+> **Last update:** March 2026
 >
 > Historical record and future plan for NumOS. Each phase builds upon the previous one until achieving an open-source scientific calculator that rivals the best on the market.
 
@@ -26,9 +26,9 @@
 
 | Date | Milestone |
 |:------|:-----|
-| Nov 2025 | First correct numerical calculation in serial terminal |
-| Dec 2025 | Natural Display with stacked real fractions on TFT screen |
-| Jan 2026 | Launcher 3.0 with 10 registered apps and vertical scroll |
+| Feb 13 2026 | Project started (initial repo creation) |
+| Feb 14 2026 | First tests of screen and initial project structure |
+| Feb 2026 | Natural Display and Launcher development (ongoing) |
 | Feb 2026 | Complete HW bring-up: 6 critical ESP32-S3 bugs resolved |
 | Feb 2026 | LVGL 9.x operational — Launcher with icons on ILI9341 IPS |
 | Feb 2026 | Animated splash screen + SerialBridge + LittleFS in production |
@@ -38,16 +38,18 @@
 | **Feb 2026** | **CalculusApp: symbolic derivatives with Natural Display and steps** |
 | **Feb 2026** | **IntegralApp: Slagle integrals (table/u-sub/parts), +C, steps** |
 | **Feb 2026** | **Active production: RAM 29.0% · Flash 18.5% · tests disabled** |
-| **Mar 2026** | **CalculusApp unificada: derivadas + integrales en app única con pestañas d/dx ↔ ∫dx** |
-| **Mar 2026** | **SettingsApp: raíces complejas, precisión decimal, modo angular** |
-| **Mar 2026** | **Active production: RAM 28.8% · Flash 19.3% · tests disabled** || **Apr 2026** | **StatisticsApp, ProbabilityApp, RegressionApp, MatricesApp, SequencesApp, PythonApp landed via git pull — Phase 6 complete** |
-| **Apr 2026** | **Boot crash fix: removed eager begin() calls — all apps lazy-init on first launch** |
-| **Apr 2026** | **HOME Hard Reset fix → HOME freeze fix: deferred teardown 250 ms via _pendingTeardownMode in update()** |
-| **Apr 2026** | **SettingsApp re-entry null crash fix: _statusBar.destroy() added to end()** |
-| **Apr 2026** | **Active production: RAM 29.6% · Flash 20.9% · 11 apps in launcher** |
+| **Mar 2026** | **Unified CalculusApp: derivatives + integrals in a single app with d/dx ↔ ∫dx tabs** |
+| **Mar 2026** | **SettingsApp: complex roots toggle, decimal precision, angle mode** |
+| **Mar 2026** | **Active production: RAM 28.8% · Flash 19.3% · tests disabled** |
+| **Mar 2026** | **StatisticsApp, ProbabilityApp, RegressionApp, MatricesApp, SequencesApp, PythonApp landed via git pull — Phase 6 complete** |
+| **Mar 2026** | **Boot crash fix: removed eager begin() calls — all apps lazy-init on first launch** |
+| **Mar 2026** | **HOME Hard Reset fix → HOME freeze fix: deferred teardown 250 ms via _pendingTeardownMode in update()** |
+| **Mar 2026** | **SettingsApp re-entry null crash fix: _statusBar.destroy() added to end()** |
+| **Mar 2026** | **Active production: RAM 29.6% · Flash 20.9% · 11 apps in launcher** |
 | **Mar 2026** | **BridgeDesignerApp (ID 12): Verlet physics bridge simulator with stress analysis, 3 materials, truck/car loads — PSRAM-backed 60Hz engine** |
 | **Mar 2026** | **ParticleLabApp (ID 15) — Alchemy Update: 30+ materials, spark electronics, phase transitions, reaction matrix, Bresenham line tool, LittleFS save/load** |
 | **Mar 2026** | **Active production: RAM 29.7% · Flash 23.2% · 16 apps in launcher** |
+| **Mar 2026** | **OpticsLabApp (ID 17): 2D ray-tracing visualiser added — OpticsEngine (ABCD, Snell, paraxial + exact trace)** |
 ---
 
 ## Phase 1 — The Foundation (Complete)

@@ -13,6 +13,7 @@
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-espressif32_6.12-orange?logo=platformio&logoColor=white)](https://platformio.org/)
 [![LVGL](https://img.shields.io/badge/LVGL-9.5.0-blue?logo=c&logoColor=white)](https://lvgl.io/)
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-red?logo=espressif&logoColor=white)](https://www.espressif.com/en/products/socs/esp32-s3)
+[![Website](https://img.shields.io/badge/Website-neocalculator.tech-purple?logo=google-chrome&logoColor=white)](https://neocalculator.tech)
 [![Framework](https://img.shields.io/badge/Framework-Arduino-teal?logo=arduino&logoColor=white)](https://www.arduino.cc/)
 [![Language](https://img.shields.io/badge/Language-C%2B%2B17-blue?logo=cplusplus&logoColor=white)](https://en.cppreference.com/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)

@@ -21,6 +21,10 @@
 #include "NeoAST.h"
 #include "NeoLexer.h"
 #include "NeoParser.h"
+#include "NeoValue.h"
+#include "NeoEnv.h"
+#include "NeoInterpreter.h"
+#include "../math/cas/SymExprArena.h"
 
 // ════════════════════════════════════════════════════════════════════
 // NeoLanguageApp
@@ -41,12 +45,13 @@ public:
 
 private:
     // ── Layout constants ─────────────────────────────────────────
-    static constexpr int SCREEN_W  = 320;
-    static constexpr int SCREEN_H  = 240;
-    static constexpr int BAR_H     = 25;   ///< StatusBar height
-    static constexpr int TAB_H     = 28;   ///< Tab bar height
-    static constexpr int CONTENT_Y = BAR_H + TAB_H;
-    static constexpr int CONTENT_H = SCREEN_H - CONTENT_Y;
+    static constexpr int SCREEN_W         = 320;
+    static constexpr int SCREEN_H         = 240;
+    static constexpr int BAR_H            = 25;   ///< StatusBar height
+    static constexpr int TAB_H            = 28;   ///< Tab bar height
+    static constexpr int CONTENT_Y        = BAR_H + TAB_H;
+    static constexpr int CONTENT_H        = SCREEN_H - CONTENT_Y;
+    static constexpr int MAX_RESULT_CHARS = 200;  ///< Per-result output truncation limit
 
     // ── Colour palette ────────────────────────────────────────────
     static constexpr uint32_t COL_BG        = 0x1E1E2E; ///< Dark background
@@ -90,7 +95,8 @@ private:
     int            _tabIdx;         ///< Tab-bar cursor (0=EDITOR, 1=CONSOLE)
 
     // ── Compiler components ───────────────────────────────────────
-    NeoArena       _arena;          ///< AST arena (reset on each run)
+    NeoArena         _arena;      ///< AST arena (reset on each run)
+    cas::SymExprArena _symArena;  ///< SymExpr arena for symbolic evaluation
 
     // ── UI helpers ────────────────────────────────────────────────
     void createUI();

@@ -63,6 +63,7 @@ NeoLanguageApp::NeoLanguageApp()
     , _focus(Focus::TAB_BAR)
     , _tabIdx(0)
     , _arena(32 * 1024)
+    , _symArena(32 * 1024)
 {
     for (int i = 0; i < 2; ++i) {
         _tabPills[i]  = nullptr;
@@ -543,31 +544,17 @@ void NeoLanguageApp::runCode() {
     }
 
     clearConsole();
-    appendConsole("[NeoLang] Compiling...\n");
+    appendConsole("[NeoLang] Running...\n");
 
     // ── Tokenise ─────────────────────────────────────────────────
     std::string source(src);
     neo::NeoLexer lexer(source);
     auto tokens = lexer.tokenize();
 
-    char buf[128];
-    std::snprintf(buf, sizeof(buf), "Tokens: %zu\n", tokens.size());
-    appendConsole(buf);
-
     if (!lexer.lastError().empty()) {
         appendConsole("[Lex ERROR] ");
         appendConsole(lexer.lastError().c_str());
         appendConsole("\n");
-    }
-
-    // Print first few tokens for debugging
-    int shown = 0;
-    for (const auto& tok : tokens) {
-        if (shown++ >= 10) { appendConsole("  ...\n"); break; }
-        if (tok.type == NeoTokType::END_OF_FILE) break;
-        std::snprintf(buf, sizeof(buf), "  [%d] '%s'\n",
-                      static_cast<int>(tok.type), tok.value.c_str());
-        appendConsole(buf);
     }
 
     // ── Parse ─────────────────────────────────────────────────────
@@ -579,16 +566,46 @@ void NeoLanguageApp::runCode() {
         appendConsole("[Parse ERROR] ");
         appendConsole(parser.lastError().c_str());
         appendConsole("\n");
-    } else {
-        appendConsole("[Parse OK]\n");
+        _focus = Focus::CONTENT;
+        switchTab(Tab::CONSOLE);
+        return;
     }
 
-    // ── AST summary ───────────────────────────────────────────────
+    // ── Interpret ─────────────────────────────────────────────────
+    _symArena.reset();
+    NeoInterpreter interp(_symArena);
+    NeoEnv globalEnv;
+
     if (root) {
-        std::string summary;
-        summary.reserve(512);
-        dumpNode(root, summary, 0);
-        appendConsole(summary.c_str());
+        auto* prog = static_cast<ProgramNode*>(root);
+        char buf[128];
+
+        // Evaluate each top-level statement and display its result
+        for (NeoNode* stmt : prog->statements) {
+            NeoValue val = interp.eval(stmt, globalEnv);
+
+            if (interp.hasError()) {
+                appendConsole("[ERROR] ");
+                appendConsole(interp.lastError().c_str());
+                appendConsole("\n");
+                interp.clearErrors();
+                continue;
+            }
+
+            // Show non-Null results
+            if (!val.isNull()) {
+                std::string s = val.toString();
+                // Limit output length per result
+                if (s.size() > MAX_RESULT_CHARS)
+                    s = s.substr(0, MAX_RESULT_CHARS) + "...";
+                appendConsole("=> ");
+                appendConsole(s.c_str());
+                appendConsole("\n");
+            }
+        }
+
+        std::snprintf(buf, sizeof(buf), "[Done]\n");
+        appendConsole(buf);
     }
 
     // Switch to console so the user sees results

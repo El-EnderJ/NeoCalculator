@@ -124,6 +124,7 @@ private:
     NeoValue evalForIn       (ForInNode*        node, NeoEnv& env);
     NeoValue evalFunctionDef (FunctionDefNode*  node, NeoEnv& env);
     NeoValue evalReturn      (ReturnNode*       node, NeoEnv& env);
+    NeoValue evalIndexOp     (IndexOpNode*      node, NeoEnv& env);
 
     // ── Built-in function dispatch ────────────────────────────────
     /**

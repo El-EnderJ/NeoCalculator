@@ -90,6 +90,8 @@ NeoValue NeoInterpreter::eval(NeoNode* node, NeoEnv& env) {
             return evalFunctionDef(static_cast<FunctionDefNode*>(node), env);
         case NodeKind::Return:
             return evalReturn(static_cast<ReturnNode*>(node), env);
+        case NodeKind::IndexOp:
+            return evalIndexOp(static_cast<IndexOpNode*>(node), env);
         case NodeKind::SymExprWrapper: {
             // Already-computed symbolic node — return it as-is
             auto* w = static_cast<SymExprWrapperNode*>(node);
@@ -150,11 +152,15 @@ NeoValue NeoInterpreter::evalSymbol(SymbolNode* node, NeoEnv& env) {
     if (name == "e" || name == "E") {
         return NeoValue::makeNumber(M_E);
     }
+    if (name == "phi" || name == "PHI" || name == "golden") {
+        // Golden ratio φ = (1 + √5) / 2
+        return NeoValue::makeNumber(1.6180339887498948482);
+    }
+    if (name == "inf"   || name == "Inf" || name == "Infinity")
+        return NeoValue::makeNumber(std::numeric_limits<double>::infinity());
     if (name == "True"  || name == "true")  return NeoValue::makeBool(true);
     if (name == "False" || name == "false") return NeoValue::makeBool(false);
     if (name == "None"  || name == "none")  return NeoValue::makeNull();
-    if (name == "inf"   || name == "Inf" || name == "Infinity")
-        return NeoValue::makeNumber(std::numeric_limits<double>::infinity());
 
     // Look up in environment
     const NeoValue* val = env.lookup(name);
@@ -331,6 +337,99 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
     if (name == "exp")    return unary(SymFuncKind::Exp,   std::exp);
     if (name == "abs")    return unary(SymFuncKind::Abs,   std::fabs);
 
+    // ── Hyperbolic functions ──────────────────────────────────────
+    if (name == "sinh") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::sinh(args[0].toDouble()));
+        return true;
+    }
+    if (name == "cosh") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::cosh(args[0].toDouble()));
+        return true;
+    }
+    if (name == "tanh") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::tanh(args[0].toDouble()));
+        return true;
+    }
+    if (name == "asinh" || name == "arcsinh") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::asinh(args[0].toDouble()));
+        return true;
+    }
+    if (name == "acosh" || name == "arccosh") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::acosh(args[0].toDouble()));
+        return true;
+    }
+    if (name == "atanh" || name == "arctanh") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::atanh(args[0].toDouble()));
+        return true;
+    }
+    if (name == "atan2") {
+        if (args.size() != 2) return false;
+        result = NeoValue::makeNumber(std::atan2(args[0].toDouble(), args[1].toDouble()));
+        return true;
+    }
+    if (name == "floor") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::floor(args[0].toDouble()));
+        return true;
+    }
+    if (name == "ceil") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::ceil(args[0].toDouble()));
+        return true;
+    }
+    if (name == "round") {
+        if (args.size() < 1) return false;
+        double val = args[0].toDouble();
+        if (args.size() >= 2) {
+            // round(x, digits)
+            double factor = std::pow(10.0, args[1].toDouble());
+            result = NeoValue::makeNumber(std::round(val * factor) / factor);
+        } else {
+            result = NeoValue::makeNumber(std::round(val));
+        }
+        return true;
+    }
+    if (name == "cbrt") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::cbrt(args[0].toDouble()));
+        return true;
+    }
+    if (name == "log2") {
+        if (args.size() != 1) return false;
+        result = NeoValue::makeNumber(std::log2(args[0].toDouble()));
+        return true;
+    }
+    // sign(x) — signum function
+    if (name == "sign") {
+        if (args.size() != 1) return false;
+        double v = args[0].toDouble();
+        result = NeoValue::makeNumber(v > 0.0 ? 1.0 : (v < 0.0 ? -1.0 : 0.0));
+        return true;
+    }
+    // max(a, b) / min(a, b)
+    if (name == "max") {
+        if (args.size() < 1) return false;
+        double m = args[0].toDouble();
+        for (size_t k = 1; k < args.size(); ++k)
+            if (args[k].toDouble() > m) m = args[k].toDouble();
+        result = NeoValue::makeNumber(m);
+        return true;
+    }
+    if (name == "min") {
+        if (args.size() < 1) return false;
+        double m = args[0].toDouble();
+        for (size_t k = 1; k < args.size(); ++k)
+            if (args[k].toDouble() < m) m = args[k].toDouble();
+        result = NeoValue::makeNumber(m);
+        return true;
+    }
+
     if (name == "sqrt") {
         if (args.size() != 1) return false;
         const NeoValue& a = args[0];
@@ -346,21 +445,157 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
         return true;
     }
 
+    // ── n(expr) — numeric evaluator ──────────────────────────────
+    // n(expr) or n(expr, digits): forces numeric evaluation.
+    // For symbolic expressions: calls evaluate(0.0).
+    // For numeric values: returns the value as-is (possible formatting by digits).
+    if (name == "n") {
+        if (args.empty()) { result = NeoValue::makeNull(); return true; }
+        const NeoValue& a = args[0];
+        // digits parameter (currently used only for display rounding)
+        int digits = (args.size() >= 2) ? static_cast<int>(args[1].toDouble()) : 10;
+        if (digits < 1) digits = 1;
+        if (digits > 15) digits = 15;
+        double numVal = a.toDouble();
+        result = NeoValue::makeNumber(numVal);
+        return true;
+    }
+
+    // ── List operations ───────────────────────────────────────────
+
+    // __list__(elements...) — create a List from arguments
+    if (name == "__list__") {
+        auto* lst = new std::vector<NeoValue>(args.begin(), args.end());
+        result = NeoValue::makeList(lst);
+        return true;
+    }
+
+    // len(list_or_string) — length of a list
+    if (name == "len") {
+        if (args.size() != 1) { result = NeoValue::makeNumber(0); return true; }
+        const NeoValue& a = args[0];
+        if (a.isList() && a.asList()) {
+            result = NeoValue::makeNumber(static_cast<double>(a.asList()->size()));
+        } else {
+            result = NeoValue::makeNumber(0);
+        }
+        return true;
+    }
+
+    // zeros(n) — list of n zeros
+    if (name == "zeros") {
+        int n = args.empty() ? 0 : static_cast<int>(args[0].toDouble());
+        if (n < 0) n = 0;
+        if (n > NEO_MAX_ITER) n = NEO_MAX_ITER;
+        auto* lst = new std::vector<NeoValue>(static_cast<size_t>(n), NeoValue::makeNumber(0));
+        result = NeoValue::makeList(lst);
+        return true;
+    }
+
+    // ones(n) — list of n ones
+    if (name == "ones") {
+        int n = args.empty() ? 0 : static_cast<int>(args[0].toDouble());
+        if (n < 0) n = 0;
+        if (n > NEO_MAX_ITER) n = NEO_MAX_ITER;
+        auto* lst = new std::vector<NeoValue>(static_cast<size_t>(n), NeoValue::makeNumber(1));
+        result = NeoValue::makeList(lst);
+        return true;
+    }
+
+    // sum(list) — sum of list elements
+    if (name == "sum") {
+        if (args.size() == 1 && args[0].isList() && args[0].asList()) {
+            double s = 0.0;
+            for (const auto& v : *args[0].asList()) s += v.toDouble();
+            result = NeoValue::makeNumber(s);
+            return true;
+        }
+        if (!args.empty() && args[0].isNumeric()) {
+            double s = 0.0;
+            for (const auto& v : args) s += v.toDouble();
+            result = NeoValue::makeNumber(s);
+            return true;
+        }
+        result = NeoValue::makeNumber(0);
+        return true;
+    }
+
+    // dot(a, b) — dot product of two lists
+    if (name == "dot") {
+        if (args.size() == 2 && args[0].isList() && args[1].isList()
+            && args[0].asList() && args[1].asList()) {
+            const auto& la = *args[0].asList();
+            const auto& lb = *args[1].asList();
+            size_t len = std::min(la.size(), lb.size());
+            double s = 0.0;
+            for (size_t k = 0; k < len; ++k) s += la[k].toDouble() * lb[k].toDouble();
+            result = NeoValue::makeNumber(s);
+            return true;
+        }
+        result = NeoValue::makeNumber(0);
+        return true;
+    }
+
+    // map(func, list) — apply func to each element of list
+    // Note: func must be a user-defined NeoLanguage function stored in env.
+    if (name == "map") {
+        if (args.size() < 2) { result = NeoValue::makeNull(); return true; }
+        const NeoValue& funcVal = args[0];
+        const NeoValue& listVal = args[1];
+        if (!funcVal.isFunction() || !listVal.isList() || !listVal.asList()) {
+            result = NeoValue::makeNull();
+            return true;
+        }
+        FunctionDefNode* def     = funcVal.funcDef();
+        NeoEnv*          closure = funcVal.funcClosure();
+        if (!def || def->params.empty()) { result = NeoValue::makeNull(); return true; }
+        auto* out = new std::vector<NeoValue>();
+        out->reserve(listVal.asList()->size());
+        for (const NeoValue& elem : *listVal.asList()) {
+            NeoEnv callEnv(closure);
+            callEnv.define(def->params[0], elem);
+            NeoValue r = evalBlock(def->body, callEnv);
+            if (_returnFlag) { r = takeReturn(); }
+            out->push_back(r);
+        }
+        result = NeoValue::makeList(out);
+        return true;
+    }
+
+    // filter(func, list) — keep elements where func returns truthy
+    if (name == "filter") {
+        if (args.size() < 2) { result = NeoValue::makeNull(); return true; }
+        const NeoValue& funcVal = args[0];
+        const NeoValue& listVal = args[1];
+        if (!funcVal.isFunction() || !listVal.isList() || !listVal.asList()) {
+            result = NeoValue::makeNull();
+            return true;
+        }
+        FunctionDefNode* def     = funcVal.funcDef();
+        NeoEnv*          closure = funcVal.funcClosure();
+        if (!def || def->params.empty()) { result = NeoValue::makeNull(); return true; }
+        auto* out = new std::vector<NeoValue>();
+        for (const NeoValue& elem : *listVal.asList()) {
+            NeoEnv callEnv(closure);
+            callEnv.define(def->params[0], elem);
+            NeoValue r = evalBlock(def->body, callEnv);
+            if (_returnFlag) { r = takeReturn(); }
+            if (r.isTruthy()) out->push_back(elem);
+        }
+        result = NeoValue::makeList(out);
+        return true;
+    }
+
     // ── range(n) or range(start, stop) ─────────────────────────
     // Returns a NeoValue::Number representing the count (lightweight
     // support: used by for-in to generate an integer range).
     // The actual iteration is handled in evalForIn.
     if (name == "range") {
-        // Return a special "range" marker value — evalForIn handles it
-        // by detecting Function type with nullptr def.
         if (args.size() == 1 && args[0].isNumeric()) {
             result = args[0];  // just pass the count through
             return true;
         }
         if (args.size() == 2 && args[0].isNumeric() && args[1].isNumeric()) {
-            // For range(start, stop), we can't easily return both values
-            // as a single NeoValue in the current design.
-            // Return stop - start as a proxy (evalForIn special-cases range).
             result = NeoValue::makeNumber(args[1].toDouble() - args[0].toDouble());
             return true;
         }
@@ -368,8 +603,6 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
     }
 
     // ── print / println and type: delegate to NeoStdLib for callback support ─
-    // (These were previously handled here as no-ops; NeoStdLib now routes
-    //  them through the host print callback so output appears in the console.)
 
     // ── All remaining built-ins: delegate to NeoStdLib ───────────
     // This handles: diff, integrate, solve, simplify, expand,
@@ -447,6 +680,20 @@ NeoValue NeoInterpreter::evalForIn(ForInNode* node, NeoEnv& env) {
 
     NeoValue last = NeoValue::makeNull();
 
+    // ── for i in list: ─────────────────────────────────────────────
+    if (iterVal.isList() && iterVal.asList()) {
+        const auto& lst = *iterVal.asList();
+        int iter = 0;
+        for (const NeoValue& elem : lst) {
+            if (++iter > NEO_MAX_ITER) break;
+            NeoEnv bodyEnv(&env);
+            bodyEnv.define(node->var, elem);
+            last = evalBlock(node->body, bodyEnv);
+            if (_returnFlag) return last;
+        }
+        return last;
+    }
+
     // Support for-in over a numeric range (the primary use case).
     // For `for i in range(n)` the parser produces a FunctionCall,
     // which evalFunctionCall simplifies to a Number n.
@@ -488,4 +735,66 @@ NeoValue NeoInterpreter::evalReturn(ReturnNode* node, NeoEnv& env) {
     _returnFlag  = true;
     _returnValue = val;
     return val;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// evalIndexOp — subscript / index access: target[i] or target[i, j]
+// ════════════════════════════════════════════════════════════════════
+
+NeoValue NeoInterpreter::evalIndexOp(IndexOpNode* node, NeoEnv& env) {
+    NeoValue target = eval(node->target, env);
+    if (_returnFlag) return target;
+
+    if (node->indices.empty()) {
+        recordError("Index expression requires at least one index", node->line, node->col);
+        return NeoValue::makeNull();
+    }
+
+    // Evaluate first index
+    NeoValue idx0 = eval(node->indices[0], env);
+    if (_returnFlag) return idx0;
+
+    // ── List / 1-D indexing ────────────────────────────────────────
+    if (target.isList() && target.asList()) {
+        const auto& lst = *target.asList();
+        int64_t i = static_cast<int64_t>(idx0.toDouble());
+        if (i < 0) i += static_cast<int64_t>(lst.size());  // negative indexing
+        if (i < 0 || i >= static_cast<int64_t>(lst.size())) {
+            char buf[80];
+            std::snprintf(buf, sizeof(buf),
+                "List index %lld out of range (size %zu)",
+                static_cast<long long>(i), lst.size());
+            recordError(buf, node->line, node->col);
+            return NeoValue::makeNull();
+        }
+
+        // ── Matrix row access: M[r] returns a row (List of Lists) ──
+        if (node->indices.size() == 1) {
+            return lst[static_cast<size_t>(i)];
+        }
+
+        // ── Matrix element: M[r, c] ────────────────────────────────
+        NeoValue row = lst[static_cast<size_t>(i)];
+        if (row.isList() && row.asList()) {
+            NeoValue idx1 = eval(node->indices[1], env);
+            if (_returnFlag) return idx1;
+            const auto& rowLst = *row.asList();
+            int64_t j = static_cast<int64_t>(idx1.toDouble());
+            if (j < 0) j += static_cast<int64_t>(rowLst.size());
+            if (j < 0 || j >= static_cast<int64_t>(rowLst.size())) {
+                recordError("Matrix column index out of range", node->line, node->col);
+                return NeoValue::makeNull();
+            }
+            return rowLst[static_cast<size_t>(j)];
+        }
+        return NeoValue::makeNull();
+    }
+
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "Value of type '%s' is not subscriptable",
+                  target.isList() ? "list" :
+                  target.isNumeric() ? "number" :
+                  target.isSymbolic() ? "symbolic" : "unknown");
+    recordError(buf, node->line, node->col);
+    return NeoValue::makeNull();
 }

@@ -513,6 +513,30 @@ NeoNode* NeoParser::parseUnary() {
 }
 
 // ═════════════════════════════════════════════════════════════════
+// parseIndexOp — target[idx] or target[row, col]
+// ═════════════════════════════════════════════════════════════════
+
+NeoNode* NeoParser::parseIndexOp(NeoNode* target, int line, int col) {
+    IndexOpNode* node = _arena.make<IndexOpNode>(target, line, col);
+    if (!node) return target;
+
+    // Consume the opening '[' (may loop for chained indexing)
+    while (check(NeoTokType::LBRACKET)) {
+        advance(); // consume [
+        // Parse comma-separated index expressions
+        while (!check(NeoTokType::RBRACKET) && !atEnd()) {
+            NeoNode* idx = parseExpression();
+            if (idx) node->indices.push_back(idx);
+            if (!match(NeoTokType::COMMA)) break;
+        }
+        expect(NeoTokType::RBRACKET, "index expression");
+        // Allow only one bracket pair (chained: L[0][1] would need two nodes)
+        break;
+    }
+    return node;
+}
+
+// ═════════════════════════════════════════════════════════════════
 // parsePrimary
 // ═════════════════════════════════════════════════════════════════
 
@@ -570,7 +594,16 @@ NeoNode* NeoParser::parsePrimary() {
                 if (!match(NeoTokType::COMMA)) break;
             }
             expect(NeoTokType::RPAREN, "function call argument list");
+            // Check for chained indexing: f(x)[0]
+            if (check(NeoTokType::LBRACKET)) {
+                return parseIndexOp(call, tok.line, tok.col);
+            }
             return call;
+        }
+        // Subscript: variable followed by [
+        if (check(NeoTokType::LBRACKET)) {
+            NeoNode* varNode = _arena.make<SymbolNode>(tok.value, tok.line, tok.col);
+            return parseIndexOp(varNode, tok.line, tok.col);
         }
         // Variable reference
         return _arena.make<SymbolNode>(tok.value, tok.line, tok.col);
@@ -596,6 +629,10 @@ NeoNode* NeoParser::parsePrimary() {
             if (!match(NeoTokType::COMMA)) break;
         }
         expect(NeoTokType::RBRACKET, "list literal");
+        // Check for immediate indexing: [1,2,3][0]
+        if (check(NeoTokType::LBRACKET)) {
+            return parseIndexOp(listNode, tl, tc);
+        }
         return listNode;
     }
 

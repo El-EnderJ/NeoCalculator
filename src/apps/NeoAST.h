@@ -188,6 +188,7 @@ enum class NodeKind : uint8_t {
     Return,
     Program,
     ForIn,
+    IndexOp,        ///< list / matrix indexing: expr[i] or expr[i, j]
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -403,4 +404,24 @@ struct ProgramNode : NeoNode {
 
     ProgramNode(int line, int col)
         : NeoNode(NodeKind::Program, line, col) {}
+};
+
+// ════════════════════════════════════════════════════════════════════
+// IndexOpNode — subscript / index access: target[i] or target[i, j]
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Represents a subscript operation on a list or matrix.
+ *
+ * Examples:
+ *   L[0]       → target = L,  indices = [0]
+ *   M[1, 2]    → target = M,  indices = [1, 2]
+ *   L[i + 1]   → target = L,  indices = [i+1]
+ */
+struct IndexOpNode : NeoNode {
+    NeoNode*  target;   ///< The collection being indexed
+    NeoNodeVec indices; ///< One index per dimension (1 for lists, 2 for matrices)
+
+    IndexOpNode(NeoNode* t, int line, int col)
+        : NeoNode(NodeKind::IndexOp, line, col), target(t) {}
 };

@@ -116,4 +116,11 @@ private:
     /** True if identifier `id` looks like a function-definition header
      *  using the `f(x) := expr` one-liner syntax, i.e. IDENTIFIER LPAREN. */
     bool looksLikeFuncDef() const;
+
+    /**
+     * Parse a subscript operation: target[index] or target[row, col].
+     * Called after the target node has already been parsed.
+     * Consumes '[', the index expression(s), and ']'.
+     */
+    NeoNode* parseIndexOp(NeoNode* target, int line, int col);
 };

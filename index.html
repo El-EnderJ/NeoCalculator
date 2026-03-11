@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeoCalculator — NumOS | Scientific Mastery, Decolonized</title>
+  <meta name="description" content="NumOS: Open-source scientific OS running Pro-CAS symbolic algebra, real-time physics, and 17 apps on a $5 ESP32-S3. Disrupting the $150 calculator monopoly." />
+  <meta property="og:title" content="NeoCalculator — NumOS" />
+  <meta property="og:description" content="Scientific Mastery, Decolonized. Pro-CAS Engine on $5 silicon." />
+  <meta property="og:url" content="https://neocalculator.tech" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ─── NAV ─── -->
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <span class="logo-neo">Neo</span><span class="logo-calc">Calculator</span>
+        <span class="logo-badge">NumOS</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#moat">The Moat</a></li>
+        <li><a href="#tech">Tech Stack</a></li>
+        <li><a href="#hardware">Hardware</a></li>
+        <li><a href="#roadmap">Roadmap</a></li>
+        <li><a href="https://github.com/El-EnderJ/NeoCalculator" target="_blank" rel="noopener" class="btn-nav">GitHub ↗</a></li>
+      </ul>
+      <button class="nav-burger" aria-label="Menu" id="navBurger">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ─── HERO ─── -->
+  <section class="hero" id="hero">
+    <canvas id="heroCanvas"></canvas>
+    <div class="hero-grid-overlay"></div>
+
+    <div class="hero-content">
+      <div class="hero-badge" id="heroBadge">
+        <span class="badge-dot"></span>
+        Backed by validation from the <strong>1517 Fund</strong> community
+      </div>
+
+      <h1 class="hero-title" id="heroTitle">
+        <span class="title-line">Scientific</span>
+        <span class="title-line title-accent">Mastery,</span>
+        <span class="title-line">Decolonized.</span>
+      </h1>
+
+      <p class="hero-sub" id="heroSub">
+        NumOS runs a full <span class="hl-blue">Symbolic Math Engine</span>,
+        real-time <span class="hl-blue">Navier-Stokes physics</span>, and
+        <span class="hl-lime">17 university-grade apps</span>
+        on a <strong>$5 ESP32-S3</strong> with <strong>97 KB RAM</strong>.
+      </p>
+
+      <div class="hero-math" id="heroMath">
+        <div class="math-morph" id="mathMorph">
+          <span class="math-code" id="mathCode">d/dx [ x³ + sin(x) ]</span>
+          <span class="math-arrow">→</span>
+          <span class="math-result" id="mathResult">3x² + cos(x)</span>
+        </div>
+        <div class="math-label">Live symbolic CAS on $5 silicon</div>
+      </div>
+
+      <div class="hero-actions">
+        <a href="https://github.com/El-EnderJ/NeoCalculator" target="_blank" rel="noopener" class="btn btn-primary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          Star on GitHub
+        </a>
+        <a href="#moat" class="btn btn-ghost">See The Moat ↓</a>
+      </div>
+
+      <div class="hero-video-placeholder" id="heroVideo">
+        <div class="video-frame">
+          <div class="video-icon">▶</div>
+          <div class="video-label">ESP32-S3 running NumOS CAS live demo</div>
+          <div class="video-sub">YouTube demo · coming soon</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-stats" id="heroStats">
+      <div class="stat-item" data-stat="bom">
+        <div class="stat-number"><span class="stat-val" id="statBom">$5</span></div>
+        <div class="stat-label">BOM cost</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item" data-stat="ram">
+        <div class="stat-number"><span class="stat-val" id="statRam">97<span class="stat-unit">KB</span></span></div>
+        <div class="stat-label">Total RAM</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item" data-stat="apps">
+        <div class="stat-number"><span class="stat-val" id="statApps">17</span></div>
+        <div class="stat-label">Live apps</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item" data-stat="tests">
+        <div class="stat-number"><span class="stat-val" id="statTests">85+</span></div>
+        <div class="stat-label">CAS unit tests</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item" data-stat="roi">
+        <div class="stat-number"><span class="stat-val" id="statRoi">30×</span></div>
+        <div class="stat-label">Cost advantage</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── THE MOAT ─── -->
+  <section class="section moat" id="moat">
+    <div class="container">
+      <div class="section-label">THE MOAT</div>
+      <h2 class="section-title">$150 Legacy Hardware<br/><span class="hl-lime">vs.</span> $5 Silicon.</h2>
+      <p class="section-sub">The incumbent calculators haven't changed their core architecture in 30 years. We run on a processor that costs less than a coffee — and surpass them in symbolic computation.</p>
+
+      <div class="table-wrapper" id="moatTable">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th class="col-feature">Capability</th>
+              <th class="col-numos winner">
+                <div class="th-logo">NumOS</div>
+                <div class="th-price price-lime">~$15</div>
+                <div class="th-badge">OPEN SOURCE</div>
+              </th>
+              <th>
+                <div class="th-logo">TI-84 Plus CE</div>
+                <div class="th-price">~$119</div>
+              </th>
+              <th>
+                <div class="th-logo">HP Prime G2</div>
+                <div class="th-price">~$179</div>
+              </th>
+              <th>
+                <div class="th-logo">NumWorks</div>
+                <div class="th-price">~$79</div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Symbolic CAS (Derivatives)</td>
+              <td class="winner"><span class="check">✓</span> Pro — 17 rules</td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="check dim">✓</span></td>
+              <td><span class="check dim">✓</span> SymPy</td>
+            </tr>
+            <tr>
+              <td>Symbolic Integration (Slagle)</td>
+              <td class="winner"><span class="check">✓</span> Slagle heuristic</td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="check dim">✓</span></td>
+              <td><span class="check dim">✓</span></td>
+            </tr>
+            <tr>
+              <td>Step-by-step Solutions</td>
+              <td class="winner"><span class="check">✓</span> Full steps</td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="check dim">✓</span></td>
+              <td><span class="cross">✗</span></td>
+            </tr>
+            <tr>
+              <td>Real-time Physics Simulation</td>
+              <td class="winner"><span class="check">✓</span> Verlet + N-S</td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="cross">✗</span></td>
+            </tr>
+            <tr>
+              <td>Particle Sandbox (30+ materials)</td>
+              <td class="winner"><span class="check">✓</span> Powder-Toy class</td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="cross">✗</span></td>
+            </tr>
+            <tr>
+              <td>Natural Display V.P.A.M.</td>
+              <td class="winner"><span class="check">✓</span></td>
+              <td><span class="check dim">✓</span></td>
+              <td><span class="check dim">✓</span></td>
+              <td><span class="check dim">✓</span></td>
+            </tr>
+            <tr>
+              <td>Open-Source (MIT)</td>
+              <td class="winner"><span class="check">✓</span></td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="check dim">✓</span></td>
+            </tr>
+            <tr>
+              <td>BigNum Arithmetic (Overflow-safe)</td>
+              <td class="winner"><span class="check">✓</span> CASInt/CASRational</td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="cross">✗</span></td>
+              <td><span class="cross">✗</span></td>
+            </tr>
+            <tr>
+              <td>MCU / Core</td>
+              <td class="winner">ESP32-S3 LX7 @ 240 MHz</td>
+              <td>Zilog eZ80</td>
+              <td>ARM Cortex-A7</td>
+              <td>STM32F730</td>
+            </tr>
+            <tr>
+              <td>Hardware Cost (BOM)</td>
+              <td class="winner price-lime">~$15</td>
+              <td>~$119</td>
+              <td>~$179</td>
+              <td>~$79</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="moat-callout">
+        <span class="callout-icon">⚡</span>
+        <strong>NumOS already surpasses the TI-84 in CAS capability</strong> — at 8× lower cost.
+        On track to match the NumWorks with WiFi connectivity and Python scripting.
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TECH STACK X-RAY ─── -->
+  <section class="section tech" id="tech">
+    <div class="container">
+      <div class="section-label">TECH STACK — X-RAY</div>
+      <h2 class="section-title">How we squeeze <span class="hl-lime">university-grade CAS</span><br/>into 97 KB.</h2>
+
+      <div class="arch-diagram" id="archDiagram">
+        <div class="arch-layer" data-layer="0">
+          <div class="arch-label">Applications (17 apps)</div>
+          <div class="arch-chips">
+            <div class="chip">Calculation</div>
+            <div class="chip">Equations</div>
+            <div class="chip">Calculus</div>
+            <div class="chip">Grapher</div>
+            <div class="chip">Statistics</div>
+            <div class="chip">Bridge Designer</div>
+            <div class="chip chip-highlight">Particle Lab</div>
+            <div class="chip">Neural Lab</div>
+            <div class="chip chip-more">+ 9 more</div>
+          </div>
+        </div>
+        <div class="arch-arrow">▼</div>
+        <div class="arch-layer" data-layer="1">
+          <div class="arch-label">Pro-CAS Engine <span class="arch-tag">PSRAM</span></div>
+          <div class="arch-chips">
+            <div class="chip chip-highlight">SymExpr DAG (hash-consed)</div>
+            <div class="chip chip-highlight">SymDiff — 17 rules</div>
+            <div class="chip chip-highlight">SymIntegrate — Slagle</div>
+            <div class="chip chip-highlight">OmniSolver</div>
+            <div class="chip chip-highlight">BigNum (CASInt/Rational)</div>
+            <div class="chip chip-highlight">8-pass Simplifier</div>
+          </div>
+        </div>
+        <div class="arch-arrow">▼</div>
+        <div class="arch-layer" data-layer="2">
+          <div class="arch-label">Math Engine</div>
+          <div class="arch-chips">
+            <div class="chip">Tokenizer</div>
+            <div class="chip">Shunting-Yard Parser</div>
+            <div class="chip">RPN Evaluator</div>
+            <div class="chip">Natural Display AST</div>
+          </div>
+        </div>
+        <div class="arch-arrow">▼</div>
+        <div class="arch-layer" data-layer="3">
+          <div class="arch-label">Hardware Abstraction</div>
+          <div class="arch-chips">
+            <div class="chip">LVGL 9.x UI</div>
+            <div class="chip">TFT_eSPI FSPI DMA</div>
+            <div class="chip">KeyMatrix 5×10</div>
+            <div class="chip">LittleFS</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mem-section">
+        <h3 class="mem-title">Hybrid PSRAM / Internal RAM Architecture</h3>
+        <div class="mem-grid">
+          <div class="mem-card" id="memCard0">
+            <div class="mem-icon">🧠</div>
+            <div class="mem-name">Internal SRAM</div>
+            <div class="mem-size">327 KB total</div>
+            <div class="mem-bar-wrap">
+              <div class="mem-bar mem-bar-used" style="--pct:28.8%">
+                <span>28.8% used</span>
+              </div>
+            </div>
+            <div class="mem-detail">97 KB used · LVGL + DMA buffers + stack</div>
+          </div>
+          <div class="mem-card" id="memCard1">
+            <div class="mem-icon">💎</div>
+            <div class="mem-name">PSRAM OPI</div>
+            <div class="mem-size">8 MB total</div>
+            <div class="mem-bar-wrap">
+              <div class="mem-bar mem-bar-psram" style="--pct:2%">
+                <span>&lt;2% used</span>
+              </div>
+            </div>
+            <div class="mem-detail">CAS DAGs + step logs + particle grids</div>
+          </div>
+          <div class="mem-card" id="memCard2">
+            <div class="mem-icon">⚡</div>
+            <div class="mem-name">Flash</div>
+            <div class="mem-size">16 MB total</div>
+            <div class="mem-bar-wrap">
+              <div class="mem-bar mem-bar-flash" style="--pct:23.2%">
+                <span>23.2% used</span>
+              </div>
+            </div>
+            <div class="mem-detail">1.52 MB firmware · LittleFS variables</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tech-stack-grid">
+        <div class="tech-card" id="tc0">
+          <div class="tc-icon">🔧</div>
+          <h4>ESP32-S3 LX7</h4>
+          <p>Dual-core @ 240 MHz. Native USB. The same chip powering industrial IoT — at commodity price.</p>
+        </div>
+        <div class="tech-card" id="tc1">
+          <div class="tc-icon">📐</div>
+          <h4>Pro-CAS Engine</h4>
+          <p>Immutable expression DAG with hash-consing (ConsTable). Slagle integral heuristic. Sylvester resultant solver. Built from scratch in C++17.</p>
+        </div>
+        <div class="tech-card" id="tc2">
+          <div class="tc-icon">🌊</div>
+          <h4>Real-Time Physics</h4>
+          <p>Verlet integration bridge simulator. Navier-Stokes-inspired fluid dynamics. 30+ material particle sandbox — all at 60 Hz on 97 KB.</p>
+        </div>
+        <div class="tech-card" id="tc3">
+          <div class="tc-icon">🖥️</div>
+          <h4>LVGL 9.x UI</h4>
+          <p>320×240 IPS colour display. Double DMA flush pipeline. Natural Display renders real fractions, radicals, and superscripts as on paper.</p>
+        </div>
+        <div class="tech-card" id="tc4">
+          <div class="tc-icon">🧪</div>
+          <h4>85+ Unit Tests</h4>
+          <p>Comprehensive CAS test suite: rational arithmetic, polynomial factoring, symbolic diff/integrate, OmniSolver, step deduplication.</p>
+        </div>
+        <div class="tech-card" id="tc5">
+          <div class="tc-icon">🔓</div>
+          <h4>MIT Licensed</h4>
+          <p>Every line is open. Fork it, run it on any ESP32-S3. No proprietary SDK, no locked bootloader, no vendor tie-in.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── FEATURES SPOTLIGHT ─── -->
+  <section class="section features" id="features">
+    <div class="container">
+      <div class="section-label">WHAT RUNS ON $5</div>
+      <h2 class="section-title">17 Apps. One <span class="hl-lime">$5</span> Chip.</h2>
+
+      <div class="features-grid">
+        <div class="feat-card feat-large" id="feat0">
+          <div class="feat-tag">CAS ENGINE</div>
+          <h3>Symbolic Math</h3>
+          <div class="feat-math">
+            <div class="feat-eq">∫ x·eˣ dx = eˣ(x−1) + C</div>
+            <div class="feat-eq">d/dx[sin(x²)] = 2x·cos(x²)</div>
+            <div class="feat-eq">3x³−2x+1 = 0 → step-by-step</div>
+          </div>
+          <p>Full Slagle symbolic integration (table lookup, u-sub, integration by parts/LIATE). 17-rule symbolic differentiation. Non-linear system solving via Sylvester resultant.</p>
+        </div>
+
+        <div class="feat-card" id="feat1">
+          <div class="feat-tag">PHYSICS</div>
+          <h3>Bridge Designer</h3>
+          <p>Real-time Verlet physics. Stress analysis with live beam colour mapping (green→red). Wood / Steel / Cable materials. Truck and car load testing at 60 Hz.</p>
+        </div>
+
+        <div class="feat-card" id="feat2">
+          <div class="feat-tag">SANDBOX</div>
+          <h3>Particle Lab</h3>
+          <p>30+ materials: Sand, Water, Lava, LN2, Wire, Iron, C4, Clone. Spark electronics with Joule heating. Phase transitions. Bresenham line tool. LittleFS save/load.</p>
+        </div>
+
+        <div class="feat-card" id="feat3">
+          <div class="feat-tag">AI</div>
+          <h3>Neural Lab</h3>
+          <p>On-device neural net training: SGD+Momentum, L2 regularisation, 5 scenarios (XOR, Classifier, Sine, Spiral), bilinear upscale heatmap. Save/load via LittleFS.</p>
+        </div>
+
+        <div class="feat-card" id="feat4">
+          <div class="feat-tag">GRAPHING</div>
+          <h3>Function Grapher</h3>
+          <p>y = f(x) real-time colour graphing. Zoom and pan. Value table. Complex expression support via the full Math Engine pipeline.</p>
+        </div>
+
+        <div class="feat-card" id="feat5">
+          <div class="feat-tag">STATS</div>
+          <h3>Statistics Suite</h3>
+          <p>Statistics, Probability, Regression, Sequences apps. Full numeric pipeline backed by the Math Engine evaluator and variable store.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── HARDWARE STATUS ─── -->
+  <section class="section hardware" id="hardware">
+    <div class="container">
+      <div class="section-label">HARDWARE STATUS</div>
+      <h2 class="section-title">From Breadboard<br/>to <span class="hl-lime">4-Layer PCB.</span></h2>
+
+      <div class="hw-status-grid">
+        <div class="hw-card hw-active" id="hw0">
+          <div class="hw-status-dot hw-dot-active"></div>
+          <div class="hw-phase">PHASE ACTIVE</div>
+          <h3>Input Bridge / HIL Testing</h3>
+          <p>Hardware-In-the-Loop validation on breadboard prototype. Full NumOS firmware running. All 17 apps live. 5×10 key matrix wired (3 columns active). ILI9341 IPS 320×240 display at 10 MHz SPI. USB CDC console.</p>
+          <div class="hw-specs">
+            <div class="hw-spec"><span class="spec-k">MCU</span><span class="spec-v">ESP32-S3 N16R8 @ 240 MHz</span></div>
+            <div class="hw-spec"><span class="spec-k">Display</span><span class="spec-v">ILI9341 IPS 3.2" · 320×240</span></div>
+            <div class="hw-spec"><span class="spec-k">Keys</span><span class="spec-v">5×10 matrix · 15 wired</span></div>
+            <div class="hw-spec"><span class="spec-k">Storage</span><span class="spec-v">16 MB Flash · 8 MB PSRAM OPI</span></div>
+          </div>
+        </div>
+
+        <div class="hw-card hw-inprogress" id="hw1">
+          <div class="hw-status-dot hw-dot-progress"></div>
+          <div class="hw-phase">IN DESIGN</div>
+          <h3>4-Layer PCB</h3>
+          <p>Custom 4-layer PCB integrating ESP32-S3, TP4056 Li-Po charger, 5×10 mechanical keyboard matrix, display connector, and USB-C power delivery. KiCad schematic in active design.</p>
+          <div class="hw-specs">
+            <div class="hw-spec"><span class="spec-k">Layers</span><span class="spec-v">4 (Signal / GND / PWR / Signal)</span></div>
+            <div class="hw-spec"><span class="spec-k">Form factor</span><span class="spec-v">Casio ClassWiz size</span></div>
+            <div class="hw-spec"><span class="spec-k">Charging</span><span class="spec-v">TP4056 Li-Po via USB-C</span></div>
+            <div class="hw-spec"><span class="spec-k">Tool</span><span class="spec-v">KiCad</span></div>
+          </div>
+        </div>
+
+        <div class="hw-card hw-planned" id="hw2">
+          <div class="hw-status-dot hw-dot-planned"></div>
+          <div class="hw-phase">IN DESIGN</div>
+          <h3>3D-Printed Chassis</h3>
+          <p>Custom ergonomic enclosure designed to fit the 4-layer PCB. Dimensional specifications locked. Manufacturing-ready design targeting FDM and SLA printing for prototype runs.</p>
+          <div class="hw-specs">
+            <div class="hw-spec"><span class="spec-k">Design tool</span><span class="spec-v">CAD (dimensions locked)</span></div>
+            <div class="hw-spec"><span class="spec-k">Target</span><span class="spec-v">FDM + SLA prototypes</span></div>
+            <div class="hw-spec"><span class="spec-k">BOM target</span><span class="spec-v">&lt;$15 total hardware</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hw-callout">
+        <div class="hc-inner">
+          <div class="hc-icon">🔬</div>
+          <div class="hc-text">
+            <strong>Every bug documented. Every fix published.</strong>
+            <span>6 critical ESP32-S3 bring-up issues resolved, fully documented in <code>docs/HARDWARE.md</code>. The community can replicate this build today.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── ROADMAP ─── -->
+  <section class="section roadmap" id="roadmap">
+    <div class="container">
+      <div class="section-label">ROADMAP</div>
+      <h2 class="section-title">From Prototype to<br/><span class="hl-lime">Global Open Standard.</span></h2>
+
+      <div class="timeline" id="timeline">
+
+        <div class="tl-item tl-done" data-idx="0">
+          <div class="tl-dot tl-dot-done"></div>
+          <div class="tl-line"></div>
+          <div class="tl-card">
+            <div class="tl-date">Nov 2025</div>
+            <h4>First Light</h4>
+            <p>First correct numerical calculation on serial terminal. Tokenizer → Parser → Evaluator pipeline live.</p>
+          </div>
+        </div>
+
+        <div class="tl-item tl-done" data-idx="1">
+          <div class="tl-dot tl-dot-done"></div>
+          <div class="tl-line"></div>
+          <div class="tl-card">
+            <div class="tl-date">Dec 2025</div>
+            <h4>Natural Display</h4>
+            <p>Real stacked fractions on TFT screen. V.P.A.M. visual AST with 2D cursor navigation.</p>
+          </div>
+        </div>
+
+        <div class="tl-item tl-done" data-idx="2">
+          <div class="tl-dot tl-dot-done"></div>
+          <div class="tl-line"></div>
+          <div class="tl-card">
+            <div class="tl-date">Jan 2026</div>
+            <h4>Launcher 3.0</h4>
+            <p>LVGL 9.x · animated splash screen · 3×N icon grid · SerialBridge for PC control.</p>
+          </div>
+        </div>
+
+        <div class="tl-item tl-done" data-idx="3">
+          <div class="tl-dot tl-dot-done"></div>
+          <div class="tl-line"></div>
+          <div class="tl-card">
+            <div class="tl-date">Feb 2026</div>
+            <h4>Pro-CAS Engine</h4>
+            <p>Full symbolic algebra: BigNum, DAG, SymDiff (17 rules), Slagle integrals, 8-pass simplifier, OmniSolver. 85+ unit tests.</p>
+          </div>
+        </div>
+
+        <div class="tl-item tl-done" data-idx="4">
+          <div class="tl-dot tl-dot-done"></div>
+          <div class="tl-line"></div>
+          <div class="tl-card">
+            <div class="tl-date">Mar–Apr 2026</div>
+            <h4>17-App Platform</h4>
+            <p>Bridge Designer (Verlet physics), Particle Lab (30+ materials), Neural Lab, Statistics, Probability, Regression, Sequences, Python — Phase 6 complete.</p>
+          </div>
+        </div>
+
+        <div class="tl-item tl-active" data-idx="5">
+          <div class="tl-dot tl-dot-active"></div>
+          <div class="tl-line"></div>
+          <div class="tl-card tl-card-active">
+            <div class="tl-date">NOW</div>
+            <h4>HIL Testing + PCB Design</h4>
+            <p>Hardware-In-the-Loop validation. 4-layer PCB in KiCad. 3D chassis design. Input bridge firmware. All apps live on breadboard.</p>
+          </div>
+        </div>
+
+        <div class="tl-item tl-planned" data-idx="6">
+          <div class="tl-dot tl-dot-planned"></div>
+          <div class="tl-line"></div>
+          <div class="tl-card">
+            <div class="tl-date">Phase 7</div>
+            <h4>Matrices + Complex Numbers</h4>
+            <p>Matrix editor, determinant, inverse. Full complex number arithmetic. Definite integrals. Series expansion.</p>
+          </div>
+        </div>
+
+        <div class="tl-item tl-planned" data-idx="7">
+          <div class="tl-dot tl-dot-planned"></div>
+          <div class="tl-line"></div>
+          <div class="tl-card">
+            <div class="tl-date">Phase 8</div>
+            <h4>Connectivity + Scripting</h4>
+            <p>WiFi sync. Python REPL. USB file transfer. Battery charging via TP4056. Community app store.</p>
+          </div>
+        </div>
+
+        <div class="tl-item tl-planned" data-idx="8">
+          <div class="tl-dot tl-dot-planned"></div>
+          <div class="tl-line"></div>
+          <div class="tl-card">
+            <div class="tl-date">V1.0</div>
+            <h4>Global Open Hardware Release</h4>
+            <p>Production-ready PCB. BOM &lt;$15. Full documentation for community manufacturing. The open-source TI killer — shipped.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── CTA ─── -->
+  <section class="section cta" id="cta">
+    <div class="container">
+      <canvas id="ctaCanvas"></canvas>
+      <div class="cta-content">
+        <div class="section-label">JOIN THE MISSION</div>
+        <h2 class="cta-title">The calculator industry<br/>hasn't been disrupted yet.</h2>
+        <p class="cta-sub">Built by a 15-year-old systems architect from Spain. Invited to the <strong>1517 Fund</strong> builder community. Applying to Magnificent Grants. The code is live, the hardware works, and the monopoly is crumbling.</p>
+        <div class="cta-actions">
+          <a href="https://github.com/El-EnderJ/NeoCalculator" target="_blank" rel="noopener" class="btn btn-primary btn-xl">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+            Star on GitHub
+          </a>
+          <a href="https://github.com/El-EnderJ/NeoCalculator/issues" target="_blank" rel="noopener" class="btn btn-outline btn-xl">Contribute</a>
+        </div>
+        <div class="cta-meta">
+          <span>MIT Licensed</span>
+          <span class="meta-dot">·</span>
+          <span>ESP32-S3 N16R8</span>
+          <span class="meta-dot">·</span>
+          <span>C++17</span>
+          <span class="meta-dot">·</span>
+          <span>LVGL 9.x</span>
+          <span class="meta-dot">·</span>
+          <span>neocalculator.tech</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── FOOTER ─── -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <span class="logo-neo">Neo</span><span class="logo-calc">Calculator</span>
+        <span class="footer-sub">NumOS · ESP32-S3 · Open Source</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/El-EnderJ/NeoCalculator" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/El-EnderJ/NeoCalculator/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">Roadmap</a>
+        <a href="https://github.com/El-EnderJ/NeoCalculator/blob/main/docs/HARDWARE.md" target="_blank" rel="noopener">Hardware</a>
+        <a href="https://github.com/El-EnderJ/NeoCalculator/blob/main/docs/PROJECT_BIBLE.md" target="_blank" rel="noopener">Docs</a>
+      </div>
+      <div class="footer-copy">© 2026 NeoCalculator · MIT License · neocalculator.tech</div>
+    </div>
+  </footer>
+
+  <!-- ─── SCRIPTS ─── -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

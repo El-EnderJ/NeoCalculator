@@ -74,6 +74,26 @@ public:
         return _table.find(name) != _table.end();
     }
 
+    // ── forEach — iterate over bindings in this scope only ────────
+    /**
+     * Call `fn(name, value)` for every binding in THIS scope.
+     * Does not traverse parent scopes.
+     * Useful for `vars()` built-in and persistence.
+     */
+    template<typename Fn>
+    void forEach(Fn fn) const {
+        for (const auto& kv : _table) {
+            fn(kv.first, kv.second);
+        }
+    }
+
+    template<typename Fn>
+    void forEachMut(Fn fn) {
+        for (auto& kv : _table) {
+            fn(kv.first, kv.second);
+        }
+    }
+
 private:
     // Unordered map backed by PSRAMAllocator
     using Table = std::unordered_map<

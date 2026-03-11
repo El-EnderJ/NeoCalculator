@@ -5,13 +5,24 @@
  *   · EDITOR  — monospace code textarea (keyboard input)
  *   · CONSOLE — read-only output / error display
  *
- * F5 = compile & show AST summary in the console.
- * MODE = exit app (caller SystemApp handles return-to-menu).
- * Tab key (F1) = insert 4 spaces.
+ * Key bindings:
+ *   F5   = run the current program
+ *   F1   = insert 4 spaces (tab-indent)
+ *   F2   = save editor content to flash (/neolang.nl)
+ *   F3   = load editor content from flash (/neolang.nl)
+ *   MODE = exit app (caller SystemApp handles return-to-menu)
+ *
+ * Phase 3 additions:
+ *   · NeoStdLib integration (diff, integrate, solve, plot, etc.)
+ *   · plot() triggers Graphics Mode overlay using SymExpr::evaluate
+ *     directly, decoupled from GrapherApp's string evaluator
+ *   · print() appends directly to the console textarea
+ *   · Persistence: editor content saved/loaded via LittleFS (/neolang.nl)
+ *   · Memory protection: SymExprArena soft-reset if >70% used
  *
  * Follows the same LVGL/lifecycle patterns as PythonApp.
  *
- * Part of: NeoCalculator / NumOS — NeoLanguage frontend
+ * Part of: NeoCalculator / NumOS — NeoLanguage Phase 3 (Standard Library)
  */
 #pragma once
 
@@ -24,6 +35,7 @@
 #include "NeoValue.h"
 #include "NeoEnv.h"
 #include "NeoInterpreter.h"
+#include "NeoStdLib.h"
 #include "../math/cas/SymExprArena.h"
 
 // ════════════════════════════════════════════════════════════════════
@@ -35,101 +47,107 @@ public:
     NeoLanguageApp();
     ~NeoLanguageApp();
 
-    // ── Standard NumOS app lifecycle ─────────────────────────────
-    void begin();           ///< Create LVGL screen & UI
-    void end();             ///< Destroy LVGL screen & reset state
-    void load();            ///< Animate screen into view
+    // Standard NumOS app lifecycle
+    void begin();
+    void end();
+    void load();
     void handleKey(const KeyEvent& ev);
 
     bool isActive() const { return _screen != nullptr; }
 
 private:
-    // ── Layout constants ─────────────────────────────────────────
+    // Layout constants
     static constexpr int SCREEN_W         = 320;
     static constexpr int SCREEN_H         = 240;
-    static constexpr int BAR_H            = 25;   ///< StatusBar height
-    static constexpr int TAB_H            = 28;   ///< Tab bar height
+    static constexpr int BAR_H            = 25;
+    static constexpr int TAB_H            = 28;
     static constexpr int CONTENT_Y        = BAR_H + TAB_H;
     static constexpr int CONTENT_H        = SCREEN_H - CONTENT_Y;
-    static constexpr int MAX_RESULT_CHARS = 200;  ///< Per-result output truncation limit
+    static constexpr int MAX_RESULT_CHARS = 200;
+    static constexpr int PLOT_W           = SCREEN_W;
+    static constexpr int PLOT_H           = SCREEN_H - BAR_H - 20;
+    static constexpr int PLOT_HINT_H      = 20;
+    static constexpr int PLOT_SAMPLE_PTS  = 160; ///< Sampling points for y-range auto-detection
+    static constexpr float ARENA_RESET_THRESHOLD = 0.70f;
 
-    // ── Colour palette ────────────────────────────────────────────
-    static constexpr uint32_t COL_BG        = 0x1E1E2E; ///< Dark background
-    static constexpr uint32_t COL_TAB_BG    = 0x313244; ///< Tab bar bg
-    static constexpr uint32_t COL_TAB_ACT   = 0x89B4FA; ///< Active tab pill
-    static constexpr uint32_t COL_TAB_TXT_A = 0x1E1E2E; ///< Active tab text
-    static constexpr uint32_t COL_TAB_TXT_I = 0xCDD6F4; ///< Inactive tab text
-    static constexpr uint32_t COL_EDITOR_BG = 0x1E1E2E;
-    static constexpr uint32_t COL_EDITOR_TXT= 0xCDD6F4;
-    static constexpr uint32_t COL_CONSOLE_BG= 0x11111B;
-    static constexpr uint32_t COL_CONSOLE_TXT=0xA6E3A1; ///< Green terminal text
+    // Colour palette
+    static constexpr uint32_t COL_BG         = 0x1E1E2E;
+    static constexpr uint32_t COL_TAB_BG     = 0x313244;
+    static constexpr uint32_t COL_TAB_ACT    = 0x89B4FA;
+    static constexpr uint32_t COL_TAB_TXT_A  = 0x1E1E2E;
+    static constexpr uint32_t COL_TAB_TXT_I  = 0xCDD6F4;
+    static constexpr uint32_t COL_EDITOR_BG  = 0x1E1E2E;
+    static constexpr uint32_t COL_EDITOR_TXT = 0xCDD6F4;
+    static constexpr uint32_t COL_CONSOLE_BG = 0x11111B;
+    static constexpr uint32_t COL_CONSOLE_TXT= 0xA6E3A1;
+    static constexpr uint32_t COL_PLOT_BG    = 0x11111B;
+    static constexpr uint32_t COL_PLOT_AXIS  = 0x585B70;
+    static constexpr uint32_t COL_PLOT_LINE  = 0x89B4FA;
 
-    // ── Enum: active tab ─────────────────────────────────────────
-    enum class Tab : uint8_t { EDITOR = 0, CONSOLE = 1 };
-
-    // ── Enum: focus region ───────────────────────────────────────
+    enum class Tab   : uint8_t { EDITOR = 0, CONSOLE = 1 };
     enum class Focus : uint8_t { TAB_BAR, CONTENT };
 
-    // ── LVGL objects ─────────────────────────────────────────────
+    // LVGL objects
     lv_obj_t*      _screen;
-
-    // Tab bar (2 pills)
     lv_obj_t*      _tabBar;
     lv_obj_t*      _tabPills[2];
     lv_obj_t*      _tabLabels[2];
-
-    // Editor panel
     lv_obj_t*      _panelEditor;
-    lv_obj_t*      _editor;         ///< lv_textarea for code input
-
-    // Console panel
+    lv_obj_t*      _editor;
     lv_obj_t*      _panelConsole;
-    lv_obj_t*      _console;        ///< lv_textarea for output (read-only)
-
-    // Status bar (title + battery)
+    lv_obj_t*      _console;
     ui::StatusBar  _statusBar;
 
-    // ── Application state ────────────────────────────────────────
+    // Graphics Mode overlay
+    lv_obj_t*      _plotOverlay;
+    lv_obj_t*      _plotCanvas;
+    lv_obj_t*      _plotHintLabel;
+    lv_draw_buf_t  _plotDrawBuf;
+    uint8_t*       _plotBuf;
+    bool           _plotMode;
+
+    // Application state
     Tab            _activeTab;
     Focus          _focus;
-    int            _tabIdx;         ///< Tab-bar cursor (0=EDITOR, 1=CONSOLE)
+    int            _tabIdx;
 
-    // ── Compiler components ───────────────────────────────────────
-    NeoArena         _arena;      ///< AST arena (reset on each run)
-    cas::SymExprArena _symArena;  ///< SymExpr arena for symbolic evaluation
+    // Compiler components
+    NeoArena          _arena;
+    cas::SymExprArena _symArena;
 
-    // ── UI helpers ────────────────────────────────────────────────
+    // UI helpers
     void createUI();
     void createTabBar();
     void createEditorPanel();
     void createConsolePanel();
 
-    // ── Tab management ────────────────────────────────────────────
+    // Tab management
     void switchTab(Tab t);
     void refreshTabBar();
 
-    // ── Key dispatch ─────────────────────────────────────────────
+    // Key dispatch
     void handleTabBarKey(const KeyEvent& ev);
     void handleEditorKey(const KeyEvent& ev);
     void handleConsoleKey(const KeyEvent& ev);
 
-    // ── Console helpers ───────────────────────────────────────────
+    // Console helpers
     void appendConsole(const char* text);
     void clearConsole();
 
-    // ── Compiler integration ──────────────────────────────────────
-    /**
-     * Tokenize + parse the editor content, then print a summary
-     * (token count, node count, errors) to the console textarea.
-     */
+    // Graphics Mode
+    void showPlot(const NeoPlotRequest& req);
+    void hidePlot();
+    void renderPlot(cas::SymExpr* expr, double xMin, double xMax);
+
+    // Persistence
+    void saveToFlash();
+    void loadFromFlash();
+
+    // Host callback builder
+    NeoHostCallbacks buildHostCallbacks();
+
+    // Compiler integration
     void runCode();
-
-    /**
-     * Recursively walk the AST and append a human-readable summary
-     * to `out`.  Depth-limited to avoid stack overflow.
-     */
     void dumpNode(NeoNode* node, std::string& out, int depth);
-
-    // ── Character insertion ───────────────────────────────────────
     void insertChar(char c);
 };

@@ -10,6 +10,7 @@
  *   · Control flow: if/elif/else, while, for-in
  *   · Return statements
  *   · Built-in mathematical functions (sin, cos, sqrt, etc.)
+ *   · Standard library functions via NeoStdLib (diff, integrate, plot, …)
  *
  * Wolfram-Language-like symbolic behaviour:
  *   Undefined variables do NOT cause errors.  They are returned as
@@ -23,7 +24,14 @@
  *   pair.  After each statement eval, callers check returnPending()
  *   and exit their statement list early.
  *
- * Part of: NeoCalculator / NumOS — NeoLanguage Phase 2 (Interpreter)
+ * Standard Library integration:
+ *   The interpreter embeds a NeoStdLib instance.  After checking its
+ *   own math primitives (sin, cos, etc.), evalBuiltin() delegates to
+ *   NeoStdLib::callBuiltin() for CAS-level and utility functions.
+ *   Host I/O callbacks (print, plot, input_num, msg_box) are forwarded
+ *   from the host app via setHostCallbacks().
+ *
+ * Part of: NeoCalculator / NumOS — NeoLanguage Phase 3 (Standard Library)
  */
 #pragma once
 
@@ -34,6 +42,7 @@
 #include "NeoAST.h"
 #include "NeoValue.h"
 #include "NeoEnv.h"
+#include "NeoStdLib.h"
 
 // ════════════════════════════════════════════════════════════════════
 // NeoInterpreter
@@ -46,6 +55,26 @@ public:
      * The arena must outlive the interpreter.
      */
     explicit NeoInterpreter(cas::SymExprArena& symArena);
+
+    // ── Standard Library / Host integration ───────────────────────
+    /**
+     * Forward host I/O callbacks to the embedded NeoStdLib.
+     * Must be called before running any program that uses print(),
+     * plot(), input_num(), or msg_box().
+     */
+    void setHostCallbacks(const NeoHostCallbacks& cbs) {
+        _stdlib.setCallbacks(cbs);
+    }
+
+    /**
+     * Read the most recent plot request produced by a plot() call.
+     * The host should check this after each runCode() to decide whether
+     * to enter Graphics Mode.
+     */
+    const NeoPlotRequest& plotRequest() const { return _stdlib.plotRequest(); }
+
+    /** Clear the pending plot request (host calls after consuming it). */
+    void clearPlotRequest() { _stdlib.clearPlotRequest(); }
 
     // ── Main entry point ──────────────────────────────────────────
     /**
@@ -71,6 +100,7 @@ public:
 
 private:
     cas::SymExprArena& _symArena;
+    NeoStdLib          _stdlib;   ///< Standard Library (CAS + graphics + I/O)
 
     // ── Error tracking ────────────────────────────────────────────
     bool        _hasError;
@@ -98,11 +128,14 @@ private:
     // ── Built-in function dispatch ────────────────────────────────
     /**
      * Try to evaluate a call to a known built-in function.
+     * Checks math primitives (sin, cos, etc.) first, then delegates
+     * to NeoStdLib for CAS-level and utility functions.
      * Returns true and sets `result` if handled; false otherwise.
      */
     bool evalBuiltin(const std::string& name,
                      const std::vector<NeoValue>& args,
-                     NeoValue& result);
+                     NeoValue& result,
+                     NeoEnv& env);
 
     // ── Helpers ───────────────────────────────────────────────────
     void recordError(const std::string& msg, int line, int col);

@@ -12,6 +12,7 @@
 #pragma once
 
 #include <lvgl.h>
+#include <vector>
 #include "../math/Tokenizer.h"
 #include "../math/Parser.h"
 #include "../math/Evaluator.h"
@@ -59,6 +60,13 @@ private:
     static constexpr int PILL_RADIUS  = 6;    // NumWorks pill corner radius
     static constexpr int PILL_PAD     = 5;    // Internal padding (all sides)
     static constexpr int TPL_LOAD_INTERVAL_MS = 30;  // Lazy template load interval
+    static constexpr int MAX_POIS     = 10;   // Max pre-computed points of interest
+    static constexpr int INIT_SAMPLE_N= 40;   // Initial coarse-grid sample count
+    static constexpr int ADAPT_DEPTH  = 3;    // Adaptive subdivision depth
+    static constexpr float ADAPT_THRESHOLD_PX = 2.0f;  // Pixel error threshold for subdivision
+    static constexpr float POI_SNAP_THRESHOLD_PX = 5.0f; // Magnetic snap radius in screen pixels
+    static constexpr int BISECTION_ITER = 25; // Bisection iterations for root/POI refinement
+    static constexpr int TBL_HDR_H    = 22;   // Sticky table header height
 
     // Function colours (NumWorks palette)
     static constexpr uint32_t FUNC_COLORS[MAX_FUNCS] = {
@@ -82,6 +90,12 @@ private:
         int      len;        // strlen(text)
         bool     valid;      // has parseable content
         uint32_t color;
+    };
+
+    // ── Point of Interest (for snap-to-POI) ──────────────────────────
+    struct POI {
+        float x, y;
+        char  label[16];   // "Root", "Min", "Max", "Intercept"
     };
 
     // ── LVGL root ────────────────────────────────────────────────────
@@ -128,7 +142,7 @@ private:
 
     // ── Graph panel widgets ──────────────────────────────────────────
     lv_obj_t*       _graphToolbar;
-    lv_obj_t*       _toolLabels[4];     // Auto  Axes  Navigate  Calculate
+    lv_obj_t*       _toolLabels[4];     // Auto  Axes  Pan  Trace
     lv_obj_t*       _graphArea;         // Plain container for plots
     lv_obj_t*       _axisLineX;         // lv_line for X axis
     lv_obj_t*       _axisLineY;         // lv_line for Y axis
@@ -145,6 +159,7 @@ private:
     lv_obj_t*       _tracePillLabel;    // "x: ... y: ..." label in pill
     lv_obj_t*       _infoBar;           // bottom bar
     lv_obj_t*       _infoLabel;
+    lv_obj_t*       _modeBadge;         // Mode indicator "[Trace]" / "[Pan]"
 
     // ── Calculate menu (floating overlay) ────────────────────────────
     static constexpr int CALC_MENU_ITEMS = 5;
@@ -160,8 +175,18 @@ private:
 
     // ── Table panel widgets ──────────────────────────────────────────
     lv_obj_t*       _tblTable;          // native lv_table widget
+    lv_obj_t*       _tblHeaderBar;      // Sticky header bar (above scrollable table)
+    lv_obj_t*       _tblHdrLabels[2];   // Header label widgets: "x" and "f(x)"
     static constexpr int TBL_ROWS = 21; // data rows in table
     static constexpr int TBL_COLS = 1 + MAX_FUNCS;  // x + one column per function
+
+    // ── Cached RPN per function (eliminates re-parsing in evalAt) ────
+    std::vector<Token>  _cachedRPN[MAX_FUNCS];
+    bool                _rpnCacheValid[MAX_FUNCS];
+
+    // ── Points of interest (roots, extrema) for snap-to-POI ─────────
+    POI  _pois[MAX_POIS];
+    int  _numPOIs;
 
     // ── State ────────────────────────────────────────────────────────
     Tab             _tab;
@@ -233,6 +258,22 @@ private:
     void drawTraceCursor();
     void updateInfoBar();
     void autoFit();
+
+    // Adaptive sampling: replaces pixel-by-pixel plotFunc
+    int  sampleFuncAdaptive(int fi, int areaW, int areaH);
+    static void adaptSeg(GrapherApp* app, int fi,
+                         float xMin, float xRange,
+                         float yMin, float yRange,
+                         float areaW, float areaH,
+                         float wx0, float sy0,
+                         float wx1, float sy1,
+                         int depth,
+                         lv_point_precise_t* pts, int& n, int maxN);
+
+    // POI (snap-to-point) helpers
+    void preCacheFuncRPN(int idx);
+    void computePOIs(int funcIdx);
+    void snapToPOI();
 
     // ── Calculate menu helpers ───────────────────────────────────────
     void openCalcMenu();

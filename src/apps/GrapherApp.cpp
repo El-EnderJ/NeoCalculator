@@ -26,10 +26,10 @@ static constexpr uint32_t COL_HINT      = 0x999999;
 static constexpr uint32_t COL_ADD_TXT   = 0x888888;  // "Add element" muted
 static constexpr uint32_t COL_BTN_BG    = 0x4A90E2;  // Action buttons (blue)
 static constexpr uint32_t COL_BTN_TXT   = 0xFFFFFF;
-static constexpr uint32_t COL_AXIS      = 0x666666;  // Axis line (visible on black bg)
-static constexpr uint32_t COL_GRID_MAIN = 0x2C2C2C;  // Main grid (#2C2C2C on black)
-static constexpr uint32_t COL_GRID_SUB  = 0x1E1E1E;  // Sub-grid (darker)
-static constexpr uint32_t COL_GRAPH_BG  = 0x000000;  // Black graph background
+static constexpr uint32_t COL_AXIS      = 0x333333;  // Axis line (dark on white bg)
+static constexpr uint32_t COL_GRID_MAIN = 0xE0E0E0;  // Main grid (light grey on white)
+static constexpr uint32_t COL_GRID_SUB  = 0xF0F0F0;  // Sub-grid (lighter grey)
+static constexpr uint32_t COL_GRAPH_BG  = 0xFFFFFF;  // White graph background
 static constexpr uint32_t COL_TB_BG     = 0xF4F4F4;  // Graph toolbar bg
 static constexpr uint32_t COL_TB_SEL    = 0x4A90E2;  // Toolbar selected
 static constexpr uint32_t COL_TB_TXT    = 0x333333;
@@ -109,6 +109,8 @@ GrapherApp::GrapherApp()
     for (int i = 0; i < 6; ++i) { _tplRows[i] = nullptr; }
     for (int i = 0; i < MAX_FUNCS; ++i) { _rpnCacheValid[i] = false; }
     _numPOIs = 0;
+    _snappedToPOI = false;
+    _snapEscapeCount = 0;
     _modeBadge = nullptr;
 }
 
@@ -521,7 +523,7 @@ static void graphGridDrawCb(lv_event_t* e) {
     {
         lv_draw_label_dsc_t ldsc;
         lv_draw_label_dsc_init(&ldsc);
-        ldsc.color = lv_color_hex(0xAAAAAA);  // Light gray — visible on dark bg
+        ldsc.color = lv_color_hex(0x666666);  // Medium gray — visible on white bg
         ldsc.font  = &lv_font_montserrat_10;
 
         char buf[16];
@@ -627,7 +629,7 @@ void GrapherApp::createGraphPanel() {
     // Trace cursor dot
     _traceDot = lv_obj_create(_graphArea);
     lv_obj_set_size(_traceDot, 8, 8);
-    lv_obj_set_style_bg_color(_traceDot, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_traceDot, lv_color_hex(0x333333), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_traceDot, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_radius(_traceDot, 4, LV_PART_MAIN);
     lv_obj_set_style_border_width(_traceDot, 0, LV_PART_MAIN);
@@ -831,6 +833,8 @@ void GrapherApp::switchTab(Tab t) {
                 }
                 _traceX = (_xMin + _xMax) / 2.0f;
                 _plotDirty = true;
+                _snappedToPOI = false;
+                _snapEscapeCount = 0;
             }
         } else {
             lv_obj_remove_flag(_panelGraph, LV_OBJ_FLAG_HIDDEN);
@@ -841,6 +845,8 @@ void GrapherApp::switchTab(Tab t) {
             }
             _traceX = (_xMin + _xMax) / 2.0f;
             _plotDirty = true;
+            _snappedToPOI = false;
+            _snapEscapeCount = 0;
             replot();
             // Pre-compute POIs for snap-to-point
             if (_traceFn >= 0) computePOIs(_traceFn);
@@ -1915,6 +1921,9 @@ void GrapherApp::computePOIs(int fi) {
 
 // ── Snap cursor to nearest POI if within 5 screen pixels ────────────────
 void GrapherApp::snapToPOI() {
+    // Skip snap entirely during escape mode
+    if (_snapEscapeCount > 0) return;
+
     if (_numPOIs == 0 || _traceFn < 0) return;
     int areaW = SCREEN_W;
     float xRange = _xMax - _xMin;
@@ -1924,10 +1933,31 @@ void GrapherApp::snapToPOI() {
     for (int i = 0; i < _numPOIs; ++i) {
         if (fabsf(_traceX - _pois[i].x) <= snapDist) {
             _traceX = _pois[i].x;
+            _snappedToPOI = true;
             return;
         }
     }
+    _snappedToPOI = false;
 }
+
+// ── Dynamic camera follow: keep trace cursor within central 60% of viewport ─
+void GrapherApp::syncViewportToCursor() {
+    float xRange = _xMax - _xMin;
+    float centerX = (_xMin + _xMax) / 2.0f;
+    // "Comfort zone" = central 60% of the viewport (0.30 = half the 60% zone)
+    float comfortHalf = xRange * 0.30f;
+
+    if (_traceX < centerX - comfortHalf || _traceX > centerX + comfortHalf) {
+        float shift = _traceX - centerX;
+        _xMin += shift;
+        _xMax += shift;
+        _plotDirty = true;
+        replot();
+        // Recompute POIs for new viewport
+        if (_traceFn >= 0) computePOIs(_traceFn);
+    }
+}
+
 
 void GrapherApp::refreshToolbar() {
     if (!_graphToolbar) return;
@@ -2294,6 +2324,8 @@ void GrapherApp::handleToolbar(const KeyEvent& ev) {
             _focus = Focus::CONTENT;
             _grMode = GrMode::TRACE;
             _traceX = (_xMin + _xMax) / 2.0f;
+            _snappedToPOI = false;
+            _snapEscapeCount = 0;
             // Pick first valid function
             _traceFn = -1;
             for (int i = 0; i < _numFuncs; ++i) {
@@ -2370,16 +2402,39 @@ void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
     float step = (_xMax - _xMin) / SCREEN_W;  // Pixel-precise cursor movement
 
     switch (ev.code) {
-    case KeyCode::LEFT:
+    case KeyCode::LEFT: {
+        bool wasSnapped = _snappedToPOI;
         _traceX -= step;
-        if (_traceX < _xMin) _traceX = _xMin;
-        snapToPOI();
+        if (_traceX < _xMin) _traceX = _xMin;  // Clamp to viewport left edge
+
+        if (wasSnapped) {
+            // "Escape Force": break snap, ignore POI for next 10 moves
+            _snappedToPOI = false;
+            _snapEscapeCount = 10;
+        } else if (_snapEscapeCount > 0) {
+            --_snapEscapeCount;
+        } else {
+            snapToPOI();
+        }
+        syncViewportToCursor();
         break;
-    case KeyCode::RIGHT:
+    }
+    case KeyCode::RIGHT: {
+        bool wasSnapped = _snappedToPOI;
         _traceX += step;
         if (_traceX > _xMax) _traceX = _xMax;
-        snapToPOI();
+
+        if (wasSnapped) {
+            _snappedToPOI = false;
+            _snapEscapeCount = 10;
+        } else if (_snapEscapeCount > 0) {
+            --_snapEscapeCount;
+        } else {
+            snapToPOI();
+        }
+        syncViewportToCursor();
         break;
+    }
     case KeyCode::UP:
         // Switch to next function (keep same X)
         for (int i = _traceFn + 1; i < _numFuncs; ++i) {
@@ -2404,6 +2459,8 @@ void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
         if (_traceLineV) lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
         if (_tracePill)  lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
         _grMode = GrMode::NAVIGATE;  // AC from trace → pan mode
+        _snappedToPOI = false;
+        _snapEscapeCount = 0;
         updateInfoBar();
         return;
     default:

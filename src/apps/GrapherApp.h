@@ -187,6 +187,8 @@ private:
     // ── Points of interest (roots, extrema) for snap-to-POI ─────────
     POI  _pois[MAX_POIS];
     int  _numPOIs;
+    bool _snappedToPOI;     // cursor is currently at a snapped POI
+    int  _snapEscapeCount;  // >0: ignore snap for this many more moves
 
     // ── State ────────────────────────────────────────────────────────
     Tab             _tab;
@@ -274,6 +276,7 @@ private:
     void preCacheFuncRPN(int idx);
     void computePOIs(int funcIdx);
     void snapToPOI();
+    void syncViewportToCursor();  // Camera follow: re-center viewport on trace cursor
 
     // ── Calculate menu helpers ───────────────────────────────────────
     void openCalcMenu();

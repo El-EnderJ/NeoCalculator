@@ -450,6 +450,8 @@ NeoTokType neo::NeoLexer::keywordType(const std::string& id) {
     if (id == "try")    return NeoTokType::TRY;
     if (id == "except") return NeoTokType::EXCEPT;
     if (id == "as")     return NeoTokType::AS;
+    if (id == "import") return NeoTokType::IMPORT;
+    if (id == "from")   return NeoTokType::FROM;
     return NeoTokType::IDENTIFIER;
 }
 

@@ -68,8 +68,12 @@ plot(sin(x), -6.28, 6.28)
 18. [**NeoGUI: Building Custom Interfaces**](#18-neogui-building-custom-interfaces)
 19. [**Physics Constants Database**](#19-physics-constants-database)
 20. [**Master Engineering Example**](#20-master-engineering-example)
-21. [Keyboard Reference](#21-keyboard-reference)
-22. [Known Limitations](#22-known-limitations)
+21. [**Modules and Namespaces**](#21-modules-and-namespaces)
+22. [**Signal Processing**](#22-signal-processing)
+23. [**Advanced Linear Algebra**](#23-advanced-linear-algebra)
+24. [**Performance Profiling**](#24-performance-profiling)
+25. [Keyboard Reference](#25-keyboard-reference)
+26. [Known Limitations](#26-known-limitations)
 
 ---
 
@@ -1644,7 +1648,179 @@ gui_show()
 
 ---
 
-## 21. Keyboard Reference
+## 21. Modules and Namespaces
+
+NeoLanguage Phase 8 introduces a **module import system** to keep the global
+namespace clean and load only the functions you need.
+
+### Available Modules
+
+| Module | Contents |
+|--------|----------|
+| `math` | Constants (`pi`, `e`, `phi`) + math functions (`sin`, `cos`, `sqrt`, …) |
+| `finance` | TVM solvers: `tvm_pv`, `tvm_fv`, `tvm_pmt`, `tvm_n` |
+| `electronics` | Bitwise tools: `bit_get`, `bit_set`, `bit_clear`, `to_bin`, `to_hex` |
+| `stats` | Statistical functions: `mean`, `stddev`, `variance` |
+| `signal` | FFT tools: `fft`, `ifft`, `abs_spectrum` |
+
+### Import Syntax
+
+**`import X`** — load all exports of module `X` into the current scope:
+
+```nl
+import finance
+pv = tvm_pv(5, 12, -500)       # finance functions now directly available
+print(pv)
+```
+
+**`import X as Y`** — load module `X` as a dictionary named `Y`:
+
+```nl
+import finance as fin
+pv = fin["tvm_pv"](5, 12, -500)
+print(pv)
+```
+
+**`from X import a, b`** — import only specific names:
+
+```nl
+from math import pi, sin
+print(sin(pi / 6))              # => 0.5
+```
+
+### Practical Example
+
+```nl
+# Clean namespace: only load what you need
+from math import pi, sin, cos
+import stats as s
+
+# Generate a signal
+N = 32
+signal = []
+for i in range(N):
+    signal = signal + [sin(2 * pi * i / N)]
+
+# Statistics on the signal
+print(s["mean"](signal))    # => ~0.0
+print(s["stddev"](signal))  # => ~0.707
+```
+
+---
+
+## 22. Signal Processing
+
+NeoLanguage provides a **Fast Fourier Transform** (Cooley-Tukey radix-2) for
+frequency analysis of sampled signals.
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `fft(list)` | Forward FFT. Returns a list of `[re, im]` pairs. Pads input to next power-of-2. |
+| `ifft(list)` | Inverse FFT. Accepts `[re, im]` pairs or real numbers. |
+| `abs_spectrum(fft_result)` | Returns magnitude spectrum from `fft()` output. |
+
+### Complete Example: Noisy Sine Wave → Frequency Spectrum
+
+```nl
+from math import pi, sin
+import signal as sig
+
+# 1. Generate a noisy sine wave at frequency f0 = 3 Hz
+#    Sampled at Fs = 32 samples (one period)
+N  = 32
+f0 = 3
+x  = []
+for i in range(N):
+    noise = (i * 7 + 3) / 1000.0   # simple deterministic noise
+    x = x + [sin(2 * pi * f0 * i / N) + noise]
+
+# 2. Compute the FFT
+F = fft(x)
+
+# 3. Extract magnitude spectrum
+mag = abs_spectrum(F)
+
+# 4. Find the dominant frequency bin
+peak = 0
+peak_bin = 0
+for i in range(N / 2):     # Only look at first half (Nyquist)
+    if mag[i] > peak:
+        peak = mag[i]
+        peak_bin = i
+
+print("Dominant bin:", peak_bin)   # Should print 3
+print("Magnitude:", peak)
+
+# 5. Plot the spectrum using the GUI
+plot_data = []
+for i in range(N / 2):
+    plot_data = plot_data + [mag[i]]
+```
+
+> **Note:** `fft()` pads the input to the next power-of-2 automatically.
+> The output length equals the padded size. For best frequency resolution,
+> use input lengths that are already powers of 2 (e.g. 32, 64, 128, 256).
+
+---
+
+## 23. Advanced Linear Algebra
+
+| Function | Description |
+|----------|-------------|
+| `det(matrix)` | Determinant of a square matrix (Gaussian elimination with partial pivoting). |
+| `inv(matrix)` | Inverse of a square matrix (Gauss-Jordan). Returns `None` if singular. |
+| `eigen(matrix)` | Eigenvalues and eigenvectors via power iteration. Returns a dictionary `{"values": [...], "vectors": [...]}`. |
+
+### Example: Eigendecomposition
+
+```nl
+# 2×2 rotation-scale matrix
+A = [[3, 1], [0, 2]]
+
+d = det(A)          # => 6
+print("det =", d)
+
+Ainv = inv(A)       # => [[0.333, -0.167], [0, 0.5]]
+print("inv =", Ainv)
+
+e = eigen(A)
+print("eigenvalues:", e["values"])    # => [3.0, 2.0]
+print("eigenvectors:", e["vectors"])
+```
+
+---
+
+## 24. Performance Profiling
+
+`time_it(func, args...)` measures the wall-clock time in **milliseconds** to
+execute a NeoLanguage function on the ESP32-S3.
+
+```nl
+def heavy(n):
+    s = 0
+    for i in range(n):
+        s = s + i
+    return s
+
+ms = time_it(heavy, 5000)
+print("Elapsed:", ms, "ms")
+```
+
+This lets you compare algorithm variants directly on the device:
+
+```nl
+# Compare iterative vs recursive sum
+iter_ms  = time_it(iterative_sum, 1000)
+recur_ms = time_it(recursive_sum, 1000)
+print("Iterative:", iter_ms, "ms")
+print("Recursive:", recur_ms, "ms")
+```
+
+---
+
+## 25. Keyboard Reference
 
 | Key | Editor Action |
 |-----|---------------|
@@ -1677,7 +1853,7 @@ gui_show()
 
 ---
 
-## 22. Known Limitations
+## 26. Known Limitations
 
 | Limitation | Detail |
 |------------|--------|

@@ -43,6 +43,7 @@
 #include "NeoValue.h"
 #include "NeoEnv.h"
 #include "NeoStdLib.h"
+#include "NeoModules.h"
 
 // ════════════════════════════════════════════════════════════════════
 // NeoInterpreter
@@ -128,6 +129,7 @@ private:
     NeoValue evalIndexOp     (IndexOpNode*      node, NeoEnv& env);
     NeoValue evalDictLiteral (DictLiteralNode*  node, NeoEnv& env); ///< Phase 6
     NeoValue evalTryExcept   (TryExceptNode*    node, NeoEnv& env); ///< Phase 6
+    NeoValue evalImport      (ImportNode*       node, NeoEnv& env); ///< Phase 8
 
     // ── Built-in function dispatch ────────────────────────────────
     /**

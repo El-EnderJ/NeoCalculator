@@ -11,6 +11,12 @@
 #include <limits>
 #include "NeoScientific.h"
 
+#ifdef ARDUINO
+#  include <Arduino.h>
+#else
+#  include <chrono>
+#endif
+
 // Maximum iterations for while loops and for-in ranges.
 // Guards against infinite loops on the embedded target.
 static constexpr int NEO_MAX_ITER = 10000;
@@ -99,6 +105,8 @@ NeoValue NeoInterpreter::eval(NeoNode* node, NeoEnv& env) {
             return evalDictLiteral(static_cast<DictLiteralNode*>(node), env);
         case NodeKind::TryExcept:
             return evalTryExcept(static_cast<TryExceptNode*>(node), env);
+        case NodeKind::Import:
+            return evalImport(static_cast<ImportNode*>(node), env);
         case NodeKind::SymExprWrapper: {
             // Already-computed symbolic node — return it as-is
             auto* w = static_cast<SymExprWrapperNode*>(node);
@@ -739,6 +747,48 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
     //               vars, input_num, msg_box
     if (_stdlib.callBuiltin(name, args, result, env, _symArena)) return true;
 
+    // ── Phase 8: time_it(func, args...) — performance profiling ──
+    // Measures the time in milliseconds to execute a NeoLanguage function.
+    if (name == "time_it") {
+        if (args.empty() || (!args[0].isFunction() && !args[0].isNativeFunction())) {
+            result = NeoValue::makeNumber(0);
+            return true;
+        }
+        // Collect extra args to pass to the function
+        std::vector<NeoValue> callArgs(args.begin() + 1, args.end());
+
+#ifdef ARDUINO
+        unsigned long t0 = millis();
+#else
+        auto t0 = std::chrono::steady_clock::now();
+#endif
+        // Invoke the function
+        if (args[0].isFunction() && args[0].funcDef()) {
+            FunctionDefNode* def     = args[0].funcDef();
+            NeoEnv*          closure = args[0].funcClosure();
+            if (def && def->params.size() == callArgs.size()) {
+                NeoEnv callEnv(closure);
+                for (size_t i = 0; i < def->params.size(); ++i)
+                    callEnv.define(def->params[i], callArgs[i]);
+                NeoValue r = evalBlock(def->body, callEnv);
+                if (_returnFlag) takeReturn();
+                (void)r;
+            }
+        } else if (args[0].isNativeFunction() && args[0].nativeFn()) {
+            NeoValue r = args[0].nativeFn()(callArgs, args[0].nativeCtx(), _symArena);
+            (void)r;
+        }
+#ifdef ARDUINO
+        unsigned long elapsed = millis() - t0;
+        result = NeoValue::makeNumber(static_cast<double>(elapsed));
+#else
+        auto t1 = std::chrono::steady_clock::now();
+        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        result = NeoValue::makeNumber(ms);
+#endif
+        return true;
+    }
+
     return false;  // Not a built-in
 }
 
@@ -1007,4 +1057,58 @@ NeoValue NeoInterpreter::evalTryExcept(TryExceptNode* node, NeoEnv& env) {
     }
 
     return result;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// evalImport — import / from...import  (Phase 8: Module System)
+// ════════════════════════════════════════════════════════════════════
+
+NeoValue NeoInterpreter::evalImport(ImportNode* node, NeoEnv& env) {
+    if (!node) return NeoValue::makeNull();
+
+    if (!NeoModules::exists(node->module)) {
+        // Unknown module — report error but don't abort execution
+        NeoValue dummy;
+        std::string msg = "[import] Unknown module: '" + node->module + "'";
+        _stdlib.callBuiltin("print", {NeoValue::makeString(msg)}, dummy, env, _symArena);
+        return NeoValue::makeNull();
+    }
+
+    if (node->is_from) {
+        // from X import a, b, c  — bind named exports into current env
+        std::map<std::string, NeoValue> exports;
+        if (node->names.empty()) {
+            // from X import  (without names) → import all
+            NeoModules::loadIntoEnv(node->module, env, _symArena);
+        } else {
+            // Build full module, then selectively bind only requested names
+            NeoValue dict;
+            if (NeoModules::loadAsDict(node->module, dict, _symArena)
+                && dict.isDict() && dict.asDict()) {
+                for (const std::string& name : node->names) {
+                    auto it = dict.asDict()->find(name);
+                    if (it != dict.asDict()->end()) {
+                        env.define(name, it->second);
+                    } else {
+                        NeoValue dummy;
+                        std::string msg = "[import] '" + name
+                                        + "' not found in module '" + node->module + "'";
+                        _stdlib.callBuiltin("print", {NeoValue::makeString(msg)},
+                                            dummy, env, _symArena);
+                    }
+                }
+            }
+        }
+    } else if (!node->alias.empty()) {
+        // import X as Y  — bind entire module as a dictionary named Y
+        NeoValue dict;
+        if (NeoModules::loadAsDict(node->module, dict, _symArena)) {
+            env.define(node->alias, dict);
+        }
+    } else {
+        // import X  — bind all exports directly into current env
+        NeoModules::loadIntoEnv(node->module, env, _symArena);
+    }
+
+    return NeoValue::makeNull();
 }

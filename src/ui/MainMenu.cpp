@@ -79,10 +79,10 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     { 12, "Bridge",       0x2E86AB,   0x6BB8D6 },   // Steel blue
     { 13, "Circuit",      0xE91E63,   0xF06292 },   // Pink-red (electronics)
     { 14, "Fluid 2D",   0x1E88E5,   0x64B5F6 },   // Water blue
-    { 15, "ParticleLab", 0xFF6F00,   0xFFAB40 },   // Deep orange (sandbox)
+    { 15, "ParticleLab", 0xFF9800,   0xFFCC80 },   // Energetic Orange (particles)
     { 16, "Neural Lab", 0x9C27B0,   0xCE93D8 },   // Purple (AI/ML)
-    { 17, "OpticsLab",  0x00838F,   0x4DD0E1 },   // Teal (Optics)
-    { 18, "NeoLang",    0xF44336,   0xFF7961 },   // Red (Language/Compiler)
+    { 17, "OpticsLab",  0x00BCD4,   0x80DEEA },   // Cyan/Teal (Optics)
+    { 18, "NeoLang",    0x4CAF50,   0xA5D6A7 },   // Terminal Green (Language/IDE)
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);
@@ -656,6 +656,74 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             drawLine(cx + 4, cy + 5, cx + 10, cy + 3, 1, light, LV_OPA_60);
             // Droplet (circle)
             drawCircle(cx, cy + 11, 3, white, LV_OPA_COVER);
+            break;
+        }
+        case 15: {
+            // ParticleLab: scattered particles with motion trails
+            // Central particles
+            drawCircle(cx - 8, cy - 5, 3, white, LV_OPA_COVER);
+            drawCircle(cx + 7, cy - 8, 2, light, LV_OPA_80);
+            drawCircle(cx + 9, cy + 3, 3, white, LV_OPA_COVER);
+            drawCircle(cx - 5, cy + 8, 2, light, LV_OPA_80);
+            drawCircle(cx + 1, cy + 1, 3, white, LV_OPA_COVER);
+            drawCircle(cx - 11, cy + 1, 2, light, LV_OPA_70);
+            // Motion trails
+            drawLine(cx - 8, cy - 5, cx - 12, cy - 9, 1, light, LV_OPA_50);
+            drawLine(cx + 9, cy + 3, cx + 13, cy + 5, 1, light, LV_OPA_50);
+            drawLine(cx + 1, cy + 1, cx + 3, cy - 4, 1, light, LV_OPA_40);
+            break;
+        }
+        case 16: {
+            // Neural Lab: 3-layer neural network diagram
+            // Input layer (2 nodes, left)
+            drawCircle(cx - 12, cy - 5, 3, light, LV_OPA_80);
+            drawCircle(cx - 12, cy + 5, 3, light, LV_OPA_80);
+            // Hidden layer (3 nodes, centre)
+            drawCircle(cx, cy - 9, 3, white, LV_OPA_COVER);
+            drawCircle(cx, cy,     3, white, LV_OPA_COVER);
+            drawCircle(cx, cy + 9, 3, white, LV_OPA_COVER);
+            // Output node (right)
+            drawCircle(cx + 12, cy, 4, white, LV_OPA_COVER);
+            // Connections: input → hidden
+            drawLine(cx - 9, cy - 5, cx - 3, cy - 9, 1, light, LV_OPA_60);
+            drawLine(cx - 9, cy - 5, cx - 3, cy,     1, light, LV_OPA_60);
+            drawLine(cx - 9, cy + 5, cx - 3, cy,     1, light, LV_OPA_60);
+            drawLine(cx - 9, cy + 5, cx - 3, cy + 9, 1, light, LV_OPA_60);
+            // Connections: hidden → output
+            drawLine(cx + 3, cy - 9, cx + 8, cy, 1, light, LV_OPA_60);
+            drawLine(cx + 3, cy,     cx + 8, cy, 1, light, LV_OPA_60);
+            drawLine(cx + 3, cy + 9, cx + 8, cy, 1, light, LV_OPA_60);
+            break;
+        }
+        case 17: {
+            // OpticsLab: convex lens cross-section + converging light rays
+            // Lens body (biconvex outline approximated with rects)
+            drawRect(cx - 5, cy - 12, cx + 5, cy + 12, 5, white, LV_OPA_50);
+            drawRect(cx - 3, cy - 10, cx + 3, cy + 10, 3, white, LV_OPA_80);
+            // Incoming parallel rays (left)
+            drawLine(a.x1 + 3, cy - 7, cx - 5, cy - 7, 1, light, LV_OPA_80);
+            drawLine(a.x1 + 3, cy,     cx - 5, cy,     1, light, LV_OPA_80);
+            drawLine(a.x1 + 3, cy + 7, cx - 5, cy + 7, 1, light, LV_OPA_80);
+            // Refracted rays converging to focal point (right)
+            drawLine(cx + 5, cy - 7, cx + 14, cy, 1, white, LV_OPA_COVER);
+            drawLine(cx + 5, cy,     cx + 14, cy, 1, white, LV_OPA_COVER);
+            drawLine(cx + 5, cy + 7, cx + 14, cy, 1, white, LV_OPA_COVER);
+            // Focal point dot
+            drawCircle(cx + 14, cy, 2, white, LV_OPA_COVER);
+            break;
+        }
+        case 18: {
+            // NeoLang IDE: terminal prompt ">" + cursor "_" + code brackets
+            // ">" chevron prompt
+            drawLine(cx - 12, cy - 6, cx - 5, cy,     2, white, LV_OPA_COVER);
+            drawLine(cx - 5,  cy,     cx - 12, cy + 6, 2, white, LV_OPA_COVER);
+            // Cursor bar "_"
+            drawLine(cx - 3, cy + 7, cx + 7, cy + 7, 2, white, LV_OPA_COVER);
+            // Code brackets "{ }" — top and bottom lines
+            drawLine(cx + 2, cy - 11, cx + 6, cy - 11, 2, light, LV_OPA_80);
+            drawLine(cx + 2, cy - 11, cx + 2, cy - 7,  2, light, LV_OPA_80);
+            drawLine(cx + 2, cy - 5,  cx + 2, cy - 1,  2, light, LV_OPA_80);
+            drawLine(cx + 2, cy - 1,  cx + 6, cy - 1,  2, light, LV_OPA_80);
             break;
         }
         default:

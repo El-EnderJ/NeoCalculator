@@ -231,6 +231,16 @@ bool NeoStdLib::callBuiltin(const std::string&          name,
     if (name == "gui_clear")   return callGuiClear  (args, result);
     if (name == "gui_show")    return callGuiShow   (args, result);
 
+    // ── Phase 8: Signal Processing ───────────────────────────────
+    if (name == "fft")          return callFFT         (args, result);
+    if (name == "ifft")         return callIFFT        (args, result);
+    if (name == "abs_spectrum") return callAbsSpectrum (args, result);
+
+    // ── Phase 8: Advanced Linear Algebra ─────────────────────────
+    if (name == "det")          return callDet  (args, result);
+    if (name == "inv")          return callInv  (args, result);
+    if (name == "eigen")        return callEigen(args, result);
+
     return false;  // Not a stdlib built-in
 }
 
@@ -1355,5 +1365,369 @@ bool NeoStdLib::callGuiShow(const std::vector<NeoValue>& /*args*/, NeoValue& res
     NeoGUI::guiDirty() = true;
     hostPrint("[gui] GUI queued for display.\n");
     result = NeoValue::makeNull();
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Phase 8: Signal Processing — FFT / IFFT
+// ════════════════════════════════════════════════════════════════════
+
+// ── Internal Cooley-Tukey helper ──────────────────────────────────
+
+static void neostdlib_fftInPlace(std::vector<double>& re,
+                                  std::vector<double>& im,
+                                  bool inverse)
+{
+    size_t M = re.size();
+    // Bit-reversal permutation
+    for (size_t i = 1, j = 0; i < M; ++i) {
+        size_t bit = M >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) { std::swap(re[i], re[j]); std::swap(im[i], im[j]); }
+    }
+    // Butterfly stages
+    double sign = inverse ? 1.0 : -1.0;
+    for (size_t len = 2; len <= M; len <<= 1) {
+        double ang  = sign * 2.0 * M_PI / static_cast<double>(len);
+        double wRe  = std::cos(ang), wIm = std::sin(ang);
+        for (size_t i = 0; i < M; i += len) {
+            double curRe = 1.0, curIm = 0.0;
+            for (size_t k = 0; k < len / 2; ++k) {
+                double uRe = re[i + k], uIm = im[i + k];
+                double tRe = curRe * re[i + k + len/2] - curIm * im[i + k + len/2];
+                double tIm = curRe * im[i + k + len/2] + curIm * re[i + k + len/2];
+                re[i + k]           = uRe + tRe;  im[i + k]           = uIm + tIm;
+                re[i + k + len / 2] = uRe - tRe;  im[i + k + len / 2] = uIm - tIm;
+                double tmp = curRe * wRe - curIm * wIm;
+                curIm = curRe * wIm + curIm * wRe;
+                curRe = tmp;
+            }
+        }
+    }
+    if (inverse) {
+        double invN = 1.0 / static_cast<double>(M);
+        for (size_t i = 0; i < M; ++i) { re[i] *= invN; im[i] *= invN; }
+    }
+}
+
+bool NeoStdLib::callFFT(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty() || !args[0].isList() || !args[0].asList()) {
+        hostPrint("[fft] Usage: fft(list)\n");
+        result = NeoValue::makeList(new std::vector<NeoValue>());
+        return true;
+    }
+    const auto& in = *args[0].asList();
+    size_t N = in.size();
+    size_t M = 1;
+    while (M < N) M <<= 1;
+
+    std::vector<double> re(M, 0.0), im(M, 0.0);
+    for (size_t i = 0; i < N; ++i) {
+        if (in[i].isList() && in[i].asList() && in[i].asList()->size() >= 2) {
+            re[i] = (*in[i].asList())[0].toDouble();
+            im[i] = (*in[i].asList())[1].toDouble();
+        } else {
+            re[i] = in[i].toDouble();
+        }
+    }
+    neostdlib_fftInPlace(re, im, false);
+
+    auto* out_lst = new std::vector<NeoValue>();
+    out_lst->reserve(M);
+    for (size_t i = 0; i < M; ++i) {
+        auto* pair = new std::vector<NeoValue>();
+        pair->push_back(NeoValue::makeNumber(re[i]));
+        pair->push_back(NeoValue::makeNumber(im[i]));
+        out_lst->push_back(NeoValue::makeList(pair));
+    }
+    result = NeoValue::makeList(out_lst);
+    return true;
+}
+
+bool NeoStdLib::callIFFT(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty() || !args[0].isList() || !args[0].asList()) {
+        hostPrint("[ifft] Usage: ifft(fft_result)\n");
+        result = NeoValue::makeList(new std::vector<NeoValue>());
+        return true;
+    }
+    const auto& in = *args[0].asList();
+    size_t N = in.size();
+    size_t M = 1;
+    while (M < N) M <<= 1;
+
+    std::vector<double> re(M, 0.0), im(M, 0.0);
+    for (size_t i = 0; i < N; ++i) {
+        if (in[i].isList() && in[i].asList() && in[i].asList()->size() >= 2) {
+            re[i] = (*in[i].asList())[0].toDouble();
+            im[i] = (*in[i].asList())[1].toDouble();
+        } else {
+            re[i] = in[i].toDouble();
+        }
+    }
+    neostdlib_fftInPlace(re, im, true);
+
+    auto* out_lst = new std::vector<NeoValue>();
+    out_lst->reserve(M);
+    for (size_t i = 0; i < M; ++i) {
+        auto* pair = new std::vector<NeoValue>();
+        pair->push_back(NeoValue::makeNumber(re[i]));
+        pair->push_back(NeoValue::makeNumber(im[i]));
+        out_lst->push_back(NeoValue::makeList(pair));
+    }
+    result = NeoValue::makeList(out_lst);
+    return true;
+}
+
+bool NeoStdLib::callAbsSpectrum(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty() || !args[0].isList() || !args[0].asList()) {
+        result = NeoValue::makeList(new std::vector<NeoValue>());
+        return true;
+    }
+    const auto& in = *args[0].asList();
+    auto* out_lst = new std::vector<NeoValue>();
+    out_lst->reserve(in.size());
+    for (const auto& v : in) {
+        if (v.isList() && v.asList() && v.asList()->size() >= 2) {
+            double r  = (*v.asList())[0].toDouble();
+            double im2 = (*v.asList())[1].toDouble();
+            out_lst->push_back(NeoValue::makeNumber(std::sqrt(r * r + im2 * im2)));
+        } else {
+            out_lst->push_back(NeoValue::makeNumber(std::fabs(v.toDouble())));
+        }
+    }
+    result = NeoValue::makeList(out_lst);
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Phase 8: Advanced Linear Algebra — det, inv, eigen
+// ════════════════════════════════════════════════════════════════════
+
+// ── Extract matrix from NeoValue (list of lists) ─────────────────
+
+static bool extractMatrix(const NeoValue& v,
+                           std::vector<std::vector<double>>& M,
+                           int& rows, int& cols)
+{
+    if (!v.isList() || !v.asList()) return false;
+    const auto& outer = *v.asList();
+    rows = static_cast<int>(outer.size());
+    if (rows == 0) return false;
+    // If first element is a plain number → treat as 1×n row vector
+    if (!outer[0].isList()) {
+        cols = rows;
+        rows = 1;
+        M.resize(1, std::vector<double>(static_cast<size_t>(cols), 0.0));
+        for (int j = 0; j < cols; ++j) M[0][j] = outer[j].toDouble();
+        return true;
+    }
+    // List of lists
+    cols = static_cast<int>(outer[0].asList() ? outer[0].asList()->size() : 0);
+    if (cols == 0) return false;
+    M.resize(static_cast<size_t>(rows),
+             std::vector<double>(static_cast<size_t>(cols), 0.0));
+    for (int i = 0; i < rows; ++i) {
+        if (!outer[i].isList() || !outer[i].asList()) continue;
+        const auto& row = *outer[i].asList();
+        for (int j = 0; j < cols && j < static_cast<int>(row.size()); ++j) {
+            M[static_cast<size_t>(i)][static_cast<size_t>(j)] = row[j].toDouble();
+        }
+    }
+    return true;
+}
+
+static NeoValue matrixToNeoValue(const std::vector<std::vector<double>>& M) {
+    auto* outer = new std::vector<NeoValue>();
+    for (const auto& row : M) {
+        auto* r = new std::vector<NeoValue>();
+        for (double v : row) r->push_back(NeoValue::makeNumber(v));
+        outer->push_back(NeoValue::makeList(r));
+    }
+    return NeoValue::makeList(outer);
+}
+
+// ── Determinant via Gaussian elimination ─────────────────────────
+
+bool NeoStdLib::callDet(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) {
+        hostPrint("[det] Usage: det(matrix)\n");
+        result = NeoValue::makeNumber(0);
+        return true;
+    }
+    std::vector<std::vector<double>> M;
+    int rows, cols;
+    if (!extractMatrix(args[0], M, rows, cols) || rows != cols) {
+        hostPrint("[det] Matrix must be square.\n");
+        result = NeoValue::makeNumber(0);
+        return true;
+    }
+    int n = rows;
+    double det = 1.0;
+    // Forward elimination with partial pivoting
+    for (int col = 0; col < n; ++col) {
+        // Find pivot
+        int pivotRow = col;
+        double maxVal = std::fabs(M[static_cast<size_t>(col)][static_cast<size_t>(col)]);
+        for (int r = col + 1; r < n; ++r) {
+            double v = std::fabs(M[static_cast<size_t>(r)][static_cast<size_t>(col)]);
+            if (v > maxVal) { maxVal = v; pivotRow = r; }
+        }
+        if (maxVal < 1e-14) { result = NeoValue::makeNumber(0.0); return true; }
+        if (pivotRow != col) {
+            std::swap(M[static_cast<size_t>(col)], M[static_cast<size_t>(pivotRow)]);
+            det = -det; // Row swap flips sign
+        }
+        double pivot = M[static_cast<size_t>(col)][static_cast<size_t>(col)];
+        det *= pivot;
+        for (int r = col + 1; r < n; ++r) {
+            double factor = M[static_cast<size_t>(r)][static_cast<size_t>(col)] / pivot;
+            for (int c = col; c < n; ++c) {
+                M[static_cast<size_t>(r)][static_cast<size_t>(c)]
+                    -= factor * M[static_cast<size_t>(col)][static_cast<size_t>(c)];
+            }
+        }
+    }
+    result = NeoValue::makeNumber(det);
+    return true;
+}
+
+// ── Inverse via Gauss-Jordan on augmented [A | I] ────────────────
+
+bool NeoStdLib::callInv(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) {
+        hostPrint("[inv] Usage: inv(matrix)\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    std::vector<std::vector<double>> A;
+    int rows, cols;
+    if (!extractMatrix(args[0], A, rows, cols) || rows != cols) {
+        hostPrint("[inv] Matrix must be square.\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    int n = rows;
+    // Build augmented matrix [A | I]
+    std::vector<std::vector<double>> aug(static_cast<size_t>(n),
+        std::vector<double>(static_cast<size_t>(2 * n), 0.0));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j)
+            aug[static_cast<size_t>(i)][static_cast<size_t>(j)] = A[static_cast<size_t>(i)][static_cast<size_t>(j)];
+        aug[static_cast<size_t>(i)][static_cast<size_t>(n + i)] = 1.0; // Identity on right
+    }
+    // Forward pass
+    for (int col = 0; col < n; ++col) {
+        // Partial pivot
+        int pivotRow = col;
+        double maxVal = std::fabs(aug[static_cast<size_t>(col)][static_cast<size_t>(col)]);
+        for (int r = col + 1; r < n; ++r) {
+            double v = std::fabs(aug[static_cast<size_t>(r)][static_cast<size_t>(col)]);
+            if (v > maxVal) { maxVal = v; pivotRow = r; }
+        }
+        if (maxVal < 1e-14) {
+            hostPrint("[inv] Matrix is singular.\n");
+            result = NeoValue::makeNull();
+            return true;
+        }
+        if (pivotRow != col)
+            std::swap(aug[static_cast<size_t>(col)], aug[static_cast<size_t>(pivotRow)]);
+        double pivot = aug[static_cast<size_t>(col)][static_cast<size_t>(col)];
+        for (int c = 0; c < 2 * n; ++c)
+            aug[static_cast<size_t>(col)][static_cast<size_t>(c)] /= pivot;
+        for (int r = 0; r < n; ++r) {
+            if (r == col) continue;
+            double factor = aug[static_cast<size_t>(r)][static_cast<size_t>(col)];
+            for (int c = 0; c < 2 * n; ++c)
+                aug[static_cast<size_t>(r)][static_cast<size_t>(c)]
+                    -= factor * aug[static_cast<size_t>(col)][static_cast<size_t>(c)];
+        }
+    }
+    // Extract inverse from right half
+    std::vector<std::vector<double>> inv(static_cast<size_t>(n),
+        std::vector<double>(static_cast<size_t>(n), 0.0));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            inv[static_cast<size_t>(i)][static_cast<size_t>(j)]
+                = aug[static_cast<size_t>(i)][static_cast<size_t>(n + j)];
+    result = matrixToNeoValue(inv);
+    return true;
+}
+
+// ── Eigenvalues via power iteration (dominant) + deflation ───────
+
+bool NeoStdLib::callEigen(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) {
+        hostPrint("[eigen] Usage: eigen(matrix)\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    std::vector<std::vector<double>> A;
+    int rows, cols;
+    if (!extractMatrix(args[0], A, rows, cols) || rows != cols) {
+        hostPrint("[eigen] Matrix must be square.\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    int n = rows;
+
+    // Power iteration: find the dominant eigenvalue and eigenvector
+    // Returns a dict: {"values": [λ1], "vectors": [[v1]]}
+    // For simplicity and memory safety on ESP32 we compute only the
+    // dominant eigenvalue via power iteration and Rayleigh quotient.
+    static constexpr int MAX_ITER = 500;
+    static constexpr double TOL   = 1e-9;
+
+    // Build result structures
+    auto* eigenvals = new std::vector<NeoValue>();
+    auto* eigenvecs = new std::vector<NeoValue>();
+
+    std::vector<std::vector<double>> B = A; // Working copy for deflation
+
+    for (int eigIdx = 0; eigIdx < n && eigIdx < 4; ++eigIdx) {
+        // Power iteration on B
+        std::vector<double> v(static_cast<size_t>(n), 0.0);
+        v[static_cast<size_t>(eigIdx % n)] = 1.0; // Start vector
+        double lambda = 0.0;
+
+        for (int iter = 0; iter < MAX_ITER; ++iter) {
+            // w = B * v
+            std::vector<double> w(static_cast<size_t>(n), 0.0);
+            for (int i = 0; i < n; ++i)
+                for (int j = 0; j < n; ++j)
+                    w[static_cast<size_t>(i)] += B[static_cast<size_t>(i)][static_cast<size_t>(j)]
+                                               * v[static_cast<size_t>(j)];
+            // Normalise
+            double norm = 0.0;
+            for (double x : w) norm += x * x;
+            norm = std::sqrt(norm);
+            if (norm < 1e-15) break;
+            // Rayleigh quotient: λ = vᵀ * B * v / vᵀ * v
+            double newLambda = 0.0;
+            for (int i = 0; i < n; ++i) newLambda += v[static_cast<size_t>(i)] * w[static_cast<size_t>(i)];
+            for (int i = 0; i < n; ++i) v[static_cast<size_t>(i)] = w[static_cast<size_t>(i)] / norm;
+            if (std::fabs(newLambda - lambda) < TOL && iter > 10) { lambda = newLambda; break; }
+            lambda = newLambda;
+        }
+
+        eigenvals->push_back(NeoValue::makeNumber(lambda));
+
+        // Store eigenvector as a list
+        auto* vec = new std::vector<NeoValue>();
+        for (int i = 0; i < n; ++i) vec->push_back(NeoValue::makeNumber(v[static_cast<size_t>(i)]));
+        eigenvecs->push_back(NeoValue::makeList(vec));
+
+        // Deflate: B = B - λ * v * vᵀ  (removes the dominant eigenvalue)
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j)
+                B[static_cast<size_t>(i)][static_cast<size_t>(j)]
+                    -= lambda * v[static_cast<size_t>(i)] * v[static_cast<size_t>(j)];
+    }
+
+    // Return {"values": [λ...], "vectors": [[v1], [v2], ...]}
+    auto* dict = new std::map<std::string, NeoValue>();
+    (*dict)["values"]  = NeoValue::makeList(eigenvals);
+    (*dict)["vectors"] = NeoValue::makeList(eigenvecs);
+    result = NeoValue::makeDict(dict);
     return true;
 }

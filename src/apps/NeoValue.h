@@ -1,18 +1,21 @@
 /**
  * NeoValue.h — Runtime value representation for the NeoLanguage interpreter.
  *
- * NeoValue is a variant-like class that holds one of six possible types:
+ * NeoValue is a variant-like class that holds one of seven possible types:
  *   Null      — absence of value (None)
  *   Boolean   — true / false
  *   Number    — IEEE-754 double
  *   Exact     — CASRational (exact rational arithmetic)
  *   Symbolic  — cas::SymExpr* (symbolic mathematical expression via Pro-CAS)
  *   Function  — user-defined function (FunctionDefNode* + closure NeoEnv*)
+ *   List      — ordered collection of NeoValues (1-D list or row-major matrix)
  *
  * Arithmetic dispatch:
  *   Number  OP Number   → Number  (double arithmetic)
  *   Exact   OP Exact    → Exact   (CASRational arithmetic)
  *   Exact   OP Number   → Number  (promote exact to double)
+ *   List    + List      → List    (concatenation)
+ *   List    OP scalar   → List    (automatic element-wise / vectorised)
  *   otherwise           → Symbolic (via CAS symAdd/symMul/symSub/symDiv factories)
  *
  * The "Symbolic Twist" (Wolfram Language-like behaviour):
@@ -22,11 +25,17 @@
  * Arithmetic methods accept a cas::SymExprArena& because Symbolic results
  * require arena-allocated SymExpr nodes.
  *
- * Part of: NeoCalculator / NumOS — NeoLanguage Phase 2 (Interpreter)
+ * List memory: the underlying std::vector<NeoValue> is heap-allocated with
+ * new and shared by pointer copy (reference semantics, like Python lists).
+ * Memory is intentionally not freed individually; on the ESP32 target the
+ * arena / environment is bulk-reset between program runs.
+ *
+ * Part of: NeoCalculator / NumOS — NeoLanguage Phase 4 (Data Structures)
  */
 #pragma once
 
 #include <string>
+#include <vector>
 #include <cstdint>
 #include <cmath>
 #include "../math/cas/SymExprArena.h"
@@ -52,6 +61,7 @@ public:
         Exact,
         Symbolic,
         Function,
+        List,       ///< ordered collection of NeoValues (list / matrix row)
     };
 
     // ── Default: Null ─────────────────────────────────────────────
@@ -63,6 +73,7 @@ public:
         , _sym(nullptr)
         , _funcDef(nullptr)
         , _funcClosure(nullptr)
+        , _list(nullptr)
     {}
 
     // ── Static factories ──────────────────────────────────────────
@@ -73,6 +84,13 @@ public:
     static NeoValue makeSymbolic(cas::SymExpr* sym);
     static NeoValue makeFunction(FunctionDefNode* def, NeoEnv* closure);
 
+    /**
+     * Create a List value.  NeoValue takes ownership of the vector pointer
+     * (heap-allocated with new by the caller).  The pointer is shared by value
+     * copies of this NeoValue (reference semantics, like Python lists).
+     */
+    static NeoValue makeList(std::vector<NeoValue>* list);
+
     // ── Type queries ──────────────────────────────────────────────
     Type type()       const { return _type; }
     bool isNull()     const { return _type == Type::Null; }
@@ -81,6 +99,7 @@ public:
     bool isExact()    const { return _type == Type::Exact; }
     bool isSymbolic() const { return _type == Type::Symbolic; }
     bool isFunction() const { return _type == Type::Function; }
+    bool isList()     const { return _type == Type::List; }
 
     /// True for Number or Exact (numerically concrete, non-symbolic).
     bool isNumeric()  const { return _type == Type::Number || _type == Type::Exact; }
@@ -92,6 +111,8 @@ public:
     cas::SymExpr*           asSym()        const { return _sym; }
     FunctionDefNode*        funcDef()      const { return _funcDef; }
     NeoEnv*                 funcClosure()  const { return _funcClosure; }
+    /// Returns the list vector pointer (null if not a List type).
+    std::vector<NeoValue>*  asList()       const { return _list; }
 
     // ── Truthiness (Python-style) ─────────────────────────────────
     /// Null → false; Boolean → value; Number → non-zero; others → true.
@@ -133,4 +154,7 @@ private:
     cas::SymExpr*    _sym;
     FunctionDefNode* _funcDef;
     NeoEnv*          _funcClosure;
+    /// Heap-allocated vector shared by value copies (reference semantics).
+    /// nullptr for all non-List types.
+    std::vector<NeoValue>* _list;
 };

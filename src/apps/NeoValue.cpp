@@ -52,6 +52,13 @@ NeoValue NeoValue::makeFunction(FunctionDefNode* def, NeoEnv* closure) {
     return v;
 }
 
+NeoValue NeoValue::makeList(std::vector<NeoValue>* list) {
+    NeoValue v;
+    v._type = Type::List;
+    v._list = list;
+    return v;
+}
+
 // ════════════════════════════════════════════════════════════════════
 // isTruthy
 // ════════════════════════════════════════════════════════════════════
@@ -64,6 +71,7 @@ bool NeoValue::isTruthy() const {
         case Type::Exact:    return !_exact.isZero();
         case Type::Symbolic: return _sym != nullptr;
         case Type::Function: return _funcDef != nullptr;
+        case Type::List:     return _list != nullptr && !_list->empty();
     }
     return false;
 }
@@ -132,6 +140,26 @@ NeoValue NeoValue::add(const NeoValue& rhs, cas::SymExprArena& sa) const {
     if (isNumeric() && rhs.isNumeric())
         return makeNumber(toDouble() + rhs.toDouble());
 
+    // ── List + List → concatenation ───────────────────────────────
+    if (_type == Type::List && rhs._type == Type::List) {
+        auto* result = new std::vector<NeoValue>();
+        if (_list) for (const auto& v : *_list) result->push_back(v);
+        if (rhs._list) for (const auto& v : *rhs._list) result->push_back(v);
+        return makeList(result);
+    }
+
+    // ── List + scalar → element-wise add ─────────────────────────
+    if (_type == Type::List && rhs.isNumeric()) {
+        auto* result = new std::vector<NeoValue>();
+        if (_list) for (const auto& v : *_list) result->push_back(v.add(rhs, sa));
+        return makeList(result);
+    }
+    if (isNumeric() && rhs._type == Type::List) {
+        auto* result = new std::vector<NeoValue>();
+        if (rhs._list) for (const auto& v : *rhs._list) result->push_back(add(v, sa));
+        return makeList(result);
+    }
+
     // ── At least one Symbolic → symbolic addition ─────────────────
     SymExpr* lSym = toSymExpr(sa);
     SymExpr* rSym = rhs.toSymExpr(sa);
@@ -154,6 +182,13 @@ NeoValue NeoValue::sub(const NeoValue& rhs, cas::SymExprArena& sa) const {
 
     if (isNumeric() && rhs.isNumeric())
         return makeNumber(toDouble() - rhs.toDouble());
+
+    // ── List - scalar → element-wise ─────────────────────────────
+    if (_type == Type::List && rhs.isNumeric()) {
+        auto* result = new std::vector<NeoValue>();
+        if (_list) for (const auto& v : *_list) result->push_back(v.sub(rhs, sa));
+        return makeList(result);
+    }
 
     // Symbolic: lhs + (-rhs)
     SymExpr* lSym = toSymExpr(sa);
@@ -178,6 +213,29 @@ NeoValue NeoValue::mul(const NeoValue& rhs, cas::SymExprArena& sa) const {
 
     if (isNumeric() && rhs.isNumeric())
         return makeNumber(toDouble() * rhs.toDouble());
+
+    // ── List * scalar → element-wise (vectorisation) ─────────────
+    if (_type == Type::List && rhs.isNumeric()) {
+        auto* result = new std::vector<NeoValue>();
+        if (_list) for (const auto& v : *_list) result->push_back(v.mul(rhs, sa));
+        return makeList(result);
+    }
+    if (isNumeric() && rhs._type == Type::List) {
+        auto* result = new std::vector<NeoValue>();
+        if (rhs._list) for (const auto& v : *rhs._list) result->push_back(mul(v, sa));
+        return makeList(result);
+    }
+    // ── List * List → element-wise (Hadamard) product ────────────
+    if (_type == Type::List && rhs._type == Type::List) {
+        auto* result = new std::vector<NeoValue>();
+        if (_list && rhs._list) {
+            size_t len = std::min(_list->size(), rhs._list->size());
+            result->reserve(len);
+            for (size_t k = 0; k < len; ++k)
+                result->push_back((*_list)[k].mul((*rhs._list)[k], sa));
+        }
+        return makeList(result);
+    }
 
     SymExpr* lSym = toSymExpr(sa);
     SymExpr* rSym = rhs.toSymExpr(sa);
@@ -345,6 +403,17 @@ std::string NeoValue::toString() const {
                 return "<function " + _funcDef->name + ">";
             }
             return "<function>";
+        }
+        case Type::List: {
+            std::string s = "[";
+            if (_list) {
+                for (size_t i = 0; i < _list->size(); ++i) {
+                    if (i > 0) s += ", ";
+                    s += (*_list)[i].toString();
+                }
+            }
+            s += "]";
+            return s;
         }
     }
     return "?";

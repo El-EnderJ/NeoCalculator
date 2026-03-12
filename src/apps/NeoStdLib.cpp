@@ -371,6 +371,7 @@ bool NeoStdLib::callType(const std::vector<NeoValue>& args,
         case NeoValue::Type::Exact:    typeName = "exact";    ordinal = 3; break;
         case NeoValue::Type::Symbolic: typeName = "symbolic"; ordinal = 4; break;
         case NeoValue::Type::Function: typeName = "function"; ordinal = 5; break;
+        case NeoValue::Type::List:     typeName = "list";     ordinal = 6; break;
         default:                       typeName = "unknown";  ordinal = -1; break;
     }
 

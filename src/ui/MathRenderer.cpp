@@ -1110,27 +1110,13 @@ void MathCanvas::drawDefIntegral(lv_layer_t* layer, const NodeDefIntegral* node,
     int16_t bodyAscent  = std::max(bodyL.ascent, fm.ascent);
     int16_t bodyDescent = std::max(bodyL.descent, fm.descent);
 
-    // ── Draw ∫ symbol as vector lines (S-curve) ──
+    // ── Draw ∫ symbol using the vectorial helper ──
     int16_t symCenterX = static_cast<int16_t>(x + symColW / 2);
     int16_t symTop     = static_cast<int16_t>(yBaseline - bodyAscent - NodeDefIntegral::SYMBOL_H_PAD);
     int16_t symBot     = static_cast<int16_t>(yBaseline + bodyDescent + NodeDefIntegral::SYMBOL_H_PAD);
-    int16_t symMid     = static_cast<int16_t>((symTop + symBot) / 2);
     int16_t halfW      = static_cast<int16_t>(NodeDefIntegral::SYMBOL_W / 3);
 
-    // Top serif (small curve to the right)
-    drawLine(layer,
-             static_cast<int16_t>(symCenterX + halfW), symTop,
-             symCenterX, static_cast<int16_t>(symTop + 3),
-             1, lv_color_black());
-    // Main vertical stroke
-    drawLine(layer, symCenterX, static_cast<int16_t>(symTop + 3),
-             symCenterX, static_cast<int16_t>(symBot - 3),
-             2, lv_color_black());
-    // Bottom serif (small curve to the left)
-    drawLine(layer,
-             symCenterX, static_cast<int16_t>(symBot - 3),
-             static_cast<int16_t>(symCenterX - halfW), symBot,
-             1, lv_color_black());
+    drawIntegralSymbol(layer, symCenterX, symTop, symBot, halfW, lv_color_black());
 
     // ── Upper limit (centered above symbol) ──
     int16_t upperX = static_cast<int16_t>(x + (symColW - upperL.width) / 2);
@@ -1179,22 +1165,13 @@ void MathCanvas::drawSummation(lv_layer_t* layer, const NodeSummation* node,
     int16_t bodyAscent  = std::max(bodyL.ascent, fm.ascent);
     int16_t bodyDescent = std::max(bodyL.descent, fm.descent);
 
-    // ── Draw ∑ symbol as vector lines (zigzag) ──
+    // ── Draw ∑ symbol using the vectorial helper ──
     int16_t symLeft  = static_cast<int16_t>(x + (symColW - NodeSummation::SYMBOL_W) / 2);
     int16_t symRight = static_cast<int16_t>(symLeft + NodeSummation::SYMBOL_W);
     int16_t symTop   = static_cast<int16_t>(yBaseline - bodyAscent - NodeSummation::SYMBOL_H_PAD);
     int16_t symBot   = static_cast<int16_t>(yBaseline + bodyDescent + NodeSummation::SYMBOL_H_PAD);
-    int16_t symMidX  = static_cast<int16_t>((symLeft + symRight) / 2);
-    int16_t symMidY  = static_cast<int16_t>((symTop + symBot) / 2);
 
-    // Top horizontal line
-    drawLine(layer, symLeft, symTop, symRight, symTop, 2, lv_color_black());
-    // Diagonal from top-left to center
-    drawLine(layer, symLeft, symTop, symMidX, symMidY, 1, lv_color_black());
-    // Diagonal from center to bottom-left
-    drawLine(layer, symMidX, symMidY, symLeft, symBot, 1, lv_color_black());
-    // Bottom horizontal line
-    drawLine(layer, symLeft, symBot, symRight, symBot, 2, lv_color_black());
+    drawSummationSymbol(layer, symLeft, symRight, symTop, symBot, lv_color_black());
 
     // ── Upper limit (centered above symbol) ──
     int16_t upperX = static_cast<int16_t>(x + (symColW - upperL.width) / 2);
@@ -1209,6 +1186,86 @@ void MathCanvas::drawSummation(lv_layer_t* layer, const NodeSummation* node,
     // ── Body expression (right of symbol) ──
     int16_t bodyX = static_cast<int16_t>(x + symColW + NodeSummation::BODY_GAP);
     drawNode(layer, node->body(), bodyX, yBaseline, fm, font, depth + 1);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// drawIntegralSymbol — Vectorial ∫ primitive
+//
+// Draws a smooth, stylized integral sign as a multi-stroke S-curve:
+//   · Top serif:    short diagonal line curving to the right
+//   · Upper curve:  angled segment bridging serif to main stroke
+//   · Main stroke:  thick vertical line (2 px) forming the body of ∫
+//   · Lower curve:  angled segment bridging main stroke to bottom serif
+//   · Bottom serif: short diagonal line curving to the left
+//
+// This layered approach gives the symbol a professional calligraphic look
+// that mimics a LaTeX \int without raster fonts.
+// ════════════════════════════════════════════════════════════════════════════
+
+void MathCanvas::drawIntegralSymbol(lv_layer_t* layer,
+                                    int16_t cx, int16_t symTop, int16_t symBot,
+                                    int16_t halfW, lv_color_t color) {
+    // Derived geometry
+    int16_t serifLen = static_cast<int16_t>(halfW);                       // serif horizontal reach
+    int16_t curveLen = static_cast<int16_t>((symBot - symTop) / 6);       // angled segment height
+    int16_t strokeT  = static_cast<int16_t>(symTop + curveLen);           // top of main stroke
+    int16_t strokeB  = static_cast<int16_t>(symBot - curveLen);           // bottom of main stroke
+
+    // ── Top serif: curves right (like a small arc at the top of ∫) ──
+    drawLine(layer,
+             static_cast<int16_t>(cx + serifLen), symTop,
+             static_cast<int16_t>(cx + serifLen / 2), static_cast<int16_t>(symTop + 1),
+             1, color);
+    drawLine(layer,
+             static_cast<int16_t>(cx + serifLen / 2), static_cast<int16_t>(symTop + 1),
+             cx, strokeT,
+             1, color);
+
+    // ── Main vertical stroke (2 px wide for bold appearance) ──
+    drawLine(layer, cx, strokeT, cx, strokeB, 2, color);
+
+    // ── Bottom serif: curves left (mirror of top serif) ──
+    drawLine(layer,
+             cx, strokeB,
+             static_cast<int16_t>(cx - serifLen / 2), static_cast<int16_t>(symBot - 1),
+             1, color);
+    drawLine(layer,
+             static_cast<int16_t>(cx - serifLen / 2), static_cast<int16_t>(symBot - 1),
+             static_cast<int16_t>(cx - serifLen), symBot,
+             1, color);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// drawSummationSymbol — Vectorial Σ primitive
+//
+// Draws a professional capital Sigma (∑) as a closed zigzag polygon:
+//   · Top horizontal bar
+//   · Diagonal from top-left down to the centre-right apex
+//   · Diagonal from apex back down to the bottom-left
+//   · Bottom horizontal bar
+//   · Right-hand vertical bar closing the open sides of the Σ
+//
+// The right vertical bar is omitted in a traditional Σ but helps on
+// small pixel grids where the diagonals would look like an X otherwise.
+// ════════════════════════════════════════════════════════════════════════════
+
+void MathCanvas::drawSummationSymbol(lv_layer_t* layer,
+                                     int16_t symLeft, int16_t symRight,
+                                     int16_t symTop, int16_t symBot,
+                                     lv_color_t color) {
+    int16_t symMidX = static_cast<int16_t>((symLeft + symRight) / 2);
+    int16_t symMidY = static_cast<int16_t>((symTop + symBot) / 2);
+
+    // Top horizontal bar (2 px)
+    drawLine(layer, symLeft, symTop, symRight, symTop, 2, color);
+    // Diagonal: top-left → centre apex
+    drawLine(layer, symLeft, symTop, symMidX, symMidY, 1, color);
+    // Diagonal: centre apex → bottom-left
+    drawLine(layer, symMidX, symMidY, symLeft, symBot, 1, color);
+    // Bottom horizontal bar (2 px)
+    drawLine(layer, symLeft, symBot, symRight, symBot, 2, color);
+    // Right vertical bar (closes the Σ polygon on the right side)
+    drawLine(layer, symRight, symTop, symRight, symBot, 1, color);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

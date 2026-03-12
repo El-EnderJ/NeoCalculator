@@ -72,18 +72,21 @@ struct CASStep {
     StepKind     kind;          // Structural type of step
     const SymExpr* mathExpr;    // Optional: CAS expression for 2D MathCanvas rendering
                                 // Non-owning — SymExprArena manages lifetime
+    const SymExpr* highlightExpr; // Optional: sub-expression modified in this step (Smart Highlighter)
+                                  // Non-owning — rendered with LV_PALETTE_BLUE / LV_PALETTE_ORANGE accent
     std::string  reason;        // Mathematical justification (e.g. "Power Rule", "Distributive Property")
 
     CASStep()
         : description(), snapshot(), method(MethodId::General),
-          kind(StepKind::Transform), mathExpr(nullptr), reason() {}
+          kind(StepKind::Transform), mathExpr(nullptr), highlightExpr(nullptr), reason() {}
 
     CASStep(const std::string& desc, const SymEquation& snap,
             MethodId m, StepKind k = StepKind::Transform,
             const SymExpr* expr = nullptr,
-            const std::string& rsn = "")
+            const std::string& rsn = "",
+            const SymExpr* highlight = nullptr)
         : description(desc), snapshot(snap), method(m), kind(k),
-          mathExpr(expr), reason(rsn) {}
+          mathExpr(expr), highlightExpr(highlight), reason(rsn) {}
 };
 
 // PSRAM-allocated step vector
@@ -112,6 +115,16 @@ public:
     void logExpr(const std::string& desc, const SymExpr* expr,
                  MethodId method = MethodId::General,
                  const std::string& reason = "");
+
+    /// Add an annotation step with a SymExpr for rendering AND a highlighted
+    /// sub-expression (Smart Highlighter).  The highlighted node will be
+    /// displayed in an accent colour (LV_PALETTE_BLUE / LV_PALETTE_ORANGE)
+    /// in the step viewer so students can see exactly what changed.
+    /// Both SymExpr pointers are non-owning — the arena must outlive display.
+    void logWithHighlight(const std::string& desc, const SymExpr* expr,
+                          const SymExpr* highlightExpr,
+                          MethodId method = MethodId::General,
+                          const std::string& reason = "");
 
     /// Add a result step (final answer with equation snapshot).
     void logResult(const std::string& description,

@@ -1873,4 +1873,254 @@ print("Recursive:", recur_ms, "ms")
 
 ---
 
+## 27. Best Practices for Mathematical Scripting
+
+Follow these guidelines to write clear, correct, and efficient NeoLanguage programs.
+
+### 27.1 Use Exact Arithmetic Where Precision Matters
+
+NeoLanguage promotes values automatically. Use integer literals and `exact()` to
+stay in rational arithmetic as long as possible:
+
+```nl
+# Prefer this (exact rational)
+r = 1/3 + 1/6          # => 1/2  (exact)
+
+# Over this (floating-point)
+r = 0.333 + 0.167      # => 0.500 (approximate)
+```
+
+### 27.2 Prefer Symbolic Differentiation Over Finite Differences
+
+```nl
+# Good: symbolic (exact, handles edge cases)
+f = diff(x^3 + 2*x, x)     # => 3*x^2 + 2
+
+# Avoid for calculus: numerical finite difference
+h = 0.0001
+fd = (n(x^3 + 2*x, {"x": 1+h}) - n(x^3 + 2*x, {"x": 1})) / h
+```
+
+### 27.3 Single-Letter Symbolic Variables
+
+CAS symbolic variables are single characters. Always use `x`, `y`, `z`, `t`,
+`n` etc. for symbolic math — multi-character names silently use only the
+first character.
+
+```nl
+# Correct
+result = integrate(x^2, x)
+
+# Bug: 'theta' becomes 't' internally
+result = diff(theta^2, theta)   # Same as diff(t^2, t)
+```
+
+### 27.4 Check for `undefined` Before Using Results
+
+Edge cases like `sqrt(-1)`, `log(0)`, and `0/0` return `undefined`. Always
+guard against them when processing user input:
+
+```nl
+val = sqrt(user_input)
+if val == undefined:
+    msg_box("Error", "Input must be non-negative")
+else:
+    print("Result:", val)
+```
+
+### 27.5 Prefer `n()` for Plotting and Numeric Output
+
+`n()` forces numeric evaluation and is significantly faster than the CAS
+pipeline for pure numeric tasks:
+
+```nl
+# Fast: numeric evaluation
+for x in range(100):
+    y = n(sin(x/10) * exp(-x/50))
+    # ... plot or process y
+```
+
+### 27.6 Limit Loop Bodies to O(n) Work
+
+The ESP32-S3 runs at ~240 MHz. Avoid nesting heavy symbolic operations inside
+loops — compute them once and reuse:
+
+```nl
+# Good: compute symbolic derivative once
+deriv = diff(x^4 - 3*x^2 + 2, x)
+for xi in [1, 2, 3, 4]:
+    print("f'(", xi, ") =", n(deriv, {"x": xi}))
+
+# Slow: re-differentiates 4 times
+for xi in [1, 2, 3, 4]:
+    print(n(diff(x^4 - 3*x^2 + 2, x), {"x": xi}))
+```
+
+### 27.7 Handle `solve()` Results as Lists
+
+`solve()` always returns a list (possibly empty). Check length before indexing:
+
+```nl
+sols = solve(x^2 - 4, x)
+if len(sols) == 0:
+    print("No solutions")
+else:
+    print("x =", sols[0])
+```
+
+### 27.8 Use `time_it()` to Benchmark Before Optimising
+
+Profile before guessing where the bottleneck is:
+
+```nl
+ms = time_it(my_heavy_function, arg1, arg2)
+print("Took", ms, "ms")
+```
+
+---
+
+## 28. NeoGUI Style Guide
+
+Consistent UI produces apps that feel native to NumOS. Follow these conventions
+when building NeoGUI interfaces.
+
+### 28.1 Layout Hierarchy
+
+```
+Screen (320 × 240 px)
+  └─ StatusBar   (top, 20 px, managed by StatusBar class)
+  └─ ContentArea (y = 21, h = 219 px)
+       ├─ TabStrip or ModeBar  (h = 26 px, optional)
+       └─ MainContainer        (fills remaining height)
+```
+
+### 28.2 Colour Palette
+
+| Role               | Hex       | Usage                              |
+|--------------------|-----------|------------------------------------|
+| Background         | `#FFFFFF` | All app screens                    |
+| Primary text       | `#1A1A1A` | Body text, labels                  |
+| Secondary text     | `#888888` | Hints, disabled labels             |
+| Separator / border | `#333333` | Dividers, frame borders            |
+| Derivative accent  | `#E05500` | d/dx mode titles and highlights    |
+| Integral accent    | `#6A1B9A` | ∫dx mode titles and highlights     |
+| Result blue        | `#1565C0` | Final result labels                |
+| Step green         | `#2E7D32` | Step description labels            |
+| Highlight orange   | `#E65100` | Smart Highlighter — changed node   |
+| Error red          | `#C62828` | Error messages                     |
+
+### 28.3 Typography
+
+| Context          | Font                    |
+|------------------|-------------------------|
+| Body / labels    | `lv_font_montserrat_14` |
+| Hints / steps    | `lv_font_montserrat_12` |
+| MathCanvas       | Montserrat 14 (normal), Montserrat 12 (super/subscript) |
+
+### 28.4 Padding and Spacing
+
+Use `PAD = 6` px for all outer container padding. Leave `4` px between
+vertically stacked items in flex containers. Keep at least `8` px horizontal
+margin inside scrollable containers.
+
+### 28.5 Modal Dialogs
+
+Use `msg_box(title, message)` from NeoLanguage or `lv_msgbox_create()` in C++
+for error/info dialogs. Always pair an OK button that returns focus to the
+previous screen.
+
+### 28.6 Status Bar Updates
+
+Always update the status bar title when the app state changes:
+
+```nl
+# NeoLanguage example
+msg_box("Calculus", "Computing derivative...")
+```
+
+In C++ apps call `_statusBar.setTitle(...)` at every state transition.
+
+### 28.7 Scrollable Lists
+
+For step viewers, result lists, and history panels:
+
+- Use `lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN)` with `pad_row = 4`.
+- Disable clickable on the container (`lv_obj_remove_flag(..., LV_OBJ_FLAG_CLICKABLE)`)
+  to keep keyboard/d-pad navigation from getting trapped.
+- Provide an on-screen hint: `"↑↓ Scroll   AC: Back"`.
+
+### 28.8 MathCanvas Best Practices
+
+- Always call `row->calculateLayout(canvas.normalMetrics())` before setting
+  the expression on a MathCanvas.
+- Set canvas size from `layout().width` / `layout().ascent + layout().descent`
+  so the widget auto-sizes to its content.
+- Call `canvas.invalidate()` after every AST change to trigger a redraw.
+- Use `canvas.stopCursorBlink()` on read-only output canvases.
+
+---
+
+## 29. Smart Highlighter API
+
+The **Smart Highlighter** is a CAS step-logging feature that lets solvers mark
+the specific sub-expression that was transformed in a given step.  The step
+viewer then renders that sub-expression in an orange accent colour so students
+can see exactly what changed.
+
+### 29.1 How It Works
+
+Every `CASStep` contains two expression pointers:
+
+| Field           | Purpose                                                 |
+|-----------------|---------------------------------------------------------|
+| `mathExpr`      | The full expression after the transformation.           |
+| `highlightExpr` | The sub-expression that was modified (may be `nullptr`).|
+
+When `highlightExpr` is non-null, the step viewer:
+1. Renders the step description label in **blue** (`#1565C0`).
+2. Appends a `▶ Modified:` label in **orange** (`#E65100`).
+3. Renders `highlightExpr` in its own MathCanvas below the main expression.
+
+### 29.2 Logging a Highlighted Step
+
+Use `CASStepLogger::logWithHighlight()`:
+
+```cpp
+// After simplifying (3+4) → 7 inside 2x + (3+4):
+const SymExpr* fullResult  = ...;   // 2x + 7
+const SymExpr* changedNode = ...;   // 7  (the new node)
+
+_steps.logWithHighlight(
+    "Arithmetic: 3 + 4 = 7",
+    fullResult,
+    changedNode,
+    cas::MethodId::General,
+    "Constant Folding"
+);
+```
+
+### 29.3 Example — Derivative Highlighting
+
+```cpp
+// When applying the Power Rule d/dx[x^n] = n*x^(n-1):
+const SymExpr* derivedTerm = ...;   // n*x^(n-1)
+const SymExpr* originalArg = ...;   // x^n
+
+_steps.logWithHighlight(
+    "Power Rule: d/dx[x^n] = n·x^(n-1)",
+    derivedTerm,
+    originalArg,
+    cas::MethodId::General,
+    "Power Rule"
+);
+```
+
+### 29.4 Backwards Compatibility
+
+`logWithHighlight()` is additive — all existing `logExpr()`, `logNote()`, and
+`log()` calls remain unchanged.  Steps logged without a highlight target behave
+exactly as before (green description label, no orange sub-expression panel).
+
+---
+
 *NeoLanguage — Part of the NeoCalculator / NumOS project.*

@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cmath>
 #include <limits>
+#include "NeoScientific.h"
 
 // Maximum iterations for while loops and for-in ranges.
 // Guards against infinite loops on the embedded target.
@@ -636,6 +637,101 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
     }
 
     // ── print / println and type: delegate to NeoStdLib for callback support ─
+
+    // ── Phase 7: ndsolve(f, y0, x0, x1, steps) — RK4 ODE solver ──
+    if (name == "ndsolve") {
+        if (args.size() < 4) {
+            result = NeoValue::makeNull(); return true;
+        }
+        const NeoValue& funcVal = args[0];
+        double y0    = args[1].toDouble();
+        double x0    = args[2].toDouble();
+        double x1    = args[3].toDouble();
+        int    steps = args.size() >= 5 ? static_cast<int>(args[4].toDouble()) : 200;
+
+        // Build a C++ lambda that evaluates the NeoLanguage/native function
+        std::function<double(double, double)> f;
+
+        if (funcVal.isFunction() && funcVal.funcDef()) {
+            FunctionDefNode* def     = funcVal.funcDef();
+            NeoEnv*          closure = funcVal.funcClosure();
+            if (!def || def->params.size() < 2) {
+                _stdlib.callBuiltin("print", {NeoValue::makeString("[ndsolve] Function must accept 2 params f(x, y)")}, result, env, _symArena);
+                result = NeoValue::makeNull(); return true;
+            }
+            f = [this, def, closure](double x, double y) -> double {
+                NeoEnv callEnv(closure);
+                callEnv.define(def->params[0], NeoValue::makeNumber(x));
+                callEnv.define(def->params[1], NeoValue::makeNumber(y));
+                NeoValue r = evalBlock(def->body, callEnv);
+                if (_returnFlag) r = takeReturn();
+                return r.toDouble();
+            };
+        } else if (funcVal.isNativeFunction() && funcVal.nativeFn()) {
+            f = [&funcVal, this](double x, double y) -> double {
+                std::vector<NeoValue> a = { NeoValue::makeNumber(x),
+                                            NeoValue::makeNumber(y) };
+                return funcVal.nativeFn()(a, funcVal.nativeCtx(), _symArena).toDouble();
+            };
+        } else if (funcVal.isSymbolic() && funcVal.asSym()) {
+            // Treat symbolic f(x, y) as f(x) — evaluate sym at x only
+            cas::SymExpr* sym = funcVal.asSym();
+            f = [sym](double x, double /*y*/) -> double {
+                return sym->evaluate(x);
+            };
+        } else {
+            _stdlib.callBuiltin("print", {NeoValue::makeString("[ndsolve] First argument must be a function f(x, y)")}, result, env, _symArena);
+            result = NeoValue::makeNull(); return true;
+        }
+
+        auto* pts = NeoScientific::ndsolveRK4(f, y0, x0, x1, steps);
+        result = NeoValue::makeList(pts);
+        return true;
+    }
+
+    // ── Phase 7: minimize(f, x0) — golden-section minimisation ───
+    if (name == "minimize" || name == "maximize") {
+        if (args.size() < 2) {
+            result = NeoValue::makeNull(); return true;
+        }
+        const NeoValue& funcVal = args[0];
+        double x0 = args[1].toDouble();
+        bool   doMax = (name == "maximize");
+
+        std::function<double(double)> f;
+
+        if (funcVal.isFunction() && funcVal.funcDef()) {
+            FunctionDefNode* def     = funcVal.funcDef();
+            NeoEnv*          closure = funcVal.funcClosure();
+            if (!def || def->params.empty()) {
+                _stdlib.callBuiltin("print", {NeoValue::makeString("[minimize/maximize] Function must accept 1 param")}, result, env, _symArena);
+                result = NeoValue::makeNull(); return true;
+            }
+            f = [this, def, closure](double x) -> double {
+                NeoEnv callEnv(closure);
+                callEnv.define(def->params[0], NeoValue::makeNumber(x));
+                NeoValue r = evalBlock(def->body, callEnv);
+                if (_returnFlag) r = takeReturn();
+                return r.toDouble();
+            };
+        } else if (funcVal.isNativeFunction() && funcVal.nativeFn()) {
+            f = [&funcVal, this](double x) -> double {
+                std::vector<NeoValue> a = { NeoValue::makeNumber(x) };
+                return funcVal.nativeFn()(a, funcVal.nativeCtx(), _symArena).toDouble();
+            };
+        } else if (funcVal.isSymbolic() && funcVal.asSym()) {
+            cas::SymExpr* sym = funcVal.asSym();
+            f = [sym](double x) -> double { return sym->evaluate(x); };
+        } else {
+            _stdlib.callBuiltin("print", {NeoValue::makeString("[minimize/maximize] First argument must be a function")}, result, env, _symArena);
+            result = NeoValue::makeNull(); return true;
+        }
+
+        double xOpt = doMax ? NeoScientific::maximizeGolden(f, x0)
+                            : NeoScientific::minimizeGolden(f, x0);
+        result = NeoValue::makeNumber(xOpt);
+        return true;
+    }
 
     // ── All remaining built-ins: delegate to NeoStdLib ───────────
     // This handles: diff, integrate, solve, simplify, expand,

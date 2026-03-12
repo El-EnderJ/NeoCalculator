@@ -35,6 +35,10 @@
 #include "../math/cas/SystemSolver.h"
 #include "NeoFinance.h"
 #include "NeoBitwise.h"
+#include "NeoScientific.h"
+#include "NeoPhysics.h"
+#include "NeoIO.h"
+#include "NeoGUI.h"
 
 // ════════════════════════════════════════════════════════════════════
 // Constructor
@@ -197,6 +201,35 @@ bool NeoStdLib::callBuiltin(const std::string&          name,
     if (name == "bit_count")   return callBitCount  (args, result);
     if (name == "to_bin")      return callToBin     (args, result);
     if (name == "to_hex")      return callToHex     (args, result);
+
+    // ── Phase 7: ODEs & Optimization ─────────────────────────────
+    // (ndsolve/minimize/maximize are handled in NeoInterpreter::evalBuiltin
+    //  because they need to call user-defined NeoLanguage functions)
+    if (name == "gamma")       return callGamma     (args, result);
+    if (name == "beta")        return callBeta      (args, result);
+    if (name == "erf")         return callErf       (args, result);
+
+    // ── Phase 7: File I/O ─────────────────────────────────────────
+    if (name == "open")        return callOpen      (args, result);
+    if (name == "read")        return callRead      (args, result);
+    if (name == "write")       return callWrite     (args, result);
+    if (name == "close")       return callClose     (args, result);
+    if (name == "json_encode") return callJsonEncode(args, result);
+    if (name == "json_decode") return callJsonDecode(args, result);
+    if (name == "export_csv")  return callExportCsv (args, result);
+    if (name == "import_csv")  return callImportCsv (args, result);
+
+    // ── Phase 7: Physics Constants ────────────────────────────────
+    if (name == "const")       return callConst     (args, result);
+    if (name == "const_desc")  return callConstDesc (args, result);
+
+    // ── Phase 7: NeoGUI ──────────────────────────────────────────
+    if (name == "gui_label")   return callGuiLabel  (args, result);
+    if (name == "gui_button")  return callGuiButton (args, result);
+    if (name == "gui_slider")  return callGuiSlider (args, result);
+    if (name == "gui_input")   return callGuiInput  (args, result);
+    if (name == "gui_clear")   return callGuiClear  (args, result);
+    if (name == "gui_show")    return callGuiShow   (args, result);
 
     return false;  // Not a stdlib built-in
 }
@@ -1152,5 +1185,175 @@ bool NeoStdLib::callToBin(const std::vector<NeoValue>& args, NeoValue& result) {
 bool NeoStdLib::callToHex(const std::vector<NeoValue>& args, NeoValue& result) {
     if (args.empty()) { result = NeoValue::makeString("0x0"); return true; }
     result = NeoBitwise::toHex(args[0]);
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Phase 7: Special Functions (NeoScientific)
+// ════════════════════════════════════════════════════════════════════
+
+bool NeoStdLib::callGamma(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { hostPrint("[gamma] Usage: gamma(x)\n"); result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoScientific::gamma(args[0].toDouble()));
+    return true;
+}
+
+bool NeoStdLib::callBeta(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { hostPrint("[beta] Usage: beta(x, y)\n"); result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoScientific::beta(args[0].toDouble(), args[1].toDouble()));
+    return true;
+}
+
+bool NeoStdLib::callErf(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { hostPrint("[erf] Usage: erf(x)\n"); result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoScientific::erf(args[0].toDouble()));
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Phase 7: File I/O (NeoIO)
+// ════════════════════════════════════════════════════════════════════
+
+bool NeoStdLib::callOpen(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { hostPrint("[open] Usage: open(path, mode)\n"); result = NeoValue::makeNumber(-1); return true; }
+    std::string path = args[0].isString() ? args[0].asString() : args[0].toString();
+    std::string mode = args[1].isString() ? args[1].asString() : args[1].toString();
+    int h = NeoIO::openFile(path.c_str(), mode.c_str());
+    result = NeoValue::makeNumber(static_cast<double>(h));
+    return true;
+}
+
+bool NeoStdLib::callRead(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { hostPrint("[read] Usage: read(handle)\n"); result = NeoValue::makeString(""); return true; }
+    int h = static_cast<int>(args[0].toDouble());
+    result = NeoValue::makeString(NeoIO::readFile(h));
+    return true;
+}
+
+bool NeoStdLib::callWrite(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { hostPrint("[write] Usage: write(handle, str)\n"); result = NeoValue::makeNumber(-1); return true; }
+    int h = static_cast<int>(args[0].toDouble());
+    std::string text = args[1].isString() ? args[1].asString() : args[1].toString();
+    int n = NeoIO::writeFile(h, text.c_str());
+    result = NeoValue::makeNumber(static_cast<double>(n));
+    return true;
+}
+
+bool NeoStdLib::callClose(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { hostPrint("[close] Usage: close(handle)\n"); result = NeoValue::makeNull(); return true; }
+    int h = static_cast<int>(args[0].toDouble());
+    NeoIO::closeFile(h);
+    result = NeoValue::makeNull();
+    return true;
+}
+
+bool NeoStdLib::callJsonEncode(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { result = NeoValue::makeString("null"); return true; }
+    result = NeoValue::makeString(NeoIO::jsonEncode(args[0]));
+    return true;
+}
+
+bool NeoStdLib::callJsonDecode(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { result = NeoValue::makeNull(); return true; }
+    std::string s = args[0].isString() ? args[0].asString() : args[0].toString();
+    result = NeoIO::jsonDecode(s);
+    return true;
+}
+
+bool NeoStdLib::callExportCsv(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { hostPrint("[export_csv] Usage: export_csv(matrix, path)\n"); result = NeoValue::makeBool(false); return true; }
+    std::string path = args[1].isString() ? args[1].asString() : args[1].toString();
+    bool ok = NeoIO::exportCsv(args[0], path.c_str());
+    result = NeoValue::makeBool(ok);
+    return true;
+}
+
+bool NeoStdLib::callImportCsv(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { hostPrint("[import_csv] Usage: import_csv(path)\n"); result = NeoValue::makeNull(); return true; }
+    std::string path = args[0].isString() ? args[0].asString() : args[0].toString();
+    result = NeoIO::importCsv(path.c_str());
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Phase 7: Physics Constants (NeoPhysics)
+// ════════════════════════════════════════════════════════════════════
+
+bool NeoStdLib::callConst(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { hostPrint("[const] Usage: const(\"name\")\n"); result = NeoValue::makeNull(); return true; }
+    std::string name = args[0].isString() ? args[0].asString() : args[0].toString();
+    result = NeoPhysics::get(name.c_str());
+    if (result.isNull()) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "[const] Unknown constant: '%s'\n", name.c_str());
+        hostPrint(buf);
+    }
+    return true;
+}
+
+bool NeoStdLib::callConstDesc(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { hostPrint("[const_desc] Usage: const_desc(\"name\")\n"); result = NeoValue::makeString(""); return true; }
+    std::string name = args[0].isString() ? args[0].asString() : args[0].toString();
+    std::string desc = NeoPhysics::describe(name.c_str());
+    result = NeoValue::makeString(desc);
+    if (desc.empty()) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "[const_desc] Unknown constant: '%s'\n", name.c_str());
+        hostPrint(buf);
+    }
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Phase 7: NeoGUI
+// ════════════════════════════════════════════════════════════════════
+
+bool NeoStdLib::callGuiLabel(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { hostPrint("[gui_label] Usage: gui_label(text)\n"); result = NeoValue::makeNull(); return true; }
+    std::string text = args[0].isString() ? args[0].asString() : args[0].toString();
+    NeoGUI::addLabel(text);
+    result = NeoValue::makeNull();
+    return true;
+}
+
+bool NeoStdLib::callGuiButton(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { hostPrint("[gui_button] Usage: gui_button(label, callback)\n"); result = NeoValue::makeNull(); return true; }
+    std::string label    = args[0].isString() ? args[0].asString() : args[0].toString();
+    std::string callback = args[1].isString() ? args[1].asString() : args[1].toString();
+    NeoGUI::addButton(label, callback);
+    result = NeoValue::makeNull();
+    return true;
+}
+
+bool NeoStdLib::callGuiSlider(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 3) { hostPrint("[gui_slider] Usage: gui_slider(min, max, callback)\n"); result = NeoValue::makeNull(); return true; }
+    double      minv     = args[0].toDouble();
+    double      maxv     = args[1].toDouble();
+    std::string callback = args[2].isString() ? args[2].asString() : args[2].toString();
+    NeoGUI::addSlider(minv, maxv, callback);
+    result = NeoValue::makeNull();
+    return true;
+}
+
+bool NeoStdLib::callGuiInput(const std::vector<NeoValue>& args, NeoValue& result) {
+    std::string label = args.empty() ? "Input" :
+                        (args[0].isString() ? args[0].asString() : args[0].toString());
+    NeoGUI::addInput(label);
+    result = NeoValue::makeNull();
+    return true;
+}
+
+bool NeoStdLib::callGuiClear(const std::vector<NeoValue>& /*args*/, NeoValue& result) {
+    NeoGUI::clearComponents();
+    result = NeoValue::makeNull();
+    return true;
+}
+
+bool NeoStdLib::callGuiShow(const std::vector<NeoValue>& /*args*/, NeoValue& result) {
+    // The host polls NeoGUI::isDirty() and calls NeoGUI::flush() to render.
+    // gui_show() just ensures the dirty flag is set.
+    NeoGUI::guiDirty() = true;
+    hostPrint("[gui] GUI queued for display.\n");
+    result = NeoValue::makeNull();
     return true;
 }

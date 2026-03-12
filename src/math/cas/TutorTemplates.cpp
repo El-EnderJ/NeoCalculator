@@ -169,8 +169,20 @@ static SymExpr* makeRawFractionExpr(SymExprArena& arena, SymExpr* numerator, Sym
 }
 
 void preProcessEquationTutor(SymEquation& eq, PedagogicalLogger& log) {
+    // Guard: skip only if the equation is completely blank (both sides empty).
+    // A one-sided equation like "0 = x + 1" has a non-empty RHS and is valid —
+    // moveAllToLHS() will normalize it to "x + 1 = 0".
+    if (eq.lhs.terms().empty() && eq.rhs.terms().empty()) {
+        return;
+    }
+
     SymEquation rawMoved = moveAllToLHSRaw(eq);
     SymEquation normalized = eq.moveAllToLHS();
+
+    // Guard: normalized result must produce at least one term on the LHS.
+    if (normalized.lhs.terms().empty()) {
+        return;
+    }
 
     bool needsSetToZero = !eq.rhs.isZero();
     bool needsCombine = hasLikeTerms(rawMoved.lhs);
@@ -382,6 +394,13 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
     result.ok = false;
 
     SymEquation normalized = eq.moveAllToLHS();
+
+    // Guard: normalized result must be valid
+    if (normalized.lhs.terms().empty()) {
+        result.error = "Equation has no terms after normalization";
+        return result;
+    }
+
     logTutorEntry(log, eq, normalized, var, 2);
 
     const SymPoly& f = normalized.lhs;
@@ -404,7 +423,10 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
     // ── 1. Type & Coefficients (using preexisting actions) ──────────
     ActionContext coeffCtx = ctx;
     if (arena) {
-        coeffCtx.expr(buildQuadraticDisplayExpr(*arena, var, a, b, c));
+        SymExpr* dispExpr = buildQuadraticDisplayExpr(*arena, var, a, b, c);
+        if (dispExpr) {
+            coeffCtx.expr(dispExpr);
+        }
     }
     log.logAction(SolveAction::QUAD_IDENTIFY_COEFFICIENTS, coeffCtx, MethodId::Quadratic);
     
@@ -412,12 +434,20 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         // Fallback if no arena provided (shouldn't happen in visual mode)
         return result;
     }
+
     
     // ── 2. Generic Formula: x = (-b ± √(b² - 4ac)) / (2a) ───────────
+    // Uses standard ASCII variable names: a, b, c for the formula display.
+    // These must be ASCII (0x61, 0x62, 0x63) so Montserrat font renders them.
     {
-        SymExpr* bVar = symVar(*arena, 'b');
-        SymExpr* aVar = symVar(*arena, 'a');
-        SymExpr* cVar = symVar(*arena, 'c');
+        SymExpr* bVar = symVar(*arena, 'b');   // ASCII 'b' (0x62)
+        SymExpr* aVar = symVar(*arena, 'a');   // ASCII 'a' (0x61)
+        SymExpr* cVar = symVar(*arena, 'c');   // ASCII 'c' (0x63)
+
+        if (!bVar || !aVar || !cVar) {
+            result.error = "Failed to build formula variable nodes";
+            return result;
+        }
         
         // -b
         SymExpr* negB = symNeg(*arena, bVar);
@@ -435,8 +465,10 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         SymExpr* den = symMulRaw(*arena, symInt(*arena, 2), aVar);
         // Fraction
         SymExpr* frac = makeRawFractionExpr(*arena, num, den);
-        
-        log.logAction(SolveAction::QUAD_SHOW_GENERAL_FORMULA, ctx.expr(frac), MethodId::Quadratic);
+
+        if (frac) {
+            log.logAction(SolveAction::QUAD_SHOW_GENERAL_FORMULA, ctx.expr(frac), MethodId::Quadratic);
+        }
     }
     
     // ── 3. Substitute values ─────────────────────────────────────────
@@ -444,6 +476,12 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         SymExpr* aNum = symFromCAS(*arena, a);
         SymExpr* bNum = symFromCAS(*arena, b);
         SymExpr* cNum = symFromCAS(*arena, c);
+
+        if (!aNum || !bNum || !cNum) {
+            result.error = "Failed to build substitution nodes";
+            return result;
+        }
+
         SymExpr* aSub = wrapForSubstitution(aNum, *arena);
         SymExpr* bSub = wrapForSubstitution(bNum, *arena);
         SymExpr* cSub = wrapForSubstitution(cNum, *arena);
@@ -458,8 +496,10 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         SymExpr* num = symPlusMinus(*arena, negB, sqrtD);
         SymExpr* den = symMulRaw(*arena, symInt(*arena, 2), aProd);
         SymExpr* frac = makeRawFractionExpr(*arena, num, den);
-        
-        log.logAction(SolveAction::QUAD_SUBSTITUTE_VALUES, ctx.expr(frac), MethodId::Quadratic);
+
+        if (frac) {
+            log.logAction(SolveAction::QUAD_SUBSTITUTE_VALUES, ctx.expr(frac), MethodId::Quadratic);
+        }
     }
     
     // ── Pre-compute actual values for next steps ──────────────────────
@@ -476,12 +516,17 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         // (-b ± √(D)) / 2a
         SymExpr* negBSym = symFromCAS(*arena, negBVal);
         SymExpr* dSym    = symFromCAS(*arena, discVal);
-        SymExpr* sqrtDSym = symPow(*arena, dSym, symFrac(*arena, 1, 2));
-        SymExpr* num     = symPlusMinus(*arena, negBSym, sqrtDSym);
-        SymExpr* denSym  = symFromCAS(*arena, twoAVal);
-        SymExpr* frac    = makeRawFractionExpr(*arena, num, denSym);
-        
-        log.logAction(SolveAction::QUAD_SIMPLIFY_UNDER_RADICAL, ctx.expr(frac), MethodId::Quadratic);
+
+        if (negBSym && dSym) {
+            SymExpr* sqrtDSym = symPow(*arena, dSym, symFrac(*arena, 1, 2));
+            SymExpr* num     = symPlusMinus(*arena, negBSym, sqrtDSym);
+            SymExpr* denSym  = symFromCAS(*arena, twoAVal);
+            SymExpr* frac    = makeRawFractionExpr(*arena, num, denSym);
+
+            if (frac) {
+                log.logAction(SolveAction::QUAD_SIMPLIFY_UNDER_RADICAL, ctx.expr(frac), MethodId::Quadratic);
+            }
+        }
     }
     
     // ── Complex check (D < 0) ─────────────────────────────────────────
@@ -527,11 +572,16 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
     if (!discVal.isZero()) {
         SymExpr* negBSym = symFromCAS(*arena, negBVal);
         SymExpr* sqrtDNum = symFromCAS(*arena, sqrtDVal);
-        SymExpr* num     = symPlusMinus(*arena, negBSym, sqrtDNum);
-        SymExpr* denSym  = symFromCAS(*arena, twoAVal);
-        SymExpr* frac    = makeRawFractionExpr(*arena, num, denSym);
-        
-        log.logAction(SolveAction::QUAD_COMPUTE_SQRT_VALUE, ctx.expr(frac), MethodId::Quadratic);
+
+        if (negBSym && sqrtDNum) {
+            SymExpr* num     = symPlusMinus(*arena, negBSym, sqrtDNum);
+            SymExpr* denSym  = symFromCAS(*arena, twoAVal);
+            SymExpr* frac    = makeRawFractionExpr(*arena, num, denSym);
+
+            if (frac) {
+                log.logAction(SolveAction::QUAD_COMPUTE_SQRT_VALUE, ctx.expr(frac), MethodId::Quadratic);
+            }
+        }
     }
     
     // ── 6. Separate roots if D > 0 ────────────────────────────────────
@@ -551,33 +601,27 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
     } else {
         // Two roots to separate
         SymExpr* denSym = symFromCAS(*arena, twoAVal);
-        
+        SymExpr* negBNode = symFromCAS(*arena, negBVal);
+        SymExpr* sqrtDNode = symFromCAS(*arena, sqrtDVal);
+
         // x₁ = (-b + √D) / 2a
-        SymExpr* num1 = symAddRaw(*arena, symFromCAS(*arena, negBVal), symFromCAS(*arena, sqrtDVal));
-        SymExpr* root1Expr = makeRawFractionExpr(*arena, num1, denSym);
+        SymExpr* num1 = (negBNode && sqrtDNode)
+            ? symAddRaw(*arena, negBNode, sqrtDNode) : nullptr;
+        SymExpr* root1Expr = (num1 && denSym)
+            ? makeRawFractionExpr(*arena, num1, denSym) : nullptr;
         
         // x₂ = (-b - √D) / 2a
-        SymExpr* num2 = symAddRaw(*arena, symFromCAS(*arena, negBVal),
-                                  symNeg(*arena, symFromCAS(*arena, sqrtDVal)));
-        SymExpr* root2Expr = makeRawFractionExpr(*arena, num2, denSym);
+        SymExpr* negBNode2 = symFromCAS(*arena, negBVal);
+        SymExpr* sqrtDNode2 = symFromCAS(*arena, sqrtDVal);
+        SymExpr* num2 = (negBNode2 && sqrtDNode2)
+            ? symAddRaw(*arena, negBNode2, symNeg(*arena, sqrtDNode2)) : nullptr;
+        SymExpr* denSym2 = symFromCAS(*arena, twoAVal);
+        SymExpr* root2Expr = (num2 && denSym2)
+            ? makeRawFractionExpr(*arena, num2, denSym2) : nullptr;
         
-        // Emulate equations: x₁ = ... , x₂ = ...
-        SymExpr* xVar = symVar(*arena, var);
-        SymExpr* x1 = symSubscript(*arena, xVar, symInt(*arena, 1));
-        SymExpr* x2 = symSubscript(*arena, xVar, symInt(*arena, 2));
-        
-        // Combine them in a row for visual display
-        // "x₁ = frac1"
-        // Wait, PedagogicalLogger logExpr doesn't support Equations natively, it does expressions.
-        // We can just log them as expressions. The user sees "Separating into x₁ and x₂:"
-        // and then the canvas shows the two fractions.
-        
-        // To show "x₁ =" we can abuse SymPlusMinus or let the UI handle it. 
-        // Actually, we can just show the fractions. 
-        // Let's create an Add node with both just so they appear nicely separated?
-        // Let's just log them separately.
-        
-        log.logAction(SolveAction::QUAD_SEPARATE_ROOTS, ctx.expr(root1Expr), MethodId::Quadratic);
+        if (root1Expr) {
+            log.logAction(SolveAction::QUAD_SEPARATE_ROOTS, ctx.expr(root1Expr), MethodId::Quadratic);
+        }
         
         CASNumber r1Val = CASNumber::div(CASNumber::add(negBVal, sqrtDVal), twoAVal);
         vpam::ExactVal r1EV = r1Val.toExactVal();
@@ -589,8 +633,10 @@ SolveResult solveQuadraticTutor(const SymEquation& eq, char var,
         log.logAction(SolveAction::QUAD_PRESENT_REAL_SOLUTION, 
             ActionContext().var(var).withArena(arena).val("solution", r1Val).solIdx(1), 
             MethodId::Quadratic);
-            
-        log.logAction(SolveAction::QUAD_SEPARATE_ROOTS, ctx.expr(root2Expr), MethodId::Quadratic);
+
+        if (root2Expr) {
+            log.logAction(SolveAction::QUAD_SEPARATE_ROOTS, ctx.expr(root2Expr), MethodId::Quadratic);
+        }
         
         CASNumber r2Val = CASNumber::div(CASNumber::sub(negBVal, sqrtDVal), twoAVal);
         vpam::ExactVal r2EV = r2Val.toExactVal();

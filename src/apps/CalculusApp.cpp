@@ -244,6 +244,7 @@ void CalculusApp::createUI() {
     lv_obj_set_style_pad_all(_tabDerivative, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(_tabDerivative, 0, LV_PART_MAIN);
     lv_obj_remove_flag(_tabDerivative, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(_tabDerivative, LV_OBJ_FLAG_CLICKABLE);
     {
         lv_obj_t* lbl = lv_label_create(_tabDerivative);
         lv_label_set_text(lbl, "d/dx  Differentiate");
@@ -258,10 +259,11 @@ void CalculusApp::createUI() {
     lv_obj_set_style_pad_all(_tabIntegral, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(_tabIntegral, 0, LV_PART_MAIN);
     lv_obj_remove_flag(_tabIntegral, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(_tabIntegral, LV_OBJ_FLAG_CLICKABLE);
     {
         lv_obj_t* lbl = lv_label_create(_tabIntegral);
-        // ∫ = UTF-8 \xe2\x88\xab
-        lv_label_set_text(lbl, "\xe2\x88\xab" "dx  Integrate");
+        // Use ASCII text — Montserrat font lacks the ∫ (U+222B) glyph
+        lv_label_set_text(lbl, "Integral dx  Integrate");
         lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, LV_PART_MAIN);
         lv_obj_center(lbl);
     }
@@ -382,6 +384,9 @@ void CalculusApp::createUI() {
     lv_obj_set_style_pad_row(_stepsContainer, 4, LV_PART_MAIN);
     lv_obj_add_flag(_stepsContainer, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(_stepsContainer, LV_DIR_VER);
+    // Prevent LVGL focus from being trapped in this container —
+    // scrolling is handled programmatically via handleKeySteps().
+    lv_obj_remove_flag(_stepsContainer, LV_OBJ_FLAG_CLICKABLE);
 
     // ── Start hidden ──
     hideAllContainers();
@@ -607,6 +612,14 @@ void CalculusApp::handleKeyInput(const KeyEvent& ev) {
 
         // ── GRAPH → toggle mode (d/dx ↔ ∫dx) ──
         case KeyCode::GRAPH:
+            setMode(_calcMode == CalcMode::DERIVATIVE
+                    ? CalcMode::INTEGRAL : CalcMode::DERIVATIVE);
+            break;
+
+        // ── UP/DOWN → switch between derivative and integral tabs ──
+        // Allows D-Pad vertical navigation between the two mode "tabs" at the top.
+        case KeyCode::UP:
+        case KeyCode::DOWN:
             setMode(_calcMode == CalcMode::DERIVATIVE
                     ? CalcMode::INTEGRAL : CalcMode::DERIVATIVE);
             break;

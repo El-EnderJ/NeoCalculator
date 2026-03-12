@@ -105,6 +105,25 @@ void CASStepLogger::logExpr(const std::string& desc, const SymExpr* expr,
 }
 
 // ────────────────────────────────────────────────────────────────────
+// logWithHighlight — Record a step with a highlighted sub-expression
+//
+// Identical to logExpr but stores an additional highlightExpr pointer
+// that the step viewer can use to render the modified sub-expression
+// in an accent colour (Smart Highlighter visual cue).
+// ────────────────────────────────────────────────────────────────────
+
+void CASStepLogger::logWithHighlight(const std::string& desc,
+                                     const SymExpr* expr,
+                                     const SymExpr* highlightExpr,
+                                     MethodId method,
+                                     const std::string& reason) {
+    size_t h = computeStepHash(SymEquation(), expr, StepKind::Annotation);
+    _prevHash = h;
+    _steps.emplace_back(desc, SymEquation(), method, StepKind::Annotation,
+                        expr, reason, highlightExpr);
+}
+
+// ────────────────────────────────────────────────────────────────────
 // logResult — Record a final result step with equation snapshot
 // ────────────────────────────────────────────────────────────────────
 
@@ -152,7 +171,7 @@ void CASStepLogger::copyStep(const CASStep& step) {
     if (isDuplicate(h, step.kind)) return;
     _prevHash = h;
     _steps.emplace_back(step.description, step.snapshot, step.method, step.kind,
-                        step.mathExpr, step.reason);
+                        step.mathExpr, step.reason, step.highlightExpr);
 }
 
 // ────────────────────────────────────────────────────────────────────

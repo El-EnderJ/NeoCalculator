@@ -1066,7 +1066,13 @@ void CalculusApp::buildStepsDisplay() {
             lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
             lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12,
                                        LV_PART_MAIN);
-            lv_obj_set_style_text_color(descLbl, lv_color_hex(COL_DESC_HEX),
+
+            // Smart Highlighter: use accent colour when a sub-expression
+            // was specifically modified in this step.
+            uint32_t descColor = step.highlightExpr
+                                 ? 0x1565C0   // LV_PALETTE_BLUE — modified sub-expression
+                                 : COL_DESC_HEX;
+            lv_obj_set_style_text_color(descLbl, lv_color_hex(descColor),
                                         LV_PART_MAIN);
         }
 
@@ -1074,6 +1080,18 @@ void CalculusApp::buildStepsDisplay() {
         if (step.mathExpr) {
             vpam::NodePtr astNode = cas::SymExprToAST::convert(step.mathExpr);
             emitCanvas(std::move(astNode));
+        }
+
+        // Smart Highlighter: render the modified sub-expression in an
+        // orange accent label so students can see exactly what changed.
+        if (step.highlightExpr) {
+            lv_obj_t* hlLbl = lv_label_create(_stepsContainer);
+            lv_label_set_text(hlLbl, "\xe2\x96\xb6 Modified:");  // ▶ Modified:
+            lv_obj_set_style_text_font(hlLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+            lv_obj_set_style_text_color(hlLbl, lv_color_hex(0xE65100), LV_PART_MAIN);  // orange
+
+            vpam::NodePtr hlNode = cas::SymExprToAST::convert(step.highlightExpr);
+            emitCanvas(std::move(hlNode));
         }
 
         // Snapshot fallback as MathCanvas (for steps without mathExpr)

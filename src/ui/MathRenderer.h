@@ -240,6 +240,34 @@ private:
                        const FontMetrics& fm, const lv_font_t* font,
                        int depth = 0);
 
+    // ── Vectorial symbol primitives ──────────────────────────────────────
+
+    /**
+     * Draws a stylized ∫ symbol as a smooth S-curve with serifs.
+     * @param cx      Horizontal centre of the symbol stroke.
+     * @param symTop  Y-coordinate of the top of the symbol.
+     * @param symBot  Y-coordinate of the bottom of the symbol.
+     * @param halfW   Half-width used to offset the top/bottom serifs.
+     * @param color   Stroke colour.
+     */
+    void drawIntegralSymbol(lv_layer_t* layer,
+                            int16_t cx, int16_t symTop, int16_t symBot,
+                            int16_t halfW, lv_color_t color);
+
+    /**
+     * Draws a professional Σ symbol as a filled zigzag shape with a
+     * right-hand vertical bar for the closed polygon look.
+     * @param symLeft   Left edge of the symbol bounding box.
+     * @param symRight  Right edge of the symbol bounding box.
+     * @param symTop    Y-coordinate of the top horizontal bar.
+     * @param symBot    Y-coordinate of the bottom horizontal bar.
+     * @param color     Stroke colour.
+     */
+    void drawSummationSymbol(lv_layer_t* layer,
+                             int16_t symLeft, int16_t symRight,
+                             int16_t symTop, int16_t symBot,
+                             lv_color_t color);
+
     // ── Cursor ───────────────────────────────────────────────────────────
     void drawCursor(lv_layer_t* layer);
     void computeCursorPosition(int16_t baseX, int16_t baseY);

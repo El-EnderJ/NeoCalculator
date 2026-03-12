@@ -1679,39 +1679,6 @@ gui_show()
 
 ## 22. Known Limitations
 
-| Key | Editor Action |
-|-----|---------------|
-| **F5** | Run program |
-| **F1** | Insert 4 spaces (indent) |
-| **F2** | Save to flash (`/neolang.nl`) |
-| **F3** | Load from flash |
-| **F4** | Insert `#` (comment) |
-| **MODE** | Exit to main menu |
-| **DEL** | Delete character |
-| **ENTER** | New line |
-| **AC** | Return focus to tab bar |
-| **←/→/↑/↓** | Cursor navigation |
-
-### Letter Keys
-
-| Key | Character |
-|-----|-----------|
-| ALPHA A–F | `a`–`f` |
-| X / Y | `x` / `y` |
-| SIN | `s` |
-| COS | `c` |
-| TAN | `t` |
-| LN | `n` |
-| LOG | `l` |
-| π | `p` |
-| e | `e` |
-| √ | `r` |
-| ANS | `i` |
-
----
-
-## 22. Known Limitations
-
 | Limitation | Detail |
 |------------|--------|
 | **Single-char variable names in CAS** | Symbolic variables (`SymVar`) store one character. `alpha` and `apple` both become `a` in the CAS. Use single-letter names (`x`, `y`, `z`, `t`, `n`) for symbolic math. |

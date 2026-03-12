@@ -9,7 +9,7 @@
  *       Returns a List of [x, y] pairs that can be plotted.
  *
  *   Optimization:
- *     minimize(f, x0)  — Find local minimum using Nelder-Mead simplex.
+ *     minimize(f, x0)  — Find local minimum using golden-section search.
  *     maximize(f, x0)  — Find local maximum (minimise –f).
  *
  *   Special Functions:
@@ -148,8 +148,8 @@ inline std::vector<NeoValue>* ndsolveRK4(
 // ════════════════════════════════════════════════════════════════════
 
 /**
- * Minimise a 1-D scalar function f(x) using a simple golden-section search.
- * For starting point x0, searches in [x0 - 1e3, x0 + 1e3].
+ * Minimise a 1-D scalar function f(x) using the golden-section search algorithm.
+ * For starting point x0, searches in [x0 - 10, x0 + 10].
  *
  * @param f         The objective function f(x) → double.
  * @param x0        Initial guess.
@@ -163,22 +163,11 @@ inline double minimizeGolden(
     double tolerance = 1e-6,
     int    maxIter   = 200)
 {
-    // Use a Nelder-Mead-like simplex in 1D: start with 3 points
-    // and iteratively shrink around the minimum.
+    // Golden-section search within [x0-10, x0+10]
     static const double GOLDEN = 0.6180339887498949;
     double a = x0 - 10.0;
     double b = x0 + 10.0;
 
-    // Narrow initial bracket around x0
-    double fa = f(a), fb0 = f(x0), fb = f(b);
-    (void)fa; (void)fb;
-    if (fb0 < fa && fb0 < fb) {
-        // x0 is already a local min — shrink bracket
-        a = x0 - 10.0;
-        b = x0 + 10.0;
-    }
-
-    // Brent's method (simplified golden section)
     double c = b - GOLDEN * (b - a);
     double d = a + GOLDEN * (b - a);
     for (int i = 0; i < maxIter; ++i) {

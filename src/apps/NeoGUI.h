@@ -194,7 +194,7 @@ inline void flush(lv_obj_t* parent,
             lv_obj_t* lbl = lv_label_create(btn);
             lv_label_set_text(lbl, desc.text.c_str());
             lv_obj_center(lbl);
-            // Store callback name in user data for event handler
+            // Store callback context; freed on LV_EVENT_DELETE
             auto* ctx = new EventCtx{ desc.callback, 1.0, onEvent, userdata };
             lv_obj_set_user_data(btn, ctx);
             lv_obj_add_event_cb(btn, [](lv_event_t* e) {
@@ -203,6 +203,10 @@ inline void flush(lv_obj_t* parent,
                 if (ctx && ctx->onEvent)
                     ctx->onEvent(ctx->cbName.c_str(), ctx->value, ctx->userdata);
             }, LV_EVENT_CLICKED, nullptr);
+            lv_obj_add_event_cb(btn, [](lv_event_t* e) {
+                delete static_cast<EventCtx*>(
+                    lv_obj_get_user_data(lv_event_get_target(e)));
+            }, LV_EVENT_DELETE, nullptr);
             break;
         }
 
@@ -222,6 +226,10 @@ inline void flush(lv_obj_t* parent,
                                  static_cast<double>(lv_slider_get_value(obj)),
                                  ctx->userdata);
             }, LV_EVENT_VALUE_CHANGED, nullptr);
+            lv_obj_add_event_cb(sldr, [](lv_event_t* e) {
+                delete static_cast<EventCtx*>(
+                    lv_obj_get_user_data(lv_event_get_target(e)));
+            }, LV_EVENT_DELETE, nullptr);
             break;
         }
 

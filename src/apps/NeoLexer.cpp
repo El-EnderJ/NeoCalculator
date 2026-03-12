@@ -205,7 +205,58 @@ NeoToken neo::NeoLexer::lexNumber() {
     int tl = _line, tc = _col;
     std::string raw;
 
-    // Integer part
+    // Check for binary (0b) or hexadecimal (0x) prefix
+    if (peek() == '0' && !atEnd()) {
+        char next = peek(1);
+        if (next == 'b' || next == 'B') {
+            // Binary literal: 0b1010
+            raw += advance(); // '0'
+            raw += advance(); // 'b' or 'B'
+            if (atEnd() || !(peek() == '0' || peek() == '1')) {
+                std::string msg = "invalid binary literal: '" + raw + "'";
+                _lastError = msg;
+                return NeoToken(NeoTokType::ERROR, msg, tl, tc);
+            }
+            std::string digits;
+            while (!atEnd() && (peek() == '0' || peek() == '1')) {
+                digits += advance();
+                raw    += digits.back();
+            }
+            // Convert binary string to decimal string
+            uint64_t val = 0;
+            for (char d : digits) val = (val << 1) | (d - '0');
+            // Return token with decimal representation; store original raw
+            std::string dec = std::to_string(val);
+            return NeoToken(NeoTokType::NUMBER, dec, tl, tc);
+        }
+        if (next == 'x' || next == 'X') {
+            // Hex literal: 0xFF
+            raw += advance(); // '0'
+            raw += advance(); // 'x' or 'X'
+            if (atEnd() || !std::isxdigit(static_cast<unsigned char>(peek()))) {
+                std::string msg = "invalid hex literal: '" + raw + "'";
+                _lastError = msg;
+                return NeoToken(NeoTokType::ERROR, msg, tl, tc);
+            }
+            std::string hexDigits;
+            while (!atEnd() && std::isxdigit(static_cast<unsigned char>(peek()))) {
+                hexDigits += advance();
+                raw       += hexDigits.back();
+            }
+            // Convert hex to decimal via strtoul
+            uint64_t val = 0;
+            for (char d : hexDigits) {
+                val <<= 4;
+                if (d >= '0' && d <= '9') val |= (uint64_t)(d - '0');
+                else if (d >= 'a' && d <= 'f') val |= (uint64_t)(d - 'a' + 10);
+                else if (d >= 'A' && d <= 'F') val |= (uint64_t)(d - 'A' + 10);
+            }
+            std::string dec = std::to_string(val);
+            return NeoToken(NeoTokType::NUMBER, dec, tl, tc);
+        }
+    }
+
+    // Standard integer part
     while (!atEnd() && isDigit(peek())) raw += advance();
 
     // Decimal part
@@ -304,7 +355,6 @@ NeoToken neo::NeoLexer::lexOperatorOrPunct() {
     switch (c) {
         case '+': return NeoToken(NeoTokType::PLUS,      "+",  tl, tc);
         case '/': return NeoToken(NeoTokType::SLASH,     "/",  tl, tc);
-        case '^': return NeoToken(NeoTokType::CARET,     "^",  tl, tc);
         case '(': return NeoToken(NeoTokType::LPAREN,    "(",  tl, tc);
         case ')': return NeoToken(NeoTokType::RPAREN,    ")",  tl, tc);
         case '[': return NeoToken(NeoTokType::LBRACKET,  "[",  tl, tc);
@@ -316,6 +366,11 @@ NeoToken neo::NeoLexer::lexOperatorOrPunct() {
         case ';': return NeoToken(NeoTokType::SEMICOLON, ";",  tl, tc);
         case '@': return NeoToken(NeoTokType::AT,        "@",  tl, tc);
 
+        // ── Bitwise operators ─────────────────────────────────────
+        case '&': return NeoToken(NeoTokType::AMP,   "&",  tl, tc);
+        case '|': return NeoToken(NeoTokType::PIPE,  "|",  tl, tc);
+        case '~': return NeoToken(NeoTokType::TILDE, "~",  tl, tc);
+
         case '*':
             // ** or *
             if (!atEnd() && peek() == '*') { advance(); return NeoToken(NeoTokType::STARSTAR, "**", tl, tc); }
@@ -325,6 +380,11 @@ NeoToken neo::NeoLexer::lexOperatorOrPunct() {
             // -> or -
             if (!atEnd() && peek() == '>') { advance(); return NeoToken(NeoTokType::ARROW, "->", tl, tc); }
             return NeoToken(NeoTokType::MINUS, "-", tl, tc);
+
+        case '^':
+            // ^^ (XOR) or ^ (power)
+            if (!atEnd() && peek() == '^') { advance(); return NeoToken(NeoTokType::CARETCARET, "^^", tl, tc); }
+            return NeoToken(NeoTokType::CARET, "^", tl, tc);
 
         case '=':
             // == or =
@@ -341,13 +401,15 @@ NeoToken neo::NeoLexer::lexOperatorOrPunct() {
             }
 
         case '<':
-            // <=  or  <
+            // <=  or  <<  or  <
             if (!atEnd() && peek() == '=') { advance(); return NeoToken(NeoTokType::LE, "<=", tl, tc); }
+            if (!atEnd() && peek() == '<') { advance(); return NeoToken(NeoTokType::LSHIFT, "<<", tl, tc); }
             return NeoToken(NeoTokType::LT, "<", tl, tc);
 
         case '>':
-            // >= or >
+            // >= or >> or >
             if (!atEnd() && peek() == '=') { advance(); return NeoToken(NeoTokType::GE, ">=", tl, tc); }
+            if (!atEnd() && peek() == '>') { advance(); return NeoToken(NeoTokType::RSHIFT, ">>", tl, tc); }
             return NeoToken(NeoTokType::GT, ">", tl, tc);
 
         case ':':
@@ -385,6 +447,9 @@ NeoTokType neo::NeoLexer::keywordType(const std::string& id) {
     if (id == "True"  || id == "true")  return NeoTokType::TRUE_KW;
     if (id == "False" || id == "false") return NeoTokType::FALSE_KW;
     if (id == "None"  || id == "none")  return NeoTokType::NONE_KW;
+    if (id == "try")    return NeoTokType::TRY;
+    if (id == "except") return NeoTokType::EXCEPT;
+    if (id == "as")     return NeoTokType::AS;
     return NeoTokType::IDENTIFIER;
 }
 

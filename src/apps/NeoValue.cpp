@@ -75,21 +75,37 @@ NeoValue NeoValue::makeQuantity(NeoQuantity* q) {
     return v;
 }
 
+NeoValue NeoValue::makeString(const std::string& s) {
+    NeoValue v;
+    v._type = Type::String;
+    v._str  = s;
+    return v;
+}
+
+NeoValue NeoValue::makeDict(std::map<std::string, NeoValue>* dict) {
+    NeoValue v;
+    v._type = Type::Dictionary;
+    v._dict = dict;
+    return v;
+}
+
 // ════════════════════════════════════════════════════════════════════
 // isTruthy
 // ════════════════════════════════════════════════════════════════════
 
 bool NeoValue::isTruthy() const {
     switch (_type) {
-        case Type::Null:     return false;
-        case Type::Boolean:  return _bool;
-        case Type::Number:   return _num != 0.0;
-        case Type::Exact:    return !_exact.isZero();
-        case Type::Symbolic: return _sym != nullptr;
-        case Type::Function: return _funcDef != nullptr;
-        case Type::List:     return _list != nullptr && !_list->empty();
+        case Type::Null:       return false;
+        case Type::Boolean:    return _bool;
+        case Type::Number:     return _num != 0.0;
+        case Type::Exact:      return !_exact.isZero();
+        case Type::Symbolic:   return _sym != nullptr;
+        case Type::Function:   return _funcDef != nullptr;
+        case Type::List:       return _list != nullptr && !_list->empty();
         case Type::NativeFunction: return _nativeFn != nullptr;
-        case Type::Quantity: return _quantity != nullptr;
+        case Type::Quantity:   return _quantity != nullptr;
+        case Type::String:     return !_str.empty();
+        case Type::Dictionary: return _dict != nullptr && !_dict->empty();
     }
     return false;
 }
@@ -410,6 +426,7 @@ NeoValue NeoValue::neg(cas::SymExprArena& sa) const {
 
 NeoValue NeoValue::opEq(const NeoValue& rhs) const {
     if (_type == Type::Null && rhs._type == Type::Null) return makeBool(true);
+    if (_type == Type::String && rhs._type == Type::String) return makeBool(_str == rhs._str);
     if (_type != rhs._type) return makeBool(false);
     switch (_type) {
         case Type::Boolean:  return makeBool(_bool == rhs._bool);
@@ -509,6 +526,60 @@ std::string NeoValue::toString() const {
             if (_quantity) return NeoUnits::toString(*_quantity);
             return "Quantity(null)";
         }
+        case Type::String:
+            return _str;
+        case Type::Dictionary: {
+            std::string s = "{";
+            if (_dict) {
+                bool first = true;
+                for (const auto& kv : *_dict) {
+                    if (!first) s += ", ";
+                    first = false;
+                    s += "\"" + kv.first + "\": " + kv.second.toString();
+                }
+            }
+            s += "}";
+            return s;
+        }
     }
     return "?";
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Bitwise arithmetic (Phase 6) — operate on integer-truncated values
+// ════════════════════════════════════════════════════════════════════
+
+static int64_t toInt64(const NeoValue& v) {
+    if (v.isNumber())  return static_cast<int64_t>(v.asNum());
+    if (v.isExact())   return v.asExact().toInt64();
+    if (v.isBool())    return v.asBool() ? 1 : 0;
+    return static_cast<int64_t>(v.toDouble());
+}
+
+NeoValue NeoValue::bitwiseAnd(const NeoValue& rhs) const {
+    return makeNumber(static_cast<double>(toInt64(*this) & toInt64(rhs)));
+}
+
+NeoValue NeoValue::bitwiseOr(const NeoValue& rhs) const {
+    return makeNumber(static_cast<double>(toInt64(*this) | toInt64(rhs)));
+}
+
+NeoValue NeoValue::bitwiseXor(const NeoValue& rhs) const {
+    return makeNumber(static_cast<double>(toInt64(*this) ^ toInt64(rhs)));
+}
+
+NeoValue NeoValue::bitwiseNot() const {
+    return makeNumber(static_cast<double>(~toInt64(*this)));
+}
+
+NeoValue NeoValue::leftShift(const NeoValue& rhs) const {
+    int64_t shift = toInt64(rhs);
+    if (shift < 0 || shift >= 64) return makeNumber(0.0);
+    return makeNumber(static_cast<double>(toInt64(*this) << shift));
+}
+
+NeoValue NeoValue::rightShift(const NeoValue& rhs) const {
+    int64_t shift = toInt64(rhs);
+    if (shift < 0 || shift >= 64) return makeNumber(0.0);
+    return makeNumber(static_cast<double>(toInt64(*this) >> shift));
 }

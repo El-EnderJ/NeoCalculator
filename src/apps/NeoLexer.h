@@ -55,6 +55,9 @@ enum class NeoTokType : uint8_t {
     TRUE_KW,    ///< 'true' / 'True'
     FALSE_KW,   ///< 'false' / 'False'
     NONE_KW,    ///< 'None' / 'none'
+    TRY,        ///< 'try'
+    EXCEPT,     ///< 'except'
+    AS,         ///< 'as'
 
     // ── Literals ─────────────────────────────────────────────────
     NUMBER,
@@ -78,6 +81,14 @@ enum class NeoTokType : uint8_t {
     STARSTAR,   ///< **  (power, synonym for ^)
     ARROW,      ///< ->
     AT,         ///< @
+
+    // ── Bitwise operators ─────────────────────────────────────────
+    AMP,        ///< &   (bitwise AND)
+    PIPE,       ///< |   (bitwise OR)
+    TILDE,      ///< ~   (bitwise NOT, unary)
+    LSHIFT,     ///< <<  (left shift)
+    RSHIFT,     ///< >>  (right shift)
+    CARETCARET, ///< ^^  (bitwise XOR)
 
     // ── Punctuation ──────────────────────────────────────────────
     LPAREN,     ///< (

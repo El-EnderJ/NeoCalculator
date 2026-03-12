@@ -83,6 +83,7 @@ private:
     NeoNode* parseWhile();
     NeoNode* parseFor();
     NeoNode* parseReturn();
+    NeoNode* parseTryExcept();   ///< Phase 6: try/except
     NeoNode* parseAssignmentOrExpr();
 
     /**

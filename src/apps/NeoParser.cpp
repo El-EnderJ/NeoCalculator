@@ -212,6 +212,9 @@ NeoNode* NeoParser::parseStatement() {
     // ── return ────────────────────────────────────────────────────
     if (check(NeoTokType::RETURN)) return parseReturn();
 
+    // ── try/except ────────────────────────────────────────────────
+    if (check(NeoTokType::TRY)) return parseTryExcept();
+
     // ── assignment or expression statement ───────────────────────
     return parseAssignmentOrExpr();
 }
@@ -372,6 +375,57 @@ NeoNode* NeoParser::parseReturn() {
 }
 
 // ═════════════════════════════════════════════════════════════════
+// parseTryExcept — try: ... except [Type] as var: ...
+// ═════════════════════════════════════════════════════════════════
+
+NeoNode* NeoParser::parseTryExcept() {
+    int tl = current().line, tc = current().col;
+    advance(); // consume 'try'
+
+    expect(NeoTokType::COLON, "try statement");
+    match(NeoTokType::NEWLINE);
+
+    TryExceptNode* node = _arena.make<TryExceptNode>(tl, tc);
+    if (!node) return nullptr;
+
+    parseBlock(node->try_body);
+
+    skipNewlines();
+    if (!check(NeoTokType::EXCEPT)) {
+        recordError("expected 'except' after try block", current().line, current().col);
+        return node;
+    }
+    advance(); // consume 'except'
+
+    // Optional: skip exception type identifier (e.g., 'Error', 'Exception')
+    if (check(NeoTokType::IDENTIFIER)) {
+        // Check if next is 'as' — if not, this is the variable name
+        if (peek(1).type == NeoTokType::AS) {
+            advance(); // skip exception type name
+        }
+    }
+
+    // Optional: 'as varname'
+    if (check(NeoTokType::AS)) {
+        advance(); // consume 'as'
+        if (check(NeoTokType::IDENTIFIER)) {
+            node->except_var = current().value;
+            advance();
+        }
+    } else if (check(NeoTokType::IDENTIFIER)) {
+        // Could also be: except e (without 'as')
+        node->except_var = current().value;
+        advance();
+    }
+
+    expect(NeoTokType::COLON, "except clause");
+    match(NeoTokType::NEWLINE);
+    parseBlock(node->except_body);
+
+    return node;
+}
+
+// ═════════════════════════════════════════════════════════════════
 // parseAssignmentOrExpr
 // ═════════════════════════════════════════════════════════════════
 
@@ -414,21 +468,26 @@ NeoNode* NeoParser::parseAssignmentOrExpr() {
  */
 int NeoParser::infixPrecedence(const NeoToken& t) const {
     switch (t.type) {
-        case NeoTokType::OR:     return 1;
-        case NeoTokType::AND:    return 2;
+        case NeoTokType::OR:        return 1;
+        case NeoTokType::AND:       return 2;
         case NeoTokType::EQEQ:
         case NeoTokType::NEQ:
         case NeoTokType::LT:
         case NeoTokType::LE:
         case NeoTokType::GT:
-        case NeoTokType::GE:     return 3;
+        case NeoTokType::GE:        return 3;
+        case NeoTokType::PIPE:      return 3;   ///< bitwise OR  (same level as comparison)
+        case NeoTokType::CARETCARET: return 4;  ///< bitwise XOR
+        case NeoTokType::AMP:       return 5;   ///< bitwise AND
         case NeoTokType::PLUS:
-        case NeoTokType::MINUS:  return 4;
+        case NeoTokType::MINUS:     return 6;
+        case NeoTokType::LSHIFT:
+        case NeoTokType::RSHIFT:    return 7;   ///< shifts
         case NeoTokType::STAR:
-        case NeoTokType::SLASH:  return 5;
+        case NeoTokType::SLASH:     return 8;
         case NeoTokType::CARET:
-        case NeoTokType::STARSTAR: return 6;
-        default:                return -1;
+        case NeoTokType::STARSTAR:  return 9;
+        default:                    return -1;
     }
 }
 
@@ -438,24 +497,26 @@ bool NeoParser::isRightAssoc(const NeoToken& t) const {
 
 BinaryOpNode::OpKind NeoParser::tokenToBinOp(const NeoToken& t) const {
     switch (t.type) {
-        case NeoTokType::PLUS:     return BinaryOpNode::OpKind::Add;
-        case NeoTokType::MINUS:    return BinaryOpNode::OpKind::Sub;
-        case NeoTokType::STAR:     return BinaryOpNode::OpKind::Mul;
-        case NeoTokType::SLASH:    return BinaryOpNode::OpKind::Div;
+        case NeoTokType::PLUS:       return BinaryOpNode::OpKind::Add;
+        case NeoTokType::MINUS:      return BinaryOpNode::OpKind::Sub;
+        case NeoTokType::STAR:       return BinaryOpNode::OpKind::Mul;
+        case NeoTokType::SLASH:      return BinaryOpNode::OpKind::Div;
         case NeoTokType::CARET:
-        case NeoTokType::STARSTAR: return BinaryOpNode::OpKind::Pow;
-        case NeoTokType::EQEQ:     return BinaryOpNode::OpKind::Eq;
-        case NeoTokType::NEQ:      return BinaryOpNode::OpKind::Ne;
-        case NeoTokType::LT:       return BinaryOpNode::OpKind::Lt;
-        case NeoTokType::LE:       return BinaryOpNode::OpKind::Le;
-        case NeoTokType::GT:       return BinaryOpNode::OpKind::Gt;
-        case NeoTokType::GE:       return BinaryOpNode::OpKind::Ge;
-        case NeoTokType::AND:      return BinaryOpNode::OpKind::And;
-        case NeoTokType::OR:       return BinaryOpNode::OpKind::Or;
+        case NeoTokType::STARSTAR:   return BinaryOpNode::OpKind::Pow;
+        case NeoTokType::EQEQ:       return BinaryOpNode::OpKind::Eq;
+        case NeoTokType::NEQ:        return BinaryOpNode::OpKind::Ne;
+        case NeoTokType::LT:         return BinaryOpNode::OpKind::Lt;
+        case NeoTokType::LE:         return BinaryOpNode::OpKind::Le;
+        case NeoTokType::GT:         return BinaryOpNode::OpKind::Gt;
+        case NeoTokType::GE:         return BinaryOpNode::OpKind::Ge;
+        case NeoTokType::AND:        return BinaryOpNode::OpKind::And;
+        case NeoTokType::OR:         return BinaryOpNode::OpKind::Or;
+        case NeoTokType::AMP:        return BinaryOpNode::OpKind::BitAnd;
+        case NeoTokType::PIPE:       return BinaryOpNode::OpKind::BitOr;
+        case NeoTokType::CARETCARET: return BinaryOpNode::OpKind::BitXor;
+        case NeoTokType::LSHIFT:     return BinaryOpNode::OpKind::LShift;
+        case NeoTokType::RSHIFT:     return BinaryOpNode::OpKind::RShift;
         default:
-            // Should never reach here — caller must check infixPrecedence() >= 0 first.
-            // Return Add as a safe no-op fallback; the surrounding parse logic
-            // will still produce a structurally valid node.
             return BinaryOpNode::OpKind::Add;
     }
 }
@@ -508,6 +569,14 @@ NeoNode* NeoParser::parseUnary() {
         NeoNode* operand = parseUnary();
         if (!operand) return nullptr;
         return _arena.make<UnaryOpNode>(UnaryOpNode::OpKind::Not, operand, tl, tc);
+    }
+    // Bitwise not ~ (Phase 6)
+    if (check(NeoTokType::TILDE)) {
+        int tl = current().line, tc = current().col;
+        advance();
+        NeoNode* operand = parseUnary();
+        if (!operand) return nullptr;
+        return _arena.make<UnaryOpNode>(UnaryOpNode::OpKind::BitNot, operand, tl, tc);
     }
     return parsePrimary();
 }
@@ -576,8 +645,7 @@ NeoNode* NeoParser::parsePrimary() {
     // ── String literal ────────────────────────────────────────────
     if (tok.type == NeoTokType::STRING) {
         advance();
-        // Represent as a SymbolNode holding the string value
-        return _arena.make<SymbolNode>(tok.value, tok.line, tok.col);
+        return _arena.make<StringNode>(tok.value, tok.line, tok.col);
     }
 
     // ── Identifier: variable or function call ─────────────────────
@@ -634,6 +702,45 @@ NeoNode* NeoParser::parsePrimary() {
             return parseIndexOp(listNode, tl, tc);
         }
         return listNode;
+    }
+
+    // ── Dictionary literal: { "key": expr, ... } ─────────────────
+    if (tok.type == NeoTokType::LBRACE) {
+        int tl = tok.line, tc = tok.col;
+        advance(); // consume {
+        DictLiteralNode* dictNode = _arena.make<DictLiteralNode>(tl, tc);
+        if (!dictNode) return nullptr;
+        while (!check(NeoTokType::RBRACE) && !atEnd()) {
+            // Parse key: either string literal or identifier
+            std::string key;
+            if (check(NeoTokType::STRING)) {
+                key = current().value;
+                advance();
+            } else if (check(NeoTokType::IDENTIFIER)) {
+                key = current().value;
+                advance();
+            } else {
+                char buf[128];
+                std::snprintf(buf, sizeof(buf),
+                    "dictionary key must be a string or identifier at line %d",
+                    current().line);
+                recordError(buf, current().line, current().col);
+                syncToNextStatement();
+                return nullptr;
+            }
+            expect(NeoTokType::COLON, "dictionary key-value pair");
+            NeoNode* val = parseExpression();
+            if (!val) { syncToNextStatement(); return nullptr; }
+            dictNode->keys.push_back(key);
+            dictNode->values.push_back(val);
+            if (!match(NeoTokType::COMMA)) break;
+        }
+        expect(NeoTokType::RBRACE, "dictionary literal");
+        // Allow immediate indexing: {"a": 1}["a"]
+        if (check(NeoTokType::LBRACKET)) {
+            return parseIndexOp(dictNode, tl, tc);
+        }
+        return dictNode;
     }
 
     // ── Unexpected token ─────────────────────────────────────────

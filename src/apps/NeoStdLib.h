@@ -241,6 +241,31 @@ private:
     bool callTable     (const std::vector<NeoValue>& args, NeoValue& result,
                         NeoEnv& env, cas::SymExprArena& sa);
 
+    // ── Phase 6: Financial Math (TVM) ────────────────────────────
+
+    /// tvm_pv(rate, n, pmt, fv=0)
+    bool callTvmPV     (const std::vector<NeoValue>& args, NeoValue& result);
+    /// tvm_fv(rate, n, pmt, pv=0)
+    bool callTvmFV     (const std::vector<NeoValue>& args, NeoValue& result);
+    /// tvm_pmt(rate, n, pv, fv=0)
+    bool callTvmPMT    (const std::vector<NeoValue>& args, NeoValue& result);
+    /// tvm_n(rate, pmt, pv, fv=0)
+    bool callTvmN      (const std::vector<NeoValue>& args, NeoValue& result);
+    /// tvm_ir(n, pmt, pv, fv=0)
+    bool callTvmIR     (const std::vector<NeoValue>& args, NeoValue& result);
+    /// amort_table(principal, rate, periods)
+    bool callAmortTable(const std::vector<NeoValue>& args, NeoValue& result);
+
+    // ── Phase 6: Bitwise helpers ──────────────────────────────────
+
+    bool callBitGet    (const std::vector<NeoValue>& args, NeoValue& result);
+    bool callBitSet    (const std::vector<NeoValue>& args, NeoValue& result);
+    bool callBitClear  (const std::vector<NeoValue>& args, NeoValue& result);
+    bool callBitToggle (const std::vector<NeoValue>& args, NeoValue& result);
+    bool callBitCount  (const std::vector<NeoValue>& args, NeoValue& result);
+    bool callToBin     (const std::vector<NeoValue>& args, NeoValue& result);
+    bool callToHex     (const std::vector<NeoValue>& args, NeoValue& result);
+
     // ── Helpers ───────────────────────────────────────────────────
 
     /// Extract a SymExpr* from a NeoValue (Symbolic or numeric literal).

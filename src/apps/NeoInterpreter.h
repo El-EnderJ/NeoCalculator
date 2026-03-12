@@ -114,6 +114,7 @@ private:
     // ── Node evaluators (one per NodeKind) ────────────────────────
     NeoValue evalProgram     (ProgramNode*      node, NeoEnv& env);
     NeoValue evalNumber      (NumberNode*       node);
+    NeoValue evalString      (StringNode*       node);       ///< Phase 6
     NeoValue evalSymbol      (SymbolNode*       node, NeoEnv& env);
     NeoValue evalBinaryOp    (BinaryOpNode*     node, NeoEnv& env);
     NeoValue evalUnaryOp     (UnaryOpNode*      node, NeoEnv& env);
@@ -125,6 +126,8 @@ private:
     NeoValue evalFunctionDef (FunctionDefNode*  node, NeoEnv& env);
     NeoValue evalReturn      (ReturnNode*       node, NeoEnv& env);
     NeoValue evalIndexOp     (IndexOpNode*      node, NeoEnv& env);
+    NeoValue evalDictLiteral (DictLiteralNode*  node, NeoEnv& env); ///< Phase 6
+    NeoValue evalTryExcept   (TryExceptNode*    node, NeoEnv& env); ///< Phase 6
 
     // ── Built-in function dispatch ────────────────────────────────
     /**

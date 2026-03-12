@@ -32,6 +32,9 @@
 #include "../math/cas/SymIntegrate.h"
 #include "../math/cas/SymSimplify.h"
 #include "../math/cas/OmniSolver.h"
+#include "../math/cas/SystemSolver.h"
+#include "NeoFinance.h"
+#include "NeoBitwise.h"
 
 // ════════════════════════════════════════════════════════════════════
 // Constructor
@@ -101,10 +104,58 @@ bool NeoStdLib::callBuiltin(const std::string&          name,
 
     // ── Utilities ──────────────────────────────────────────────────
     if (name == "print")     return callPrint    (args, result);
+    if (name == "println")   return callPrint    (args, result);
     if (name == "type")      return callType     (args, result);
     if (name == "vars")      return callVars     (args, result, env);
     if (name == "input_num") return callInputNum (args, result);
     if (name == "msg_box")   return callMsgBox   (args, result);
+
+    // ── int(x) — integer conversion ───────────────────────────────
+    if (name == "int") {
+        if (args.empty()) { result = NeoValue::makeNumber(0); return true; }
+        result = NeoValue::makeNumber(std::floor(args[0].toDouble()));
+        return true;
+    }
+    // ── str(x) — string conversion ────────────────────────────────
+    if (name == "str") {
+        if (args.empty()) { result = NeoValue::makeString(""); return true; }
+        result = NeoValue::makeString(args[0].toString());
+        return true;
+    }
+    // ── keys(dict) — return list of dictionary keys ───────────────
+    if (name == "keys") {
+        if (args.size() == 1 && args[0].isDict() && args[0].asDict()) {
+            auto* lst = new std::vector<NeoValue>();
+            for (const auto& kv : *args[0].asDict())
+                lst->push_back(NeoValue::makeString(kv.first));
+            result = NeoValue::makeList(lst);
+        } else {
+            result = NeoValue::makeList(new std::vector<NeoValue>());
+        }
+        return true;
+    }
+    // ── values(dict) — return list of dictionary values ───────────
+    if (name == "values") {
+        if (args.size() == 1 && args[0].isDict() && args[0].asDict()) {
+            auto* lst = new std::vector<NeoValue>();
+            for (const auto& kv : *args[0].asDict())
+                lst->push_back(kv.second);
+            result = NeoValue::makeList(lst);
+        } else {
+            result = NeoValue::makeList(new std::vector<NeoValue>());
+        }
+        return true;
+    }
+    // ── has_key(dict, key) — check if dictionary has a key ────────
+    if (name == "has_key") {
+        if (args.size() == 2 && args[0].isDict() && args[0].asDict()) {
+            std::string key = args[1].isString() ? args[1].asString() : args[1].toString();
+            result = NeoValue::makeBool(args[0].asDict()->count(key) > 0);
+        } else {
+            result = NeoValue::makeBool(false);
+        }
+        return true;
+    }
 
     // ── Phase 5: Statistics ────────────────────────────────────────
     if (name == "mean")        return callMean      (args, result);
@@ -129,6 +180,23 @@ bool NeoStdLib::callBuiltin(const std::string&          name,
     if (name == "sum_expr" || name == "sigma")
                                return callSumExpr   (args, result, sa);
     if (name == "table")       return callTable     (args, result, env, sa);
+
+    // ── Phase 6: Financial Math (TVM) ─────────────────────────────
+    if (name == "tvm_pv")      return callTvmPV     (args, result);
+    if (name == "tvm_fv")      return callTvmFV     (args, result);
+    if (name == "tvm_pmt")     return callTvmPMT    (args, result);
+    if (name == "tvm_n")       return callTvmN      (args, result);
+    if (name == "tvm_ir")      return callTvmIR     (args, result);
+    if (name == "amort_table") return callAmortTable(args, result);
+
+    // ── Phase 6: Bitwise helpers ──────────────────────────────────
+    if (name == "bit_get")     return callBitGet    (args, result);
+    if (name == "bit_set")     return callBitSet    (args, result);
+    if (name == "bit_clear")   return callBitClear  (args, result);
+    if (name == "bit_toggle")  return callBitToggle (args, result);
+    if (name == "bit_count")   return callBitCount  (args, result);
+    if (name == "to_bin")      return callToBin     (args, result);
+    if (name == "to_hex")      return callToHex     (args, result);
 
     return false;  // Not a stdlib built-in
 }
@@ -206,7 +274,7 @@ bool NeoStdLib::callIntegrate(const std::vector<NeoValue>& args,
 }
 
 // ════════════════════════════════════════════════════════════════════
-// solve(expr, var)
+// solve(expr, var)  OR  solve([eq1, eq2], [x, y])
 // ════════════════════════════════════════════════════════════════════
 
 bool NeoStdLib::callSolve(const std::vector<NeoValue>& args,
@@ -214,11 +282,123 @@ bool NeoStdLib::callSolve(const std::vector<NeoValue>& args,
                            cas::SymExprArena& sa)
 {
     if (args.size() < 2) {
-        hostPrint("[solve] Usage: solve(expr, var)\n");
+        hostPrint("[solve] Usage: solve(expr, var) or solve([eq1,eq2,...], [x,y,...])\n");
         result = NeoValue::makeNull();
         return true;
     }
 
+    // ── Multi-variable solver: solve([eq1, eq2], [x, y]) ──────────
+    if (args[0].isList() && args[1].isList()
+        && args[0].asList() && args[1].asList()) {
+
+        const auto& eqs  = *args[0].asList();
+        const auto& vars = *args[1].asList();
+        size_t n = eqs.size();
+
+        if (n == 0 || n != vars.size()) {
+            hostPrint("[solve] Equation count must match variable count.\n");
+            result = NeoValue::makeNull();
+            return true;
+        }
+
+        // Extract symbolic residuals (each eq should be a Symbolic)
+        std::vector<cas::SymExpr*> exprs;
+        for (const NeoValue& eq : eqs) {
+            if (!eq.isSymbolic()) {
+                hostPrint("[solve] Each equation must be symbolic (use '==' with symbolic vars).\n");
+                result = NeoValue::makeNull();
+                return true;
+            }
+            exprs.push_back(eq.asSym());
+        }
+
+        // Extract variable chars
+        std::vector<char> varChars;
+        for (const NeoValue& v : vars) varChars.push_back(toVarChar(v, sa));
+
+        if (n > 3) {
+            hostPrint("[solve] Systems larger than 3×3 not yet supported.\n");
+            result = NeoValue::makeNull();
+            return true;
+        }
+
+        cas::SystemSolver sys;
+
+        // ── 2-variable system ────────────────────────────────────
+        if (n == 2) {
+            cas::NLSystemResult res = sys.solveNonlinear2x2(
+                exprs[0], exprs[1], varChars[0], varChars[1], sa);
+
+            if (!res.ok || res.solutions.empty()) {
+                char buf[128];
+                std::snprintf(buf, sizeof(buf), "[solve] %s\n",
+                    res.error.empty() ? "No solution found." : res.error.c_str());
+                hostPrint(buf);
+                result = NeoValue::makeNull();
+                return true;
+            }
+
+            // Build result dictionary: {x: val, y: val}
+            auto* dict = new std::map<std::string, NeoValue>();
+            const cas::NLSolution& sol = res.solutions[0];
+            std::string v1(1, varChars[0]), v2(1, varChars[1]);
+            if (sol.exprX)
+                (*dict)[v1] = NeoValue::makeSymbolic(sol.exprX);
+            else
+                (*dict)[v1] = NeoValue::makeNumber(sol.numX);
+            if (sol.exprY)
+                (*dict)[v2] = NeoValue::makeSymbolic(sol.exprY);
+            else
+                (*dict)[v2] = NeoValue::makeNumber(sol.numY);
+
+            // Print solutions
+            for (const auto& s : res.solutions) {
+                char buf[256];
+                if (s.exprX)
+                    std::snprintf(buf, sizeof(buf), "%c = %s,  %c = %s\n",
+                        varChars[0], s.exprX->toString().c_str(),
+                        varChars[1], s.exprY ? s.exprY->toString().c_str() : "?");
+                else
+                    std::snprintf(buf, sizeof(buf), "%c = %.10g,  %c = %.10g\n",
+                        varChars[0], s.numX, varChars[1], s.numY);
+                hostPrint(buf);
+            }
+            result = NeoValue::makeDict(dict);
+            return true;
+        }
+
+        // ── 3-variable system ────────────────────────────────────
+        if (n == 3) {
+            cas::NLSystemResult res = sys.solveNonlinear3x3(
+                exprs[0], exprs[1], exprs[2],
+                varChars[0], varChars[1], varChars[2], sa);
+
+            if (!res.ok || res.solutions.empty()) {
+                char buf[128];
+                std::snprintf(buf, sizeof(buf), "[solve] %s\n",
+                    res.error.empty() ? "No solution found." : res.error.c_str());
+                hostPrint(buf);
+                result = NeoValue::makeNull();
+                return true;
+            }
+
+            auto* dict = new std::map<std::string, NeoValue>();
+            const cas::NLSolution& sol = res.solutions[0];
+            std::string v1(1, varChars[0]), v2(1, varChars[1]), v3(1, varChars[2]);
+            (*dict)[v1] = sol.exprX ? NeoValue::makeSymbolic(sol.exprX) : NeoValue::makeNumber(sol.numX);
+            (*dict)[v2] = sol.exprY ? NeoValue::makeSymbolic(sol.exprY) : NeoValue::makeNumber(sol.numY);
+            (*dict)[v3] = sol.exprZ ? NeoValue::makeSymbolic(sol.exprZ) : NeoValue::makeNumber(sol.numZ);
+
+            char buf[256];
+            std::snprintf(buf, sizeof(buf), "%c = %.10g,  %c = %.10g,  %c = %.10g\n",
+                varChars[0], sol.numX, varChars[1], sol.numY, varChars[2], sol.numZ);
+            hostPrint(buf);
+            result = NeoValue::makeDict(dict);
+            return true;
+        }
+    }
+
+    // ── Single-variable solver: solve(expr, var) ──────────────────
     cas::SymExpr* lhs = toSym(args[0], sa);
     char          var = toVarChar(args[1], sa);
 
@@ -865,5 +1045,112 @@ bool NeoStdLib::callTable(const std::vector<NeoValue>& args,
     }
 
     result = NeoValue::makeList(out);
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Phase 6: Financial Math — TVM Engine
+// ════════════════════════════════════════════════════════════════════
+
+// Helper to extract double arg with default value
+static double tvmArg(const std::vector<NeoValue>& args, size_t idx, double def = 0.0) {
+    if (idx < args.size()) return args[idx].toDouble();
+    return def;
+}
+
+bool NeoStdLib::callTvmPV(const std::vector<NeoValue>& args, NeoValue& result) {
+    // tvm_pv(rate_pct, n, pmt, fv=0)
+    if (args.size() < 3) { hostPrint("[tvm_pv] Usage: tvm_pv(rate, n, pmt, fv=0)\n"); result = NeoValue::makeNull(); return true; }
+    double r = tvmArg(args,0), n = tvmArg(args,1), pmt = tvmArg(args,2), fv = tvmArg(args,3,0);
+    result = NeoValue::makeNumber(NeoFinance::solvePV(r, n, pmt, fv));
+    return true;
+}
+
+bool NeoStdLib::callTvmFV(const std::vector<NeoValue>& args, NeoValue& result) {
+    // tvm_fv(rate_pct, n, pmt, pv=0)
+    if (args.size() < 3) { hostPrint("[tvm_fv] Usage: tvm_fv(rate, n, pmt, pv=0)\n"); result = NeoValue::makeNull(); return true; }
+    double r = tvmArg(args,0), n = tvmArg(args,1), pmt = tvmArg(args,2), pv = tvmArg(args,3,0);
+    result = NeoValue::makeNumber(NeoFinance::solveFV(r, n, pmt, pv));
+    return true;
+}
+
+bool NeoStdLib::callTvmPMT(const std::vector<NeoValue>& args, NeoValue& result) {
+    // tvm_pmt(rate_pct, n, pv, fv=0)
+    if (args.size() < 3) { hostPrint("[tvm_pmt] Usage: tvm_pmt(rate, n, pv, fv=0)\n"); result = NeoValue::makeNull(); return true; }
+    double r = tvmArg(args,0), n = tvmArg(args,1), pv = tvmArg(args,2), fv = tvmArg(args,3,0);
+    result = NeoValue::makeNumber(NeoFinance::solvePMT(r, n, pv, fv));
+    return true;
+}
+
+bool NeoStdLib::callTvmN(const std::vector<NeoValue>& args, NeoValue& result) {
+    // tvm_n(rate_pct, pmt, pv, fv=0)
+    if (args.size() < 3) { hostPrint("[tvm_n] Usage: tvm_n(rate, pmt, pv, fv=0)\n"); result = NeoValue::makeNull(); return true; }
+    double r = tvmArg(args,0), pmt = tvmArg(args,1), pv = tvmArg(args,2), fv = tvmArg(args,3,0);
+    result = NeoValue::makeNumber(NeoFinance::solveN(r, pmt, pv, fv));
+    return true;
+}
+
+bool NeoStdLib::callTvmIR(const std::vector<NeoValue>& args, NeoValue& result) {
+    // tvm_ir(n, pmt, pv, fv=0)
+    if (args.size() < 3) { hostPrint("[tvm_ir] Usage: tvm_ir(n, pmt, pv, fv=0)\n"); result = NeoValue::makeNull(); return true; }
+    double n = tvmArg(args,0), pmt = tvmArg(args,1), pv = tvmArg(args,2), fv = tvmArg(args,3,0);
+    result = NeoValue::makeNumber(NeoFinance::solveIR(n, pmt, pv, fv));
+    return true;
+}
+
+bool NeoStdLib::callAmortTable(const std::vector<NeoValue>& args, NeoValue& result) {
+    // amort_table(principal, rate_pct, periods)
+    if (args.size() < 3) { hostPrint("[amort_table] Usage: amort_table(principal, rate_pct, periods)\n"); result = NeoValue::makeNull(); return true; }
+    double principal = tvmArg(args,0);
+    double rate_pct  = tvmArg(args,1);
+    int    periods   = static_cast<int>(tvmArg(args,2));
+    if (periods <= 0 || periods > 600) { hostPrint("[amort_table] periods must be 1-600\n"); result = NeoValue::makeNull(); return true; }
+    result = NeoFinance::amortTable(principal, rate_pct, periods);
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Phase 6: Bitwise Helpers
+// ════════════════════════════════════════════════════════════════════
+
+bool NeoStdLib::callBitGet(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { result = NeoValue::makeNumber(0); return true; }
+    result = NeoBitwise::bitGet(args[0], args[1]);
+    return true;
+}
+
+bool NeoStdLib::callBitSet(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { result = NeoValue::makeNumber(0); return true; }
+    result = NeoBitwise::bitSet(args[0], args[1]);
+    return true;
+}
+
+bool NeoStdLib::callBitClear(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { result = NeoValue::makeNumber(0); return true; }
+    result = NeoBitwise::bitClear(args[0], args[1]);
+    return true;
+}
+
+bool NeoStdLib::callBitToggle(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { result = NeoValue::makeNumber(0); return true; }
+    result = NeoBitwise::bitToggle(args[0], args[1]);
+    return true;
+}
+
+bool NeoStdLib::callBitCount(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { result = NeoValue::makeNumber(0); return true; }
+    result = NeoBitwise::bitCount(args[0]);
+    return true;
+}
+
+bool NeoStdLib::callToBin(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { result = NeoValue::makeString("0b0"); return true; }
+    result = NeoBitwise::toBin(args[0]);
+    return true;
+}
+
+bool NeoStdLib::callToHex(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { result = NeoValue::makeString("0x0"); return true; }
+    result = NeoBitwise::toHex(args[0]);
     return true;
 }

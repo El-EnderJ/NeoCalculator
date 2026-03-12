@@ -70,6 +70,8 @@ NeoValue NeoInterpreter::eval(NeoNode* node, NeoEnv& env) {
             return evalProgram(static_cast<ProgramNode*>(node), env);
         case NodeKind::Number:
             return evalNumber(static_cast<NumberNode*>(node));
+        case NodeKind::String:
+            return evalString(static_cast<StringNode*>(node));
         case NodeKind::Symbol:
             return evalSymbol(static_cast<SymbolNode*>(node), env);
         case NodeKind::BinaryOp:
@@ -92,6 +94,10 @@ NeoValue NeoInterpreter::eval(NeoNode* node, NeoEnv& env) {
             return evalReturn(static_cast<ReturnNode*>(node), env);
         case NodeKind::IndexOp:
             return evalIndexOp(static_cast<IndexOpNode*>(node), env);
+        case NodeKind::DictLiteral:
+            return evalDictLiteral(static_cast<DictLiteralNode*>(node), env);
+        case NodeKind::TryExcept:
+            return evalTryExcept(static_cast<TryExceptNode*>(node), env);
         case NodeKind::SymExprWrapper: {
             // Already-computed symbolic node — return it as-is
             auto* w = static_cast<SymExprWrapperNode*>(node);
@@ -137,6 +143,14 @@ NeoValue NeoInterpreter::evalNumber(NumberNode* node) {
     }
     // Otherwise use double
     return NeoValue::makeNumber(node->value);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// evalString — string literal (Phase 6)
+// ════════════════════════════════════════════════════════════════════
+
+NeoValue NeoInterpreter::evalString(StringNode* node) {
+    return NeoValue::makeString(node->value);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -204,12 +218,23 @@ NeoValue NeoInterpreter::evalBinaryOp(BinaryOpNode* node, NeoEnv& env) {
         case BinaryOpNode::OpKind::Mul: return lv.mul(rv, _symArena);
         case BinaryOpNode::OpKind::Div: return lv.div(rv, _symArena);
         case BinaryOpNode::OpKind::Pow: return lv.pow(rv, _symArena);
-        case BinaryOpNode::OpKind::Eq:  return lv.opEq(rv);
+        case BinaryOpNode::OpKind::Eq:
+            // When at least one side is symbolic, return lhs-rhs as a symbolic
+            // residual (used by solve() for multi-variable system detection).
+            if (lv.isSymbolic() || rv.isSymbolic())
+                return lv.sub(rv, _symArena);
+            return lv.opEq(rv);
         case BinaryOpNode::OpKind::Ne:  return lv.opNe(rv);
         case BinaryOpNode::OpKind::Lt:  return lv.opLt(rv);
         case BinaryOpNode::OpKind::Le:  return lv.opLe(rv);
         case BinaryOpNode::OpKind::Gt:  return lv.opGt(rv);
         case BinaryOpNode::OpKind::Ge:  return lv.opGe(rv);
+        // ── Bitwise operators (Phase 6) ───────────────────────────
+        case BinaryOpNode::OpKind::BitAnd: return lv.bitwiseAnd(rv);
+        case BinaryOpNode::OpKind::BitOr:  return lv.bitwiseOr(rv);
+        case BinaryOpNode::OpKind::BitXor: return lv.bitwiseXor(rv);
+        case BinaryOpNode::OpKind::LShift: return lv.leftShift(rv);
+        case BinaryOpNode::OpKind::RShift: return lv.rightShift(rv);
         default:
             recordError("Unknown binary operator", node->line, node->col);
             return NeoValue::makeNull();
@@ -229,6 +254,8 @@ NeoValue NeoInterpreter::evalUnaryOp(UnaryOpNode* node, NeoEnv& env) {
             return v.neg(_symArena);
         case UnaryOpNode::OpKind::Not:
             return NeoValue::makeBool(!v.isTruthy());
+        case UnaryOpNode::OpKind::BitNot:
+            return v.bitwiseNot();
         default:
             recordError("Unknown unary operator", node->line, node->col);
             return NeoValue::makeNull();
@@ -760,6 +787,27 @@ NeoValue NeoInterpreter::evalIndexOp(IndexOpNode* node, NeoEnv& env) {
     NeoValue idx0 = eval(node->indices[0], env);
     if (_returnFlag) return idx0;
 
+    // ── Dictionary indexing (Phase 6) ─────────────────────────────
+    if (target.isDict() && target.asDict()) {
+        // Index must be a string key
+        std::string key;
+        if (idx0.isString()) {
+            key = idx0.asString();
+        } else if (idx0.isNumeric()) {
+            // Allow numeric keys by converting to string
+            key = std::to_string(static_cast<int64_t>(idx0.toDouble()));
+        } else {
+            // Use toString() for any other key type
+            key = idx0.toString();
+        }
+        auto it = target.asDict()->find(key);
+        if (it == target.asDict()->end()) {
+            recordError("Dictionary key not found: " + key, node->line, node->col);
+            return NeoValue::makeNull();
+        }
+        return it->second;
+    }
+
     // ── List / 1-D indexing ────────────────────────────────────────
     if (target.isList() && target.asList()) {
         const auto& lst = *target.asList();
@@ -798,9 +846,69 @@ NeoValue NeoInterpreter::evalIndexOp(IndexOpNode* node, NeoEnv& env) {
 
     char buf[128];
     std::snprintf(buf, sizeof(buf), "Value of type '%s' is not subscriptable",
-                  target.isList() ? "list" :
-                  target.isNumeric() ? "number" :
-                  target.isSymbolic() ? "symbolic" : "unknown");
+                  target.isDict()     ? "dict" :
+                  target.isList()     ? "list" :
+                  target.isNumeric()  ? "number" :
+                  target.isSymbolic() ? "symbolic" :
+                  target.isString()   ? "string" : "unknown");
     recordError(buf, node->line, node->col);
     return NeoValue::makeNull();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// evalDictLiteral — { "key": expr, ... }  (Phase 6)
+// ════════════════════════════════════════════════════════════════════
+
+NeoValue NeoInterpreter::evalDictLiteral(DictLiteralNode* node, NeoEnv& env) {
+    auto* dict = new std::map<std::string, NeoValue>();
+    for (size_t i = 0; i < node->keys.size() && i < node->values.size(); ++i) {
+        NeoValue val = eval(node->values[i], env);
+        if (_returnFlag) { delete dict; return val; }
+        (*dict)[node->keys[i]] = val;
+    }
+    return NeoValue::makeDict(dict);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// evalTryExcept — try/except exception handling  (Phase 6)
+// ════════════════════════════════════════════════════════════════════
+
+NeoValue NeoInterpreter::evalTryExcept(TryExceptNode* node, NeoEnv& env) {
+    // Save error state
+    bool   savedHasError  = _hasError;
+    int    savedErrCount  = _errorCount;
+    std::string savedErr  = _lastError;
+
+    // Reset errors so we can detect new ones inside try block
+    _hasError    = false;
+    _errorCount  = 0;
+    _lastError.clear();
+
+    NeoEnv tryEnv(&env);
+    NeoValue result = evalBlock(node->try_body, tryEnv);
+
+    if (_hasError || _returnFlag) {
+        // An error occurred in the try block — execute except block
+        std::string errorMsg = _lastError;
+
+        // Restore pre-try error state (we've "handled" the try error)
+        _hasError   = savedHasError;
+        _errorCount = savedErrCount;
+        _lastError  = savedErr;
+        _returnFlag = false;  // clear return flag too
+
+        NeoEnv exceptEnv(&env);
+        if (!node->except_var.empty()) {
+            // Bind the error message as a string to the exception variable
+            exceptEnv.define(node->except_var, NeoValue::makeString(errorMsg));
+        }
+        result = evalBlock(node->except_body, exceptEnv);
+    } else {
+        // No error — restore original state, discarding any new non-error state
+        _hasError   = savedHasError;
+        _errorCount = savedErrCount;
+        _lastError  = savedErr;
+    }
+
+    return result;
 }

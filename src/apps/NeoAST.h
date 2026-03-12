@@ -177,6 +177,7 @@ private:
 enum class NodeKind : uint8_t {
     Number,
     Symbol,
+    String,         ///< string literal (Phase 6)
     BinaryOp,
     UnaryOp,
     FunctionCall,
@@ -189,6 +190,8 @@ enum class NodeKind : uint8_t {
     Program,
     ForIn,
     IndexOp,        ///< list / matrix indexing: expr[i] or expr[i, j]
+    DictLiteral,    ///< dictionary literal: { "key": expr, ... }
+    TryExcept,      ///< try/except block (Phase 6)
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -250,6 +253,17 @@ struct SymbolNode : NeoNode {
 };
 
 // ════════════════════════════════════════════════════════════════════
+// StringNode — string literal value (Phase 6)
+// ════════════════════════════════════════════════════════════════════
+
+struct StringNode : NeoNode {
+    std::string value; ///< The string content (escape sequences already resolved)
+
+    StringNode(const std::string& v, int l, int c)
+        : NeoNode(NodeKind::String, l, c), value(v) {}
+};
+
+// ════════════════════════════════════════════════════════════════════
 // BinaryOpNode — infix binary operation
 // ════════════════════════════════════════════════════════════════════
 
@@ -257,7 +271,8 @@ struct BinaryOpNode : NeoNode {
     enum class OpKind : uint8_t {
         Add, Sub, Mul, Div, Pow,
         Eq, Ne, Lt, Le, Gt, Ge,
-        And, Or
+        And, Or,
+        BitAnd, BitOr, BitXor, LShift, RShift  ///< Bitwise operators (Phase 6)
     };
 
     OpKind   op;
@@ -274,7 +289,7 @@ struct BinaryOpNode : NeoNode {
 // ════════════════════════════════════════════════════════════════════
 
 struct UnaryOpNode : NeoNode {
-    enum class OpKind : uint8_t { Neg, Not };
+    enum class OpKind : uint8_t { Neg, Not, BitNot };  ///< BitNot = ~ (Phase 6)
 
     OpKind   op;
     NeoNode* operand;
@@ -424,4 +439,51 @@ struct IndexOpNode : NeoNode {
 
     IndexOpNode(NeoNode* t, int line, int col)
         : NeoNode(NodeKind::IndexOp, line, col), target(t) {}
+};
+
+// ════════════════════════════════════════════════════════════════════
+// DictLiteralNode — dictionary literal: { "key": value, ... }
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Represents a dictionary (hash map) literal.
+ *
+ * Keys are stored as raw strings (identifier or string literal text).
+ * Values are unevaluated AST nodes.
+ *
+ * Examples:
+ *   {"power": 500, "unit": "W"}
+ *   {x: 1, y: 2}
+ */
+struct DictLiteralNode : NeoNode {
+    StringVec  keys;   ///< Raw key strings
+    NeoNodeVec values; ///< Value expressions (parallel to keys)
+
+    DictLiteralNode(int l, int c)
+        : NeoNode(NodeKind::DictLiteral, l, c) {}
+};
+
+// ════════════════════════════════════════════════════════════════════
+// TryExceptNode — try/except exception handling block (Phase 6)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Represents a try/except block.
+ *
+ * Syntax:
+ *   try:
+ *       <try_body>
+ *   except [Type] as <var>:
+ *       <except_body>
+ *
+ * On runtime error in try_body, execution jumps to except_body
+ * with the error message bound to <var> (if given).
+ */
+struct TryExceptNode : NeoNode {
+    NeoNodeVec  try_body;    ///< Statements in the try block
+    std::string except_var;  ///< Variable name for the exception (may be empty)
+    NeoNodeVec  except_body; ///< Statements in the except block
+
+    TryExceptNode(int l, int c)
+        : NeoNode(NodeKind::TryExcept, l, c) {}
 };

@@ -36,6 +36,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <cstdint>
 #include <cmath>
 #include "../math/cas/SymExprArena.h"
@@ -85,6 +86,8 @@ public:
         List,           ///< ordered collection of NeoValues (list / matrix row)
         NativeFunction, ///< C++ native callable (e.g. regression predictor)
         Quantity,       ///< physical quantity with dimensional analysis (Phase 5)
+        String,         ///< string value (Phase 6)
+        Dictionary,     ///< key-value map (Phase 6)
     };
 
     // ── Default: Null ─────────────────────────────────────────────
@@ -100,6 +103,7 @@ public:
         , _nativeFn(nullptr)
         , _nativeCtx(nullptr)
         , _quantity(nullptr)
+        , _dict(nullptr)
     {}
 
     // ── Static factories ──────────────────────────────────────────
@@ -130,6 +134,17 @@ public:
      */
     static NeoValue makeQuantity(NeoQuantity* q);
 
+    /**
+     * Create a String value.
+     */
+    static NeoValue makeString(const std::string& s);
+
+    /**
+     * Create a Dictionary value.  NeoValue takes ownership of the map pointer
+     * (heap-allocated with new by the caller).  Reference semantics (like lists).
+     */
+    static NeoValue makeDict(std::map<std::string, NeoValue>* dict);
+
     // ── Type queries ──────────────────────────────────────────────
     Type type()             const { return _type; }
     bool isNull()           const { return _type == Type::Null; }
@@ -141,6 +156,8 @@ public:
     bool isList()           const { return _type == Type::List; }
     bool isNativeFunction() const { return _type == Type::NativeFunction; }
     bool isQuantity()       const { return _type == Type::Quantity; }
+    bool isString()         const { return _type == Type::String; }
+    bool isDict()           const { return _type == Type::Dictionary; }
 
     /// True for Number or Exact (numerically concrete, non-symbolic).
     bool isNumeric()  const { return _type == Type::Number || _type == Type::Exact; }
@@ -160,6 +177,10 @@ public:
     void*                   nativeCtx()    const { return _nativeCtx; }
     /// Returns the NeoQuantity pointer (null if not Quantity type).
     NeoQuantity*            asQuantity()   const { return _quantity; }
+    /// Returns the string value (empty if not String type).
+    const std::string&      asString()     const { return _str; }
+    /// Returns the dictionary pointer (null if not Dictionary type).
+    std::map<std::string, NeoValue>* asDict() const { return _dict; }
 
     // ── Truthiness (Python-style) ─────────────────────────────────
     /// Null → false; Boolean → value; Number → non-zero; others → true.
@@ -172,6 +193,14 @@ public:
     NeoValue div(const NeoValue& rhs, cas::SymExprArena& sa) const;
     NeoValue pow(const NeoValue& rhs, cas::SymExprArena& sa) const;
     NeoValue neg(cas::SymExprArena& sa) const;
+
+    // ── Bitwise arithmetic (Phase 6) — integer-domain operations ─
+    NeoValue bitwiseAnd(const NeoValue& rhs) const;
+    NeoValue bitwiseOr (const NeoValue& rhs) const;
+    NeoValue bitwiseXor(const NeoValue& rhs) const;
+    NeoValue bitwiseNot()                    const;
+    NeoValue leftShift (const NeoValue& rhs) const;
+    NeoValue rightShift(const NeoValue& rhs) const;
 
     // ── Comparison — return Boolean NeoValues ─────────────────────
     NeoValue opEq(const NeoValue& rhs) const;
@@ -210,4 +239,8 @@ private:
     void*            _nativeCtx;
     /// Physical quantity (Quantity type only).
     NeoQuantity*     _quantity;
+    /// String value (String type only).
+    std::string      _str;
+    /// Dictionary map (Dictionary type only). Heap-allocated, reference semantics.
+    std::map<std::string, NeoValue>* _dict;
 };

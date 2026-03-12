@@ -47,6 +47,27 @@
 // NeoValue holds NeoEnv* (closure), NeoEnv holds NeoValue (bindings).
 class NeoEnv;
 
+// Forward declaration for physical quantity (Phase 5 Units).
+struct NeoQuantity;
+
+// Forward declaration of NeoValue for NeoNativeCallFn typedef.
+class NeoValue;
+
+// ════════════════════════════════════════════════════════════════════
+// NeoNativeCallFn — callback type for native (C++) built-in callables
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Function pointer type for NativeFunction values.
+ * Called by the interpreter when a NativeFunction NeoValue is invoked.
+ * @param args  Evaluated argument list.
+ * @param ctx   Opaque context pointer (e.g. NeoRegModel*).
+ * @param sa    SymExpr arena (available for symbolic results).
+ */
+typedef NeoValue (*NeoNativeCallFn)(const std::vector<NeoValue>& args,
+                                    void* ctx,
+                                    cas::SymExprArena& sa);
+
 // ════════════════════════════════════════════════════════════════════
 // NeoValue
 // ════════════════════════════════════════════════════════════════════
@@ -61,7 +82,9 @@ public:
         Exact,
         Symbolic,
         Function,
-        List,       ///< ordered collection of NeoValues (list / matrix row)
+        List,           ///< ordered collection of NeoValues (list / matrix row)
+        NativeFunction, ///< C++ native callable (e.g. regression predictor)
+        Quantity,       ///< physical quantity with dimensional analysis (Phase 5)
     };
 
     // ── Default: Null ─────────────────────────────────────────────
@@ -74,6 +97,9 @@ public:
         , _funcDef(nullptr)
         , _funcClosure(nullptr)
         , _list(nullptr)
+        , _nativeFn(nullptr)
+        , _nativeCtx(nullptr)
+        , _quantity(nullptr)
     {}
 
     // ── Static factories ──────────────────────────────────────────
@@ -91,15 +117,30 @@ public:
      */
     static NeoValue makeList(std::vector<NeoValue>* list);
 
+    /**
+     * Create a NativeFunction value.  The callback fn is invoked by the
+     * interpreter when this value is called.  ctx is forwarded as the second
+     * argument (opaque context, e.g. NeoRegModel*).
+     */
+    static NeoValue makeNativeFunction(NeoNativeCallFn fn, void* ctx);
+
+    /**
+     * Create a Quantity value.  NeoValue takes ownership of the NeoQuantity
+     * pointer (heap-allocated with new by the caller).
+     */
+    static NeoValue makeQuantity(NeoQuantity* q);
+
     // ── Type queries ──────────────────────────────────────────────
-    Type type()       const { return _type; }
-    bool isNull()     const { return _type == Type::Null; }
-    bool isBool()     const { return _type == Type::Boolean; }
-    bool isNumber()   const { return _type == Type::Number; }
-    bool isExact()    const { return _type == Type::Exact; }
-    bool isSymbolic() const { return _type == Type::Symbolic; }
-    bool isFunction() const { return _type == Type::Function; }
-    bool isList()     const { return _type == Type::List; }
+    Type type()             const { return _type; }
+    bool isNull()           const { return _type == Type::Null; }
+    bool isBool()           const { return _type == Type::Boolean; }
+    bool isNumber()         const { return _type == Type::Number; }
+    bool isExact()          const { return _type == Type::Exact; }
+    bool isSymbolic()       const { return _type == Type::Symbolic; }
+    bool isFunction()       const { return _type == Type::Function; }
+    bool isList()           const { return _type == Type::List; }
+    bool isNativeFunction() const { return _type == Type::NativeFunction; }
+    bool isQuantity()       const { return _type == Type::Quantity; }
 
     /// True for Number or Exact (numerically concrete, non-symbolic).
     bool isNumeric()  const { return _type == Type::Number || _type == Type::Exact; }
@@ -113,6 +154,12 @@ public:
     NeoEnv*                 funcClosure()  const { return _funcClosure; }
     /// Returns the list vector pointer (null if not a List type).
     std::vector<NeoValue>*  asList()       const { return _list; }
+    /// Returns the native function callback (null if not NativeFunction type).
+    NeoNativeCallFn         nativeFn()     const { return _nativeFn; }
+    /// Returns the native function context pointer.
+    void*                   nativeCtx()    const { return _nativeCtx; }
+    /// Returns the NeoQuantity pointer (null if not Quantity type).
+    NeoQuantity*            asQuantity()   const { return _quantity; }
 
     // ── Truthiness (Python-style) ─────────────────────────────────
     /// Null → false; Boolean → value; Number → non-zero; others → true.
@@ -157,4 +204,10 @@ private:
     /// Heap-allocated vector shared by value copies (reference semantics).
     /// nullptr for all non-List types.
     std::vector<NeoValue>* _list;
+    /// Native function callback (NativeFunction type only).
+    NeoNativeCallFn  _nativeFn;
+    /// Opaque context forwarded to _nativeFn (e.g. NeoRegModel*).
+    void*            _nativeCtx;
+    /// Physical quantity (Quantity type only).
+    NeoQuantity*     _quantity;
 };

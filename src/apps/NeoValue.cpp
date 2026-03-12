@@ -5,6 +5,7 @@
  */
 
 #include "NeoValue.h"
+#include "NeoUnits.h"
 #include <cstdio>
 #include <cstring>
 
@@ -59,6 +60,21 @@ NeoValue NeoValue::makeList(std::vector<NeoValue>* list) {
     return v;
 }
 
+NeoValue NeoValue::makeNativeFunction(NeoNativeCallFn fn, void* ctx) {
+    NeoValue v;
+    v._type      = Type::NativeFunction;
+    v._nativeFn  = fn;
+    v._nativeCtx = ctx;
+    return v;
+}
+
+NeoValue NeoValue::makeQuantity(NeoQuantity* q) {
+    NeoValue v;
+    v._type     = Type::Quantity;
+    v._quantity = q;
+    return v;
+}
+
 // ════════════════════════════════════════════════════════════════════
 // isTruthy
 // ════════════════════════════════════════════════════════════════════
@@ -72,6 +88,8 @@ bool NeoValue::isTruthy() const {
         case Type::Symbolic: return _sym != nullptr;
         case Type::Function: return _funcDef != nullptr;
         case Type::List:     return _list != nullptr && !_list->empty();
+        case Type::NativeFunction: return _nativeFn != nullptr;
+        case Type::Quantity: return _quantity != nullptr;
     }
     return false;
 }
@@ -86,6 +104,7 @@ double NeoValue::toDouble() const {
         case Type::Exact:    return _exact.toDouble();
         case Type::Boolean:  return _bool ? 1.0 : 0.0;
         case Type::Symbolic: return _sym ? _sym->evaluate(0.0) : 0.0;
+        case Type::Quantity: return _quantity ? _quantity->magnitude : 0.0;
         default:             return 0.0;
     }
 }
@@ -119,6 +138,38 @@ cas::SymExpr* NeoValue::toSymExpr(cas::SymExprArena& sa) const {
         default:
             return nullptr;
     }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Quantity arithmetic helpers (defined before use in add/sub/mul/div)
+// ════════════════════════════════════════════════════════════════════
+
+static NeoValue addQuantity(const NeoQuantity* a, const NeoQuantity* b) {
+    if (!a || !b) return NeoValue::makeNull();
+    NeoQuantity* out = new NeoQuantity();
+    if (!NeoUnits::add(*a, *b, *out)) { delete out; return NeoValue::makeNull(); }
+    return NeoValue::makeQuantity(out);
+}
+
+static NeoValue subQuantity(const NeoQuantity* a, const NeoQuantity* b) {
+    if (!a || !b) return NeoValue::makeNull();
+    NeoQuantity* out = new NeoQuantity();
+    if (!NeoUnits::sub(*a, *b, *out)) { delete out; return NeoValue::makeNull(); }
+    return NeoValue::makeQuantity(out);
+}
+
+static NeoValue mulQuantity(const NeoQuantity* a, const NeoQuantity* b) {
+    if (!a || !b) return NeoValue::makeNull();
+    NeoQuantity* out = new NeoQuantity();
+    NeoUnits::mul(*a, *b, *out);
+    return NeoValue::makeQuantity(out);
+}
+
+static NeoValue divQuantity(const NeoQuantity* a, const NeoQuantity* b) {
+    if (!a || !b) return NeoValue::makeNull();
+    NeoQuantity* out = new NeoQuantity();
+    if (!NeoUnits::div(*a, *b, *out)) { delete out; return NeoValue::makeNull(); }
+    return NeoValue::makeQuantity(out);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -160,6 +211,10 @@ NeoValue NeoValue::add(const NeoValue& rhs, cas::SymExprArena& sa) const {
         return makeList(result);
     }
 
+    // ── Quantity + Quantity → Quantity ────────────────────────────
+    if (_type == Type::Quantity && rhs._type == Type::Quantity)
+        return addQuantity(_quantity, rhs._quantity);
+
     // ── At least one Symbolic → symbolic addition ─────────────────
     SymExpr* lSym = toSymExpr(sa);
     SymExpr* rSym = rhs.toSymExpr(sa);
@@ -189,6 +244,10 @@ NeoValue NeoValue::sub(const NeoValue& rhs, cas::SymExprArena& sa) const {
         if (_list) for (const auto& v : *_list) result->push_back(v.sub(rhs, sa));
         return makeList(result);
     }
+
+    // ── Quantity - Quantity ───────────────────────────────────────
+    if (_type == Type::Quantity && rhs._type == Type::Quantity)
+        return subQuantity(_quantity, rhs._quantity);
 
     // Symbolic: lhs + (-rhs)
     SymExpr* lSym = toSymExpr(sa);
@@ -237,6 +296,22 @@ NeoValue NeoValue::mul(const NeoValue& rhs, cas::SymExprArena& sa) const {
         return makeList(result);
     }
 
+    // ── Quantity * Quantity → combined unit ──────────────────────
+    if (_type == Type::Quantity && rhs._type == Type::Quantity)
+        return mulQuantity(_quantity, rhs._quantity);
+
+    // ── Quantity * scalar ─────────────────────────────────────────
+    if (_type == Type::Quantity && rhs.isNumeric() && _quantity) {
+        NeoQuantity* out = new NeoQuantity(*_quantity);
+        NeoUnits::scale(*_quantity, rhs.toDouble(), *out);
+        return makeQuantity(out);
+    }
+    if (isNumeric() && rhs._type == Type::Quantity && rhs._quantity) {
+        NeoQuantity* out = new NeoQuantity(*rhs._quantity);
+        NeoUnits::scale(*rhs._quantity, toDouble(), *out);
+        return makeQuantity(out);
+    }
+
     SymExpr* lSym = toSymExpr(sa);
     SymExpr* rSym = rhs.toSymExpr(sa);
     if (!lSym || !rSym) return makeNull();
@@ -265,6 +340,19 @@ NeoValue NeoValue::div(const NeoValue& rhs, cas::SymExprArena& sa) const {
         double d = rhs.toDouble();
         if (d == 0.0) return makeNumber(std::numeric_limits<double>::quiet_NaN());
         return makeNumber(toDouble() / d);
+    }
+
+    // ── Quantity / Quantity → combined unit ──────────────────────
+    if (_type == Type::Quantity && rhs._type == Type::Quantity)
+        return divQuantity(_quantity, rhs._quantity);
+
+    // ── Quantity / scalar ─────────────────────────────────────────
+    if (_type == Type::Quantity && rhs.isNumeric() && _quantity) {
+        double d = rhs.toDouble();
+        if (d == 0.0) return makeNull();
+        NeoQuantity* out = new NeoQuantity(*_quantity);
+        NeoUnits::scale(*_quantity, 1.0 / d, *out);
+        return makeQuantity(out);
     }
 
     // Symbolic: lhs * (rhs ^ -1)
@@ -414,6 +502,12 @@ std::string NeoValue::toString() const {
             }
             s += "]";
             return s;
+        }
+        case Type::NativeFunction:
+            return "<native_function>";
+        case Type::Quantity: {
+            if (_quantity) return NeoUnits::toString(*_quantity);
+            return "Quantity(null)";
         }
     }
     return "?";

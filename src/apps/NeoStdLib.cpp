@@ -25,6 +25,8 @@
 #include <cstring>
 #include <cmath>
 #include <string>
+#include <algorithm>
+#include <limits>
 
 #include "../math/cas/SymDiff.h"
 #include "../math/cas/SymIntegrate.h"
@@ -103,6 +105,30 @@ bool NeoStdLib::callBuiltin(const std::string&          name,
     if (name == "vars")      return callVars     (args, result, env);
     if (name == "input_num") return callInputNum (args, result);
     if (name == "msg_box")   return callMsgBox   (args, result);
+
+    // ── Phase 5: Statistics ────────────────────────────────────────
+    if (name == "mean")        return callMean      (args, result);
+    if (name == "median")      return callMedian    (args, result);
+    if (name == "stddev")      return callStddev    (args, result);
+    if (name == "variance")    return callVariance  (args, result);
+    if (name == "sort")        return callSort      (args, result);
+    if (name == "regress")     return callRegress   (args, result);
+    if (name == "pdf_normal")  return callPdfNormal (args, result);
+    if (name == "cdf_normal")  return callCdfNormal (args, result);
+    if (name == "factorial")   return callFactorial (args, result);
+    if (name == "ncr")         return callNcr       (args, result);
+    if (name == "npr")         return callNpr       (args, result);
+
+    // ── Phase 5: Units ─────────────────────────────────────────────
+    if (name == "unit")        return callUnit      (args, result);
+    if (name == "convert")     return callConvert   (args, result);
+
+    // ── Phase 5: Advanced Calculus ────────────────────────────────
+    if (name == "limit")       return callLimit     (args, result, sa);
+    if (name == "taylor")      return callTaylor    (args, result, sa);
+    if (name == "sum_expr" || name == "sigma")
+                               return callSumExpr   (args, result, sa);
+    if (name == "table")       return callTable     (args, result, env, sa);
 
     return false;  // Not a stdlib built-in
 }
@@ -365,14 +391,16 @@ bool NeoStdLib::callType(const std::vector<NeoValue>& args,
     const char* typeName = nullptr;
     int         ordinal  = 0;
     switch (args[0].type()) {
-        case NeoValue::Type::Null:     typeName = "None";     ordinal = 0; break;
-        case NeoValue::Type::Boolean:  typeName = "bool";     ordinal = 1; break;
-        case NeoValue::Type::Number:   typeName = "number";   ordinal = 2; break;
-        case NeoValue::Type::Exact:    typeName = "exact";    ordinal = 3; break;
-        case NeoValue::Type::Symbolic: typeName = "symbolic"; ordinal = 4; break;
-        case NeoValue::Type::Function: typeName = "function"; ordinal = 5; break;
-        case NeoValue::Type::List:     typeName = "list";     ordinal = 6; break;
-        default:                       typeName = "unknown";  ordinal = -1; break;
+        case NeoValue::Type::Null:            typeName = "None";           ordinal = 0; break;
+        case NeoValue::Type::Boolean:         typeName = "bool";           ordinal = 1; break;
+        case NeoValue::Type::Number:          typeName = "number";         ordinal = 2; break;
+        case NeoValue::Type::Exact:           typeName = "exact";          ordinal = 3; break;
+        case NeoValue::Type::Symbolic:        typeName = "symbolic";       ordinal = 4; break;
+        case NeoValue::Type::Function:        typeName = "function";       ordinal = 5; break;
+        case NeoValue::Type::List:            typeName = "list";           ordinal = 6; break;
+        case NeoValue::Type::NativeFunction:  typeName = "native_function";ordinal = 7; break;
+        case NeoValue::Type::Quantity:        typeName = "quantity";       ordinal = 8; break;
+        default:                              typeName = "unknown";        ordinal = -1; break;
     }
 
     char buf[64];
@@ -462,5 +490,380 @@ bool NeoStdLib::callMsgBox(const std::vector<NeoValue>& args,
     }
 
     result = NeoValue::makeNull();
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ── PHASE 5: STATISTICS ──────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════
+
+static const std::vector<NeoValue>* expectList(const std::vector<NeoValue>& args,
+                                                size_t idx = 0) {
+    if (args.size() <= idx) return nullptr;
+    if (!args[idx].isList() || !args[idx].asList()) return nullptr;
+    return args[idx].asList();
+}
+
+bool NeoStdLib::callMean(const std::vector<NeoValue>& args, NeoValue& result) {
+    const auto* lst = expectList(args);
+    if (!lst) { result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoStats::mean(*lst));
+    return true;
+}
+
+bool NeoStdLib::callMedian(const std::vector<NeoValue>& args, NeoValue& result) {
+    const auto* lst = expectList(args);
+    if (!lst) { result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoStats::median(*lst));
+    return true;
+}
+
+bool NeoStdLib::callStddev(const std::vector<NeoValue>& args, NeoValue& result) {
+    const auto* lst = expectList(args);
+    if (!lst) { result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoStats::stddev(*lst));
+    return true;
+}
+
+bool NeoStdLib::callVariance(const std::vector<NeoValue>& args, NeoValue& result) {
+    const auto* lst = expectList(args);
+    if (!lst) { result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoStats::variance(*lst));
+    return true;
+}
+
+bool NeoStdLib::callSort(const std::vector<NeoValue>& args, NeoValue& result) {
+    const auto* lst = expectList(args);
+    if (!lst) { result = NeoValue::makeNull(); return true; }
+    std::vector<double> sorted = NeoStats::sortedCopy(*lst);
+    auto* out = new std::vector<NeoValue>();
+    out->reserve(sorted.size());
+    for (double d : sorted) out->push_back(NeoValue::makeNumber(d));
+    result = NeoValue::makeList(out);
+    return true;
+}
+
+static NeoValue regressionPredict(const std::vector<NeoValue>& args,
+                                   void* ctx,
+                                   cas::SymExprArena& /*sa*/) {
+    auto* model = static_cast<NeoRegModel*>(ctx);
+    if (!model || args.empty()) return NeoValue::makeNull();
+    double x = args[0].toDouble();
+    return NeoValue::makeNumber(model->predict(x));
+}
+
+bool NeoStdLib::callRegress(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 3) {
+        hostPrint("[regress] Usage: regress(x_list, y_list, model)\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    const auto* xList = expectList(args, 0);
+    const auto* yList = expectList(args, 1);
+    if (!xList || !yList) {
+        hostPrint("[regress] First two arguments must be lists.\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+
+    std::string modelStr = args[2].toString();
+    if (modelStr.size() >= 2 && modelStr.front() == '"')
+        modelStr = modelStr.substr(1, modelStr.size() - 2);
+
+    NeoRegModel::Kind kind = NeoRegModel::Kind::Linear;
+    if (modelStr == "quad")        kind = NeoRegModel::Kind::Quad;
+    else if (modelStr == "exp")    kind = NeoRegModel::Kind::Exp;
+    else if (modelStr == "log")    kind = NeoRegModel::Kind::Log;
+    else if (modelStr != "linear") {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+            "[regress] Unknown model '%s'. Use: linear, quad, exp, log\n",
+            modelStr.c_str());
+        hostPrint(buf);
+        result = NeoValue::makeNull();
+        return true;
+    }
+
+    auto* model = new NeoRegModel();
+    if (!NeoStats::regress(*xList, *yList, kind, *model)) {
+        hostPrint("[regress] Regression failed (insufficient/invalid data).\n");
+        delete model;
+        result = NeoValue::makeNull();
+        return true;
+    }
+
+    {
+        char buf[256];
+        const char* kindStr =
+            (kind == NeoRegModel::Kind::Linear) ? "linear" :
+            (kind == NeoRegModel::Kind::Quad)   ? "quad"   :
+            (kind == NeoRegModel::Kind::Exp)     ? "exp"    : "log";
+        if (kind == NeoRegModel::Kind::Quad) {
+            std::snprintf(buf, sizeof(buf),
+                "[regress] %s: a=%.6g  b=%.6g  c=%.6g  R2=%.4f\n",
+                kindStr, model->a, model->b, model->c, model->r2);
+        } else {
+            std::snprintf(buf, sizeof(buf),
+                "[regress] %s: a=%.6g  b=%.6g  R2=%.4f\n",
+                kindStr, model->a, model->b, model->r2);
+        }
+        hostPrint(buf);
+    }
+
+    result = NeoValue::makeNativeFunction(regressionPredict, model);
+    return true;
+}
+
+bool NeoStdLib::callPdfNormal(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 3) { result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(
+        NeoStats::pdfNormal(args[0].toDouble(), args[1].toDouble(), args[2].toDouble()));
+    return true;
+}
+
+bool NeoStdLib::callCdfNormal(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 3) { result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(
+        NeoStats::cdfNormal(args[0].toDouble(), args[1].toDouble(), args[2].toDouble()));
+    return true;
+}
+
+bool NeoStdLib::callFactorial(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.empty()) { result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoStats::factorial(
+        static_cast<int>(args[0].toDouble())));
+    return true;
+}
+
+bool NeoStdLib::callNcr(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoStats::ncr(
+        static_cast<int>(args[0].toDouble()),
+        static_cast<int>(args[1].toDouble())));
+    return true;
+}
+
+bool NeoStdLib::callNpr(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) { result = NeoValue::makeNull(); return true; }
+    result = NeoValue::makeNumber(NeoStats::npr(
+        static_cast<int>(args[0].toDouble()),
+        static_cast<int>(args[1].toDouble())));
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ── PHASE 5: UNITS ───────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════
+
+bool NeoStdLib::callUnit(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) {
+        hostPrint("[unit] Usage: unit(value, \"unit_str\")\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    double value = args[0].toDouble();
+    std::string unitStr = args[1].toString();
+    if (unitStr.size() >= 2 && unitStr.front() == '"')
+        unitStr = unitStr.substr(1, unitStr.size() - 2);
+
+    auto* q = new NeoQuantity();
+    if (!NeoUnits::makeQuantity(value, unitStr, *q)) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "[unit] Unknown unit: '%s'\n", unitStr.c_str());
+        hostPrint(buf);
+        delete q;
+        result = NeoValue::makeNull();
+        return true;
+    }
+    result = NeoValue::makeQuantity(q);
+    return true;
+}
+
+bool NeoStdLib::callConvert(const std::vector<NeoValue>& args, NeoValue& result) {
+    if (args.size() < 2) {
+        hostPrint("[convert] Usage: convert(quantity, \"unit_str\")\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    if (!args[0].isQuantity() || !args[0].asQuantity()) {
+        hostPrint("[convert] First argument must be a Quantity.\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    std::string targetStr = args[1].toString();
+    if (targetStr.size() >= 2 && targetStr.front() == '"')
+        targetStr = targetStr.substr(1, targetStr.size() - 2);
+
+    auto* out = new NeoQuantity();
+    if (!NeoUnits::convert(*args[0].asQuantity(), targetStr, *out)) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+            "[convert] Cannot convert to '%s'\n", targetStr.c_str());
+        hostPrint(buf);
+        delete out;
+        result = NeoValue::makeNull();
+        return true;
+    }
+    result = NeoValue::makeQuantity(out);
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ── PHASE 5: ADVANCED CALCULUS ───────────────────────────────────
+// ════════════════════════════════════════════════════════════════════
+
+bool NeoStdLib::callLimit(const std::vector<NeoValue>& args,
+                           NeoValue& result,
+                           cas::SymExprArena& sa)
+{
+    if (args.size() < 3) {
+        hostPrint("[limit] Usage: limit(expr, var, point)\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    cas::SymExpr* expr = toSym(args[0], sa);
+    if (!expr) { result = args[0]; return true; }
+    char   var = toVarChar(args[1], sa);
+    double pt  = args[2].toDouble();
+
+    static constexpr double H = 1e-4;
+    double f1p = expr->evaluate(pt + H);
+    double f1m = expr->evaluate(pt - H);
+    double f2p = expr->evaluate(pt + H * 0.5);
+    double f2m = expr->evaluate(pt - H * 0.5);
+
+    double lim1 = (f1p + f1m) * 0.5;
+    double lim2 = (f2p + f2m) * 0.5;
+    double lim  = (4.0 * lim2 - lim1) / 3.0;
+
+    char buf[128];
+    std::snprintf(buf, sizeof(buf),
+        "[limit] lim(%c->%.6g) = %.10g\n", var, pt, lim);
+    hostPrint(buf);
+
+    result = NeoValue::makeNumber(lim);
+    return true;
+}
+
+bool NeoStdLib::callTaylor(const std::vector<NeoValue>& args,
+                            NeoValue& result,
+                            cas::SymExprArena& sa)
+{
+    if (args.size() < 4) {
+        hostPrint("[taylor] Usage: taylor(expr, var, point, order)\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    cas::SymExpr* expr = toSym(args[0], sa);
+    if (!expr) { result = args[0]; return true; }
+    char   var   = toVarChar(args[1], sa);
+    double point = args[2].toDouble();
+    int    order = static_cast<int>(args[3].toDouble());
+    if (order < 0) order = 0;
+    if (order > 10) order = 10;
+
+    // Build polynomial as a NeoValue list of coefficients [c0, c1, ..., cn]
+    // where the polynomial = sum c_k * (x - point)^k
+    auto* coeffs = new std::vector<NeoValue>();
+    coeffs->reserve(static_cast<size_t>(order + 1));
+
+    cas::SymExpr* currentDeriv = expr;
+    double factorial = 1.0;
+
+    for (int k = 0; k <= order; ++k) {
+        if (k > 0) {
+            cas::SymExpr* d = cas::SymDiff::diff(currentDeriv, var, sa);
+            if (!d) { coeffs->push_back(NeoValue::makeNumber(0.0)); continue; }
+            currentDeriv = cas::SymSimplify::simplify(d, sa);
+            if (!currentDeriv) currentDeriv = d;
+            factorial *= static_cast<double>(k);
+        }
+        double coef = currentDeriv->evaluate(point) / factorial;
+        coeffs->push_back(NeoValue::makeNumber(
+            (std::isnan(coef) || std::isinf(coef)) ? 0.0 : coef));
+    }
+
+    char buf[128];
+    std::snprintf(buf, sizeof(buf),
+        "[taylor] order-%d Taylor coefficients around %c=%g\n",
+        order, var, point);
+    hostPrint(buf);
+
+    result = NeoValue::makeList(coeffs);
+    return true;
+}
+
+bool NeoStdLib::callSumExpr(const std::vector<NeoValue>& args,
+                              NeoValue& result,
+                              cas::SymExprArena& sa)
+{
+    if (args.size() < 4) {
+        hostPrint("[sigma] Usage: sigma(expr, var, start, end)\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    cas::SymExpr* expr = toSym(args[0], sa);
+    char   var   = toVarChar(args[1], sa);
+    int    start = static_cast<int>(args[2].toDouble());
+    int    end   = static_cast<int>(args[3].toDouble());
+    if (end - start > 10000) end = start + 10000;
+
+    double total = 0.0;
+    for (int i = start; i <= end; ++i) {
+        if (expr) total += expr->evaluate(static_cast<double>(i));
+    }
+
+    char buf[128];
+    std::snprintf(buf, sizeof(buf),
+        "[sigma] sum(%c=%d..%d) = %.10g\n", var, start, end, total);
+    hostPrint(buf);
+
+    result = NeoValue::makeNumber(total);
+    return true;
+}
+
+bool NeoStdLib::callTable(const std::vector<NeoValue>& args,
+                           NeoValue& result,
+                           NeoEnv& /*env*/,
+                           cas::SymExprArena& sa)
+{
+    if (args.size() < 4) {
+        hostPrint("[table] Usage: table(func, start, end, step)\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+    const NeoValue& funcVal = args[0];
+    double xstart = args[1].toDouble();
+    double xend   = args[2].toDouble();
+    double step   = args[3].toDouble();
+
+    if (step == 0.0 || std::fabs((xend - xstart) / step) > 10001.0) {
+        hostPrint("[table] Step too small or range too large.\n");
+        result = NeoValue::makeNull();
+        return true;
+    }
+
+    auto* out = new std::vector<NeoValue>();
+    int maxPts = static_cast<int>(std::fabs((xend - xstart) / step)) + 2;
+    if (maxPts > 10002) maxPts = 10002;
+    out->reserve(static_cast<size_t>(maxPts));
+
+    for (double x = xstart;
+         (step > 0 ? x <= xend + step * 0.5 : x >= xend + step * 0.5);
+         x += step)
+    {
+        double y = std::numeric_limits<double>::quiet_NaN();
+        if (funcVal.isNativeFunction() && funcVal.nativeFn()) {
+            std::vector<NeoValue> callArgs = { NeoValue::makeNumber(x) };
+            NeoValue r = funcVal.nativeFn()(callArgs, funcVal.nativeCtx(), sa);
+            y = r.toDouble();
+        }
+        auto* row = new std::vector<NeoValue>();
+        row->push_back(NeoValue::makeNumber(x));
+        row->push_back(NeoValue::makeNumber(y));
+        out->push_back(NeoValue::makeList(row));
+    }
+
+    result = NeoValue::makeList(out);
     return true;
 }

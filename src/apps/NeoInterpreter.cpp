@@ -264,9 +264,15 @@ NeoValue NeoInterpreter::evalFunctionCall(FunctionCallNode* node, NeoEnv& env) {
         return NeoValue::makeNull();
     }
 
-    if (!funcVal->isFunction()) {
+    if (!funcVal->isFunction() && !funcVal->isNativeFunction()) {
         recordError(node->name + " is not a function", node->line, node->col);
         return NeoValue::makeNull();
+    }
+
+    // ── NativeFunction path ───────────────────────────────────────
+    if (funcVal->isNativeFunction()) {
+        if (!funcVal->nativeFn()) return NeoValue::makeNull();
+        return funcVal->nativeFn()(args, funcVal->nativeCtx(), _symArena);
     }
 
     FunctionDefNode* def     = funcVal->funcDef();

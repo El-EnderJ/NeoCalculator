@@ -192,6 +192,7 @@ enum class NodeKind : uint8_t {
     IndexOp,        ///< list / matrix indexing: expr[i] or expr[i, j]
     DictLiteral,    ///< dictionary literal: { "key": expr, ... }
     TryExcept,      ///< try/except block (Phase 6)
+    Import,         ///< import module [as alias] / from module import name,... (Phase 8)
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -486,4 +487,28 @@ struct TryExceptNode : NeoNode {
 
     TryExceptNode(int l, int c)
         : NeoNode(NodeKind::TryExcept, l, c) {}
+};
+
+// ════════════════════════════════════════════════════════════════════
+// ImportNode — import module [as alias]  or  from module import a, b
+// (Phase 8: Module System)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Represents a module import statement.
+ *
+ * Three forms:
+ *   import finance                  → is_from=false, alias=""
+ *   import finance as fin           → is_from=false, alias="fin"
+ *   from math import pi, sin        → is_from=true,  names=[pi, sin]
+ */
+struct ImportNode : NeoNode {
+    std::string module;    ///< Module name to import (e.g. "finance", "math")
+    std::string alias;     ///< Alias for namespace binding (empty = use module name)
+    StringVec   names;     ///< Names to import for 'from X import a, b' (empty = import all)
+    bool        is_from;   ///< true = from X import ..., false = import X [as Y]
+
+    ImportNode(const std::string& mod, int l, int c)
+        : NeoNode(NodeKind::Import, l, c)
+        , module(mod), is_from(false) {}
 };

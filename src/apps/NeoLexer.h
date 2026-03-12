@@ -58,6 +58,8 @@ enum class NeoTokType : uint8_t {
     TRY,        ///< 'try'
     EXCEPT,     ///< 'except'
     AS,         ///< 'as'
+    IMPORT,     ///< 'import'
+    FROM,       ///< 'from'
 
     // ── Literals ─────────────────────────────────────────────────
     NUMBER,

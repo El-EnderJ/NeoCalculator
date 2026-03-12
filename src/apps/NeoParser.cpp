@@ -215,6 +215,9 @@ NeoNode* NeoParser::parseStatement() {
     // ── try/except ────────────────────────────────────────────────
     if (check(NeoTokType::TRY)) return parseTryExcept();
 
+    // ── import / from...import ─────────────────────────────────────
+    if (check(NeoTokType::IMPORT) || check(NeoTokType::FROM)) return parseImport();
+
     // ── assignment or expression statement ───────────────────────
     return parseAssignmentOrExpr();
 }
@@ -751,4 +754,77 @@ NeoNode* NeoParser::parsePrimary() {
     recordError(buf, tok.line, tok.col);
     syncToNextStatement();
     return nullptr;
+}
+
+// ═════════════════════════════════════════════════════════════════
+// parseImport — import X [as Y]  or  from X import a, b, c
+// (Phase 8: Module System)
+// ═════════════════════════════════════════════════════════════════
+
+NeoNode* NeoParser::parseImport() {
+    int tl = current().line, tc = current().col;
+
+    // ── from X import a, b, c ─────────────────────────────────────
+    if (check(NeoTokType::FROM)) {
+        advance(); // consume 'from'
+
+        if (!check(NeoTokType::IDENTIFIER)) {
+            recordError("expected module name after 'from'", current().line, current().col);
+            syncToNextStatement();
+            return nullptr;
+        }
+        std::string modName = current().value;
+        advance(); // consume module name
+
+        if (!check(NeoTokType::IMPORT)) {
+            recordError("expected 'import' after module name in 'from' statement",
+                        current().line, current().col);
+            syncToNextStatement();
+            return nullptr;
+        }
+        advance(); // consume 'import'
+
+        ImportNode* node = _arena.make<ImportNode>(modName, tl, tc);
+        if (!node) return nullptr;
+        node->is_from = true;
+
+        // Parse comma-separated name list
+        while (!atEnd() && !check(NeoTokType::NEWLINE) && !check(NeoTokType::END_OF_FILE)) {
+            if (!check(NeoTokType::IDENTIFIER)) {
+                recordError("expected identifier in import list", current().line, current().col);
+                break;
+            }
+            node->names.push_back(current().value);
+            advance();
+            if (!match(NeoTokType::COMMA)) break;
+        }
+        match(NeoTokType::NEWLINE);
+        return node;
+    }
+
+    // ── import X [as Y] ──────────────────────────────────────────
+    advance(); // consume 'import'
+
+    if (!check(NeoTokType::IDENTIFIER)) {
+        recordError("expected module name after 'import'", current().line, current().col);
+        syncToNextStatement();
+        return nullptr;
+    }
+    std::string modName = current().value;
+    advance(); // consume module name
+
+    ImportNode* node = _arena.make<ImportNode>(modName, tl, tc);
+    if (!node) return nullptr;
+    node->is_from = false;
+
+    // Optional: 'as alias'
+    if (check(NeoTokType::AS)) {
+        advance(); // consume 'as'
+        if (check(NeoTokType::IDENTIFIER)) {
+            node->alias = current().value;
+            advance();
+        }
+    }
+    match(NeoTokType::NEWLINE);
+    return node;
 }

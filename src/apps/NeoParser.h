@@ -84,6 +84,7 @@ private:
     NeoNode* parseFor();
     NeoNode* parseReturn();
     NeoNode* parseTryExcept();   ///< Phase 6: try/except
+    NeoNode* parseImport();      ///< Phase 8: import / from...import
     NeoNode* parseAssignmentOrExpr();
 
     /**

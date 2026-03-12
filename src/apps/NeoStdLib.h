@@ -316,6 +316,24 @@ private:
     /// gui_show() — make the GUI screen visible
     bool callGuiShow     (const std::vector<NeoValue>& args, NeoValue& result);
 
+    // ── Phase 8: Signal Processing ────────────────────────────────
+
+    /// fft(list) — Cooley-Tukey FFT; returns list of [re, im] pairs
+    bool callFFT         (const std::vector<NeoValue>& args, NeoValue& result);
+    /// ifft(list) — Inverse FFT; accepts [re,im] pairs or real numbers
+    bool callIFFT        (const std::vector<NeoValue>& args, NeoValue& result);
+    /// abs_spectrum(fft_result) — magnitude spectrum from fft() output
+    bool callAbsSpectrum (const std::vector<NeoValue>& args, NeoValue& result);
+
+    // ── Phase 8: Advanced Linear Algebra ─────────────────────────
+
+    /// det(matrix) — matrix determinant (Gaussian elimination)
+    bool callDet         (const std::vector<NeoValue>& args, NeoValue& result);
+    /// inv(matrix) — matrix inverse (Gauss-Jordan)
+    bool callInv         (const std::vector<NeoValue>& args, NeoValue& result);
+    /// eigen(matrix) — eigenvalues and eigenvectors (power/QR iteration)
+    bool callEigen       (const std::vector<NeoValue>& args, NeoValue& result);
+
     // ── Helpers ───────────────────────────────────────────────────
 
     /// Extract a SymExpr* from a NeoValue (Symbolic or numeric literal).

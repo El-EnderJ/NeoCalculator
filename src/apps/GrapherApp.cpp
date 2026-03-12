@@ -26,18 +26,20 @@ static constexpr uint32_t COL_HINT      = 0x999999;
 static constexpr uint32_t COL_ADD_TXT   = 0x888888;  // "Add element" muted
 static constexpr uint32_t COL_BTN_BG    = 0x4A90E2;  // Action buttons (blue)
 static constexpr uint32_t COL_BTN_TXT   = 0xFFFFFF;
-static constexpr uint32_t COL_AXIS      = 0x555555;  // Dark gray axis (NumWorks)
-static constexpr uint32_t COL_GRID_MAIN = 0xD1D1D1;  // Main grid (integer units)
-static constexpr uint32_t COL_GRID_SUB  = 0xEBEBEB;  // Sub-grid (subdivisions)
-static constexpr uint32_t COL_GRAPH_BG  = 0xFDFDFD;  // Off-white graph background
+static constexpr uint32_t COL_AXIS      = 0x666666;  // Axis line (visible on black bg)
+static constexpr uint32_t COL_GRID_MAIN = 0x2C2C2C;  // Main grid (#2C2C2C on black)
+static constexpr uint32_t COL_GRID_SUB  = 0x1E1E1E;  // Sub-grid (darker)
+static constexpr uint32_t COL_GRAPH_BG  = 0x000000;  // Black graph background
 static constexpr uint32_t COL_TB_BG     = 0xF4F4F4;  // Graph toolbar bg
 static constexpr uint32_t COL_TB_SEL    = 0x4A90E2;  // Toolbar selected
 static constexpr uint32_t COL_TB_TXT    = 0x333333;
-static constexpr uint32_t COL_TBL_HDR   = 0xF4F4F4;
+static constexpr uint32_t COL_TBL_HDR   = 0xFFB531;  // Table header (NumWorks yellow)
 static constexpr uint32_t COL_TBL_SEL   = 0xD6EAFF;
 
 // ── Graph plotting constants ────────────────────────────────────────────
-static constexpr int GRAPH_MAX_PTS = 320;   // One point per pixel column
+// Adaptive sampling worst case: INIT_SAMPLE_N * 2^ADAPT_DEPTH = 40 * 8 = 320
+// Using 512 as a conservative upper bound with safety margin.
+static constexpr int GRAPH_MAX_PTS = 512;   // Point buffer per function
 
 // ── Templates ───────────────────────────────────────────────────────────
 struct TemplateEntry {
@@ -98,11 +100,16 @@ GrapherApp::GrapherApp()
     for (int i = 0; i < CALC_MENU_ITEMS; ++i) _calcMenuRows[i] = nullptr;
     for (int i = 0; i < 320; ++i) _shadingLines[i] = nullptr;
     _tblTable = nullptr;
+    _tblHeaderBar = nullptr;
+    for (int i = 0; i < 2; ++i) _tblHdrLabels[i] = nullptr;
     _tplModal = nullptr;
     _tplCount = 0; _tplIdx = 0; _tplOpen = false;
     _tplLoadTimer = nullptr; _tplLoadNext = 0;
     _tplCardW = 0; _tplRowH = 0;
     for (int i = 0; i < 6; ++i) { _tplRows[i] = nullptr; }
+    for (int i = 0; i < MAX_FUNCS; ++i) { _rpnCacheValid[i] = false; }
+    _numPOIs = 0;
+    _modeBadge = nullptr;
 }
 
 GrapherApp::~GrapherApp() { end(); }
@@ -164,7 +171,9 @@ void GrapherApp::end() {
         for (int i = 0; i < CALC_MENU_ITEMS; ++i) _calcMenuRows[i] = nullptr;
         for (int i = 0; i < 320; ++i) _shadingLines[i] = nullptr;
         _shadingCount = 0; _shadingActive = false;
-        _tblTable = nullptr;
+        _tblTable = nullptr; _tblHeaderBar = nullptr;
+        for (int i = 0; i < 2; ++i) _tblHdrLabels[i] = nullptr;
+        _modeBadge = nullptr;
         for (int i = 0; i < 3; ++i) { _tabLabels[i] = nullptr; _tabPills[i] = nullptr; }
         for (int i = 0; i < MAX_FUNCS; ++i) {
             _exprRows[i] = nullptr; _exprDots[i] = nullptr;
@@ -401,6 +410,7 @@ static float niceStep(float range, int maxTicks) {
 }
 
 // ── Graph grid + axis draw callback ─────────────────────────────────────
+// ── Graph tick labels use light color for dark background ──
 static void graphGridDrawCb(lv_event_t* e) {
     lv_layer_t* layer = lv_event_get_layer(e);
     lv_obj_t* obj = lv_event_get_target_obj(e);
@@ -507,11 +517,11 @@ static void graphGridDrawCb(lv_event_t* e) {
         }
     }
 
-    // ── Tick labels ──
+    // ── Tick labels (light color on dark background) ──
     {
         lv_draw_label_dsc_t ldsc;
         lv_draw_label_dsc_init(&ldsc);
-        ldsc.color = lv_color_hex(0x888888);
+        ldsc.color = lv_color_hex(0xAAAAAA);  // Light gray — visible on dark bg
         ldsc.font  = &lv_font_montserrat_10;
 
         char buf[16];
@@ -568,7 +578,7 @@ void GrapherApp::createGraphPanel() {
 
     // ── Toolbar at top of panel ──
     _graphToolbar = makeContainer(_panelGraph, 0, 0, SCREEN_W, TOOLBAR_H, COL_TB_BG);
-    const char* tools[] = { "Auto", "Axes", "Navigate", "Calculate" };
+    const char* tools[] = { "Auto", "Axes", "Pan", "Trace" };
     int tw = SCREEN_W / 4;
     for (int i = 0; i < 4; ++i) {
         _toolLabels[i] = makeLabel(_graphToolbar, i * tw + 4, (TOOLBAR_H - 12) / 2,
@@ -681,7 +691,26 @@ void GrapherApp::createGraphPanel() {
 
     // ── Info bar at bottom ──
     _infoBar = makeContainer(_panelGraph, 0, panelH - INFO_BAR_H, SCREEN_W, INFO_BAR_H, COL_TB_BG);
-    _infoLabel = makeLabel(_infoBar, PAD, 2, "", 0x000000, &lv_font_montserrat_12);
+    _infoLabel = makeLabel(_infoBar, PAD, 2, "", 0x333333, &lv_font_montserrat_12);
+    // Mode badge on the right side of info bar: "[Trace]" or "[Pan]"
+    _modeBadge = makeLabel(_infoBar, SCREEN_W - 50, 2, "[Trace]", 0x4A90E2, &lv_font_montserrat_12);
+}
+
+// ── Table zebra-stripe draw event (LVGL 9) ──────────────────────────────
+static void tblZebraDrawCb(lv_event_t* e) {
+    lv_draw_task_t* dt = lv_event_get_draw_task(e);
+    if (!dt) return;
+    if (lv_draw_task_get_type(dt) != LV_DRAW_TASK_TYPE_FILL) return;
+    lv_draw_fill_dsc_t* fill = lv_draw_task_get_fill_dsc(dt);
+    if (!fill) return;
+    // In LVGL 9 lv_draw_fill_dsc_t begins with lv_draw_dsc_base_t
+    lv_draw_dsc_base_t* base = (lv_draw_dsc_base_t*)fill;
+    if (base->part != LV_PART_ITEMS) return;
+    // id1 = row, id2 = col
+    if (base->id1 % 2 == 1) {
+        fill->color = lv_color_hex(0xEEF4FF);  // Alternate (odd) rows: light blue
+        fill->opa   = LV_OPA_COVER;
+    }
 }
 
 // ── Table panel ─────────────────────────────────────────────────────────
@@ -690,10 +719,40 @@ void GrapherApp::createTablePanel() {
     int topY = BAR_H + TAB_H;
     int panelH = SCREEN_H - topY;
 
+    // ── Sticky header bar (always visible, not part of scrollable area) ──
+    _tblHeaderBar = lv_obj_create(_screen);
+    if (!_tblHeaderBar) { Serial.println("[GRAPHER] FAIL _tblHeaderBar"); return; }
+    lv_obj_set_pos(_tblHeaderBar, 0, topY);
+    lv_obj_set_size(_tblHeaderBar, SCREEN_W, TBL_HDR_H);
+    lv_obj_set_style_bg_color(_tblHeaderBar, lv_color_hex(COL_TBL_HDR), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_tblHeaderBar, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_tblHeaderBar, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_side(_tblHeaderBar, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_tblHeaderBar, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_tblHeaderBar, lv_color_hex(0xD0A020), LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_tblHeaderBar, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_tblHeaderBar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(_tblHeaderBar, LV_OBJ_FLAG_HIDDEN);
+
+    // Header labels: "x" and "f(x)"
+    _tblHdrLabels[0] = makeLabel(_tblHeaderBar, SCREEN_W / 4 - 4, (TBL_HDR_H - 12) / 2,
+                                  "x", 0x000000, &lv_font_montserrat_12);
+    _tblHdrLabels[1] = makeLabel(_tblHeaderBar, SCREEN_W * 3 / 4 - 4, (TBL_HDR_H - 12) / 2,
+                                  "f(x)", 0x000000, &lv_font_montserrat_12);
+    // Separator between header columns
+    lv_obj_t* sep = lv_obj_create(_tblHeaderBar);
+    lv_obj_set_pos(sep, SCREEN_W / 2, 0);
+    lv_obj_set_size(sep, 1, TBL_HDR_H);
+    lv_obj_set_style_bg_color(sep, lv_color_hex(0xD0A020), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sep, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(sep, LV_OBJ_FLAG_SCROLLABLE);
+
+    // ── Scrollable data panel (below sticky header) ──
     _panelTable = lv_obj_create(_screen);
     if (!_panelTable) { Serial.println("[GRAPHER] FAIL _panelTable"); return; }
-    lv_obj_set_pos(_panelTable, 0, topY);
-    lv_obj_set_size(_panelTable, SCREEN_W, panelH);
+    lv_obj_set_pos(_panelTable, 0, topY + TBL_HDR_H);
+    lv_obj_set_size(_panelTable, SCREEN_W, panelH - TBL_HDR_H);
     lv_obj_set_style_bg_color(_panelTable, lv_color_hex(COL_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_panelTable, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_panelTable, 0, LV_PART_MAIN);
@@ -703,7 +762,7 @@ void GrapherApp::createTablePanel() {
     lv_obj_set_scroll_dir(_panelTable, LV_DIR_VER);
     lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
 
-    // Native lv_table widget
+    // Native lv_table widget (data rows only — no header row in table)
     _tblTable = lv_table_create(_panelTable);
     if (!_tblTable) { Serial.println("[GRAPHER] FAIL _tblTable"); return; }
     lv_obj_set_pos(_tblTable, 0, 0);
@@ -711,11 +770,9 @@ void GrapherApp::createTablePanel() {
     lv_table_set_column_count(_tblTable, 2);
     lv_table_set_column_width(_tblTable, 0, SCREEN_W / 2);
     lv_table_set_column_width(_tblTable, 1, SCREEN_W / 2);
-    lv_table_set_row_count(_tblTable, 1);
-    lv_table_set_cell_value(_tblTable, 0, 0, "x");
-    lv_table_set_cell_value(_tblTable, 0, 1, "y");
+    lv_table_set_row_count(_tblTable, TBL_ROWS);
 
-    // Style: header row (row 0) — yellow NumWorks bg, black text
+    // Style: white bg, black text, subtle border
     lv_obj_set_style_bg_color(_tblTable, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
     lv_obj_set_style_text_color(_tblTable, lv_color_hex(0x000000), LV_PART_ITEMS);
     lv_obj_set_style_text_font(_tblTable, &lv_font_montserrat_12, LV_PART_ITEMS);
@@ -730,6 +787,10 @@ void GrapherApp::createTablePanel() {
     lv_obj_set_style_border_width(_tblTable, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_tblTable, 0, LV_PART_MAIN);
 
+    // Zebra stripes via draw task event (LVGL 9)
+    lv_obj_add_flag(_tblTable, LV_OBJ_FLAG_SEND_DRAW_TASK_EVENTS);
+    lv_obj_add_event_cb(_tblTable, tblZebraDrawCb, LV_EVENT_DRAW_TASK_ADDED, nullptr);
+
     Serial.println("[GRAPHER] tablePanel Done");
 }
 
@@ -742,10 +803,11 @@ void GrapherApp::switchTab(Tab t) {
     _tabIdx = (int)t;
 
     // Show/hide panels
-    if (_bgExpr)     lv_obj_add_flag(_bgExpr, LV_OBJ_FLAG_HIDDEN);
-    if (_panelExpr)  lv_obj_add_flag(_panelExpr, LV_OBJ_FLAG_HIDDEN);
-    if (_panelGraph) lv_obj_add_flag(_panelGraph, LV_OBJ_FLAG_HIDDEN);
-    if (_panelTable) lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
+    if (_bgExpr)       lv_obj_add_flag(_bgExpr, LV_OBJ_FLAG_HIDDEN);
+    if (_panelExpr)    lv_obj_add_flag(_panelExpr, LV_OBJ_FLAG_HIDDEN);
+    if (_panelGraph)   lv_obj_add_flag(_panelGraph, LV_OBJ_FLAG_HIDDEN);
+    if (_panelTable)   lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
+    if (_tblHeaderBar) lv_obj_add_flag(_tblHeaderBar, LV_OBJ_FLAG_HIDDEN);
 
     switch (t) {
     case Tab::EXPRESSIONS:
@@ -761,17 +823,33 @@ void GrapherApp::switchTab(Tab t) {
             // First creation: don't replot yet — wait for layout pass
             if (_panelGraph) {
                 lv_obj_remove_flag(_panelGraph, LV_OBJ_FLAG_HIDDEN);
-                _grMode = GrMode::NAVIGATE;  // Default to NAVIGATE for immediate pan/zoom
-                _plotDirty = true;  // Will be picked up on next interaction
+                _grMode = GrMode::TRACE;  // Default to TRACE for immediate interaction
+                // Pick first valid function for trace
+                _traceFn = -1;
+                for (int i = 0; i < _numFuncs; ++i) {
+                    if (_funcs[i].valid) { _traceFn = i; break; }
+                }
+                _traceX = (_xMin + _xMax) / 2.0f;
+                _plotDirty = true;
             }
         } else {
             lv_obj_remove_flag(_panelGraph, LV_OBJ_FLAG_HIDDEN);
-            _grMode = GrMode::NAVIGATE;
+            _grMode = GrMode::TRACE;
+            _traceFn = -1;
+            for (int i = 0; i < _numFuncs; ++i) {
+                if (_funcs[i].valid) { _traceFn = i; break; }
+            }
+            _traceX = (_xMin + _xMax) / 2.0f;
             _plotDirty = true;
             replot();
+            // Pre-compute POIs for snap-to-point
+            if (_traceFn >= 0) computePOIs(_traceFn);
+            drawTraceCursor();
         }
+        updateInfoBar();
         break;
     case Tab::TABLE:
+        if (_tblHeaderBar) lv_obj_remove_flag(_tblHeaderBar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
         // Pick first valid function for table
         _tblFuncIdx = -1;
@@ -964,17 +1042,11 @@ void GrapherApp::stopEditing() {
         // Sync AST → text for evaluation pipeline
         syncASTtoText(idx);
 
-        // Validate expression
-        if (_funcs[idx].len > 0) {
-            TokenizeResult tr = _tokenizer.tokenize(_funcs[idx].text);
-            if (tr.ok) {
-                ParseResult pr = _parser.toRPN(tr.tokens);
-                _funcs[idx].valid = pr.ok;
-            } else {
-                _funcs[idx].valid = false;
-            }
-        } else {
-            _funcs[idx].valid = false;
+        // Validate expression and cache RPN for fast evalAt()
+        preCacheFuncRPN(idx);
+        if (!_funcs[idx].valid) {
+            // preCacheFuncRPN sets valid=false on failure; also clear cache
+            _rpnCacheValid[idx] = false;
         }
     }
     _plotDirty = true;
@@ -1493,8 +1565,31 @@ void GrapherApp::handleTemplates(const KeyEvent& ev) {
 // Graph plotting
 // ═══════════════════════════════════════════════════════════════════════
 
+// Pre-parse and cache the RPN for function idx to avoid repeated tokenize+parse
+void GrapherApp::preCacheFuncRPN(int idx) {
+    if (idx < 0 || idx >= _numFuncs) return;
+    _rpnCacheValid[idx] = false;
+    _cachedRPN[idx].clear();
+
+    if (_funcs[idx].len <= 0) return;
+    TokenizeResult tr = _tokenizer.tokenize(_funcs[idx].text);
+    if (!tr.ok) return;
+    ParseResult pr = _parser.toRPN(tr.tokens);
+    if (!pr.ok) return;
+    _cachedRPN[idx] = pr.outputRPN;
+    _rpnCacheValid[idx] = true;
+    _funcs[idx].valid = true;
+}
+
 double GrapherApp::evalAt(int idx, double x) {
     if (idx < 0 || idx >= _numFuncs || !_funcs[idx].valid) return NAN;
+    // Use cached RPN if available; otherwise fall back to full parse
+    if (_rpnCacheValid[idx] && !_cachedRPN[idx].empty()) {
+        _vars.setVar('x', x);
+        EvalResult er = _evaluator.evaluateRPN(_cachedRPN[idx], _vars);
+        return er.ok ? er.value : NAN;
+    }
+    // Fallback: tokenize + parse (happens before first cache)
     _vars.setVar('x', x);
     TokenizeResult tr = _tokenizer.tokenize(_funcs[idx].text);
     if (!tr.ok) return NAN;
@@ -1502,6 +1597,92 @@ double GrapherApp::evalAt(int idx, double x) {
     if (!pr.ok) return NAN;
     EvalResult er = _evaluator.evaluateRPN(pr.outputRPN, _vars);
     return er.ok ? er.value : NAN;
+}
+
+// ── Adaptive sampling helpers ────────────────────────────────────────────
+
+// Recursively subdivide segment (wx0,sy0)→(wx1,sy1) if it deviates > 2px.
+// Inserts intermediate points into pts[] BEFORE the endpoint wx1.
+// Max recursion depth is ADAPT_DEPTH (3) — safe on ESP32 stack.
+void GrapherApp::adaptSeg(GrapherApp* app, int fi,
+                           float xMin, float xRange,
+                           float yMin, float yRange,
+                           float areaW, float areaH,
+                           float wx0, float sy0,
+                           float wx1, float sy1,
+                           int depth,
+                           lv_point_precise_t* pts, int& n, int maxN)
+{
+    if (depth <= 0 || n >= maxN - 1) return;
+    float mwx = (wx0 + wx1) * 0.5f;
+    double mwyd = app->evalAt(fi, mwx);
+    if (std::isnan(mwyd) || std::isinf(mwyd)) return;
+    float msy = (1.0f - ((float)mwyd - yMin) / yRange) * areaH;
+    float interpSy = (sy0 + sy1) * 0.5f;
+    if (fabsf(msy - interpSy) > ADAPT_THRESHOLD_PX) {
+        float msx = (mwx - xMin) / xRange * areaW;
+        adaptSeg(app, fi, xMin, xRange, yMin, yRange, areaW, areaH,
+                 wx0, sy0, mwx, msy, depth - 1, pts, n, maxN);
+        if (n < maxN) {
+            pts[n++] = { (lv_value_precise_t)(int)msx, (lv_value_precise_t)(int)msy };
+        }
+        adaptSeg(app, fi, xMin, xRange, yMin, yRange, areaW, areaH,
+                 mwx, msy, wx1, sy1, depth - 1, pts, n, maxN);
+    }
+    // else: segment smooth enough — no midpoint needed
+}
+
+// Sample function fi adaptively; returns point count (also fills _funcPts[fi])
+int GrapherApp::sampleFuncAdaptive(int fi, int areaW, int areaH) {
+    float xRange = _xMax - _xMin;
+    float yRange = _yMax - _yMin;
+    if (xRange <= 0 || yRange <= 0) return 0;
+
+    lv_point_precise_t* pts = _funcPts[fi];
+    int maxN = GRAPH_MAX_PTS;
+    int n = 0;
+
+    // Coarse initial grid (static: avoids stack pressure; safe — LVGL is single-threaded)
+    struct CoarsePt { float wx, sy, sx; bool ok; };
+    static CoarsePt coarse[INIT_SAMPLE_N + 1];
+
+    float step = xRange / INIT_SAMPLE_N;
+    for (int i = 0; i <= INIT_SAMPLE_N; ++i) {
+        float wx = _xMin + i * step;
+        double wy = evalAt(fi, wx);
+        bool ok = !std::isnan(wy) && !std::isinf(wy);
+        float sy = 0, sx = (wx - _xMin) / xRange * areaW;
+        if (ok) {
+            sy = (1.0f - ((float)wy - _yMin) / yRange) * areaH;
+            if (sy < -(float)areaH || sy > 2.0f * areaH) ok = false;  // Off-screen clip margin
+        }
+        coarse[i] = { wx, sy, sx, ok };
+        if ((i & 7) == 0) yield();
+    }
+
+    // Stitch coarse segments with adaptive refinement
+    bool prevOk = false;
+    for (int i = 0; i <= INIT_SAMPLE_N && n < maxN; ++i) {
+        if (!coarse[i].ok) { prevOk = false; continue; }
+        if (!prevOk) {
+            // Start a new run: add this point
+            pts[n++] = { (lv_value_precise_t)(int)coarse[i].sx,
+                         (lv_value_precise_t)(int)coarse[i].sy };
+        } else {
+            // Refine segment coarse[i-1] → coarse[i]
+            adaptSeg(this, fi, _xMin, xRange, _yMin, yRange, areaW, areaH,
+                     coarse[i - 1].wx, coarse[i - 1].sy,
+                     coarse[i].wx,     coarse[i].sy,
+                     ADAPT_DEPTH, pts, n, maxN);
+            // Add endpoint
+            if (n < maxN) {
+                pts[n++] = { (lv_value_precise_t)(int)coarse[i].sx,
+                             (lv_value_precise_t)(int)coarse[i].sy };
+            }
+        }
+        prevOk = true;
+    }
+    return n;
 }
 
 void GrapherApp::replot() {
@@ -1512,18 +1693,11 @@ void GrapherApp::replot() {
     int areaH = lv_obj_get_height(_graphArea);
     if (areaH < 2) return;  // Layout not yet computed — skip
 
-    float xRange = _xMax - _xMin;
-    float yRange = _yMax - _yMin;
-
-    auto worldToX = [&](float wx) -> float { return (wx - _xMin) / xRange * areaW; };
-    auto worldToY = [&](float wy) -> float { return (1.0f - (wy - _yMin) / yRange) * areaH; };
-
     // Force redraw of grid + axes via the custom draw callback
     lv_obj_invalidate(_graphArea);
 
-    // ── Plot each function ──
+    // ── Plot each function using adaptive sampling ──
     for (int f = 0; f < MAX_FUNCS; ++f) {
-        // Skip if no line object or no point buffer
         if (!_funcLines[f] || !_funcPts[f]) continue;
 
         if (f >= _numFuncs || !_funcs[f].valid) {
@@ -1534,33 +1708,9 @@ void GrapherApp::replot() {
         lv_obj_remove_flag(_funcLines[f], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_line_color(_funcLines[f], lv_color_hex(_funcs[f].color), LV_PART_MAIN);
 
-        int count = 0;
-        float prevY = NAN;
-        for (int px = 0; px < areaW && count < GRAPH_MAX_PTS; ++px) {
-            if ((px & 63) == 0) yield();  // Feed watchdog
-            float wx = _xMin + (float)px / areaW * xRange;
-            double wy = evalAt(f, wx);
-            if (std::isnan(wy) || std::isinf(wy)) {
-                prevY = NAN;
-                continue;
-            }
-            float sy = worldToY((float)wy);
-            // Clip Y to graph area with margin
-            if (sy < -areaH || sy > 2 * areaH) {
-                prevY = NAN;
-                continue;
-            }
-            // Discontinuity check: huge jump → skip segment
-            if (std::isnan(prevY) || fabsf(sy - prevY) > areaH) {
-                // Start new segment — still add point so line resumes
-            }
-            _funcPts[f][count].x = px;
-            _funcPts[f][count].y = (int)sy;
-            count++;
-            prevY = sy;
-        }
+        int count = sampleFuncAdaptive(f, areaW, areaH);
         _funcPtCount[f] = count;
-        if (_funcPts[f] && count >= 2) {
+        if (count >= 2) {
             lv_line_set_points(_funcLines[f], _funcPts[f], count);
         } else {
             lv_obj_add_flag(_funcLines[f], LV_OBJ_FLAG_HIDDEN);
@@ -1614,11 +1764,24 @@ void GrapherApp::drawTraceCursor() {
     lv_line_set_points(_traceLineV, _traceVPts, 2);
     lv_obj_remove_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
 
-    // Floating pill — show function color + x/y values
+    // Floating pill — show function color + x/y values, or POI label if snapped
     lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_bg_color(_tracePillDot, lv_color_hex(_funcs[_traceFn].color), LV_PART_MAIN);
-    char pillBuf[64];
-    snprintf(pillBuf, sizeof(pillBuf), "x: %.3f   y: %.3f", (double)_traceX, wy);
+
+    char pillBuf[80];
+    // Check if we're snapped to a POI
+    const char* poiLabel = nullptr;
+    for (int i = 0; i < _numPOIs; ++i) {
+        if (fabsf(_traceX - _pois[i].x) < 1e-4f) {
+            poiLabel = _pois[i].label;
+            break;
+        }
+    }
+    if (poiLabel) {
+        snprintf(pillBuf, sizeof(pillBuf), "%s: (%.3f, %.3f)", poiLabel, (double)_traceX, wy);
+    } else {
+        snprintf(pillBuf, sizeof(pillBuf), "x: %.3f   y: %.3f", (double)_traceX, wy);
+    }
     lv_label_set_text(_tracePillLabel, pillBuf);
 }
 
@@ -1633,6 +1796,17 @@ void GrapherApp::updateInfoBar() {
                  (double)_xMin, (double)_xMax, (double)_yMin, (double)_yMax);
     }
     lv_label_set_text(_infoLabel, buf);
+
+    // Update mode badge: "[Trace]" in blue or "[Pan]" in gray
+    if (_modeBadge) {
+        if (_grMode == GrMode::TRACE) {
+            lv_label_set_text(_modeBadge, "[Trace]");
+            lv_obj_set_style_text_color(_modeBadge, lv_color_hex(0x4A90E2), LV_PART_MAIN);
+        } else {
+            lv_label_set_text(_modeBadge, "[Pan]");
+            lv_obj_set_style_text_color(_modeBadge, lv_color_hex(0x888888), LV_PART_MAIN);
+        }
+    }
 }
 
 void GrapherApp::autoFit() {
@@ -1660,6 +1834,99 @@ void GrapherApp::autoFit() {
         _yMax = globalYMax + margin;
     }
     _plotDirty = true;
+}
+
+// ── POI computation (roots, extrema, y-intercept) for snap-to-point ────
+void GrapherApp::computePOIs(int fi) {
+    _numPOIs = 0;
+    if (fi < 0 || fi >= _numFuncs || !_funcs[fi].valid) return;
+
+    const int N = INIT_SAMPLE_N;
+    float step = (_xMax - _xMin) / N;
+
+    // Y-intercept (x=0): only add if x=0 is in viewport
+    if (_xMin <= 0.0f && _xMax >= 0.0f && _numPOIs < MAX_POIS) {
+        double y0 = evalAt(fi, 0.0f);
+        if (!std::isnan(y0) && !std::isinf(y0)) {
+            auto& p = _pois[_numPOIs++];
+            p.x = 0.0f;
+            p.y = (float)y0;
+            strncpy(p.label, "Intercept", sizeof(p.label) - 1);
+            p.label[sizeof(p.label) - 1] = '\0';
+        }
+    }
+
+    // Scan intervals for sign changes (roots) and local extrema
+    double yPrev = evalAt(fi, _xMin);
+    double yPrev2 = yPrev;
+    for (int i = 1; i <= N && _numPOIs < MAX_POIS - 2; ++i) {
+        float x1 = _xMin + i * step;
+        double y1 = evalAt(fi, x1);
+        if ((i & 7) == 0) yield();
+
+        if (!std::isnan(yPrev) && !std::isnan(y1)) {
+            // Root: sign change → bisect to refine
+            if (yPrev * y1 < 0.0 && _numPOIs < MAX_POIS) {
+                float lo = x1 - step, hi = x1;
+                double ylo = yPrev;
+                for (int iter = 0; iter < BISECTION_ITER; ++iter) {
+                    float mid = (lo + hi) * 0.5f;
+                    double ym = evalAt(fi, mid);
+                    if (std::isnan(ym)) break;
+                    if (ym * ylo < 0.0) { hi = mid; }
+                    else { lo = mid; ylo = ym; }
+                }
+                float rx = (lo + hi) * 0.5f;
+                // Avoid duplicate near x=0 intercept
+                bool dup = false;
+                for (int k = 0; k < _numPOIs; ++k) {
+                    if (fabsf(_pois[k].x - rx) < step * 0.1f) { dup = true; break; }
+                }
+                if (!dup) {
+                    auto& p = _pois[_numPOIs++];
+                    p.x = rx; p.y = 0.0f;
+                    strncpy(p.label, "Root", sizeof(p.label) - 1);
+                    p.label[sizeof(p.label) - 1] = '\0';
+                }
+            }
+            // Extremum: midpoint higher/lower than both endpoints
+            if (i >= 2 && !std::isnan(yPrev2)) {
+                float xm = x1 - step;
+                bool isMin = (yPrev < yPrev2) && (yPrev < y1);
+                bool isMax = (yPrev > yPrev2) && (yPrev > y1);
+                if ((isMin || isMax) && _numPOIs < MAX_POIS) {
+                    bool dup = false;
+                    for (int k = 0; k < _numPOIs; ++k) {
+                        if (fabsf(_pois[k].x - xm) < step * 0.1f) { dup = true; break; }
+                    }
+                    if (!dup) {
+                        auto& p = _pois[_numPOIs++];
+                        p.x = xm; p.y = (float)yPrev;
+                        strncpy(p.label, isMin ? "Min" : "Max", sizeof(p.label) - 1);
+                        p.label[sizeof(p.label) - 1] = '\0';
+                    }
+                }
+            }
+        }
+        yPrev2 = yPrev;
+        yPrev = y1;
+    }
+}
+
+// ── Snap cursor to nearest POI if within 5 screen pixels ────────────────
+void GrapherApp::snapToPOI() {
+    if (_numPOIs == 0 || _traceFn < 0) return;
+    int areaW = SCREEN_W;
+    float xRange = _xMax - _xMin;
+    if (xRange <= 0) return;
+    // Convert 5 pixels to world-space distance
+    float snapDist = POI_SNAP_THRESHOLD_PX / areaW * xRange;
+    for (int i = 0; i < _numPOIs; ++i) {
+        if (fabsf(_traceX - _pois[i].x) <= snapDist) {
+            _traceX = _pois[i].x;
+            return;
+        }
+    }
 }
 
 void GrapherApp::refreshToolbar() {
@@ -1701,21 +1968,26 @@ void GrapherApp::rebuildTable() {
         lv_table_set_column_width(_tblTable, c, colW);
     }
 
-    // Row count: 1 header + TBL_ROWS data rows
-    int dataRows = TBL_ROWS;
-    lv_table_set_row_count(_tblTable, 1 + dataRows);
-
-    // Header row
-    lv_table_set_cell_value(_tblTable, 0, 0, "x");
-    if (numActive > 0) {
-        char hdr[16];
-        for (int c = 0; c < numActive && c + 1 < cols; ++c) {
-            snprintf(hdr, sizeof(hdr), "f%d(x)", activeFuncs[c] + 1);
-            lv_table_set_cell_value(_tblTable, 0, c + 1, hdr);
+    // Update sticky header labels
+    if (_tblHeaderBar) {
+        // Update header label positions based on column count
+        if (_tblHdrLabels[0]) {
+            lv_obj_set_x(_tblHdrLabels[0], colW / 2 - 4);
+            lv_label_set_text(_tblHdrLabels[0], "x");
         }
-    } else {
-        lv_table_set_cell_value(_tblTable, 0, 1, "y");
+        if (_tblHdrLabels[1] && numActive > 0) {
+            char hdrText[20];
+            snprintf(hdrText, sizeof(hdrText), "f%d(x)", activeFuncs[0] + 1);
+            lv_label_set_text(_tblHdrLabels[1], hdrText);
+            lv_obj_set_x(_tblHdrLabels[1], colW + colW / 2 - 8);
+        } else if (_tblHdrLabels[1]) {
+            lv_label_set_text(_tblHdrLabels[1], "f(x)");
+        }
     }
+
+    // Row count: only data rows (no header row in table — sticky header handles it)
+    int dataRows = TBL_ROWS;
+    lv_table_set_row_count(_tblTable, dataRows);
 
     // Data rows
     for (int r = 0; r < dataRows; ++r) {
@@ -1726,7 +1998,7 @@ void GrapherApp::rebuildTable() {
         // X column
         char xBuf[16];
         snprintf(xBuf, sizeof(xBuf), "%.4g", (double)xVal);
-        lv_table_set_cell_value(_tblTable, r + 1, 0, xBuf);
+        lv_table_set_cell_value(_tblTable, r, 0, xBuf);
 
         // Function value columns
         if (numActive > 0) {
@@ -1737,10 +2009,10 @@ void GrapherApp::rebuildTable() {
                     snprintf(yBuf, sizeof(yBuf), "--");
                 else
                     snprintf(yBuf, sizeof(yBuf), "%.6g", yVal);
-                lv_table_set_cell_value(_tblTable, r + 1, c + 1, yBuf);
+                lv_table_set_cell_value(_tblTable, r, c + 1, yBuf);
             }
         } else {
-            lv_table_set_cell_value(_tblTable, r + 1, 1, "--");
+            lv_table_set_cell_value(_tblTable, r, 1, "--");
         }
     }
 }
@@ -2011,14 +2283,14 @@ void GrapherApp::handleToolbar(const KeyEvent& ev) {
             break;
         case 1: // Axes — toggle grid/axes visibility (simple toggle)
             break;
-        case 2: // Navigate
+        case 2: // Pan (was Navigate)
             _focus = Focus::CONTENT;
             _grMode = GrMode::NAVIGATE;
             _plotDirty = true;
             replot();
             updateInfoBar();
             break;
-        case 3: // Calculate (Trace)
+        case 3: // Trace (was Calculate)
             _focus = Focus::CONTENT;
             _grMode = GrMode::TRACE;
             _traceX = (_xMin + _xMax) / 2.0f;
@@ -2027,6 +2299,8 @@ void GrapherApp::handleToolbar(const KeyEvent& ev) {
             for (int i = 0; i < _numFuncs; ++i) {
                 if (_funcs[i].valid) { _traceFn = i; break; }
             }
+            // Pre-compute POIs now that we have a target function
+            if (_traceFn >= 0) computePOIs(_traceFn);
             drawTraceCursor();
             updateInfoBar();
             break;
@@ -2074,6 +2348,7 @@ void GrapherApp::handleGraphNav(const KeyEvent& ev) {
         for (int i = 0; i < _numFuncs; ++i) {
             if (_funcs[i].valid) { _traceFn = i; break; }
         }
+        if (_traceFn >= 0) computePOIs(_traceFn);
         drawTraceCursor();
         updateInfoBar();
         return;
@@ -2098,10 +2373,12 @@ void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
     case KeyCode::LEFT:
         _traceX -= step;
         if (_traceX < _xMin) _traceX = _xMin;
+        snapToPOI();
         break;
     case KeyCode::RIGHT:
         _traceX += step;
         if (_traceX > _xMax) _traceX = _xMax;
+        snapToPOI();
         break;
     case KeyCode::UP:
         // Switch to next function (keep same X)
@@ -2126,9 +2403,7 @@ void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
         if (_traceLineH) lv_obj_add_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
         if (_traceLineV) lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
         if (_tracePill)  lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
-        _grMode = GrMode::IDLE;
-        _focus = Focus::TOOLBAR;
-        refreshToolbar();
+        _grMode = GrMode::NAVIGATE;  // AC from trace → pan mode
         updateInfoBar();
         return;
     default:

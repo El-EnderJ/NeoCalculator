@@ -1,7 +1,7 @@
 # NeoLanguage — Official Language Bible
 
 > **File extension:** `.nl` (NeoLanguage)
-> **Version:** Phase 5 — Data Science, Units & Advanced Calculus
+> **Version:** Phase 7 — Differential Equations, Optimization, Data Persistence, NeoGUI & Physics Constants
 > **Target platform:** NeoCalculator / NumOS (ESP32-S3)
 
 ---
@@ -62,8 +62,14 @@ plot(sin(x), -6.28, 6.28)
 12. [**Physics & Units**](#12-physics--units)
 13. [**Advanced Calculus**](#13-advanced-calculus)
 14. [Code Examples](#14-code-examples)
-15. [Keyboard Reference](#15-keyboard-reference)
-16. [Known Limitations](#16-known-limitations)
+15. [**Differential Equations**](#15-differential-equations)
+16. [**Optimization**](#16-optimization)
+17. [**Data Persistence: JSON & CSV**](#17-data-persistence-json--csv)
+18. [**NeoGUI: Building Custom Interfaces**](#18-neogui-building-custom-interfaces)
+19. [**Physics Constants Database**](#19-physics-constants-database)
+20. [**Master Engineering Example**](#20-master-engineering-example)
+21. [Keyboard Reference](#21-keyboard-reference)
+22. [Known Limitations](#22-known-limitations)
 
 ---
 
@@ -1294,7 +1300,351 @@ print("P within 1σ:", p_within_1sigma)   # Should be ~0.68 for normal data
 
 ---
 
-## 15. Keyboard Reference
+## 15. Differential Equations
+
+NeoLanguage Phase 7 provides a numerical ODE solver using the 4th-order Runge-Kutta (RK4) method.
+
+### `ndsolve(f, y0, x0, x1, steps=200)` — Numerical ODE Solver
+
+Solve the first-order ODE **dy/dx = f(x, y)** numerically.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `f` | Function `(x, y) → number` | The derivative function |
+| `y0` | Number | Initial condition: y(x0) |
+| `x0` | Number | Start of integration interval |
+| `x1` | Number | End of integration interval |
+| `steps` | Number (optional) | Number of RK4 steps (default 200, max 10000) |
+
+**Returns:** A `List` of `[x, y]` pairs that can be passed directly to `plot()`.
+
+```nl
+# Example: Exponential decay  dy/dx = -0.5*y,  y(0) = 10
+def decay(x, y): return -0.5 * y
+sol = ndsolve(decay, 10.0, 0, 8, 400)
+
+# sol is a list of [x, y] pairs
+print("y(8) ≈", sol[400][1])    # ≈ 0.67
+
+# Plotting ndsolve results — plot the sampled y values
+xs = map(def(p): return p[0], sol)
+ys = map(def(p): return p[1], sol)
+```
+
+**Solving a second-order ODE** — reduce to a system using substitution:
+```nl
+# Harmonic oscillator: y'' + y = 0  →  y' = v,  v' = -y
+# State: [y, v], solve two coupled 1st-order ODEs
+def osc_y(x, y): return y   # dy/dx = v  (passed as second state)
+# In NeoLanguage, model as one equation per call, or use the
+# trick of calling ndsolve twice with the coupled equations.
+```
+
+### Special Mathematical Functions
+
+| Function | Description |
+|----------|-------------|
+| `gamma(x)` | Gamma function Γ(x); generalises factorial: Γ(n) = (n-1)! for integer n |
+| `beta(x, y)` | Beta function B(x,y) = Γ(x)·Γ(y)/Γ(x+y) |
+| `erf(x)` | Error function; used in probability and heat-transfer problems |
+
+```nl
+# Stirling: n! ≈ gamma(n+1)
+print(gamma(6))        # ≈ 120  (= 5!)
+print(gamma(0.5))      # ≈ √π ≈ 1.7724539
+
+# Error function (probability within ±z sigmas of mean)
+p = erf(1.0 / sqrt(2))    # ≈ 0.6827 → 68.27% within ±1σ
+print("P(-σ < X < σ) =", p)
+
+# Beta distribution normalisation constant
+print(beta(2, 3))      # ≈ 0.0833
+```
+
+---
+
+## 16. Optimization
+
+Find local minima and maxima of scalar functions using a golden-section search.
+
+### `minimize(f, x0)` and `maximize(f, x0)`
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `f` | Function `(x) → number` | The objective function to optimise |
+| `x0` | Number | Initial guess for the optimum |
+
+**Returns:** The x-value of the local optimum near `x0`.
+
+> **Algorithm:** Golden-section search within [x0−10, x0+10].  
+> For global optima, call multiple times with different starting points.
+
+```nl
+# Minimise f(x) = (x - 3)^2 + 1
+def parabola(x): return (x - 3)^2 + 1
+xmin = minimize(parabola, 0)
+print("Minimum at x =", xmin)     # ≈ 3.0
+print("f(xmin) =", parabola(xmin)) # ≈ 1.0
+
+# Maximise the sinc function near x = 0
+def sinc(x):
+    if x == 0: return 1.0
+    return sin(x) / x
+xmax = maximize(sinc, 0.1)
+print("Max sinc at x =", xmax)    # ≈ 0.0 (global max = 1 at x=0)
+
+# Efficiency curve maximisation
+def efficiency(x):
+    # Quadratic efficiency model (peaks near x = 5)
+    return -(x - 5)^2 + 25
+xopt = maximize(efficiency, 3)
+print("Peak efficiency at x =", xopt, " = ", efficiency(xopt), "%")
+```
+
+---
+
+## 17. Data Persistence: JSON & CSV
+
+NeoLanguage Phase 7 provides built-in functions for reading and writing files
+on the device's LittleFS flash storage.
+
+### File I/O
+
+```nl
+# Writing a file
+h = open("/data.txt", "w")
+write(h, "Temperature: 23.5\n")
+write(h, "Humidity: 65\n")
+close(h)
+
+# Reading it back
+h = open("/data.txt", "r")
+content = read(h)
+close(h)
+print(content)
+```
+
+| Function | Description |
+|----------|-------------|
+| `open(path, mode)` | Open file. `mode`: `"r"` read, `"w"` write, `"a"` append. Returns handle (≥0) or -1 on error. |
+| `read(handle)` | Read entire file as a String. |
+| `write(handle, str)` | Write string to file. Returns bytes written. |
+| `close(handle)` | Close the file. |
+
+### JSON Serialization
+
+```nl
+# Encode a dictionary to JSON
+data = {"sensor": "LM35", "temp": 23.5, "unit": "°C"}
+json_str = json_encode(data)
+print(json_str)     # {"sensor":"LM35","temp":23.5,"unit":"°C"}
+
+# Write JSON to flash
+h = open("/sensor.json", "w")
+write(h, json_str)
+close(h)
+
+# Read and decode
+h = open("/sensor.json", "r")
+raw = read(h)
+close(h)
+restored = json_decode(raw)
+print(restored["temp"])   # 23.5
+```
+
+| Function | Description |
+|----------|-------------|
+| `json_encode(val)` | Serialize Dict/List/Number/String/Bool/Null → JSON string |
+| `json_decode(str)` | Parse JSON string → NeoValue |
+
+### CSV Data Exchange
+
+```nl
+# Create a measurement matrix
+measurements = [
+    ["time", "voltage", "current"],
+    [0.0, 3.30, 0.012],
+    [0.1, 3.28, 0.011],
+    [0.2, 3.25, 0.013]
+]
+
+# Export to CSV (readable by Excel / MATLAB)
+ok = export_csv(measurements, "/measurements.csv")
+print("Saved:", ok)
+
+# Import CSV
+data = import_csv("/measurements.csv")
+print("Rows:", len(data))
+print("Header:", data[0])   # ["time", "voltage", "current"]
+```
+
+| Function | Description |
+|----------|-------------|
+| `export_csv(matrix, path)` | Write List-of-Lists to CSV file. Returns `true` on success. |
+| `import_csv(path)` | Read CSV file. Returns List-of-Lists (numbers auto-parsed). |
+
+---
+
+## 18. NeoGUI: Building Custom Interfaces
+
+NeoGUI allows NeoLanguage scripts to build interactive LVGL dashboards
+that remain active while the script runs.
+
+### Component Functions
+
+| Function | Description |
+|----------|-------------|
+| `gui_label(text)` | Add a static text label |
+| `gui_button(label, "callback")` | Add a button; calls `callback()` when clicked |
+| `gui_slider(min, max, "callback")` | Add a slider; calls `callback(value)` on change |
+| `gui_input(label)` | Add a text input field with placeholder text |
+| `gui_clear()` | Remove all GUI components |
+| `gui_show()` | Make the GUI screen visible |
+
+### Layout
+
+Components are stacked vertically in a scrollable flex container.
+Call `gui_clear()` + component functions + `gui_show()` to rebuild the interface.
+
+### Example: Temperature Dashboard
+
+```nl
+# Define callback functions
+def on_heat(v):
+    print("Heater toggled:", v)
+
+def on_setpoint(v):
+    print("Setpoint:", v, "°C")
+
+def on_plot_btn(v):
+    # Solve ODE for thermal dynamics and show result
+    def dT(t, T): return -0.1 * (T - 20)
+    sol = ndsolve(dT, 100.0, 0, 60, 300)
+    print("T(60s) =", sol[300][1])
+
+# Build the GUI
+gui_clear()
+gui_label("=== Temperature Controller ===")
+gui_slider(15, 80, "on_setpoint")
+gui_button("Toggle Heater", "on_heat")
+gui_button("Plot Thermal Decay", "on_plot_btn")
+gui_show()
+```
+
+> **Note:** Callback names are strings matching NeoLanguage function names
+> defined in the same script. The host app dispatches GUI events back to
+> the interpreter between evaluation cycles.
+
+---
+
+## 19. Physics Constants Database
+
+The `const(name)` function returns the value of fundamental physical and
+mathematical constants in SI units.
+
+```nl
+# Speed of light
+c = const("c")          # 2.99792458e8 m/s
+
+# Boltzmann constant — thermal energy at room temperature
+kT = const("k_B") * 293.15
+print("kT =", kT, "J")  # ≈ 4.04e-21 J
+
+# Planck constant
+h = const("h")          # 6.62607015e-34 J·s
+
+# Avogadro
+NA = const("N_A")       # 6.02214076e23 mol⁻¹
+
+# Gravitational constant
+G = const("G")          # 6.6743e-11 m³/(kg·s²)
+```
+
+Use `const_desc(name)` to print the description and unit:
+```nl
+print(const_desc("m_e"))    # m_e = 9.10938e-31 kg — Electron rest mass
+print(const_desc("alpha"))  # alpha = 7.29735e-3  — Fine-structure constant
+```
+
+### Available Constants (selected)
+
+| Name | Value | Description |
+|------|-------|-------------|
+| `c` | 2.997 924 58×10⁸ m/s | Speed of light |
+| `h` | 6.626 070 15×10⁻³⁴ J·s | Planck constant |
+| `hbar` | 1.054 571 817×10⁻³⁴ J·s | Reduced Planck constant |
+| `k_B` | 1.380 649×10⁻²³ J/K | Boltzmann constant |
+| `N_A` | 6.022 140 76×10²³ mol⁻¹ | Avogadro constant |
+| `G` | 6.674 30×10⁻¹¹ m³/(kg·s²) | Gravitational constant |
+| `g` | 9.806 65 m/s² | Standard gravity |
+| `e` / `q_e` | 1.602 176 634×10⁻¹⁹ C | Elementary charge |
+| `m_e` | 9.109 383 70×10⁻³¹ kg | Electron mass |
+| `m_p` | 1.672 621 924×10⁻²⁷ kg | Proton mass |
+| `alpha` | 7.297 352 57×10⁻³ | Fine-structure constant |
+| `R` | 8.314 462 618 J/(mol·K) | Molar gas constant |
+| `F` | 96 485.332 12 C/mol | Faraday constant |
+| `sigma_SB` | 5.670 374 419×10⁻⁸ W/(m²·K⁴) | Stefan–Boltzmann constant |
+| `AU` | 1.495 978 707×10¹¹ m | Astronomical unit |
+| `eV` | 1.602 176 634×10⁻¹⁹ J | Electron-volt |
+
+> Full list: 54 constants. See `NeoPhysics.h` for the complete table.
+
+---
+
+## 20. Master Engineering Example
+
+This example demonstrates a complete engineering workflow:
+1. Load sensor data from CSV
+2. Fit a regression model
+3. Solve a related differential equation
+4. Display results in a custom GUI
+
+```nl
+# ─── Step 1: Load CSV measurement data ───
+data = import_csv("/RC_discharge.csv")
+# Format: [[t0, V0], [t1, V1], ...]
+t_vals = map(def(row): return row[0], data)
+v_vals = map(def(row): return row[1], data)
+
+# ─── Step 2: Fit exponential regression ───
+model = regress(t_vals, v_vals, "exponential")
+# model is a callable: model(t) → fitted voltage
+
+# ─── Step 3: Solve the RC discharge ODE ───
+# dV/dt = -V / (R*C),  R=10kΩ, C=100µF
+R = 10000.0
+C = 0.0001
+def dV(t, V): return -V / (R * C)
+
+V0 = v_vals[0]   # Initial voltage from data
+sol = ndsolve(dV, V0, 0, 5, 500)
+
+# ─── Step 4: Print key results ───
+tau = R * C
+print("RC time constant τ =", tau, "s")
+print("V(τ) analytical =", V0 / n(e))
+print("V(τ) numerical  =", sol[int(100 * tau)][1])
+
+# ─── Step 5: Build a GUI dashboard ───
+def on_plot(v):
+    print("Plotting", len(sol), "ODE points")
+    # In a real script, trigger a plot overlay here
+
+def on_info(v):
+    print(const_desc("e"))
+    print("tau =", tau, "s,  V0 =", V0, "V")
+
+gui_clear()
+gui_label("RC Discharge Analyser")
+gui_label("V0 = " + str(V0) + " V,  τ = " + str(tau) + " s")
+gui_button("Plot ODE Solution", "on_plot")
+gui_button("Show Constants", "on_info")
+gui_show()
+```
+
+---
+
+## 21. Keyboard Reference
 
 | Key | Editor Action |
 |-----|---------------|
@@ -1327,7 +1677,40 @@ print("P within 1σ:", p_within_1sigma)   # Should be ~0.68 for normal data
 
 ---
 
-## 16. Known Limitations
+## 22. Known Limitations
+
+| Key | Editor Action |
+|-----|---------------|
+| **F5** | Run program |
+| **F1** | Insert 4 spaces (indent) |
+| **F2** | Save to flash (`/neolang.nl`) |
+| **F3** | Load from flash |
+| **F4** | Insert `#` (comment) |
+| **MODE** | Exit to main menu |
+| **DEL** | Delete character |
+| **ENTER** | New line |
+| **AC** | Return focus to tab bar |
+| **←/→/↑/↓** | Cursor navigation |
+
+### Letter Keys
+
+| Key | Character |
+|-----|-----------|
+| ALPHA A–F | `a`–`f` |
+| X / Y | `x` / `y` |
+| SIN | `s` |
+| COS | `c` |
+| TAN | `t` |
+| LN | `n` |
+| LOG | `l` |
+| π | `p` |
+| e | `e` |
+| √ | `r` |
+| ANS | `i` |
+
+---
+
+## 22. Known Limitations
 
 | Limitation | Detail |
 |------------|--------|

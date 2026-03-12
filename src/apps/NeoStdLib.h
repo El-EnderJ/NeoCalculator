@@ -266,6 +266,56 @@ private:
     bool callToBin     (const std::vector<NeoValue>& args, NeoValue& result);
     bool callToHex     (const std::vector<NeoValue>& args, NeoValue& result);
 
+    // ── Phase 7: Special functions (NeoScientific) ───────────────
+
+    /// gamma(x) — Gamma function Γ(x)
+    bool callGamma     (const std::vector<NeoValue>& args, NeoValue& result);
+    /// beta(x, y) — Beta function B(x,y)
+    bool callBeta      (const std::vector<NeoValue>& args, NeoValue& result);
+    /// erf(x) — Error function
+    bool callErf       (const std::vector<NeoValue>& args, NeoValue& result);
+
+    // ── Phase 7: File I/O (NeoIO) ─────────────────────────────────
+
+    /// open(path, mode) — open file; returns handle
+    bool callOpen        (const std::vector<NeoValue>& args, NeoValue& result);
+    /// read(handle) — read entire file as String
+    bool callRead        (const std::vector<NeoValue>& args, NeoValue& result);
+    /// write(handle, str) — write string to file
+    bool callWrite       (const std::vector<NeoValue>& args, NeoValue& result);
+    /// close(handle) — close file
+    bool callClose       (const std::vector<NeoValue>& args, NeoValue& result);
+    /// json_encode(val) — serialize to JSON string
+    bool callJsonEncode  (const std::vector<NeoValue>& args, NeoValue& result);
+    /// json_decode(str) — parse JSON string
+    bool callJsonDecode  (const std::vector<NeoValue>& args, NeoValue& result);
+    /// export_csv(matrix, path) — write CSV file
+    bool callExportCsv   (const std::vector<NeoValue>& args, NeoValue& result);
+    /// import_csv(path) — read CSV file
+    bool callImportCsv   (const std::vector<NeoValue>& args, NeoValue& result);
+
+    // ── Phase 7: Physics Constants (NeoPhysics) ───────────────────
+
+    /// const(name) — return value of a physics/math constant
+    bool callConst       (const std::vector<NeoValue>& args, NeoValue& result);
+    /// const_desc(name) — return description string of a constant
+    bool callConstDesc   (const std::vector<NeoValue>& args, NeoValue& result);
+
+    // ── Phase 7: NeoGUI ──────────────────────────────────────────
+
+    /// gui_label(text) — add a static text label to the GUI
+    bool callGuiLabel    (const std::vector<NeoValue>& args, NeoValue& result);
+    /// gui_button(label, callback) — add a button to the GUI
+    bool callGuiButton   (const std::vector<NeoValue>& args, NeoValue& result);
+    /// gui_slider(min, max, callback) — add a slider to the GUI
+    bool callGuiSlider   (const std::vector<NeoValue>& args, NeoValue& result);
+    /// gui_input(label) — add a text input field to the GUI
+    bool callGuiInput    (const std::vector<NeoValue>& args, NeoValue& result);
+    /// gui_clear() — remove all GUI components
+    bool callGuiClear    (const std::vector<NeoValue>& args, NeoValue& result);
+    /// gui_show() — make the GUI screen visible
+    bool callGuiShow     (const std::vector<NeoValue>& args, NeoValue& result);
+
     // ── Helpers ───────────────────────────────────────────────────
 
     /// Extract a SymExpr* from a NeoValue (Symbolic or numeric literal).

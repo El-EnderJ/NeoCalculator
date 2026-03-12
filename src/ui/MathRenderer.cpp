@@ -672,24 +672,15 @@ void MathCanvas::drawOperator(lv_layer_t* layer, const NodeOperator* node,
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// drawEmpty — Placeholder □ (cuadrado gris tenue)
+// drawEmpty — Empty placeholder (no visual box; cursor position is sufficient)
 // ════════════════════════════════════════════════════════════════════════════
 
 void MathCanvas::drawEmpty(lv_layer_t* layer, const NodeEmpty* node,
                            int16_t x, int16_t yBaseline,
                            const FontMetrics& fm) {
-    const auto& l = node->layout();
-
-    // Centrar el cuadrado placeholder dentro de la bounding box del nodo
-    int16_t sqSize = EMPTY_SIZE;
-    int16_t sqX = static_cast<int16_t>(x + (l.width - sqSize) / 2);
-    int16_t sqY = static_cast<int16_t>(yBaseline - sqSize / 2 - 1);
-
-    // Dibujar cuadrado con borde gris y relleno muy tenue
-    drawFilledRect(layer, sqX, sqY, sqSize, sqSize,
-                   lv_color_hex(EMPTY_COLOR), LV_OPA_30);
-    drawBorderRect(layer, sqX, sqY, sqSize, sqSize,
-                   lv_color_hex(EMPTY_COLOR), LV_OPA_80, 1);
+    // Intentionally empty: the blinking cursor renders at this position,
+    // so no additional placeholder glyph (▯) is needed.
+    (void)layer; (void)node; (void)x; (void)yBaseline; (void)fm;
 }
 
 // ════════════════════════════════════════════════════════════════════════════

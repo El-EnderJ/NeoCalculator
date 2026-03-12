@@ -263,8 +263,8 @@ static NeoValue neoModAbsSpectrum(const std::vector<NeoValue>& a,
     for (const auto& v : in) {
         if (v.isList() && v.asList() && v.asList()->size() >= 2) {
             double r = (*v.asList())[0].toDouble();
-            double im2 = (*v.asList())[1].toDouble();
-            out_lst->push_back(NeoValue::makeNumber(std::sqrt(r * r + im2 * im2)));
+            double im_part = (*v.asList())[1].toDouble();
+            out_lst->push_back(NeoValue::makeNumber(std::sqrt(r * r + im_part * im_part)));
         } else {
             out_lst->push_back(NeoValue::makeNumber(std::fabs(v.toDouble())));
         }

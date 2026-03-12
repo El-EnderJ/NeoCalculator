@@ -1911,7 +1911,7 @@ first character.
 # Correct
 result = integrate(x^2, x)
 
-# Bug: 'theta' becomes 't' internally
+# Pitfall: 'theta' becomes 't' internally
 result = diff(theta^2, theta)   # Same as diff(t^2, t)
 ```
 

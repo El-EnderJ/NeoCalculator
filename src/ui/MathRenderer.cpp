@@ -1205,11 +1205,16 @@ void MathCanvas::drawSummation(lv_layer_t* layer, const NodeSummation* node,
 void MathCanvas::drawIntegralSymbol(lv_layer_t* layer,
                                     int16_t cx, int16_t symTop, int16_t symBot,
                                     int16_t halfW, lv_color_t color) {
+    // The symbol height is divided into INTEGRAL_CURVE_DIVISOR equal sections;
+    // the outer sections are the angled serif bridges, the inner section is
+    // the thick main stroke.
+    static constexpr int INTEGRAL_CURVE_DIVISOR = 6;
+
     // Derived geometry
-    int16_t serifLen = static_cast<int16_t>(halfW);                       // serif horizontal reach
-    int16_t curveLen = static_cast<int16_t>((symBot - symTop) / 6);       // angled segment height
-    int16_t strokeT  = static_cast<int16_t>(symTop + curveLen);           // top of main stroke
-    int16_t strokeB  = static_cast<int16_t>(symBot - curveLen);           // bottom of main stroke
+    int16_t serifLen = static_cast<int16_t>(halfW);                          // serif horizontal reach
+    int16_t curveLen = static_cast<int16_t>((symBot - symTop) / INTEGRAL_CURVE_DIVISOR);  // angled segment height
+    int16_t strokeT  = static_cast<int16_t>(symTop + curveLen);              // top of main stroke
+    int16_t strokeB  = static_cast<int16_t>(symBot - curveLen);              // bottom of main stroke
 
     // ── Top serif: curves right (like a small arc at the top of ∫) ──
     drawLine(layer,

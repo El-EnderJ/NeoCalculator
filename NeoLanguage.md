@@ -1,7 +1,7 @@
 # NeoLanguage — Official Language Bible
 
 > **File extension:** `.nl` (NeoLanguage)
-> **Version:** Phase 4 — Data Structures, Lists & Matrices, Complex Library
+> **Version:** Phase 5 — Data Science, Units & Advanced Calculus
 > **Target platform:** NeoCalculator / NumOS (ESP32-S3)
 
 ---
@@ -58,9 +58,12 @@ plot(sin(x), -6.28, 6.28)
 8. [Symbolic vs Numeric](#8-symbolic-vs-numeric)
 9. [Standard Library Reference](#9-standard-library-reference)
 10. [Functional Tools](#10-functional-tools)
-11. [Code Examples](#11-code-examples)
-12. [Keyboard Reference](#12-keyboard-reference)
-13. [Known Limitations](#13-known-limitations)
+11. [**Data Science**](#11-data-science)
+12. [**Physics & Units**](#12-physics--units)
+13. [**Advanced Calculus**](#13-advanced-calculus)
+14. [Code Examples](#14-code-examples)
+15. [Keyboard Reference](#15-keyboard-reference)
+16. [Known Limitations](#16-known-limitations)
 
 ---
 
@@ -149,16 +152,20 @@ return value.  In the REPL (console), non-`None` results are prefixed with
 | `symbolic` | CAS expression tree (SymExpr) | `sin(x)`, `x^2 + 1` |
 | `function` | User-defined function | `def f(x): return x*x` |
 | `list` | Ordered collection of values | `[1, 2, 3]`, `[[1,2],[3,4]]` |
+| `native_function` | Built-in C++ callable | `regress(...)` return value |
+| `quantity` | Physical quantity with units | `unit(5, "m")` |
 
 ### Type Arithmetic Escalation
 
 ```
-number  OP number   → number    (double arithmetic)
-exact   OP exact    → exact     (rational arithmetic)
-exact   OP number   → number    (promote to double)
-any     OP symbolic → symbolic  (CAS factory)
-list    + list      → list      (concatenation)
-list    OP scalar   → list      (element-wise vectorisation)
+number    OP number    → number    (double arithmetic)
+exact     OP exact     → exact     (rational arithmetic)
+exact     OP number    → number    (promote to double)
+any       OP symbolic  → symbolic  (CAS factory)
+list      + list       → list      (concatenation)
+list      OP scalar    → list      (element-wise vectorisation)
+quantity  OP quantity  → quantity  (dimensional arithmetic + unit checking)
+quantity  OP scalar    → quantity  (scale magnitude)
 ```
 
 ---
@@ -613,6 +620,8 @@ Print the type name of `val` and return its ordinal (0–6).
 | 4 | symbolic |
 | 5 | function |
 | 6 | list |
+| 7 | native_function |
+| 8 | quantity |
 
 ---
 
@@ -631,6 +640,40 @@ Request a numeric value from the user (UI hook).
 #### `msg_box("title", "content")`
 
 Display a message in the console.
+
+---
+
+### 9.7 Statistics (Phase 5)
+
+| Function | Description |
+|----------|-------------|
+| `mean(list)` | Arithmetic mean |
+| `median(list)` | Median value |
+| `stddev(list)` | Sample standard deviation |
+| `variance(list)` | Sample variance |
+| `sort(list)` | Sorted copy (ascending) |
+| `regress(x, y, model)` | Regression; returns callable function |
+| `pdf_normal(x, mu, sigma)` | Gaussian probability density |
+| `cdf_normal(x, mu, sigma)` | Gaussian cumulative distribution |
+| `factorial(n)` | n! |
+| `ncr(n, r)` | Binomial coefficient C(n,r) |
+| `npr(n, r)` | Permutations P(n,r) |
+
+### 9.8 Units (Phase 5)
+
+| Function | Description |
+|----------|-------------|
+| `unit(value, "unit")` | Create a physical quantity |
+| `convert(quantity, "unit")` | Convert to a different unit |
+
+### 9.9 Advanced Calculus (Phase 5)
+
+| Function | Description |
+|----------|-------------|
+| `limit(expr, var, point)` | Numerical limit approximation |
+| `taylor(expr, var, point, order)` | Taylor polynomial coefficients |
+| `sigma(expr, var, start, end)` | Numerical summation |
+| `table(func, start, end, step)` | Sample a function into a list |
 
 ---
 
@@ -676,15 +719,389 @@ for i in range(2, 7):       # i = 0..4  (stop - start = 5 iterations)
 
 ---
 
-## 11. Code Examples
+## 11. Data Science
 
-### 11.1 Hello World
+NeoLanguage Phase 5 introduces a professional statistics engine for data analysis
+on sensor data, experimental measurements, and any list of numbers.
+
+### 11.1 Descriptive Statistics
+
+All functions operate on a `list` value.
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `mean(list)` | Arithmetic mean | `mean([1,2,3,4,5])` → `3` |
+| `median(list)` | Median value | `median([1,3,2])` → `2` |
+| `stddev(list)` | Sample standard deviation | `stddev([2,4,4,4,5,5,7,9])` → `2` |
+| `variance(list)` | Sample variance | `variance([1,2,3])` → `1` |
+| `sort(list)` | Sorted copy (ascending) | `sort([3,1,2])` → `[1, 2, 3]` |
+
+```nl
+data = [23, 45, 12, 67, 34, 89, 22, 55]
+print("mean    =", mean(data))
+print("median  =", median(data))
+print("std dev =", stddev(data))
+print("sorted  =", sort(data))
+```
+
+### 11.2 Regression Analysis
+
+`regress(x_list, y_list, model)` fits a curve to your data and returns a
+**callable function** (not global variables like TI-Basic).
+
+#### Supported Models
+
+| Model | Formula | Use when |
+|-------|---------|----------|
+| `"linear"` | `a + b·x` | Data grows steadily |
+| `"quad"` | `a + b·x + c·x²` | Parabolic trend |
+| `"exp"` | `a·eˢ(b·x)` | Exponential growth/decay |
+| `"log"` | `a + b·ln(x)` | Logarithmic saturation |
+
+#### The Killer Feature: Regression Returns a Function
+
+```nl
+days   = [1, 2, 3, 4, 5, 6, 7]
+growth = [2.1, 4.2, 8.0, 16.3, 31.5, 64.0, 127.8]
+
+# Fit an exponential model
+f = regress(days, growth, "exp")
+
+# Use f like any function to predict
+print("Day 10 prediction:", f(10))
+print("Day 14 prediction:", f(14))
+
+# Generate a table of predicted values
+predictions = table(f, 1, 14, 1)
+print("Prediction table:", predictions)
+```
+
+The console output will show: `[regress] exp: a=1.053  b=0.693  R2=0.9999`
+
+#### Evaluating Fit Quality (R²)
+
+The R² value (printed by `regress`) measures goodness of fit (0–1, higher is better):
+- R² > 0.99: excellent fit
+- R² > 0.95: good fit
+- R² < 0.8:  consider a different model
+
+### 11.3 Probability Distributions
+
+#### Normal Distribution
+
+```nl
+# Gaussian PDF and CDF
+mu    = 0.0
+sigma = 1.0
+
+print("P(x=0)   =", pdf_normal(0, mu, sigma))   # => 0.3989
+print("P(x<1.0) =", cdf_normal(1, mu, sigma))   # => 0.8413
+print("P(x<-1)  =", cdf_normal(-1, mu, sigma))  # => 0.1587
+
+# 95% confidence interval: P(-1.96 < X < 1.96) ≈ 0.95
+lower = cdf_normal(-1.96, 0, 1)
+upper = cdf_normal( 1.96, 0, 1)
+print("95% CI coverage =", upper - lower)  # => 0.95
+```
+
+#### Combinatorics
+
+```nl
+print("10! =", factorial(10))       # => 3628800
+print("C(10,3) =", ncr(10, 3))      # => 120
+print("P(10,3) =", npr(10, 3))      # => 720
+```
+
+### 11.4 Complete Data Science Example
+
+```nl
+# Temperature sensor data (°C) over 8 hours
+hours = [0, 1, 2, 3, 4, 5, 6, 7]
+temps = [20.1, 22.3, 25.8, 30.2, 35.1, 38.9, 40.1, 39.5]
+
+# Descriptive stats
+print("Mean temp:", mean(temps))
+print("Std dev:", stddev(temps))
+print("Range:", sort(temps)[0], "to", sort(temps)[7])
+
+# Fit quadratic model (temperature peaks then drops)
+f = regress(hours, temps, "quad")
+
+# Predict temperature at hour 3.5
+print("Predicted at 3.5h:", f(3.5))
+
+# Find peak temperature by sampling
+best_h = 0
+best_t = 0.0
+for i in range(70):
+    h = i / 10.0
+    t = f(h)
+    if t > best_t:
+        best_t = t
+        best_h = h
+print("Estimated peak:", best_t, "at hour", best_h)
+```
+
+---
+
+## 12. Physics & Units
+
+NeoLanguage Phase 5 adds **dimensional analysis** — the ability to attach
+physical units to numbers so that the interpreter tracks dimensions and
+performs automatic conversions, just like Wolfram Alpha.
+
+### 12.1 Creating Quantities
+
+```nl
+mass = unit(70, "kg")        # 70 kilograms
+dist = unit(100, "m")        # 100 metres
+time = unit(9.58, "s")       # 9.58 seconds (100m world record)
+
+print(mass)   # => 70 kg
+print(dist)   # => 100 m
+```
+
+### 12.2 Unit Arithmetic
+
+#### Addition / Subtraction — Auto-convert to First Operand's Unit
+
+```nl
+a = unit(5, "m")
+b = unit(200, "cm")
+c = a + b               # Auto-converts 200cm → 2m
+print(c)                # => 7 m
+
+d = unit(1, "km") - unit(300, "m")
+print(d)                # => 0.7 km
+```
+
+#### Multiplication / Division — Units Combine
+
+```nl
+speed = unit(100, "m") / unit(9.58, "s")
+print(speed)            # => 10.438 m/s
+
+force = unit(70, "kg") * unit(9.81, "m/s2")
+print(force)            # => 686.7 N
+
+energy = unit(686.7, "N") * unit(10, "m")
+print(energy)           # => 6867 J
+```
+
+#### Scalar Multiplication
+
+```nl
+v = unit(5, "m/s")
+print(v * 2)            # => 10 m/s
+print(3.6 * v)          # => 18 m/s  (still m/s)
+```
+
+### 12.3 Unit Conversion
+
+```nl
+speed_kmh = convert(speed, "km/h")
+print(speed_kmh)           # => 37.58 km/h
+
+speed_mph = convert(speed, "mph")
+print(speed_mph)           # => 23.36 mph
+
+temp_c = unit(100, "C")    # 100 degrees Celsius
+temp_k = convert(temp_c, "K")
+print(temp_k)              # => 373.15 K
+
+temp_f = convert(temp_c, "F")
+print(temp_f)              # => 212 F
+```
+
+### 12.4 Supported Units
+
+#### Length
+| Unit | Full name | SI factor |
+|------|-----------|-----------|
+| `m` | metre | 1 |
+| `cm` | centimetre | 0.01 |
+| `mm` | millimetre | 0.001 |
+| `km` | kilometre | 1000 |
+| `in` | inch | 0.0254 |
+| `ft` | foot | 0.3048 |
+| `yd` | yard | 0.9144 |
+| `mi` | mile | 1609.344 |
+
+#### Mass
+| Unit | Full name | SI factor |
+|------|-----------|-----------|
+| `kg` | kilogram | 1 |
+| `g` | gram | 0.001 |
+| `lb` | pound | 0.45359 |
+| `oz` | ounce | 0.02835 |
+
+#### Time
+| Unit | Full name | SI factor |
+|------|-----------|-----------|
+| `s` | second | 1 |
+| `ms` | millisecond | 0.001 |
+| `min` | minute | 60 |
+| `h` | hour | 3600 |
+| `d` | day | 86400 |
+
+#### Force / Energy / Power
+| Unit | Quantity | SI equivalent |
+|------|----------|---------------|
+| `N` | Newton (force) | kg·m/s² |
+| `J` | Joule (energy) | kg·m²/s² |
+| `W` | Watt (power) | kg·m²/s³ |
+| `kJ`, `MJ` | kilo/megajoule | 1000/1000000 J |
+| `kWh` | kilowatt-hour | 3.6×10⁶ J |
+| `cal`, `kcal` | calorie / kilocalorie | 4.184 / 4184 J |
+
+#### Pressure
+| Unit | SI equivalent |
+|------|---------------|
+| `Pa` | 1 kg/(m·s²) |
+| `bar` | 100,000 Pa |
+| `atm` | 101,325 Pa |
+| `psi` | 6894.76 Pa |
+
+#### Temperature
+| Unit | Conversion |
+|------|-----------|
+| `K` | Kelvin (SI base) |
+| `C` | Celsius: K = °C + 273.15 |
+| `F` | Fahrenheit: K = (°F + 459.67) × 5/9 |
+
+### 12.5 Physics Script: Kinetic Energy with Units
+
+```nl
+# Kinetic energy: KE = 1/2 * m * v^2
+
+mass = unit(1200, "kg")          # car mass
+vel  = unit(27.78, "m/s")        # 100 km/h in m/s
+
+# KE = 0.5 * mass * vel * vel
+KE = mass * vel * vel * 0.5
+print("Kinetic energy:", KE)      # => 462xxxxxxx J (approx 462 kJ)
+
+# Convert to kJ for readability
+KE_kJ = convert(KE, "kJ")
+print("Kinetic energy:", KE_kJ)   # => 462.1 kJ
+```
+
+### 12.6 Physics Script: Free-Fall Distance
+
+```nl
+g    = unit(9.81, "m/s2")        # gravitational acceleration
+t    = unit(3.0, "s")            # time
+
+# d = 1/2 * g * t^2
+# (note: unit arithmetic on t^2 requires two multiplications)
+t2   = t * t                     # => Quantity with m/s2 units combined
+dist = g * t2 * 0.5
+print("Fall distance:", dist)     # => 44.145 m
+```
+
+---
+
+## 13. Advanced Calculus
+
+Phase 5 adds professional CAS functions for limits, Taylor series, and
+numerical summation.
+
+### 13.1 `limit(expr, var, point)`
+
+Compute the numerical limit of `expr` as `var` → `point` using Richardson
+extrapolation (two-sided).
+
+```nl
+# lim(x→0) sin(x)/x = 1
+print(limit(sin(x)/x, x, 0))     # => 1.0
+
+# lim(x→2) (x^2 - 4)/(x - 2) = 4
+print(limit((x^2 - 4)/(x - 2), x, 2))   # => 4.0
+
+# lim(x→∞) can be approximated with a large point
+print(limit(1/x, x, 1e6))        # => ~0.000001
+```
+
+### 13.2 `taylor(expr, var, point, order)`
+
+Generate the Taylor polynomial coefficients of `expr` around `point`.
+Returns a **list of coefficients** `[c₀, c₁, c₂, …, cₙ]` where the
+polynomial is `c₀ + c₁(x−a) + c₂(x−a)² + …`.
+
+```nl
+# Taylor series of sin(x) around x=0, order 5
+coeffs = taylor(sin(x), x, 0, 5)
+print("sin(x) Taylor coefficients:", coeffs)
+# => [0, 1, 0, -0.1667, 0, 0.00833]
+# Polynomial: 0 + x + 0 - x^3/6 + 0 + x^5/120
+
+# Taylor series of e^x around x=0, order 4
+e_coeffs = taylor(exp(x), x, 0, 4)
+print("e^x Taylor coefficients:", e_coeffs)
+# => [1, 1, 0.5, 0.1667, 0.0417]
+```
+
+**Evaluating the Taylor polynomial at a point:**
+
+```nl
+coeffs = taylor(sin(x), x, 0, 5)
+# Evaluate at x = pi/6 (0.5236)
+pt = 0.5236
+approx = 0.0
+for k in range(6):
+    power = 1.0
+    for j in range(k):
+        power = power * pt
+    approx = approx + coeffs[k] * power
+print("sin(pi/6) Taylor approx:", approx)   # ≈ 0.5
+print("sin(pi/6) exact:", sin(0.5236))       # ≈ 0.5
+```
+
+### 13.3 `sigma(expr, var, start, end)`
+
+Numerical summation: Σ expr from var=start to var=end.
+
+```nl
+# Sum 1 + 2 + 3 + ... + 100 = 5050
+print(sigma(x, x, 1, 100))          # => 5050
+
+# Sum of squares: 1^2 + 2^2 + ... + 10^2 = 385
+print(sigma(x^2, x, 1, 10))         # => 385
+
+# Approximate pi via Leibniz series: pi/4 = 1 - 1/3 + 1/5 - ...
+# sigma((-1)^x / (2*x+1), x, 0, 1000) * 4 ≈ pi
+# (Use the formula manually since (-1)^x needs careful handling)
+```
+
+### 13.4 `table(func, start, end, step)`
+
+Sample a function (especially a regression model) over a range and return
+a list of `[x, y]` pairs.
+
+```nl
+# Regression model prediction table
+days = [1, 2, 3, 4, 5]
+vals = [2, 4, 8, 16, 32]
+f = regress(days, vals, "exp")
+
+# Generate predictions for days 1–10
+tbl = table(f, 1, 10, 1)
+for i in range(len(tbl)):
+    row = tbl[i]
+    print("day", row[0], ":", row[1])
+```
+
+---
+
+## 14. Code Examples
+
+### 14.1 Hello World
 
 ```nl
 print("Hello, NeoWorld!")
 ```
 
-### 11.2 Fibonacci Sequence
+### 14.2 Fibonacci Sequence
 
 ```nl
 def fib(n):
@@ -696,7 +1113,7 @@ for i in range(10):
     print(fib(i))
 ```
 
-### 11.3 Symbolic Differentiation
+### 14.3 Symbolic Differentiation
 
 ```nl
 p = x^4 - 3*x^2 + 2
@@ -707,14 +1124,14 @@ print("p' =", dp)
 print("p'' =", ddp)
 ```
 
-### 11.4 Solving an Equation
+### 14.4 Solving an Equation
 
 ```nl
 poly = x^3 - 6*x^2 + 11*x - 6
 solve(poly, x)
 ```
 
-### 11.5 Solving a Linear System (Cramer's Rule)
+### 14.5 Solving a Linear System (Cramer's Rule)
 
 ```nl
 # Solve:  2x + 3y = 8
@@ -729,7 +1146,7 @@ sol = cramer2(2, 3, 1, -2, 8, -3)
 print("x =", sol[0], "  y =", sol[1])
 ```
 
-### 11.6 Vector Operations
+### 14.6 Vector Operations
 
 ```nl
 u = [1, 0, 0]
@@ -744,7 +1161,7 @@ print("w =", w)
 print("len(w) =", len(w))
 ```
 
-### 11.7 Taylor Expansion of sin(x)
+### 14.7 Taylor Expansion of sin(x)
 
 ```nl
 # Approximation: sin(x) ≈ x - x^3/6 + x^5/120
@@ -762,7 +1179,7 @@ plot(sin(x), -4, 4)
 plot(taylor, -4, 4)
 ```
 
-### 11.8 Matrix Determinant (2x2)
+### 14.8 Matrix Determinant (2x2)
 
 ```nl
 def det2(M):
@@ -772,7 +1189,7 @@ A = [[3, 7], [1, -4]]
 print("det(A) =", det2(A))   # => 3*(-4) - 7*1 = -19
 ```
 
-### 11.9 Newton's Method (manual)
+### 14.9 Newton's Method (manual)
 
 ```nl
 # Solve sqrt(2) using Newton iterations for x^2 - 2 = 0
@@ -785,7 +1202,7 @@ print("sqrt(2) =", x0)
 print("n(sqrt(2)) =", n(sqrt(2)))
 ```
 
-### 11.10 Map and Filter Example
+### 14.10 Map and Filter Example
 
 ```nl
 def square(x):
@@ -803,7 +1220,7 @@ print("Big squares:", big_squares)
 # => [36, 49, 64, 81, 100]
 ```
 
-### 11.11 Numeric Constants Demo
+### 14.11 Numeric Constants Demo
 
 ```nl
 print("pi  =", n(pi))           # 3.141592654
@@ -812,9 +1229,72 @@ print("phi =", n(phi))          # 1.618033989
 print("tau =", n(pi * 2))       # 6.283185307
 ```
 
+### 14.12 Sensor Data Regression & Plot (Phase 5)
+
+```nl
+# Simulate sensor data: exponential growth
+days   = [1, 2, 3, 4, 5, 6, 7, 8]
+counts = [3, 6, 12, 23, 47, 94, 189, 378]
+
+# Fit exponential model
+f = regress(days, counts, "exp")
+
+# Predict future values
+print("Day 10:", f(10))
+print("Day 14:", f(14))
+
+# Plot regression curve
+plot(f(x), 0, 15)
+```
+
+### 14.13 Physics: Projectile Motion (Phase 5)
+
+```nl
+# Projectile motion with units
+g    = unit(9.81, "m/s2")
+v0   = unit(20.0, "m/s")    # initial velocity
+ang  = 0.7854               # 45 degrees in radians
+
+v0x  = v0 * cos(ang)        # horizontal component (m/s)
+v0y  = v0 * sin(ang)        # vertical component (m/s)
+
+# Time of flight: T = 2*v0y/g
+# (manual: g is Quantity, v0y is Quantity)
+v0y_num = v0y.magnitude      # get SI value
+g_num   = g.magnitude
+T = 2 * v0y_num / g_num
+
+# Range: R = v0x * T
+R = v0x.magnitude * T
+
+print("Time of flight:", T, "s")
+print("Range:", R, "m")
+```
+
+### 14.14 Statistical Analysis of Sensor Data (Phase 5)
+
+```nl
+# Temperature readings over 20 samples
+temps = [22.1, 22.5, 23.0, 22.8, 23.2, 23.5, 24.0, 23.8,
+         24.2, 24.5, 24.8, 25.0, 25.2, 25.0, 24.8, 24.5,
+         24.2, 24.0, 23.8, 23.5]
+
+print("Mean     =", mean(temps))
+print("Std Dev  =", stddev(temps))
+print("Median   =", median(temps))
+print("Min/Max  =", sort(temps)[0], "/", sort(temps)[19])
+
+# Test for normal distribution
+mu    = mean(temps)
+sigma = stddev(temps)
+p_within_1sigma = cdf_normal(mu + sigma, mu, sigma) -
+                  cdf_normal(mu - sigma, mu, sigma)
+print("P within 1σ:", p_within_1sigma)   # Should be ~0.68 for normal data
+```
+
 ---
 
-## 12. Keyboard Reference
+## 15. Keyboard Reference
 
 | Key | Editor Action |
 |-----|---------------|
@@ -847,18 +1327,23 @@ print("tau =", n(pi * 2))       # 6.283185307
 
 ---
 
-## 13. Known Limitations
+## 16. Known Limitations
 
 | Limitation | Detail |
 |------------|--------|
 | **Single-char variable names in CAS** | Symbolic variables (`SymVar`) store one character. `alpha` and `apple` both become `a` in the CAS. Use single-letter names (`x`, `y`, `z`, `t`, `n`) for symbolic math. |
-| **No string type** | NeoLanguage currently has no `string` data type. Text is only used in `print()`, `input_num()`, and `msg_box()` calls. |
+| **No string type** | NeoLanguage currently has no `string` data type. Text is only used in `print()`, `input_num()`, and `msg_box()` calls. Unit strings are passed as-is. |
 | **`input_num` is non-blocking** | Returns 0 immediately; a modal UI hook is planned for a future release. |
 | **Loop limit** | `while` and `for` loops are capped at 10 000 iterations to prevent watchdog resets on embedded hardware. |
 | **Recursion depth** | Deep recursion may overflow the ESP32 call stack. Iterative solutions are preferred for large inputs. |
 | **Plot is momentary** | The plot overlay is dismissed on the next keypress. There is no zoom or trace mode in the NeoLanguage plot overlay (use GrapherApp for those features). |
 | **range(start, stop)** | Currently iterates `stop - start` times starting from 0. Full Python-style range with configurable start is planned. |
 | **Matrix multiplication** | Full matrix-matrix multiply (dot product) is not yet built in; use `dot()` for vectors or implement with `map`/`for` loops. |
+| **`table()` and user functions** | `table()` currently only evaluates `native_function` (regression) callables. For user-defined functions, use `map()` over a generated list instead. |
+| **limit() is numerical only** | `limit()` uses Richardson extrapolation — it cannot compute symbolic limits (e.g. limits involving infinities algebraically). Use `n()` + manual evaluation for simple cases. |
+| **taylor() coefficient precision** | Taylor coefficients are computed via numerical differentiation. For high-order terms (k > 6), floating-point cancellation may reduce accuracy. |
+| **Regression model persistence** | Regression models returned by `regress()` are in-memory only. They cannot be saved to flash directly. Save the coefficients as variables instead. |
+| **Unit compound expressions** | Complex compound unit strings like `"kg*m/s^2"` are not yet parsed. Use named units (`"N"`, `"J"`) or sequential arithmetic. |
 
 ---
 

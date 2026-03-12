@@ -50,6 +50,8 @@
 #include "../math/cas/SymExpr.h"
 #include "NeoValue.h"
 #include "NeoEnv.h"
+#include "NeoStats.h"
+#include "NeoUnits.h"
 
 // ════════════════════════════════════════════════════════════════════
 // NeoPlotRequest — data produced by plot() for the host to render
@@ -191,6 +193,53 @@ private:
 
     /// msg_box(title, content) — display modal dialog via UI hook
     bool callMsgBox    (const std::vector<NeoValue>& args, NeoValue& result);
+
+    // ── Phase 5: Statistics ───────────────────────────────────────
+
+    /// mean(list) — arithmetic mean
+    bool callMean      (const std::vector<NeoValue>& args, NeoValue& result);
+    /// median(list) — median
+    bool callMedian    (const std::vector<NeoValue>& args, NeoValue& result);
+    /// stddev(list) — sample standard deviation
+    bool callStddev    (const std::vector<NeoValue>& args, NeoValue& result);
+    /// variance(list) — sample variance
+    bool callVariance  (const std::vector<NeoValue>& args, NeoValue& result);
+    /// sort(list) — sorted copy ascending
+    bool callSort      (const std::vector<NeoValue>& args, NeoValue& result);
+    /// regress(x, y, model) — regression; returns NativeFunction
+    bool callRegress   (const std::vector<NeoValue>& args, NeoValue& result);
+    /// pdf_normal(x, mu, sigma) — Gaussian PDF
+    bool callPdfNormal (const std::vector<NeoValue>& args, NeoValue& result);
+    /// cdf_normal(x, mu, sigma) — Gaussian CDF
+    bool callCdfNormal (const std::vector<NeoValue>& args, NeoValue& result);
+    /// factorial(n)
+    bool callFactorial (const std::vector<NeoValue>& args, NeoValue& result);
+    /// ncr(n, r) — binomial coefficient
+    bool callNcr       (const std::vector<NeoValue>& args, NeoValue& result);
+    /// npr(n, r) — permutations
+    bool callNpr       (const std::vector<NeoValue>& args, NeoValue& result);
+
+    // ── Phase 5: Units ────────────────────────────────────────────
+
+    /// unit(value, "unit_str") — create a Quantity
+    bool callUnit      (const std::vector<NeoValue>& args, NeoValue& result);
+    /// convert(quantity, "unit_str") — unit conversion
+    bool callConvert   (const std::vector<NeoValue>& args, NeoValue& result);
+
+    // ── Phase 5: Advanced Calculus ────────────────────────────────
+
+    /// limit(expr, var, point) — numerical limit approximation
+    bool callLimit     (const std::vector<NeoValue>& args, NeoValue& result,
+                        cas::SymExprArena& sa);
+    /// taylor(expr, var, point, order) — Taylor polynomial
+    bool callTaylor    (const std::vector<NeoValue>& args, NeoValue& result,
+                        cas::SymExprArena& sa);
+    /// sum(expr, var, start, end) — numerical/symbolic summation
+    bool callSumExpr   (const std::vector<NeoValue>& args, NeoValue& result,
+                        cas::SymExprArena& sa);
+    /// table(func, start, end, step) — list of sampled values
+    bool callTable     (const std::vector<NeoValue>& args, NeoValue& result,
+                        NeoEnv& env, cas::SymExprArena& sa);
 
     // ── Helpers ───────────────────────────────────────────────────
 

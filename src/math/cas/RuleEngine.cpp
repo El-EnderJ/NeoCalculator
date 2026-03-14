@@ -16,6 +16,7 @@
  */
 
 #include "RuleEngine.h"
+#include "AstDiff.h"
 #include <algorithm>
 #include <cassert>
 
@@ -642,9 +643,9 @@ NodePtr RuleEngine::tryRewrite(const NodePtr& nodePtr,
 
 RewriteResult RuleEngine::applyOneStep(const NodePtr& root) {
     RewriteResult result;
-    result.changed = false;
-    result.newTree = root;
-    result.phase   = RulePhase::Expansion;
+    result.changed      = false;
+    result.newTree      = root;
+    result.phase        = RulePhase::Expansion;
 
     if (!root) return result;
 
@@ -653,11 +654,12 @@ RewriteResult RuleEngine::applyOneStep(const NodePtr& root) {
     NodePtr     newRoot = tryRewrite(root, ruleName, ruleDesc, phase);
 
     if (newRoot) {
-        result.changed  = true;
-        result.newTree  = std::move(newRoot);
-        result.ruleName = std::move(ruleName);
-        result.ruleDesc = std::move(ruleDesc);
-        result.phase    = phase;
+        result.changed      = true;
+        result.newTree      = std::move(newRoot);
+        result.affectedNode = findChangedNodes(root, result.newTree);
+        result.ruleName     = std::move(ruleName);
+        result.ruleDesc     = std::move(ruleDesc);
+        result.phase        = phase;
     }
 
     return result;
@@ -682,10 +684,11 @@ RuleEngine::SolveResult RuleEngine::applyToFixedPoint(const NodePtr& root,
             break;
         }
         StepLog log;
-        log.ruleName = std::move(r.ruleName);
-        log.ruleDesc = std::move(r.ruleDesc);
-        log.phase    = r.phase;
-        log.tree     = r.newTree;
+        log.ruleName     = std::move(r.ruleName);
+        log.ruleDesc     = std::move(r.ruleDesc);
+        log.phase        = r.phase;
+        log.tree         = r.newTree;
+        log.affectedNode = r.affectedNode;
         solveResult.steps.push_back(std::move(log));
         current = r.newTree;
     }

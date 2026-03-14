@@ -63,7 +63,13 @@
  *       current = result.newTree;
  *   }
  *
- * Part of: NumOS CAS-S3-ULTRA — Phase 13A (TRS Infrastructure)
+ * Phase 13B additions:
+ *   • RuleMetadata struct — bundles name, description, and phase for external consumers.
+ *   • RewriteResult::affectedNode — smallest changed sub-tree, computed by AstDiff and
+ *     passed to the StepLogger / Smart Highlighter for UI accent-colour rendering.
+ *   • StepLog::affectedNode — same field in the per-step history record.
+ *
+ * Part of: NumOS CAS-S3-ULTRA — Phase 13A/B (TRS Infrastructure + Algebraic Brain)
  */
 
 #pragma once
@@ -252,17 +258,39 @@ public:
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-// §5 — RewriteResult
+// §5a — RuleMetadata
+//
+// Convenience struct that bundles a rule's identity and phase.  Useful for
+// the StepLogger and UI consumers that do not need the full RewriteResult.
+// ═════════════════════════════════════════════════════════════════════════════
+
+struct RuleMetadata {
+    std::string name;         ///< Short rule identifier (e.g. "combine_constants").
+    std::string description;  ///< Human-readable step-log text.
+    RulePhase   phase;        ///< Pedagogical phase this rule belongs to.
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §5b — RewriteResult
 //
 // Returned by RuleEngine::applyOneStep(); bundles the outcome of one step.
+//
+// Phase 13B extension: `affectedNode` is the smallest changed sub-tree as
+// identified by AstDiff::findChangedNodes().  Pass it to the StepLogger /
+// Smart Highlighter to render the change in an accent colour in the UI.
 // ═════════════════════════════════════════════════════════════════════════════
 
 struct RewriteResult {
-    bool    changed;      ///< False if no rule fired (fixed point reached).
-    NodePtr newTree;      ///< The new root after rewriting (shares sub-trees with old).
-    std::string ruleName; ///< Name of the rule that was applied.
-    std::string ruleDesc; ///< Human-readable description for the step log.
-    RulePhase   phase;    ///< Phase of the applied rule.
+    bool    changed;          ///< False if no rule fired (fixed point reached).
+    NodePtr newTree;          ///< The new root after rewriting (shares sub-trees with old).
+    NodePtr affectedNode;     ///< Smallest changed sub-tree (for Smart Highlighter). May be
+                              ///  null when changed==false or diffing yields no single node.
+    std::string ruleName;     ///< Name of the rule that was applied.
+    std::string ruleDesc;     ///< Human-readable description for the step log.
+    RulePhase   phase;        ///< Phase of the applied rule.
+
+    /// Convenience accessor: returns a RuleMetadata struct for the applied rule.
+    RuleMetadata metadata() const { return {ruleName, ruleDesc, phase}; }
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -323,7 +351,8 @@ public:
         std::string ruleName;
         std::string ruleDesc;
         RulePhase   phase;
-        NodePtr     tree;     ///< Tree state AFTER this step (shared with history)
+        NodePtr     tree;          ///< Tree state AFTER this step (shared with history)
+        NodePtr     affectedNode;  ///< Smallest changed sub-tree (for Smart Highlighter).
     };
     struct SolveResult {
         NodePtr               finalTree;

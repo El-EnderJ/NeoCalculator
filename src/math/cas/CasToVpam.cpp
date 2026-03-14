@@ -139,6 +139,24 @@ vpam::NodePtr CasToVpam::convertSum(const SumNode* s, Context* ctx) {
                 const auto* neg = static_cast<const NegationNode*>(child.get());
                 r->appendChild(vOp(vpam::OpKind::Sub));
                 r->appendChild(convertNode(neg->operand, ctx));
+            } else if (child->nodeType == NodeType::Constant) {
+                // Negative constant in a sum: render as "- |value|" not "+ -value"
+                const auto* cn = static_cast<const ConstantNode*>(child.get());
+                if (cn->value < 0.0) {
+                    // Render as subtraction of the absolute value
+                    char buf[32];
+                    double absV = -cn->value;
+                    if (absV == std::floor(absV) && absV < MAX_INTEGER_DISPLAY) {
+                        snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(absV));
+                    } else {
+                        snprintf(buf, sizeof(buf), "%g", absV);
+                    }
+                    r->appendChild(vOp(vpam::OpKind::Sub));
+                    r->appendChild(vNumber(buf));
+                } else {
+                    r->appendChild(vOp(vpam::OpKind::Add));
+                    r->appendChild(convertNode(child, ctx));
+                }
             } else {
                 r->appendChild(vOp(vpam::OpKind::Add));
                 r->appendChild(convertNode(child, ctx));

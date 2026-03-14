@@ -55,6 +55,49 @@ static bool isNumeric(const NodePtr& node) {
     return !std::isnan(getNumericValue(node));
 }
 
+/// Returns the highest power of `var` that appears in `node`.
+/// Exposed as a static helper so both new rules and checkNonLinearHandover can use it.
+static int maxDegreeOf(const NodePtr& node, char var) {
+    if (!node) return 0;
+    switch (node->nodeType) {
+        case NodeType::Constant:  return 0;
+        case NodeType::Variable: {
+            const auto* v = static_cast<const VariableNode*>(node.get());
+            return (v->name.size() == 1 && v->name[0] == var) ? 1 : 0;
+        }
+        case NodeType::Negation: {
+            const auto* n = static_cast<const NegationNode*>(node.get());
+            return maxDegreeOf(n->operand, var);
+        }
+        case NodeType::Sum: {
+            const auto* s = static_cast<const SumNode*>(node.get());
+            int d = 0;
+            for (const auto& c : s->children) d = std::max(d, maxDegreeOf(c, var));
+            return d;
+        }
+        case NodeType::Product: {
+            const auto* p = static_cast<const ProductNode*>(node.get());
+            int d = 0;
+            for (const auto& c : p->children) d += maxDegreeOf(c, var);
+            return d;
+        }
+        case NodeType::Power: {
+            const auto* pw = static_cast<const PowerNode*>(node.get());
+            if (pw->exponent && pw->exponent->isConstant()) {
+                double exp = static_cast<const ConstantNode*>(pw->exponent.get())->value;
+                return static_cast<int>(maxDegreeOf(pw->base, var) * exp);
+            }
+            return maxDegreeOf(pw->base, var);
+        }
+        case NodeType::Equation: {
+            const auto* eq = static_cast<const EquationNode*>(node.get());
+            return std::max(maxDegreeOf(eq->lhs, var), maxDegreeOf(eq->rhs, var));
+        }
+        default:
+            return 0;
+    }
+}
+
 /// Format a double exponent as a short string: 2.0 → "2", 0.5 → "0.5".
 static std::string fmtExp(double e) {
     double intpart;
@@ -310,6 +353,47 @@ static RewriteRule makeCombineConstantsRule() {
             }
 
             return nullptr;
+        }
+    };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rule 4b — NormalizeSigns:  Sum(a, Constant(-v)) → Sum(a, Neg(Constant(v)))
+//
+// Ensures that negative constants inside a sum are represented as
+// NegationNode(ConstantNode(v)) rather than ConstantNode(-v), so the display
+// always renders "a - 3" instead of "a + -3".
+//
+// High priority: placed before CombineConstants so that sign normalisation
+// happens before any constant folding.
+// ─────────────────────────────────────────────────────────────────────────────
+static RewriteRule makeNormalizeSignsRule() {
+    return RewriteRule{
+        "NormalizeSigns",
+        "Rewrite addition of a negative constant as subtraction (a + -3 → a - 3)",
+        RulePhase::Simplification,
+        [](const AstNode& node, CasMemoryPool& pool) -> NodePtr {
+            if (node.nodeType != NodeType::Sum) return nullptr;
+            const auto& sum = static_cast<const SumNode&>(node);
+            bool changed = false;
+            NodeList newKids;
+            newKids.reserve(sum.children.size());
+            for (std::size_t i = 0; i < sum.children.size(); ++i) {
+                const auto& child = sum.children[i];
+                // Only rewrite non-first children with negative constant values
+                if (i > 0 && child && child->nodeType == NodeType::Constant) {
+                    double v = static_cast<const ConstantNode&>(*child).value;
+                    if (v < 0.0 && !std::isnan(v)) {
+                        // Convert Constant(-v) → Negation(Constant(v))
+                        newKids.push_back(makeNegation(pool, makeConstant(pool, -v)));
+                        changed = true;
+                        continue;
+                    }
+                }
+                newKids.push_back(child);
+            }
+            if (!changed) return nullptr;
+            return makeSum(pool, std::move(newKids));
         }
     };
 }
@@ -573,6 +657,60 @@ static RewriteRule makeMoveVariablesToLHSRule(char var) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Rule 9b — MoveRHSConstantsToLHS  (Transposition — quadratic normalisation)
+//
+// Pattern: Equation where LHS is at least degree 2, and RHS is a non-zero
+//          constant.  Subtracts the RHS constant from both sides so that the
+//          equation reaches the standard form  ax² + bx + c = 0  required
+//          before the Quadratic Formula handover can fire.
+//
+//   2x² - 6x = 4  →  2x² - 6x + (-4) = 4 + (-4)
+//
+// On the next step(s), CombineConstants / IdentityElimination simplify to
+//   2x² - 6x - 4 = 0.
+// ─────────────────────────────────────────────────────────────────────────────
+static RewriteRule makeMoveRHSConstantsToLHSRule(char var) {
+    return RewriteRule{
+        "MoveRHSConstantsToLHS",
+        "Subtract the constant from both sides to bring the equation to standard form (= 0)",
+        RulePhase::Transposition,
+        [var](const AstNode& node, CasMemoryPool& pool) -> NodePtr {
+            if (node.nodeType != NodeType::Equation) return nullptr;
+            const auto& eq = static_cast<const EquationNode&>(node);
+            if (!eq.lhs || !eq.rhs) return nullptr;
+
+            // Only fire for degree ≥ 2 equations (quadratic and above)
+            if (maxDegreeOf(eq.lhs, var) < 2) return nullptr;
+
+            // RHS must be a non-zero constant
+            double rhsVal = getNumericValue(eq.rhs);
+            if (std::isnan(rhsVal) || isApprox(rhsVal, 0.0)) return nullptr;
+
+            // Adjustment = -RHS constant
+            NodePtr adjustment = makeConstant(pool, -rhsVal);
+
+            // New LHS: lhs + adjustment
+            NodePtr newLhs;
+            if (eq.lhs->nodeType == NodeType::Sum) {
+                const auto& lhsSum = static_cast<const SumNode&>(*eq.lhs);
+                NodeList kids;
+                kids.reserve(lhsSum.children.size() + 1);
+                for (const auto& c : lhsSum.children) kids.push_back(c);
+                kids.push_back(adjustment);
+                newLhs = makeSum(pool, std::move(kids));
+            } else {
+                newLhs = makeSum(pool, {eq.lhs, adjustment});
+            }
+
+            // New RHS: rhs + adjustment  →  0 after simplification
+            NodePtr newRhs = makeSum(pool, {eq.rhs, adjustment});
+
+            return makeEquation(pool, newLhs, newRhs);
+        }
+    };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Rule 10 — DivideByCoefficient:  A·x = B  →  x = B/A
 //
 // Fires when LHS is exactly a scalar multiple of the target variable:
@@ -647,14 +785,15 @@ static RewriteRule makeDivideByCoefficientRule(char var) {
 
 std::vector<RewriteRule> makeAlgebraicRules(CasMemoryPool& /*pool*/, char var) {
     std::vector<RewriteRule> rules;
-    rules.reserve(10);
+    rules.reserve(12);
 
     // Phase 1 — Expansion & Cleanup (applied first)
     rules.push_back(makeDoubleNegationRule());
     rules.push_back(makeDistributivePropertyRule());
     rules.push_back(makePowerExpansionRule());
 
-    // Phase 2 — Simplification
+    // Phase 2 — Simplification (NormalizeSigns before CombineConstants)
+    rules.push_back(makeNormalizeSignsRule());
     rules.push_back(makeCombineConstantsRule());
     rules.push_back(makeConstantPowerEvalRule());
     rules.push_back(makeCombineLikeTermsRule());
@@ -663,6 +802,7 @@ std::vector<RewriteRule> makeAlgebraicRules(CasMemoryPool& /*pool*/, char var) {
     // Phase 3 — Transposition
     rules.push_back(makeMoveConstantsToRHSRule());
     rules.push_back(makeMoveVariablesToLHSRule(var));
+    rules.push_back(makeMoveRHSConstantsToLHSRule(var));
 
     // Phase 4 — Reduction
     rules.push_back(makeDivideByCoefficientRule(var));
@@ -675,50 +815,6 @@ std::vector<RewriteRule> makeAlgebraicRules(CasMemoryPool& /*pool*/, char var) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace {
-
-/// Returns the highest power of `var` that appears in `node`.
-/// Returns 0 if the node is constant, 1 for linear, 2 for quadratic, etc.
-static int maxDegree(const NodePtr& node, char var) {
-    if (!node) return 0;
-    switch (node->nodeType) {
-        case NodeType::Constant:  return 0;
-        case NodeType::Variable: {
-            const auto* v = static_cast<const VariableNode*>(node.get());
-            return (v->name.size() == 1 && v->name[0] == var) ? 1 : 0;
-        }
-        case NodeType::Negation: {
-            const auto* n = static_cast<const NegationNode*>(node.get());
-            return maxDegree(n->operand, var);
-        }
-        case NodeType::Sum: {
-            const auto* s = static_cast<const SumNode*>(node.get());
-            int d = 0;
-            for (const auto& c : s->children) d = std::max(d, maxDegree(c, var));
-            return d;
-        }
-        case NodeType::Product: {
-            const auto* p = static_cast<const ProductNode*>(node.get());
-            int d = 0;
-            for (const auto& c : p->children) d += maxDegree(c, var);
-            return d;
-        }
-        case NodeType::Power: {
-            const auto* pw = static_cast<const PowerNode*>(node.get());
-            // Only handle constant exponents
-            if (pw->exponent && pw->exponent->isConstant()) {
-                double exp = static_cast<const ConstantNode*>(pw->exponent.get())->value;
-                return static_cast<int>(maxDegree(pw->base, var) * exp);
-            }
-            return maxDegree(pw->base, var);
-        }
-        case NodeType::Equation: {
-            const auto* eq = static_cast<const EquationNode*>(node.get());
-            return std::max(maxDegree(eq->lhs, var), maxDegree(eq->rhs, var));
-        }
-        default:
-            return 0;
-    }
-}
 
 /// True if the equation is in the "solved" form:  var = constant.
 static bool isSolved(const NodePtr& tree, char var) {
@@ -740,8 +836,13 @@ void checkNonLinearHandover(RuleEngine::SolveResult& result, char var) {
     if (!result.finalTree || !result.finalTree->isEquation()) return;
     const auto* eq = static_cast<const EquationNode*>(result.finalTree.get());
 
-    int degree = maxDegree(eq->lhs, var);
+    // Only hand over to the Quadratic Formula once LHS is degree 2 AND
+    // the RHS has already been normalised to zero (= 0 form).
+    int degree = maxDegreeOf(eq->lhs, var);
     if (degree != 2) return;
+
+    double rhsVal = getNumericValue(eq->rhs);
+    if (!isApprox(rhsVal, 0.0)) return;   // RHS not yet zero — transposition pending
 
     // Append a special handover step.
     RuleEngine::StepLog handover;

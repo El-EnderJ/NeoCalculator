@@ -867,10 +867,14 @@ void EquationsApp::showSteps() {
     _statusBar.setTitle("Steps");
     _stepScroll = 0;
 
+    // For 2-equation systems, use the SystemTutor CAS step display.
+    if (_numEquations == 2 && _eqRowData[0] && _eqRowData[1]) {
+        buildSystemCASStepsDisplay();
+    }
     // For single-equation solves, try to build algebraic CAS steps
     // using the RuleEngine.  Fall back to the OmniSolver step log if the
     // equation cannot be parsed by the simple TRS parser.
-    if (_isOmniSolve && _numEquations == 1 && _eqRowData[0]) {
+    else if (_isOmniSolve && _numEquations == 1 && _eqRowData[0]) {
         buildCASStepsDisplay();
     } else {
         buildStepsDisplay();
@@ -2133,14 +2137,6 @@ void EquationsApp::buildCASStepsDisplay() {
 
     const auto& steps = _casResult.steps;
 
-    if (steps.empty()) {
-        lv_obj_t* lbl = lv_label_create(_stepsContainer);
-        lv_label_set_text(lbl, "No steps available.");
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
-        lv_obj_set_style_text_color(lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-        return;
-    }
-
     static constexpr int16_t CANVAS_MAX_W =
         static_cast<int16_t>(SCREEN_W - 2 * PAD - 8);
 
@@ -2188,7 +2184,26 @@ void EquationsApp::buildCASStepsDisplay() {
         _stepRenderers.push_back(std::move(srd));
     };
 
-    // ── 4. Iterate steps ────────────────────────────────────────────────
+    // ── 4a. Step 0 — Original Equation (always shown first) ─────────────
+    {
+        lv_obj_t* descLbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(descLbl, "0. Original Equation");
+        lv_obj_set_width(descLbl, CANVAS_MAX_W);
+        lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_color(descLbl, lv_color_hex(COL_DESC_HEX), LV_PART_MAIN);
+        emitCasCanvas(parsedEq, nullptr, lv_color_hex(0x4FC3F7));
+    }
+
+    if (steps.empty()) {
+        lv_obj_t* lbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(lbl, "No further steps available.");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
+        return;
+    }
+
+    // ── 4b. Iterate steps ────────────────────────────────────────────────
     for (std::size_t i = 0; i < steps.size(); ++i) {
         const auto& step = steps[i];
 
@@ -2223,6 +2238,127 @@ void EquationsApp::buildCASStepsDisplay() {
     }
 
     // ── 5. Footer hint ───────────────────────────────────────────────────
+    lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
+    lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+    lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
+                                LV_PART_MAIN);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// buildSystemCASStepsDisplay  —  SystemTutor step view for 2x2 systems
+// ════════════════════════════════════════════════════════════════════════════
+
+void EquationsApp::buildSystemCASStepsDisplay() {
+    // ── 1. Clean up any previous step renderers ──────────────────────────
+    _stepRenderers.clear();
+
+    if (!_casPool) _casPool = std::make_unique<cas::CasMemoryPool>();
+
+    // ── 2. Convert both VPAM equations to text, then parse as CAS trees ──
+    std::string eqText1, eqText2;
+    nodeToText(_eqRowData[0], eqText1);
+    nodeToText(_eqRowData[1], eqText2);
+
+    char var1 = 'x', var2 = 'y';
+    {
+        // Detect the two variables used in the system
+        const std::string combined = eqText1 + eqText2;
+        for (char ch : combined) {
+            if (std::isalpha(static_cast<unsigned char>(ch))) {
+                if (var1 == 'x') { var1 = ch; }
+                else if (ch != var1 && var2 == 'y') { var2 = ch; break; }
+            }
+        }
+    }
+
+    char dummy1 = var1, dummy2 = var2;
+    cas::NodePtr parsedEq1 = casParseEquation(eqText1, *_casPool, dummy1);
+    cas::NodePtr parsedEq2 = casParseEquation(eqText2, *_casPool, dummy2);
+
+    if (!parsedEq1 || !parsedEq2) {
+        buildStepsDisplay();
+        return;
+    }
+
+    // ── 3. Run SystemTutor ───────────────────────────────────────────────
+    cas::SystemTutorResult result = cas::SystemTutor::solveSystem(
+        parsedEq1, parsedEq2, *_casPool, var1, var2);
+
+    static constexpr int16_t SYS_CANVAS_MAX_W =
+        static_cast<int16_t>(SCREEN_W - 2 * PAD - 8);
+
+    // ── 4. Helper: emit a MathCanvas for a CAS tree ──────────────────────
+    auto emitSysCasCanvas = [&](const cas::NodePtr& tree) {
+        if (!tree) return;
+        vpam::NodePtr vpamTree = cas::CasToVpam::convert(tree);
+        if (!vpamTree) return;
+        if (vpamTree->type() != vpam::NodeType::Row) {
+            auto rowWrap = vpam::makeRow();
+            static_cast<vpam::NodeRow*>(rowWrap.get())
+                ->appendChild(std::move(vpamTree));
+            vpamTree = std::move(rowWrap);
+        }
+        auto srd = std::make_unique<StepRenderData>();
+        srd->nodeData = std::move(vpamTree);
+        srd->canvas.create(_stepsContainer);
+        auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
+        srd->canvas.setExpression(row, nullptr);
+        row->calculateLayout(srd->canvas.normalMetrics());
+        int16_t w = static_cast<int16_t>(row->layout().width + 24);
+        int16_t h = static_cast<int16_t>(
+            row->layout().ascent + row->layout().descent + 8);
+        if (w > SYS_CANVAS_MAX_W) w = SYS_CANVAS_MAX_W;
+        if (h < 20) h = 20;
+        lv_obj_set_size(srd->canvas.obj(), w, h);
+        srd->canvas.invalidate();
+        _stepRenderers.push_back(std::move(srd));
+    };
+
+    // ── 5. Header: show both original equations ───────────────────────────
+    {
+        lv_obj_t* lbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(lbl, "System of Equations");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(COL_ACCENT_HEX),
+                                    LV_PART_MAIN);
+        emitSysCasCanvas(parsedEq1);
+        emitSysCasCanvas(parsedEq2);
+    }
+
+    if (result.steps.empty()) {
+        lv_obj_t* lbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(lbl, "No steps available.");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(COL_HINT_HEX),
+                                    LV_PART_MAIN);
+        return;
+    }
+
+    // ── 6. Render each step ───────────────────────────────────────────────
+    for (std::size_t i = 0; i < result.steps.size(); ++i) {
+        const auto& step = result.steps[i];
+        const char* desc = step.ruleDesc.empty()
+                               ? step.ruleName.c_str()
+                               : step.ruleDesc.c_str();
+        bool isMethod = (step.ruleName == "MethodChoice");
+        uint32_t colHex = isMethod ? COL_ACCENT_HEX : COL_DESC_HEX;
+
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%d. %s", static_cast<int>(i), desc);
+
+        lv_obj_t* descLbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(descLbl, buf);
+        lv_obj_set_width(descLbl, SYS_CANVAS_MAX_W);
+        lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_color(descLbl, lv_color_hex(colHex), LV_PART_MAIN);
+
+        emitSysCasCanvas(step.eq1Tree);
+        if (step.eq2Tree) emitSysCasCanvas(step.eq2Tree);
+    }
+
+    // ── 7. Footer hint ────────────────────────────────────────────────────
     lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
     lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
     lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);

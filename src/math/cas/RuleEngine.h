@@ -223,17 +223,20 @@ public:
                                  const MatchCaptures& captures,
                                  CasMemoryPool& pool);
 
-    // ── AC matching helpers ───────────────────────────────────────────────
-
     /// AC matching for SumNode patterns against SumNode subjects.
+    /// `pool` is needed to construct a new SumNode from remaining terms
+    /// when a 2-wildcard pattern is matched against a multi-term subject.
     static bool matchACSumPattern(const SumNode& pattern,
                                   const SumNode& subject,
-                                  MatchCaptures& captures);
+                                  MatchCaptures& captures,
+                                  CasMemoryPool& pool);
 
     /// AC matching for ProductNode patterns against ProductNode subjects.
+    /// `pool` is needed to construct a new ProductNode from remaining terms.
     static bool matchACProductPattern(const ProductNode& pattern,
                                       const ProductNode& subject,
-                                      MatchCaptures& captures);
+                                      MatchCaptures& captures,
+                                      CasMemoryPool& pool);
 
     /// Helper: try to match `patternTerms` against `subjectTerms` in any order.
     /// `remaining` receives the indices of unmatched subject terms.

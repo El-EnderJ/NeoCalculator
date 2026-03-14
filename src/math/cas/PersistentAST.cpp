@@ -46,7 +46,7 @@ bool ConstantNode::equals(const AstNode& other) const {
 // ─────────────────────────────────────────────────────────────────────────────
 
 std::string VariableNode::toString() const {
-    return std::string(1, name);
+    return name;
 }
 
 bool VariableNode::equals(const AstNode& other) const {
@@ -228,7 +228,11 @@ NodePtr makeConstant(CasMemoryPool& pool, double value) {
 }
 
 NodePtr makeVariable(CasMemoryPool& pool, char name) {
-    return allocateNode<VariableNode>(pool, name);
+    return allocateNode<VariableNode>(pool, std::string(1, name));
+}
+
+NodePtr makeVariableNamed(CasMemoryPool& pool, std::string name) {
+    return allocateNode<VariableNode>(pool, std::move(name));
 }
 
 NodePtr makeNegation(CasMemoryPool& pool, NodePtr operand) {

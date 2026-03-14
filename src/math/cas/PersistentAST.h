@@ -169,15 +169,22 @@ public:
 
 class VariableNode final : public AstNode {
 public:
-    const char name;  ///< Single-character variable identifier ('x', 'y', …)
+    /// Variable or wildcard name.
+    /// Regular variables are single chars, e.g. "x", "y", "t".
+    /// Wildcard pattern variables start with '_', e.g. "_a", "_base", "_exp".
+    const std::string name;
 
-    explicit VariableNode(char n) noexcept
-        : AstNode(NodeType::Variable), name(n) {}
+    explicit VariableNode(std::string n)
+        : AstNode(NodeType::Variable), name(std::move(n)) {}
 
     std::string toString() const override;
-    bool containsVar(char v) const override { return name == v; }
+    bool containsVar(char v) const override {
+        return name.size() == 1 && name[0] == v;
+    }
     double evaluate(char var, double varVal) const override {
-        return (name == var) ? varVal : std::numeric_limits<double>::quiet_NaN();
+        return (name.size() == 1 && name[0] == var)
+            ? varVal
+            : std::numeric_limits<double>::quiet_NaN();
     }
     bool equals(const AstNode& other) const override;
 };
@@ -315,8 +322,12 @@ public:
 /// Create a numeric constant node.
 NodePtr makeConstant(CasMemoryPool& pool, double value);
 
-/// Create a variable reference node.
+/// Create a variable reference node for a regular single-character variable.
 NodePtr makeVariable(CasMemoryPool& pool, char name);
+
+/// Create a variable reference node with a full string name.
+/// Used for multi-character wildcard identifiers like "_a", "_base".
+NodePtr makeVariableNamed(CasMemoryPool& pool, std::string name);
 
 /// Create a unary negation node.
 /// If `operand` is already a NegationNode, returns its inner child

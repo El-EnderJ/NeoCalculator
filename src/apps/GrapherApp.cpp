@@ -47,12 +47,12 @@ struct TemplateEntry {
     const char* display;  // Display label
 };
 static const TemplateEntry TEMPLATES[] = {
-    { "2*x+3",     "y = 2x + 3  (Linear)"     },
-    { "x^2-4",     "y = x\xB2 - 4  (Parabola)" },
-    { "sin(x)",    "y = sin(x)  (Trig)"        },
-    { "cos(x)",    "y = cos(x)  (Trig)"        },
-    { "x^3",       "y = x\xB3  (Cubic)"         },
-    { "1/x",       "y = 1/x  (Hyperbola)"      },
+    { "y=2*x+3",   "y = 2x + 3  (Linear)"     },
+    { "y=x^2-4",   "y = x\xB2 - 4  (Parabola)" },
+    { "y=sin(x)",  "y = sin(x)  (Trig)"        },
+    { "y=cos(x)",  "y = cos(x)  (Trig)"        },
+    { "y=x^3",     "y = x\xB3  (Cubic)"         },
+    { "y=1/x",     "y = 1/x  (Hyperbola)"      },
 };
 static constexpr int NUM_TEMPLATES = sizeof(TEMPLATES) / sizeof(TEMPLATES[0]);
 
@@ -1275,6 +1275,12 @@ vpam::NodePtr GrapherApp::buildTemplateAST(const char* text) {
             r->appendChild(vpam::makeOperator(OpKind::Mul));
         } else if (c == 'x' || c == 'X') {
             r->appendChild(vpam::makeVariable('x'));
+        } else if (c == 'y' || c == 'Y') {
+            r->appendChild(vpam::makeVariable('y'));
+        } else if (c == '=') {
+            // VPAM has no dedicated equality-operator node; '=' is rendered
+            // via NodeVariable('=') — the same pattern used in SymToAST.cpp.
+            r->appendChild(vpam::makeVariable('='));
         } else if (c == '^') {
             // Simple power: take next char(s) as exponent
             auto expRow = vpam::makeRow();
@@ -1571,14 +1577,36 @@ void GrapherApp::handleTemplates(const KeyEvent& ev) {
 // Graph plotting
 // ═══════════════════════════════════════════════════════════════════════
 
-// Pre-parse and cache the RPN for function idx to avoid repeated tokenize+parse
+// Return a pointer to the RHS of a serialized expression (after first '='),
+// or nullptr if no '=' found or RHS contains only whitespace.
+static const char* getExprRHS(const char* text) {
+    if (!text) return nullptr;
+    const char* eqPtr = strchr(text, '=');
+    if (!eqPtr) return nullptr;
+    const char* rhs = eqPtr + 1;
+    // Skip leading whitespace
+    while (*rhs == ' ' || *rhs == '\t') ++rhs;
+    // Reject empty/whitespace-only RHS
+    if (!*rhs) return nullptr;
+    return rhs;
+}
+
+// Pre-parse and cache the RPN for function idx to avoid repeated tokenize+parse.
+// Strict validation: expression MUST contain '=' (e.g. y=2*x+3).
+// Only the RHS (after the first '=') is compiled for evaluation.
 void GrapherApp::preCacheFuncRPN(int idx) {
     if (idx < 0 || idx >= _numFuncs) return;
     _rpnCacheValid[idx] = false;
     _cachedRPN[idx].clear();
+    _funcs[idx].valid = false;
 
     if (_funcs[idx].len <= 0) return;
-    TokenizeResult tr = _tokenizer.tokenize(_funcs[idx].text);
+
+    // Strict: require '=' in the expression (no implicit y=f(x))
+    const char* rhs = getExprRHS(_funcs[idx].text);
+    if (!rhs) return;  // No '=' or empty RHS → invalid
+
+    TokenizeResult tr = _tokenizer.tokenize(rhs);
     if (!tr.ok) return;
     ParseResult pr = _parser.toRPN(tr.tokens);
     if (!pr.ok) return;
@@ -1595,9 +1623,11 @@ double GrapherApp::evalAt(int idx, double x) {
         EvalResult er = _evaluator.evaluateRPN(_cachedRPN[idx], _vars);
         return er.ok ? er.value : NAN;
     }
-    // Fallback: tokenize + parse (happens before first cache)
+    // Fallback: tokenize + parse RHS only (happens before first cache)
+    const char* rhs = getExprRHS(_funcs[idx].text);
+    if (!rhs) return NAN;
     _vars.setVar('x', x);
-    TokenizeResult tr = _tokenizer.tokenize(_funcs[idx].text);
+    TokenizeResult tr = _tokenizer.tokenize(rhs);
     if (!tr.ok) return NAN;
     ParseResult pr = _parser.toRPN(tr.tokens);
     if (!pr.ok) return NAN;
@@ -1940,22 +1970,25 @@ void GrapherApp::snapToPOI() {
     _snappedToPOI = false;
 }
 
-// ── Dynamic camera follow: keep trace cursor within central 60% of viewport ─
+// ── Strict 1:1 locked camera: viewport center is always (traceX, traceY) ─
 void GrapherApp::syncViewportToCursor() {
     float xRange = _xMax - _xMin;
-    float centerX = (_xMin + _xMax) / 2.0f;
-    // "Comfort zone" = central 60% of the viewport (0.30 = half the 60% zone)
-    float comfortHalf = xRange * 0.30f;
+    float yRange = _yMax - _yMin;
 
-    if (_traceX < centerX - comfortHalf || _traceX > centerX + comfortHalf) {
-        float shift = _traceX - centerX;
-        _xMin += shift;
-        _xMax += shift;
-        _plotDirty = true;
-        replot();
-        // Recompute POIs for new viewport
-        if (_traceFn >= 0) computePOIs(_traceFn);
+    // Immediately lock viewport center to the traced point
+    _xMin = _traceX - xRange / 2.0f;
+    _xMax = _traceX + xRange / 2.0f;
+
+    double traceY = (_traceFn >= 0) ? evalAt(_traceFn, _traceX) : NAN;
+    if (!isnan(traceY) && !isinf(traceY)) {
+        _yMin = (float)traceY - yRange / 2.0f;
+        _yMax = (float)traceY + yRange / 2.0f;
     }
+
+    _plotDirty = true;
+    replot();
+    // Recompute POIs for new viewport
+    if (_traceFn >= 0) computePOIs(_traceFn);
 }
 
 
@@ -2260,6 +2293,11 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
 
         // ── Variables ──
         case KeyCode::VAR_X: cur.insertVariable('x'); break;
+        case KeyCode::VAR_Y: cur.insertVariable('y'); break;
+
+        // ── Equation sign (FREE_EQ = '=' key) ──
+        // VPAM renders '=' via NodeVariable('=') — the same pattern as SymToAST.cpp.
+        case KeyCode::FREE_EQ: cur.insertVariable('='); break;
 
         // ── Constants ──
         case KeyCode::CONST_PI: cur.insertConstant(ConstKind::Pi); break;

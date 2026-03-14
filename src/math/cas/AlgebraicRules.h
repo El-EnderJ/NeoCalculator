@@ -62,4 +62,26 @@ namespace cas {
  */
 std::vector<RewriteRule> makeAlgebraicRules(CasMemoryPool& pool, char var = 'x');
 
+/**
+ * Inspect the final SolveResult and, if the equation is unsolved and its LHS
+ * is a degree-2 polynomial in `var`, append a special "handover" StepLog
+ * entry whose `ruleDesc` directs the UI to invoke the quadratic formula.
+ *
+ * Behaviour
+ * ─────────
+ *   · If `result.finalTree` is already solved (`x = c`), this is a no-op.
+ *   · If the LHS is degree 2, a StepLog entry with:
+ *       ruleName = "NonLinearHandover"
+ *       ruleDesc = "Equation is quadratic. Transitioning to Quadratic Formula."
+ *       phase    = RulePhase::Reduction
+ *     is appended and `result.reachedFixedPoint` is left unchanged.
+ *
+ * @param result  The SolveResult from RuleEngine::applyToFixedPoint().
+ * @param var     The variable being solved for.
+ */
+void checkNonLinearHandover(RuleEngine::SolveResult& result, char var);
+
+/// Rule name used in the NonLinearHandover StepLog entry.
+constexpr const char* RULE_NONLINEAR_HANDOVER = "NonLinearHandover";
+
 } // namespace cas

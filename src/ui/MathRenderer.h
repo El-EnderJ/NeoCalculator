@@ -69,6 +69,25 @@ public:
      */
     void invalidate();
 
+    // ── Smart Highlighter ────────────────────────────────────────────────
+
+    /**
+     * Marks a specific VPAM node for colour-highlighted rendering.
+     * During the next draw pass, that node and all its children are drawn in
+     * @p color instead of the default black.
+     * Use lv_color_hex(0x1565C0) for intermediate steps (blue) and
+     * lv_color_hex(0xE05500) for the final result (orange).
+     * @param node   VPAM MathNode* to highlight (raw pointer, must belong to
+     *               the tree currently set with setExpression).
+     * @param color  Highlight colour.
+     */
+    void setHighlightNode(const MathNode* node, lv_color_t color);
+
+    /**
+     * Clears any active highlight, restoring normal black rendering.
+     */
+    void clearHighlightNode();
+
     // ── Cursor ───────────────────────────────────────────────────────────
 
     /** Inicia la animación de parpadeo del cursor */
@@ -129,6 +148,11 @@ private:
 
     // ── Scroll horizontal ────────────────────────────────────────────────
     int16_t    _scrollX;        // Desplazamiento horizontal (≤0)
+
+    // ── Smart Highlighter ────────────────────────────────────────────────
+    const MathNode* _highlightNode;   ///< Node whose sub-tree to highlight (nullptr = off)
+    lv_color_t      _highlightColor;  ///< Highlight colour (blue for steps, orange for result)
+    bool            _highlightActive; ///< True while drawing inside the highlighted sub-tree
 
     // ── Constantes de estilo ─────────────────────────────────────────────
     static constexpr int16_t PADDING_LEFT   = 8;    ///< Margen izquierdo

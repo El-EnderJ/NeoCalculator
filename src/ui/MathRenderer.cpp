@@ -30,6 +30,9 @@ MathCanvas::MathCanvas()
     , _cursorVisible(true)
     , _cursorX(0), _cursorY(0), _cursorH(0)
     , _scrollX(0)
+    , _highlightNode(nullptr)
+    , _highlightColor(lv_color_black())
+    , _highlightActive(false)
 {
     _fmNormal = metricsFromFont(_fontNormal);
     _fmSmall  = metricsFromFont(_fontSmall);
@@ -111,6 +114,19 @@ void MathCanvas::setExpression(NodeRow* root, const CursorController* ctrl) {
 
 void MathCanvas::invalidate() {
     if (_obj) lv_obj_invalidate(_obj);
+}
+
+void MathCanvas::setHighlightNode(const MathNode* node, lv_color_t color) {
+    _highlightNode   = node;
+    _highlightColor  = color;
+    _highlightActive = false;
+    invalidate();
+}
+
+void MathCanvas::clearHighlightNode() {
+    _highlightNode   = nullptr;
+    _highlightActive = false;
+    invalidate();
 }
 
 void MathCanvas::scrollBy(int16_t delta) {
@@ -537,6 +553,10 @@ void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
         return;
     }
 
+    // ── Smart Highlighter: activate colour override when entering highlighted sub-tree ──
+    bool wasHighlight = _highlightActive;
+    if (_highlightNode && node == _highlightNode) _highlightActive = true;
+
     switch (node->type()) {
         case NodeType::Row:
             drawRow(layer, static_cast<const NodeRow*>(node),
@@ -603,6 +623,9 @@ void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
                           x, yBaseline, fm, font, depth);
             break;
     }
+
+    // ── Smart Highlighter: restore state after drawing the sub-tree ──
+    if (!wasHighlight) _highlightActive = false;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -613,12 +636,19 @@ void MathCanvas::drawRow(lv_layer_t* layer, const NodeRow* row,
                          int16_t x, int16_t yBaseline,
                          const FontMetrics& fm, const lv_font_t* font,
                          int depth) {
+    // ── Smart Highlighter: activate if this NodeRow is the highlight target ──
+    bool wasHighlight = _highlightActive;
+    if (_highlightNode && row == _highlightNode) _highlightActive = true;
+
     int16_t cx = x;
     for (int i = 0; i < row->childCount(); ++i) {
         if (i > 0) cx += NodeRow::CHILD_GAP;
         drawNode(layer, row->child(i), cx, yBaseline, fm, font, depth + 1);
         cx += row->child(i)->layout().width;
     }
+
+    // ── Smart Highlighter: restore state ──
+    if (!wasHighlight) _highlightActive = false;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -630,7 +660,8 @@ void MathCanvas::drawNumber(lv_layer_t* layer, const NodeNumber* node,
                             const FontMetrics& fm, const lv_font_t* font) {
     const std::string& val = node->value();
     if (val.empty()) return;
-    drawText(layer, x, yBaseline, val.c_str(), font, lv_color_black());
+    lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
+    drawText(layer, x, yBaseline, val.c_str(), font, color);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -642,7 +673,7 @@ void MathCanvas::drawOperator(lv_layer_t* layer, const NodeOperator* node,
                               const FontMetrics& fm, const lv_font_t* font) {
     // El operador tiene padding: OP_PAD | símbolo | OP_PAD
     int16_t textX = static_cast<int16_t>(x + NodeOperator::OP_PAD);
-    lv_color_t color = lv_color_hex(0x333333);
+    lv_color_t color = _highlightActive ? _highlightColor : lv_color_hex(0x333333);
 
     if (node->op() == OpKind::PlusMinus) {
         int16_t glyphW = std::max<int16_t>(fm.charWidth - 2, 6);
@@ -712,7 +743,8 @@ void MathCanvas::drawFraction(lv_layer_t* layer, const NodeFraction* node,
     int16_t barX1 = x;
     int16_t barX2 = static_cast<int16_t>(x + fracL.width - 1);
     drawLine(layer, barX1, yAxis, barX2, yAxis,
-             NodeFraction::BAR_THICK, lv_color_black());
+             NodeFraction::BAR_THICK,
+             _highlightActive ? _highlightColor : lv_color_black());
 
     // ── Numerador (centrado sobre la barra) ──
     int16_t numX = static_cast<int16_t>(x + NodeFraction::BAR_H_PAD +
@@ -788,19 +820,20 @@ void MathCanvas::drawRoot(lv_layer_t* layer, const NodeRoot* node,
     drawLine(layer, x, hookStartY,
              static_cast<int16_t>(x + NodeRoot::HOOK_W),
              yBottom,
-             1, lv_color_black());
+             1, _highlightActive ? _highlightColor : lv_color_black());
 
     // ── Slope: trazo ascendente desde el fondo hasta la overline ──
     drawLine(layer,
              static_cast<int16_t>(x + NodeRoot::HOOK_W), yBottom,
              static_cast<int16_t>(x + radSymW), yOverline,
-             1, lv_color_black());
+             1, _highlightActive ? _highlightColor : lv_color_black());
 
     // ── Overline: línea horizontal sobre el radicando ──
     int16_t overlineX1 = static_cast<int16_t>(x + radSymW);
     int16_t overlineX2 = static_cast<int16_t>(x + radSymW + radL.width + NodeRoot::RIGHT_PAD);
     drawLine(layer, overlineX1, yOverline, overlineX2, yOverline,
-             NodeRoot::OVERLINE_T, lv_color_black());
+             NodeRoot::OVERLINE_T,
+             _highlightActive ? _highlightColor : lv_color_black());
 
     // ── Radicando ──
     int16_t radX = static_cast<int16_t>(x + radSymW);
@@ -891,7 +924,7 @@ void MathCanvas::drawFunction(lv_layer_t* layer, const NodeFunction* node,
 
     // ── Label (texto de la función) ──
     drawText(layer, x, yBaseline, node->label(), font,
-             lv_color_hex(0x1a1a1a));
+             _highlightActive ? _highlightColor : lv_color_hex(0x1a1a1a));
 
     // ── Paréntesis automáticos + argumento ──
     int16_t parenX = static_cast<int16_t>(x + labelW + NodeFunction::LABEL_GAP);
@@ -953,7 +986,8 @@ void MathCanvas::drawLogBase(lv_layer_t* layer, const NodeLogBase* node,
                      - NodeLogBase::LABEL_GAP - parenBlock);
 
     // ── Label "log" ──
-    drawText(layer, x, yBaseline, "log", font, lv_color_hex(0x1a1a1a));
+    drawText(layer, x, yBaseline, "log", font,
+             _highlightActive ? _highlightColor : lv_color_hex(0x1a1a1a));
 
     // ── Base / subíndice (fuente reducida, bajada) ──
     FontMetrics fmSub = fm.superscript();
@@ -1003,8 +1037,8 @@ void MathCanvas::drawLogBase(lv_layer_t* layer, const NodeLogBase* node,
 void MathCanvas::drawConstant(lv_layer_t* layer, const NodeConstant* node,
                               int16_t x, int16_t yBaseline,
                               const FontMetrics& fm, const lv_font_t* font) {
-    drawText(layer, x, yBaseline, node->symbol(), font,
-             lv_color_hex(0x0060C0));   // Azul oscuro para constantes
+    lv_color_t color = _highlightActive ? _highlightColor : lv_color_hex(0x0060C0);
+    drawText(layer, x, yBaseline, node->symbol(), font, color);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1022,7 +1056,7 @@ void MathCanvas::drawVariable(lv_layer_t* layer, const NodeVariable* node,
     // All variables render in black — x, y, z are independent variables,
     // NOT multiplication.  Previously blue, now black to avoid confusion
     // with the × operator.
-    lv_color_t color = lv_color_black();
+    lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
 
     drawText(layer, x, yBaseline, node->label(), font, color);
 }

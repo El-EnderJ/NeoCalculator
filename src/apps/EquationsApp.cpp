@@ -880,6 +880,9 @@ void EquationsApp::showSteps() {
         buildStepsDisplay();
     }
 
+    if (_stepsContainer == nullptr) {
+        return;
+    }
     lv_obj_remove_flag(_stepsContainer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_scroll_to_y(_stepsContainer, 0, LV_ANIM_OFF);
     lv_obj_invalidate(_screen);
@@ -1932,6 +1935,9 @@ addHint:
 
 void EquationsApp::buildStepsDisplay() {
     // ── 1. Clean up ────────────────────────────────────────────────
+    if (_stepsContainer == nullptr) {
+        return;
+    }
     _stepRenderers.clear();
     lv_obj_clean(_stepsContainer);
 
@@ -2098,6 +2104,9 @@ void EquationsApp::buildStepsDisplay() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void EquationsApp::buildCASStepsDisplay() {
+    if (_stepsContainer == nullptr) {
+        return;
+    }
     _stepRenderers.clear();
     lv_obj_clean(_stepsContainer);
 
@@ -2184,8 +2193,8 @@ void EquationsApp::buildCASStepsDisplay() {
         _stepRenderers.push_back(std::move(srd));
     };
 
-    // ── 4a. Step 0 — Original Equation (always shown first) ─────────────
-    {
+    // ── 4a. Step 0 — Original Equation (always shown first) ─────────
+    if (_stepsContainer != nullptr) {
         lv_obj_t* descLbl = lv_label_create(_stepsContainer);
         lv_label_set_text(descLbl, "0. Original Equation");
         lv_obj_set_width(descLbl, CANVAS_MAX_W);
@@ -2196,15 +2205,19 @@ void EquationsApp::buildCASStepsDisplay() {
     }
 
     if (steps.empty()) {
-        lv_obj_t* lbl = lv_label_create(_stepsContainer);
-        lv_label_set_text(lbl, "No further steps available.");
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
-        lv_obj_set_style_text_color(lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
+        if (_stepsContainer != nullptr) {
+            lv_obj_t* lbl = lv_label_create(_stepsContainer);
+            lv_label_set_text(lbl, "No further steps available.");
+            lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
+        }
         return;
     }
 
-    // ── 4b. Iterate steps ────────────────────────────────────────────────
+    // ── 4b. Iterate steps ────────────────────────────────────
     for (std::size_t i = 0; i < steps.size(); ++i) {
+        if (_stepsContainer == nullptr) return;
+
         const auto& step = steps[i];
 
         bool isFinal = (i == steps.size() - 1)
@@ -2237,12 +2250,14 @@ void EquationsApp::buildCASStepsDisplay() {
         }
     }
 
-    // ── 5. Footer hint ───────────────────────────────────────────────────
-    lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
-    lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
-    lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
-                                LV_PART_MAIN);
+    // ── 5. Footer hint ───────────────────────────────────────
+    if (_stepsContainer != nullptr) {
+        lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+        lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
+                                    LV_PART_MAIN);
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2251,6 +2266,9 @@ void EquationsApp::buildCASStepsDisplay() {
 
 void EquationsApp::buildSystemCASStepsDisplay() {
     // ── 1. Clean up any previous step renderers ──────────────────────────
+    if (_stepsContainer == nullptr) {
+        return;
+    }
     _stepRenderers.clear();
 
     if (!_casPool) _casPool = std::make_unique<cas::CasMemoryPool>();

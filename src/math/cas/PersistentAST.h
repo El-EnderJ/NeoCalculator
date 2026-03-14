@@ -60,6 +60,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include <memory>       // std::shared_ptr, std::allocate_shared
@@ -147,20 +148,40 @@ protected:
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-// §3 — ConstantNode — Numeric literal
+// §3 — ConstantNode — Exact rational literal
+//
+// Every constant is stored as a reduced fraction (numerator / denominator).
+// The denominator is always positive (sign is carried by the numerator).
+// GCD reduction is applied automatically in the constructor.
+//
+// For backward compatibility the `value` field holds the double-precision
+// floating-point approximation (numerator / denominator).  All existing
+// AlgebraicRules arithmetic still operates on `value`; the new rational
+// fields are used by CasToVpam for clean fraction rendering.
 // ═════════════════════════════════════════════════════════════════════════════
 
 class ConstantNode final : public AstNode {
 public:
-    const double value;  ///< Stored as double; exact integers are representable.
+    const int32_t numerator;    ///< Reduced numerator   (may be negative)
+    const int32_t denominator;  ///< Reduced denominator (always > 0)
+    const double  value;        ///< Floating-point approximation (num/den)
 
-    explicit ConstantNode(double v) noexcept
-        : AstNode(NodeType::Constant), value(v) {}
+    /// Construct from an exact rational.  GCD reduction is applied.
+    ConstantNode(int32_t num, int32_t den) noexcept;
+
+    /// Convenience: construct from a double (integer values → exact rational).
+    explicit ConstantNode(double v) noexcept;
 
     std::string toString() const override;
     bool containsVar(char /*v*/) const override { return false; }
     double evaluate(char /*var*/, double /*varVal*/) const override { return value; }
     bool equals(const AstNode& other) const override;
+
+    /// True when the constant is an exact integer (denominator == 1).
+    bool isInteger() const noexcept { return denominator == 1; }
+
+    /// True when this is an exact (non-integer) rational fraction.
+    bool isFraction() const noexcept { return denominator != 1; }
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -319,8 +340,13 @@ public:
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Create a numeric constant node.
+/// Create a numeric constant node from a double.
+/// If the value is a whole number the rational is exact (denominator = 1).
 NodePtr makeConstant(CasMemoryPool& pool, double value);
+
+/// Create an exact rational constant, automatically GCD-reduced.
+/// Precondition: den != 0.
+NodePtr makeRational(CasMemoryPool& pool, int32_t num, int32_t den);
 
 /// Create a variable reference node for a regular single-character variable.
 NodePtr makeVariable(CasMemoryPool& pool, char name);

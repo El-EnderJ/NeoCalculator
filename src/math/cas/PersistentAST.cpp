@@ -20,11 +20,64 @@ namespace cas {
 // ConstantNode
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Compile-time-friendly GCD (Euclidean, works on positive values).
+static int32_t gcd32(int32_t a, int32_t b) noexcept {
+    a = (a < 0) ? -a : a;
+    b = (b < 0) ? -b : b;
+    while (b) { int32_t t = b; b = a % b; a = t; }
+    return (a == 0) ? 1 : a;
+}
+
+ConstantNode::ConstantNode(int32_t num, int32_t den) noexcept
+    : AstNode(NodeType::Constant)
+    , numerator([&] {
+        if (den == 0) return num; // degenerate guard
+        int32_t g = gcd32(num, den);
+        // Normalise sign: denominator must be positive
+        return (den < 0) ? -(num / g) : (num / g);
+    }())
+    , denominator([&] {
+        if (den == 0) return int32_t(1);
+        int32_t g = gcd32(num, den);
+        int32_t d = (den < 0) ? -(den / g) : (den / g);
+        return (d == 0) ? int32_t(1) : d;
+    }())
+    , value(static_cast<double>(numerator) / static_cast<double>(denominator))
+{}
+
+ConstantNode::ConstantNode(double v) noexcept
+    : AstNode(NodeType::Constant)
+    , numerator([&]() -> int32_t {
+        double intpart;
+        if (std::modf(v, &intpart) == 0.0 && std::fabs(v) < 2.0e9)
+            return static_cast<int32_t>(intpart);
+        return 0; // non-integer double: stored with denominator=0 (not a clean rational)
+    }())
+    , denominator([&]() -> int32_t {
+        double intpart;
+        if (std::modf(v, &intpart) == 0.0 && std::fabs(v) < 2.0e9)
+            return 1;
+        return 0; // non-integer double: denominator=0 signals "not a clean rational"
+    }())
+    , value(v)
+{}
+
 std::string ConstantNode::toString() const {
-    // Use integer formatting when the value is a whole number
+    // Exact rational fraction: show as "num/den"
+    if (denominator > 1) {
+        std::ostringstream oss;
+        oss << numerator << "/" << denominator;
+        return oss.str();
+    }
+    // Integer stored exactly
+    if (denominator == 1) {
+        std::ostringstream oss;
+        oss << numerator;
+        return oss.str();
+    }
+    // Fallback: non-clean double
     double intpart;
-    if (std::modf(value, &intpart) == 0.0 &&
-        std::abs(value) < 1e15) {
+    if (std::modf(value, &intpart) == 0.0 && std::abs(value) < 1e15) {
         std::ostringstream oss;
         oss << static_cast<long long>(intpart);
         return oss.str();
@@ -37,7 +90,11 @@ std::string ConstantNode::toString() const {
 bool ConstantNode::equals(const AstNode& other) const {
     if (other.nodeType != NodeType::Constant) return false;
     const auto& o = static_cast<const ConstantNode&>(other);
-    // Use exact bit-pattern comparison for NaN-safe equality
+    // Compare by rational fields when both are clean rationals (denominator > 0).
+    // For non-integer doubles (denominator == 0) fall back to double comparison.
+    if (denominator > 0 && o.denominator > 0)
+        return numerator == o.numerator && denominator == o.denominator;
+    // At least one operand is a non-clean double: compare values.
     return value == o.value;
 }
 
@@ -225,6 +282,10 @@ bool EquationNode::equals(const AstNode& other) const {
 
 NodePtr makeConstant(CasMemoryPool& pool, double value) {
     return allocateNode<ConstantNode>(pool, value);
+}
+
+NodePtr makeRational(CasMemoryPool& pool, int32_t num, int32_t den) {
+    return allocateNode<ConstantNode>(pool, num, den);
 }
 
 NodePtr makeVariable(CasMemoryPool& pool, char name) {

@@ -30,6 +30,8 @@
 #include "../math/cas/AlgebraicRules.h"
 #include "../math/cas/CasToVpam.h"
 #include "../math/cas/CasMemory.h"
+#include "../math/cas/SystemHeuristics.h"
+#include "../math/cas/SystemTutor.h"
 #include "../ui/MathRenderer.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
@@ -186,7 +188,8 @@ private:
     void solveSystem();
     void buildResultDisplay();
     void buildStepsDisplay();
-    void buildCASStepsDisplay();   ///< Algebraic TRS step display (RuleEngine)
+    void buildCASStepsDisplay();         ///< Algebraic TRS step display (RuleEngine)
+    void buildSystemCASStepsDisplay();   ///< System of equations TRS step display
 
     bool splitAtEquals(vpam::NodeRow* row,
                        vpam::NodePtr& outLHS,

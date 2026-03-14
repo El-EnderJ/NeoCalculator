@@ -651,4 +651,87 @@ std::vector<RewriteRule> makeAlgebraicRules(CasMemoryPool& /*pool*/, char var) {
     return rules;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// checkNonLinearHandover — Degree detection & quadratic handover
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+
+/// Returns the highest power of `var` that appears in `node`.
+/// Returns 0 if the node is constant, 1 for linear, 2 for quadratic, etc.
+static int maxDegree(const NodePtr& node, char var) {
+    if (!node) return 0;
+    switch (node->nodeType) {
+        case NodeType::Constant:  return 0;
+        case NodeType::Variable: {
+            const auto* v = static_cast<const VariableNode*>(node.get());
+            return (v->name.size() == 1 && v->name[0] == var) ? 1 : 0;
+        }
+        case NodeType::Negation: {
+            const auto* n = static_cast<const NegationNode*>(node.get());
+            return maxDegree(n->operand, var);
+        }
+        case NodeType::Sum: {
+            const auto* s = static_cast<const SumNode*>(node.get());
+            int d = 0;
+            for (const auto& c : s->children) d = std::max(d, maxDegree(c, var));
+            return d;
+        }
+        case NodeType::Product: {
+            const auto* p = static_cast<const ProductNode*>(node.get());
+            int d = 0;
+            for (const auto& c : p->children) d += maxDegree(c, var);
+            return d;
+        }
+        case NodeType::Power: {
+            const auto* pw = static_cast<const PowerNode*>(node.get());
+            // Only handle constant exponents
+            if (pw->exponent && pw->exponent->isConstant()) {
+                double exp = static_cast<const ConstantNode*>(pw->exponent.get())->value;
+                return static_cast<int>(maxDegree(pw->base, var) * exp);
+            }
+            return maxDegree(pw->base, var);
+        }
+        case NodeType::Equation: {
+            const auto* eq = static_cast<const EquationNode*>(node.get());
+            return std::max(maxDegree(eq->lhs, var), maxDegree(eq->rhs, var));
+        }
+        default:
+            return 0;
+    }
+}
+
+/// True if the equation is in the "solved" form:  var = constant.
+static bool isSolved(const NodePtr& tree, char var) {
+    if (!tree || !tree->isEquation()) return false;
+    const auto* eq = static_cast<const EquationNode*>(tree.get());
+    // LHS must be exactly the variable
+    if (!eq->lhs || !eq->lhs->isVariable()) return false;
+    const auto* v = static_cast<const VariableNode*>(eq->lhs.get());
+    return v->name.size() == 1 && v->name[0] == var
+           && eq->rhs && !eq->rhs->containsVar(var);
+}
+
+} // anonymous namespace
+
+void checkNonLinearHandover(RuleEngine::SolveResult& result, char var) {
+    // Already solved — nothing to do.
+    if (isSolved(result.finalTree, var)) return;
+
+    if (!result.finalTree || !result.finalTree->isEquation()) return;
+    const auto* eq = static_cast<const EquationNode*>(result.finalTree.get());
+
+    int degree = maxDegree(eq->lhs, var);
+    if (degree != 2) return;
+
+    // Append a special handover step.
+    RuleEngine::StepLog handover;
+    handover.ruleName     = RULE_NONLINEAR_HANDOVER;
+    handover.ruleDesc     = "Equation is quadratic. Transitioning to Quadratic Formula.";
+    handover.phase        = RulePhase::Reduction;
+    handover.tree         = result.finalTree;   // share the final tree
+    handover.affectedNode = result.finalTree;   // highlight the whole equation
+
+    result.steps.push_back(std::move(handover));
+}
 } // namespace cas

@@ -43,6 +43,7 @@
 #include "apps/NeuralLabApp.h"
 #include "apps/OpticsLabApp.h"
 #include "apps/NeoLanguageApp.h"
+#include "apps/TutorApp.h"
 
 // ── App descriptor ──
 struct AppData {
@@ -74,6 +75,7 @@ enum class Mode : uint8_t {
     APP_NEURAL_LAB,      // Neural network playground
     APP_OPTICS_LAB,      // 2D optical ray-tracing simulator
     APP_NEO_LANGUAGE,    // NeoLanguage compiler frontend IDE
+    APP_TUTOR,           // Step-by-step algebraic equation tutor (Phase 13C)
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
@@ -130,6 +132,7 @@ private:
     NeuralLabApp*      _neuralLabApp;
     OpticsLabApp*      _opticsLabApp;
     NeoLanguageApp*    _neoLangApp;
+    TutorApp*          _tutorApp;
 
     // Math Engine
     Tokenizer _tokenizer;

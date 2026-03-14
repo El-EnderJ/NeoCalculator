@@ -31,6 +31,12 @@ namespace cas {
 // Internal helpers — not exposed in the header
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Named epsilon used throughout for floating-point near-equality tests.
+static constexpr double kEps = 1e-12;
+
+/// True if |a - b| < kEps.
+static bool isApprox(double a, double b) { return std::abs(a - b) < kEps; }
+
 /// Return the numeric value of a node if it is purely numeric, else NaN.
 /// Handles both ConstantNode(v) and NegationNode(ConstantNode(v)).
 static double getNumericValue(const NodePtr& node) {
@@ -145,12 +151,12 @@ static NodePtr buildTerm(CasMemoryPool& pool,
         return makeConstant(pool, coeff);
     if (!base) return makeConstant(pool, 0.0);
 
-    const double eps = 1e-12;
+    const double eps = kEps;
     if (std::abs(coeff) < eps)
         return makeConstant(pool, 0.0);
-    if (std::abs(coeff - 1.0) < eps)
+    if (isApprox(coeff, 1.0))
         return base;
-    if (std::abs(coeff + 1.0) < eps)
+    if (isApprox(coeff, -1.0))
         return makeNegation(pool, base);
     if (coeff < 0.0)
         return makeNegation(pool,
@@ -298,7 +304,7 @@ static RewriteRule makeCombineConstantsRule() {
                 }
                 if (numCount < 2) return nullptr;
                 // zero product short-circuit
-                if (std::abs(acc) < 1e-15) return makeConstant(pool, 0.0);
+                if (std::abs(acc) < kEps) return makeConstant(pool, 0.0);
                 nonNum.push_back(makeConstant(pool, acc));
                 return makeProduct(pool, std::move(nonNum));
             }
@@ -594,9 +600,8 @@ static RewriteRule makeDivideByCoefficientRule(char var) {
             if (te.key != expectedKey) return nullptr;
 
             // coeff == 1 means LHS is already just var — nothing to do
-            const double eps = 1e-12;
-            if (std::abs(te.coeff - 1.0) < eps) return nullptr;
-            if (std::abs(te.coeff)        < eps) return nullptr; // degenerate
+            if (isApprox(te.coeff, 1.0)) return nullptr;
+            if (std::abs(te.coeff) < kEps) return nullptr; // degenerate
 
             // Build new RHS = old_RHS / coeff
             NodePtr varNode = makeVariable(pool, var);
@@ -605,7 +610,7 @@ static RewriteRule makeDivideByCoefficientRule(char var) {
             if (!std::isnan(rhsNum)) {
                 // RHS is a known constant: evaluate directly
                 newRhs = makeConstant(pool, rhsNum / te.coeff);
-            } else if (std::abs(te.coeff + 1.0) < eps) {
+            } else if (isApprox(te.coeff, -1.0)) {
                 // coeff == -1: new RHS = -old_RHS
                 newRhs = makeNegation(pool, eq.rhs);
             } else {

@@ -121,7 +121,7 @@ SolveResult solveEquationStepByStep(const SymEquation& eq, char var,
     // Check degree for quadratic fallback
     int16_t deg = step2.degree();
     if (deg > 2) {
-        result.error = "Degree > 2: not supported by RuleBasedTutor";
+        result.error = "Equations of degree greater than 2 are not supported";
         return result;
     }
 
@@ -151,7 +151,7 @@ SolveResult solveEquationStepByStep(const SymEquation& eq, char var,
     // ── Rule 5: Divide both sides by variable coefficient ───────────
     CASNumber coeff = CASNumber::fromExactVal(step4.lhs.coeffAtExact(1));
     if (coeff.isZero()) {
-        result.error = "Coefficient of variable is zero after isolation";
+        result.error = "Variable eliminated during solving; equation may be an identity or contradiction";
         return result;
     }
 

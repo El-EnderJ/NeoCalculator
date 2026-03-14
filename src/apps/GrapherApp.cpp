@@ -1278,6 +1278,8 @@ vpam::NodePtr GrapherApp::buildTemplateAST(const char* text) {
         } else if (c == 'y' || c == 'Y') {
             r->appendChild(vpam::makeVariable('y'));
         } else if (c == '=') {
+            // VPAM has no dedicated equality-operator node; '=' is rendered
+            // via NodeVariable('=') — the same pattern used in SymToAST.cpp.
             r->appendChild(vpam::makeVariable('='));
         } else if (c == '^') {
             // Simple power: take next char(s) as exponent
@@ -1575,6 +1577,20 @@ void GrapherApp::handleTemplates(const KeyEvent& ev) {
 // Graph plotting
 // ═══════════════════════════════════════════════════════════════════════
 
+// Return a pointer to the RHS of a serialized expression (after first '='),
+// or nullptr if no '=' found or RHS contains only whitespace.
+static const char* getExprRHS(const char* text) {
+    if (!text) return nullptr;
+    const char* eqPtr = strchr(text, '=');
+    if (!eqPtr) return nullptr;
+    const char* rhs = eqPtr + 1;
+    // Skip leading whitespace
+    while (*rhs == ' ' || *rhs == '\t') ++rhs;
+    // Reject empty/whitespace-only RHS
+    if (!*rhs) return nullptr;
+    return rhs;
+}
+
 // Pre-parse and cache the RPN for function idx to avoid repeated tokenize+parse.
 // Strict validation: expression MUST contain '=' (e.g. y=2*x+3).
 // Only the RHS (after the first '=') is compiled for evaluation.
@@ -1587,10 +1603,9 @@ void GrapherApp::preCacheFuncRPN(int idx) {
     if (_funcs[idx].len <= 0) return;
 
     // Strict: require '=' in the expression (no implicit y=f(x))
-    const char* eqPtr = strchr(_funcs[idx].text, '=');
-    if (!eqPtr || !*(eqPtr + 1)) return;  // No '=' or empty RHS → invalid
+    const char* rhs = getExprRHS(_funcs[idx].text);
+    if (!rhs) return;  // No '=' or empty RHS → invalid
 
-    const char* rhs = eqPtr + 1;
     TokenizeResult tr = _tokenizer.tokenize(rhs);
     if (!tr.ok) return;
     ParseResult pr = _parser.toRPN(tr.tokens);
@@ -1609,9 +1624,8 @@ double GrapherApp::evalAt(int idx, double x) {
         return er.ok ? er.value : NAN;
     }
     // Fallback: tokenize + parse RHS only (happens before first cache)
-    const char* eqPtr = strchr(_funcs[idx].text, '=');
-    if (!eqPtr || !*(eqPtr + 1)) return NAN;
-    const char* rhs = eqPtr + 1;
+    const char* rhs = getExprRHS(_funcs[idx].text);
+    if (!rhs) return NAN;
     _vars.setVar('x', x);
     TokenizeResult tr = _tokenizer.tokenize(rhs);
     if (!tr.ok) return NAN;
@@ -2282,6 +2296,7 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
         case KeyCode::VAR_Y: cur.insertVariable('y'); break;
 
         // ── Equation sign (FREE_EQ = '=' key) ──
+        // VPAM renders '=' via NodeVariable('=') — the same pattern as SymToAST.cpp.
         case KeyCode::FREE_EQ: cur.insertVariable('='); break;
 
         // ── Constants ──

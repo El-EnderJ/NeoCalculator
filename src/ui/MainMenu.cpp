@@ -83,7 +83,6 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     { 16, "Neural Lab", 0x9C27B0,   0xCE93D8 },   // Purple (AI/ML)
     { 17, "OpticsLab",  0x00BCD4,   0x80DEEA },   // Cyan/Teal (Optics)
     { 18, "NeoLang",    0x4CAF50,   0xA5D6A7 },   // Terminal Green (Language/IDE)
-    { 19, "Tutor",      0x1565C0,   0x64B5F6 },   // Blue (CAS step tutor)
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);

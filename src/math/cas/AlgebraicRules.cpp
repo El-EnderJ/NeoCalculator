@@ -580,6 +580,10 @@ static RewriteRule makeMoveVariablesToLHSRule(char var) {
 //   · Product(Const(A), Variable(var))      — coefficient = A
 //   · Negation(Variable(var))               — coefficient = -1
 //   · Negation(Product(Const(A), Var(var))) — coefficient = -A
+//
+// When both the coefficient and the RHS are integers the result is emitted as
+// an exact rational fraction (makeRational) so the renderer displays a
+// vertical fraction bar instead of a decimal approximation.
 // ─────────────────────────────────────────────────────────────────────────────
 static RewriteRule makeDivideByCoefficientRule(char var) {
     return RewriteRule{
@@ -608,8 +612,23 @@ static RewriteRule makeDivideByCoefficientRule(char var) {
             NodePtr newRhs;
             double rhsNum = getNumericValue(eq.rhs);
             if (!std::isnan(rhsNum)) {
-                // RHS is a known constant: evaluate directly
-                newRhs = makeConstant(pool, rhsNum / te.coeff);
+                // Both coefficient and RHS are numeric constants.
+                // Try to produce an exact rational when both are integers.
+                double coeffAbs = std::fabs(te.coeff);
+                double rhsAbs   = std::fabs(rhsNum);
+                double intC, intR;
+                bool coeffIsInt = (std::modf(coeffAbs, &intC) == 0.0 && intC < 2.0e9);
+                bool rhsIsInt   = (std::modf(rhsAbs,   &intR) == 0.0 && intR < 2.0e9);
+
+                if (coeffIsInt && rhsIsInt && intC >= 1.0) {
+                    // Exact rational:  sign(rhs) * sign(coeff) * |rhs| / |coeff|
+                    int32_t rN = static_cast<int32_t>(rhsNum);   // preserves sign
+                    int32_t cD = static_cast<int32_t>(te.coeff); // preserves sign
+                    // makeRational handles GCD and sign normalisation
+                    newRhs = makeRational(pool, rN, cD);
+                } else {
+                    newRhs = makeConstant(pool, rhsNum / te.coeff);
+                }
             } else if (isApprox(te.coeff, -1.0)) {
                 // coeff == -1: new RHS = -old_RHS
                 newRhs = makeNegation(pool, eq.rhs);

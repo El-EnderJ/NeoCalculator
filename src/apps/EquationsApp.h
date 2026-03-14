@@ -26,6 +26,10 @@
 #include "../math/cas/SymExprToAST.h"
 #include "../math/cas/SymToAST.h"
 #include "../math/cas/SymExprArena.h"
+#include "../math/cas/RuleEngine.h"
+#include "../math/cas/AlgebraicRules.h"
+#include "../math/cas/CasToVpam.h"
+#include "../math/cas/CasMemory.h"
 #include "../ui/MathRenderer.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
@@ -141,6 +145,12 @@ private:
     bool               _isOmniSolve;
     bool               _isNLSolve = false;
 
+    // ── Algebraic TRS state (single-equation CAS step view) ──────────
+    std::unique_ptr<cas::CasMemoryPool> _casPool;
+    std::unique_ptr<cas::RuleEngine>    _casEngine;
+    cas::RuleEngine::SolveResult        _casResult;
+    bool                                _hasCasResult = false;
+
     // ── UI creation / state management ───────────────────────────────
     void createUI();
     void showEqList();
@@ -176,6 +186,7 @@ private:
     void solveSystem();
     void buildResultDisplay();
     void buildStepsDisplay();
+    void buildCASStepsDisplay();   ///< Algebraic TRS step display (RuleEngine)
 
     bool splitAtEquals(vpam::NodeRow* row,
                        vpam::NodePtr& outLHS,

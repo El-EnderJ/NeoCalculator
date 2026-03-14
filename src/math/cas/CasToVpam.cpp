@@ -79,9 +79,21 @@ vpam::NodePtr CasToVpam::convertNode(const NodePtr& node, Context* ctx) {
     }
 }
 
-// ── ConstantNode → NodeNumber ─────────────────────────────────────────────────
+// ── ConstantNode → NodeNumber or NodeFraction ─────────────────────────────────
 
 vpam::NodePtr CasToVpam::convertConstant(const ConstantNode* n) {
+    // Exact rational fraction: render as a vertical fraction bar
+    if (n->isFraction() && n->denominator > 1) {
+        char numBuf[24], denBuf[24];
+        snprintf(numBuf, sizeof(numBuf), "%d", n->numerator);
+        snprintf(denBuf, sizeof(denBuf), "%d", n->denominator);
+        auto numRow = vRow();
+        static_cast<vpam::NodeRow*>(numRow.get())->appendChild(vNumber(numBuf));
+        auto denRow = vRow();
+        static_cast<vpam::NodeRow*>(denRow.get())->appendChild(vNumber(denBuf));
+        return vpam::makeFraction(std::move(numRow), std::move(denRow));
+    }
+    // Integer or fallback double
     char buf[32];
     double v = n->value;
     if (v == std::floor(v) && std::fabs(v) < MAX_INTEGER_DISPLAY) {

@@ -20,6 +20,10 @@
 #include "../math/cas/SymToAST.h"
 #include "../math/cas/SymExprToAST.h"
 #include "../math/cas/SymExprArena.h"
+#include "../math/cas/AlgebraicRules.h"
+#include "../math/cas/CasToVpam.h"
+#include "../math/cas/PersistentAST.h"
+#include "../math/cas/RuleEngine.h"
 #include <cstring>
 #include <cstdlib>
 
@@ -81,6 +85,215 @@ static constexpr int NUM_SOLVING_MSGS = sizeof(SOLVING_MESSAGES) / sizeof(SOLVIN
 const char* EquationsApp::randomSolvingMessage() {
     return SOLVING_MESSAGES[rand() % NUM_SOLVING_MSGS];
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// CAS helpers — VPAM NodeRow → equation text → cas::NodePtr
+// ════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+/// Recursively converts a VPAM MathNode tree to a simple infix text string
+/// suitable for the TRS equation parser.
+static void nodeToText(const MathNode* node, std::string& out) {
+    if (!node) return;
+    switch (node->type()) {
+        case NodeType::Row: {
+            const auto* r = static_cast<const NodeRow*>(node);
+            for (int i = 0; i < r->childCount(); ++i)
+                nodeToText(r->child(i), out);
+            break;
+        }
+        case NodeType::Number: {
+            const auto* n = static_cast<const NodeNumber*>(node);
+            out += n->value();
+            break;
+        }
+        case NodeType::Variable: {
+            const auto* v = static_cast<const NodeVariable*>(node);
+            out += v->name();
+            break;
+        }
+        case NodeType::Operator: {
+            const auto* op = static_cast<const NodeOperator*>(node);
+            switch (op->op()) {
+                case OpKind::Add: out += "+"; break;
+                case OpKind::Sub: out += "-"; break;
+                case OpKind::Mul: out += "*"; break;
+                default:          out += "+"; break;
+            }
+            break;
+        }
+        case NodeType::Power: {
+            // NodePower has exactly two slot children: base, exponent
+            if (node->childCount() >= 2) {
+                nodeToText(node->child(0), out);
+                out += "^";
+                nodeToText(node->child(1), out);
+            }
+            break;
+        }
+        case NodeType::Fraction: {
+            if (node->childCount() >= 2) {
+                out += "(";
+                nodeToText(node->child(0), out);
+                out += ")/(";
+                nodeToText(node->child(1), out);
+                out += ")";
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+// ── Equation parser (migrated from TutorApp, Phase 13C) ──────────────────────
+// Supports: digits | '.' | single-letter variable | + - * ^ () =
+// Precedence: ^ (right) > unary -/+ > * > + -
+// Note: 'e'/'E' are excluded from variable detection to avoid conflicts
+//       with exponential notation in number literals.  Scientific notation
+//       itself is not supported; inputs like "2e5" are not parsed.
+
+struct CasParseCtx {
+    const char* src;
+    std::size_t pos;
+    cas::CasMemoryPool& pool;
+    char var;
+    char peek() const { return src[pos]; }
+    char eat()  { return src[pos++]; }
+    void skipWS() { while (src[pos] == ' ') ++pos; }
+};
+
+static cas::NodePtr casParseExpr(CasParseCtx& ctx);
+static cas::NodePtr casParseTerm(CasParseCtx& ctx);
+static cas::NodePtr casParsePower(CasParseCtx& ctx);
+static cas::NodePtr casParseUnary(CasParseCtx& ctx);
+static cas::NodePtr casParseAtom(CasParseCtx& ctx);
+
+static cas::NodePtr casParseExpr(CasParseCtx& ctx) {
+    ctx.skipWS();
+    cas::NodePtr lhs = casParseTerm(ctx);
+    while (true) {
+        ctx.skipWS();
+        char c = ctx.peek();
+        if (c != '+' && c != '-') break;
+        ctx.eat(); ctx.skipWS();
+        cas::NodePtr rhs = casParseTerm(ctx);
+        if (c == '-') rhs = cas::makeNegation(ctx.pool, std::move(rhs));
+        std::vector<cas::NodePtr> kids;
+        if (lhs && lhs->isSum()) {
+            const auto* s = static_cast<const cas::SumNode*>(lhs.get());
+            for (const auto& ch : s->children) kids.push_back(ch);
+        } else { kids.push_back(std::move(lhs)); }
+        kids.push_back(std::move(rhs));
+        lhs = cas::makeSum(ctx.pool, std::move(kids));
+    }
+    return lhs;
+}
+
+static cas::NodePtr casParseTerm(CasParseCtx& ctx) {
+    ctx.skipWS();
+    cas::NodePtr lhs = casParsePower(ctx);
+    while (true) {
+        ctx.skipWS();
+        char c = ctx.peek();
+        if (c == '*') {
+            ctx.eat(); ctx.skipWS();
+            cas::NodePtr rhs = casParsePower(ctx);
+            std::vector<cas::NodePtr> kids;
+            if (lhs && lhs->isProduct()) {
+                const auto* p = static_cast<const cas::ProductNode*>(lhs.get());
+                for (const auto& ch : p->children) kids.push_back(ch);
+            } else { kids.push_back(std::move(lhs)); }
+            kids.push_back(std::move(rhs));
+            lhs = cas::makeProduct(ctx.pool, std::move(kids));
+            continue;
+        }
+        if (lhs) {
+            bool lhsConst = lhs->isConstant();
+            bool rhsVar   = std::isalpha(c) && c != 'e' && c != 'E';
+            bool rhsParen = (c == '(');
+            if (lhsConst && (rhsVar || rhsParen)) {
+                cas::NodePtr rhs = casParsePower(ctx);
+                std::vector<cas::NodePtr> kids;
+                if (lhs->isProduct()) {
+                    const auto* p = static_cast<const cas::ProductNode*>(lhs.get());
+                    for (const auto& ch : p->children) kids.push_back(ch);
+                } else { kids.push_back(std::move(lhs)); }
+                kids.push_back(std::move(rhs));
+                lhs = cas::makeProduct(ctx.pool, std::move(kids));
+                continue;
+            }
+        }
+        break;
+    }
+    return lhs;
+}
+
+static cas::NodePtr casParsePower(CasParseCtx& ctx) {
+    ctx.skipWS();
+    cas::NodePtr base = casParseUnary(ctx);
+    ctx.skipWS();
+    if (ctx.peek() == '^') {
+        ctx.eat(); ctx.skipWS();
+        cas::NodePtr exp = casParseUnary(ctx);
+        return cas::makePower(ctx.pool, std::move(base), std::move(exp));
+    }
+    return base;
+}
+
+static cas::NodePtr casParseUnary(CasParseCtx& ctx) {
+    ctx.skipWS();
+    if (ctx.peek() == '-') {
+        ctx.eat(); ctx.skipWS();
+        cas::NodePtr inner = casParseAtom(ctx);
+        return cas::makeNegation(ctx.pool, std::move(inner));
+    }
+    if (ctx.peek() == '+') { ctx.eat(); ctx.skipWS(); }
+    return casParseAtom(ctx);
+}
+
+static cas::NodePtr casParseAtom(CasParseCtx& ctx) {
+    ctx.skipWS();
+    char c = ctx.peek();
+    if (c == '(') {
+        ctx.eat();
+        cas::NodePtr inner = casParseExpr(ctx);
+        ctx.skipWS();
+        if (ctx.peek() == ')') ctx.eat();
+        return inner;
+    }
+    if (std::isdigit(c) || c == '.') {
+        std::string buf;
+        while (std::isdigit(ctx.peek()) || ctx.peek() == '.') buf += ctx.eat();
+        return cas::makeConstant(ctx.pool, std::stod(buf));
+    }
+    if (std::isalpha(c)) {
+        ctx.eat();
+        return cas::makeVariable(ctx.pool, c);
+    }
+    return cas::makeConstant(ctx.pool, 0.0);
+}
+
+/// Parse "lhsExpr = rhsExpr" into a cas::EquationNode.  Returns nullptr on error.
+static cas::NodePtr casParseEquation(const std::string& text,
+                                     cas::CasMemoryPool& pool,
+                                     char& varOut) {
+    auto eqPos = text.find('=');
+    if (eqPos == std::string::npos) return nullptr;
+    std::string lhsStr = text.substr(0, eqPos);
+    std::string rhsStr = text.substr(eqPos + 1);
+    varOut = 'x';
+    for (char ch : text) { if (std::isalpha(ch)) { varOut = ch; break; } }
+    CasParseCtx lhsCtx{lhsStr.c_str(), 0, pool, varOut};
+    CasParseCtx rhsCtx{rhsStr.c_str(), 0, pool, varOut};
+    cas::NodePtr lhs = casParseExpr(lhsCtx);
+    cas::NodePtr rhs = casParseExpr(rhsCtx);
+    if (!lhs || !rhs) return nullptr;
+    return cas::makeEquation(pool, std::move(lhs), std::move(rhs));
+}
+
+} // anonymous namespace
 
 // ════════════════════════════════════════════════════════════════════════════
 // Constructor / Destructor
@@ -654,7 +867,14 @@ void EquationsApp::showSteps() {
     _statusBar.setTitle("Steps");
     _stepScroll = 0;
 
-    buildStepsDisplay();
+    // For single-equation solves, try to build algebraic CAS steps
+    // using the RuleEngine.  Fall back to the OmniSolver step log if the
+    // equation cannot be parsed by the simple TRS parser.
+    if (_isOmniSolve && _numEquations == 1 && _eqRowData[0]) {
+        buildCASStepsDisplay();
+    } else {
+        buildStepsDisplay();
+    }
 
     lv_obj_remove_flag(_stepsContainer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_scroll_to_y(_stepsContainer, 0, LV_ANIM_OFF);
@@ -1857,6 +2077,154 @@ void EquationsApp::buildStepsDisplay() {
     lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
     lv_label_set_text(hintLbl,
                       LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+    lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
+                                LV_PART_MAIN);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// buildCASStepsDisplay — Algebraic TRS step viewer
+//
+// Parses the first equation from the edit canvas, runs it through the
+// RuleEngine + makeAlgebraicRules pipeline, and populates the steps
+// container with description labels + MathCanvas widgets.
+//
+// This replaces the old TutorApp solve path and shows exact rational
+// results (e.g. x = 3/322) as vertical fraction bars.
+// ════════════════════════════════════════════════════════════════════════════
+
+void EquationsApp::buildCASStepsDisplay() {
+    _stepRenderers.clear();
+    lv_obj_clean(_stepsContainer);
+
+    // ── 1. Serialise the equation NodeRow to a text string ─────────────
+    std::string eqText;
+    if (_eqRowData[0]) {
+        nodeToText(_eqRowData[0], eqText);
+    }
+
+    // Verify it contains '='
+    if (eqText.find('=') == std::string::npos) {
+        buildStepsDisplay();   // fall back
+        return;
+    }
+
+    // ── 2. Parse text → cas::EquationNode ──────────────────────────────
+    _casPool.reset();
+    _casEngine.reset();
+    _casPool   = std::make_unique<cas::CasMemoryPool>();
+    _casEngine = std::make_unique<cas::RuleEngine>(*_casPool);
+    _hasCasResult = false;
+
+    char var = 'x';
+    cas::NodePtr parsedEq = casParseEquation(eqText, *_casPool, var);
+    if (!parsedEq) {
+        buildStepsDisplay();   // fall back
+        return;
+    }
+
+    // ── 3. Load rules & solve ──────────────────────────────────────────
+    for (auto& rule : cas::makeAlgebraicRules(*_casPool, var))
+        _casEngine->addRule(std::move(rule));
+
+    _casResult    = _casEngine->applyToFixedPoint(parsedEq, 80);
+    _hasCasResult = true;
+    cas::checkNonLinearHandover(_casResult, var);
+
+    const auto& steps = _casResult.steps;
+
+    if (steps.empty()) {
+        lv_obj_t* lbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(lbl, "No steps available.");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
+        return;
+    }
+
+    static constexpr int16_t CANVAS_MAX_W =
+        static_cast<int16_t>(SCREEN_W - 2 * PAD - 8);
+
+    // Helper: emit a MathCanvas for a CAS tree with optional highlight
+    auto emitCasCanvas = [&](const cas::NodePtr& tree,
+                              const cas::NodePtr& highlight,
+                              lv_color_t hlColor)
+    {
+        if (!tree) return;
+
+        const vpam::MathNode* hlPtr = nullptr;
+        vpam::NodePtr vpamTree;
+        if (highlight) {
+            vpamTree = cas::CasToVpam::convert(tree, highlight, &hlPtr);
+        } else {
+            vpamTree = cas::CasToVpam::convert(tree);
+        }
+        if (!vpamTree) return;
+
+        // Wrap in a Row if needed
+        if (vpamTree->type() != vpam::NodeType::Row) {
+            auto rowWrap = vpam::makeRow();
+            static_cast<vpam::NodeRow*>(rowWrap.get())
+                ->appendChild(std::move(vpamTree));
+            vpamTree = std::move(rowWrap);
+        }
+
+        auto srd = std::make_unique<StepRenderData>();
+        srd->nodeData = std::move(vpamTree);
+        srd->canvas.create(_stepsContainer);
+
+        auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
+        srd->canvas.setExpression(row, nullptr);
+        row->calculateLayout(srd->canvas.normalMetrics());
+
+        int16_t w = static_cast<int16_t>(row->layout().width + 24);
+        int16_t h = static_cast<int16_t>(
+            row->layout().ascent + row->layout().descent + 8);
+        if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
+        if (h < 20) h = 20;
+        lv_obj_set_size(srd->canvas.obj(), w, h);
+
+        if (hlPtr) srd->canvas.setHighlightNode(hlPtr, hlColor);
+        srd->canvas.invalidate();
+        _stepRenderers.push_back(std::move(srd));
+    };
+
+    // ── 4. Iterate steps ────────────────────────────────────────────────
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        const auto& step = steps[i];
+
+        bool isFinal = (i == steps.size() - 1)
+                       || (step.ruleName == cas::RULE_NONLINEAR_HANDOVER);
+        uint32_t descColHex = isFinal ? COL_ACCENT_HEX : COL_DESC_HEX;
+        lv_color_t hlColor  = isFinal ? lv_color_hex(0xFFB300)
+                                      : lv_color_hex(0x4FC3F7);
+
+        // Description label
+        char buf[120];
+        if (!step.ruleDesc.empty())
+            snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
+                     step.ruleDesc.c_str());
+        else
+            snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
+                     step.ruleName.c_str());
+
+        lv_obj_t* descLbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(descLbl, buf);
+        lv_obj_set_width(descLbl, CANVAS_MAX_W);
+        lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12,
+                                   LV_PART_MAIN);
+        lv_obj_set_style_text_color(descLbl, lv_color_hex(descColHex),
+                                    LV_PART_MAIN);
+
+        // MathCanvas for this step's equation tree
+        if (step.tree) {
+            emitCasCanvas(step.tree, step.affectedNode, hlColor);
+        }
+    }
+
+    // ── 5. Footer hint ───────────────────────────────────────────────────
+    lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
+    lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
     lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
                                 LV_PART_MAIN);

@@ -364,6 +364,8 @@ void EquationsApp::end() {
     }
     _statusBar.destroy();
 
+    _stepRenderers.clear();
+
     if (_screen) {
         lv_obj_delete(_screen);
         _screen            = nullptr;
@@ -1939,6 +1941,7 @@ void EquationsApp::buildStepsDisplay() {
         return;
     }
     lv_obj_clean(_stepsContainer);
+    _stepRenderers.clear();
 
     const cas::CASStepLogger& log = _isOmniSolve
         ? _omniResult.steps
@@ -2107,29 +2110,7 @@ void EquationsApp::buildCASStepsDisplay() {
         return;
     }
     lv_obj_clean(_stepsContainer);
-
-    // #region agent log
-    printf("[CAS UI] Rendering Steps. _stepsContainer ptr: %p\n", (void*)_stepsContainer);
-    FILE* dbg = fopen("debug-bdf12a.log", "a");
-    if (dbg) {
-        unsigned long ptrVal = (unsigned long)_stepsContainer;
-        unsigned long ts = (unsigned long)lv_tick_get();
-        fprintf(
-            dbg,
-            "{\"id\":\"log_%lu\",\"timestamp\":%lu,"
-            "\"location\":\"EquationsApp.cpp:buildCASStepsDisplay\","
-            "\"message\":\"CAS steps render (delegated)\",\"data\":{\"stepsPtr\":%lu},"
-            "\"runId\":\"pre-fix\",\"hypothesisId\":\"A\"}\n",
-            ts, ts, ptrVal
-        );
-        fclose(dbg);
-    }
-    // #endregion
-
-    // TEMPORAL HOTFIX: delegar en el visor clásico (Omni/System) para
-    // evitar el crash en la ruta TRS avanzada. No tocamos más LVGL aquí.
-    buildStepsDisplay();
-    return;
+    _stepRenderers.clear();
 
     // ── 1. Serialise the equation NodeRow to a text string ─────────────
     std::string eqText;
@@ -2197,6 +2178,10 @@ void EquationsApp::buildCASStepsDisplay() {
         auto srd = std::make_unique<StepRenderData>();
         srd->nodeData = std::move(vpamTree);
         srd->canvas.create(_stepsContainer);
+        if (!srd->canvas.obj()) {
+            printf("[CAS] emitCasCanvas: lv_obj_create failed\n");
+            return;
+        }
 
         auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
         srd->canvas.setExpression(row, nullptr);
@@ -2286,15 +2271,145 @@ void EquationsApp::buildCASStepsDisplay() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void EquationsApp::buildSystemCASStepsDisplay() {
-    // ── 1. Clean up previous content (persistent container) ─────────
     if (_stepsContainer == nullptr) {
         return;
     }
     lv_obj_clean(_stepsContainer);
+    _stepRenderers.clear();
 
-    // Ruta avanzada (SystemTutor + MathCanvas) está causando StoreProhibited
-    // al crear objetos LVGL en esp32s3. Como hotfix estable, delegamos
-    // el renderizado de pasos de sistemas 2x2 al visor clásico basado en
-    // Omni/SystemResult, que ya hemos comprobado que es estable.
-    buildStepsDisplay();
+    // ── 1. Serialise both equation rows to text ────────────────────────
+    std::string eq1Text, eq2Text;
+    if (_eqRowData[0]) nodeToText(_eqRowData[0], eq1Text);
+    if (_eqRowData[1]) nodeToText(_eqRowData[1], eq2Text);
+
+    if (eq1Text.find('=') == std::string::npos ||
+        eq2Text.find('=') == std::string::npos) {
+        buildStepsDisplay();
+        return;
+    }
+
+    // ── 2. Parse equations → cas::EquationNode ────────────────────────
+    _casPool.reset();
+    _casPool = std::make_unique<cas::CasMemoryPool>();
+
+    char var1 = 'x', var2 = 'y';
+    cas::NodePtr parsedEq1 = casParseEquation(eq1Text, *_casPool, var1);
+    cas::NodePtr parsedEq2 = casParseEquation(eq2Text, *_casPool, var2);
+    if (!parsedEq1 || !parsedEq2) {
+        buildStepsDisplay();
+        return;
+    }
+
+    // ── 3. Run SystemTutor ────────────────────────────────────────────
+    cas::SystemTutorResult result = cas::SystemTutor::solveSystem(
+        parsedEq1, parsedEq2, *_casPool, var1, var2);
+
+    static constexpr int16_t CANVAS_MAX_W =
+        static_cast<int16_t>(SCREEN_W - 2 * PAD - 8);
+
+    // Helper: emit a MathCanvas for a CAS tree as a child of `_stepsContainer`
+    auto emitSysCasCanvas = [&](const cas::NodePtr& tree) {
+        if (!tree) return;
+        vpam::NodePtr vpamTree = cas::CasToVpam::convert(tree);
+        if (!vpamTree) return;
+
+        if (vpamTree->type() != vpam::NodeType::Row) {
+            auto rowWrap = vpam::makeRow();
+            static_cast<vpam::NodeRow*>(rowWrap.get())
+                ->appendChild(std::move(vpamTree));
+            vpamTree = std::move(rowWrap);
+        }
+
+        auto srd = std::make_unique<StepRenderData>();
+        srd->nodeData = std::move(vpamTree);
+        srd->canvas.create(_stepsContainer);
+        if (!srd->canvas.obj()) {
+            printf("[SYS] emitSysCasCanvas: lv_obj_create failed\n");
+            return;
+        }
+
+        auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
+        srd->canvas.setExpression(row, nullptr);
+        row->calculateLayout(srd->canvas.normalMetrics());
+
+        int16_t w = static_cast<int16_t>(row->layout().width + 24);
+        int16_t h = static_cast<int16_t>(
+            row->layout().ascent + row->layout().descent + 8);
+        if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
+        if (h < 20) h = 20;
+        lv_obj_set_size(srd->canvas.obj(), w, h);
+        srd->canvas.invalidate();
+        _stepRenderers.push_back(std::move(srd));
+    };
+
+    // ── 4. Header ─────────────────────────────────────────────────────
+    lv_obj_t* headerLbl = lv_label_create(_stepsContainer);
+    lv_label_set_text(headerLbl, "System of Equations");
+    lv_obj_set_width(headerLbl, CANVAS_MAX_W);
+    lv_label_set_long_mode(headerLbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(headerLbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(headerLbl, lv_color_hex(COL_ACCENT_HEX), LV_PART_MAIN);
+
+    // ── 5. Original equations ──────────────────────────────────────────
+    lv_obj_t* origLbl = lv_label_create(_stepsContainer);
+    lv_label_set_text(origLbl, "0. Original System");
+    lv_obj_set_width(origLbl, CANVAS_MAX_W);
+    lv_label_set_long_mode(origLbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(origLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(origLbl, lv_color_hex(COL_DESC_HEX), LV_PART_MAIN);
+    emitSysCasCanvas(parsedEq1);
+    emitSysCasCanvas(parsedEq2);
+
+    if (result.steps.empty()) {
+        lv_obj_t* lbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(lbl, "No further steps available.");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
+        return;
+    }
+
+    // ── 6. Iterate SystemTutor steps ───────────────────────────────────
+    for (std::size_t i = 0; i < result.steps.size(); ++i) {
+        if (_stepsContainer == nullptr) return;
+
+        const auto& step = result.steps[i];
+
+        // Description label
+        char buf[160];
+        if (!step.ruleDesc.empty())
+            snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
+                     step.ruleDesc.c_str());
+        else
+            snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
+                     step.ruleName.c_str());
+
+        lv_obj_t* stepRow = lv_obj_create(_stepsContainer);
+        if (!stepRow) return;
+        lv_obj_set_width(stepRow, CANVAS_MAX_W);
+        lv_obj_set_height(stepRow, LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_opa(stepRow, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_width(stepRow, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(stepRow, 0, LV_PART_MAIN);
+        lv_obj_set_layout(stepRow, LV_LAYOUT_FLEX);
+        lv_obj_set_flex_flow(stepRow, LV_FLEX_FLOW_COLUMN);
+        lv_obj_remove_flag(stepRow, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t* descLbl = lv_label_create(stepRow);
+        lv_label_set_text(descLbl, buf);
+        lv_obj_set_width(descLbl, CANVAS_MAX_W);
+        lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_color(descLbl, lv_color_hex(COL_DESC_HEX), LV_PART_MAIN);
+
+        if (step.eq1Tree) emitSysCasCanvas(step.eq1Tree);
+        if (step.eq2Tree) emitSysCasCanvas(step.eq2Tree);
+    }
+
+    // ── 7. Footer hint ────────────────────────────────────────────────
+    if (_stepsContainer != nullptr) {
+        lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
+        lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+        lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
+    }
 }

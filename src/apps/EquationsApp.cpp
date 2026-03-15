@@ -1934,7 +1934,7 @@ addHint:
 // ════════════════════════════════════════════════════════════════════════════
 
 void EquationsApp::buildStepsDisplay() {
-    // ── 1. Clean up ────────────────────────────────────────────────
+    // ── 1. Clean up previous content (persistent container) ─────────
     if (_stepsContainer == nullptr) {
         return;
     }
@@ -2110,6 +2110,24 @@ void EquationsApp::buildCASStepsDisplay() {
     _stepRenderers.clear();
     lv_obj_clean(_stepsContainer);
 
+    // #region agent log
+    printf("[CAS UI] Rendering Steps. _stepsContainer ptr: %p\n", (void*)_stepsContainer);
+    FILE* dbg = fopen("debug-bdf12a.log", "a");
+    if (dbg) {
+        unsigned long ptrVal = (unsigned long)_stepsContainer;
+        unsigned long ts = (unsigned long)lv_tick_get();
+        fprintf(
+            dbg,
+            "{\"id\":\"log_%lu\",\"timestamp\":%lu,"
+            "\"location\":\"EquationsApp.cpp:buildCASStepsDisplay\","
+            "\"message\":\"CAS steps render\",\"data\":{\"stepsPtr\":%lu},"
+            "\"runId\":\"pre-fix\",\"hypothesisId\":\"A\"}\n",
+            ts, ts, ptrVal
+        );
+        fclose(dbg);
+    }
+    // #endregion
+
     // ── 1. Serialise the equation NodeRow to a text string ─────────────
     std::string eqText;
     if (_eqRowData[0]) {
@@ -2265,11 +2283,12 @@ void EquationsApp::buildCASStepsDisplay() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void EquationsApp::buildSystemCASStepsDisplay() {
-    // ── 1. Clean up any previous step renderers ──────────────────────────
+    // ── 1. Clean up previous content (persistent container) ─────────
     if (_stepsContainer == nullptr) {
         return;
     }
     _stepRenderers.clear();
+    lv_obj_clean(_stepsContainer);
 
     if (!_casPool) _casPool = std::make_unique<cas::CasMemoryPool>();
 

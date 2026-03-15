@@ -69,64 +69,64 @@ private:
     static const char* TEMPLATE_LABELS[NUM_TEMPLATES];
 
     // ── LVGL widgets ─────────────────────────────────────────────────
-    lv_obj_t*       _screen;
+    lv_obj_t*       _screen         = nullptr;
     ui::StatusBar   _statusBar;
 
     // ── EQ_LIST state ────────────────────────────────────────────────
-    lv_obj_t*       _listContainer;
+    lv_obj_t*       _listContainer  = nullptr;
     lv_obj_t*       _eqRows[MAX_EQS];
     lv_obj_t*       _eqLabels[MAX_EQS];       ///< "E1:", "E2:", "E3:" indicator
     vpam::MathCanvas   _eqPreview[MAX_EQS];    ///< mini preview canvas
-    lv_obj_t*       _addRow;
-    lv_obj_t*       _addLabel;
-    lv_obj_t*       _solveRow;
-    lv_obj_t*       _solveLabel;
-    lv_obj_t*       _listHint;
+    lv_obj_t*       _addRow         = nullptr;
+    lv_obj_t*       _addLabel       = nullptr;
+    lv_obj_t*       _solveRow       = nullptr;
+    lv_obj_t*       _solveLabel     = nullptr;
+    lv_obj_t*       _listHint       = nullptr;
 
     // ── Equation data ────────────────────────────────────────────────
     vpam::NodePtr      _eqNode[MAX_EQS];
     vpam::NodeRow*     _eqRowData[MAX_EQS];
-    int                _numEquations;
+    int                _numEquations = 0;
 
     // List navigation
-    int                _listFocus;
+    int                _listFocus    = 0;
     // Virtual items: 0..numEq-1 = equation slots, numEq = ADD, numEq+1 = SOLVE
 
     // ── TEMPLATE state ───────────────────────────────────────────────
-    lv_obj_t*       _templateOverlay;
-    lv_obj_t*       _templateTitle;
+    lv_obj_t*       _templateOverlay = nullptr;
+    lv_obj_t*       _templateTitle   = nullptr;
     lv_obj_t*       _templateItems[NUM_TEMPLATES];   ///< row containers
     lv_obj_t*       _templateLabels[NUM_TEMPLATES];  ///< text-only prefix labels
     vpam::MathCanvas   _templateCanvas[NUM_TEMPLATES]; ///< VPAM formula preview
     vpam::NodePtr      _templateNode[NUM_TEMPLATES];   ///< AST data for canvas
-    int             _templateFocus;
+    int             _templateFocus   = 0;
 
     // ── EDITING state ────────────────────────────────────────────────
-    lv_obj_t*       _editContainer;
-    lv_obj_t*       _editTitle;
-    lv_obj_t*       _editHint;
+    lv_obj_t*       _editContainer   = nullptr;
+    lv_obj_t*       _editTitle       = nullptr;
+    lv_obj_t*       _editHint        = nullptr;
     vpam::MathCanvas   _editCanvas;
     vpam::NodePtr      _editNode;
-    vpam::NodeRow*     _editRow;
+    vpam::NodeRow*     _editRow      = nullptr;
     vpam::CursorController _editCursor;
-    int                _editingIndex;
+    int                _editingIndex = -1;
 
     // ── SOLVING state ────────────────────────────────────────────────
-    lv_obj_t*       _solvingContainer;
-    lv_obj_t*       _solvingSpinner;
-    lv_obj_t*       _solvingLabel;
+    lv_obj_t*       _solvingContainer = nullptr;
+    lv_obj_t*       _solvingSpinner   = nullptr;
+    lv_obj_t*       _solvingLabel     = nullptr;
 
     // ── RESULT state ─────────────────────────────────────────────────
-    lv_obj_t*       _resultContainer;
-    lv_obj_t*       _resultTitle;
-    lv_obj_t*       _resultHint;
+    lv_obj_t*       _resultContainer = nullptr;
+    lv_obj_t*       _resultTitle     = nullptr;
+    lv_obj_t*       _resultHint      = nullptr;
     vpam::MathCanvas   _resultCanvas[MAX_RESULTS];
     vpam::NodePtr      _resultNode[MAX_RESULTS];
     vpam::NodeRow*     _resultRow[MAX_RESULTS];
-    int                _resultCount;
+    int                _resultCount   = 0;
 
     // ── STEPS state ──────────────────────────────────────────────────
-    lv_obj_t*       _stepsContainer;
+    lv_obj_t*       _stepsContainer  = nullptr;
 
     // Dynamic step renderers — each owns a MathAST tree + MathCanvas
     struct StepRenderData {
@@ -136,8 +136,8 @@ private:
     std::vector<std::unique_ptr<StepRenderData>> _stepRenderers;
 
     // ── App state ────────────────────────────────────────────────────
-    State   _state;
-    int     _stepScroll;
+    State   _state       = State::EQ_LIST;
+    int     _stepScroll  = 0;
 
     // ── CAS results ──────────────────────────────────────────────────
     cas::SymExprArena  _arena;

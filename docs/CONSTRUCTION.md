@@ -1,6 +1,6 @@
 # 🔨 NumOS — Hardware Build and Test Guide
 
-> This guide covers the entire assembly process: wiring, firmware flashing, 3D printing, and hardware verification. It is updated for the **ESP32-S3 N16R8 CAM** platform with a **3.2" ILI9341 IPS** display.
+&gt; This guide covers the entire assembly process: wiring, firmware flashing, 3D printing, and hardware verification. It is updated for the **ESP32-S3 N16R8 CAM** platform with a **3.2" ILI9341 IPS** display.
 
 ---
 
@@ -37,7 +37,7 @@ ESP32-S3          ILI9341 3.2" TFT
   (NC)             SDO / MISO  ← Not connected (no touch support)
 ```
 
-> **Note on BL**: The backlight pin is wired directly to 3.3V in this build. In code, GPIO 45 is set as `INPUT` (high impedance). If PWM brightness control is desired in the future, use an N-channel logic-level MOSFET between the LED GND and system GND, with the gate controlled by a GPIO.
+&gt; **Note on BL**: The backlight pin is wired directly to 3.3V in this build. In code, GPIO 45 is set as `INPUT` (high impedance). If PWM brightness control is desired in the future, use an N-channel logic-level MOSFET between the LED GND and system GND, with the gate controlled by a GPIO.
 
 ### 2.2 6×8 Key Matrix → ESP32-S3
 
@@ -60,7 +60,7 @@ ESP32-S3  Signal    Direction
   G21   ─  C7    ─  OUTPUT
 ```
 
-> ✅ **GPIO 4/5 conflict — RESOLVED (2026-03-02)**: GPIO 4 (`TFT_DC`) and GPIO 5 (`TFT_RST`) are no longer assigned to keyboard columns. The new `Keyboard` driver (Phase 7, `src/drivers/Keyboard.h`) uses GPIO 6, 7, 8 for the three currently wired columns. Safe to solder to these pins.
+&gt; ✅ **GPIO 4/5 conflict — RESOLVED (2026-03-02)**: GPIO 4 (`TFT_DC`) and GPIO 5 (`TFT_RST`) are no longer assigned to keyboard columns. The new `Keyboard` driver (Phase 7, `src/drivers/Keyboard.h`) uses GPIO 6, 7, 8 for the three currently wired columns. Safe to solder to these pins.
 
 ---
 
@@ -267,7 +267,7 @@ La matriz consta de **6 filas** (entradas con pull-up interno) y **8 columnas** 
 | | | | **C6** | GPIO 12 (*) |
 | | | | **C7** | GPIO 15 (*) |
 
-*> **ATENCIÓN**: Las columnas C4, C5, C6 y C7 (GPIO 0, 2, 12, 15) son pines de "strapping" que determinan el modo de arranque del ESP32. **NO MANTENER PULSADAS** teclas de estas columnas durante el encendido o reset, o el ESP32 podría entrar en modo bootloader/fallo.*
+*&gt; **ATENCIÓN**: Las columnas C4, C5, C6 y C7 (GPIO 0, 2, 12, 15) son pines de "strapping" que determinan el modo de arranque del ESP32. **NO MANTENER PULSADAS** teclas de estas columnas durante el encendido o reset, o el ESP32 podría entrar en modo bootloader/fallo.*
 
 ## 2. Instrucciones de Impresión 3D (Ender CR6 SE)
 

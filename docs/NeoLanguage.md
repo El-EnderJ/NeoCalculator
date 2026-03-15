@@ -1,8 +1,8 @@
 # NeoLanguage — Official Language Bible
 
-> **File extension:** `.nl` (NeoLanguage)
-> **Version:** Phase 7 — Differential Equations, Optimization, Data Persistence, NeoGUI & Physics Constants
-> **Target platform:** NeoCalculator / NumOS (ESP32-S3)
+&gt; **File extension:** `.nl` (NeoLanguage)
+&gt; **Version:** Phase 7 — Differential Equations, Optimization, Data Persistence, NeoGUI & Physics Constants
+&gt; **Target platform:** NeoCalculator / NumOS (ESP32-S3)
 
 ---
 
@@ -724,8 +724,8 @@ for i in range(2, 7):       # i = 0..4  (stop - start = 5 iterations)
     print(i)
 ```
 
-> **Note:** `range(start, stop)` currently iterates `stop - start` times,
-> starting from 0.  The loop variable still starts at 0 in this version.
+&gt; **Note:** `range(start, stop)` currently iterates `stop - start` times,
+&gt; starting from 0.  The loop variable still starts at 0 in this version.
 
 ---
 
@@ -791,9 +791,9 @@ The console output will show: `[regress] exp: a=1.053  b=0.693  R2=0.9999`
 #### Evaluating Fit Quality (R²)
 
 The R² value (printed by `regress`) measures goodness of fit (0–1, higher is better):
-- R² > 0.99: excellent fit
-- R² > 0.95: good fit
-- R² < 0.8:  consider a different model
+- R² &gt; 0.99: excellent fit
+- R² &gt; 0.95: good fit
+- R² &lt; 0.8:  consider a different model
 
 ### 11.3 Probability Distributions
 
@@ -1380,8 +1380,8 @@ Find local minima and maxima of scalar functions using a golden-section search.
 
 **Returns:** The x-value of the local optimum near `x0`.
 
-> **Algorithm:** Golden-section search within [x0−10, x0+10].  
-> For global optima, call multiple times with different starting points.
+&gt; **Algorithm:** Golden-section search within [x0−10, x0+10].  
+&gt; For global optima, call multiple times with different starting points.
 
 ```nl
 # Minimise f(x) = (x - 3)^2 + 1
@@ -1535,9 +1535,9 @@ gui_button("Plot Thermal Decay", "on_plot_btn")
 gui_show()
 ```
 
-> **Note:** Callback names are strings matching NeoLanguage function names
-> defined in the same script. The host app dispatches GUI events back to
-> the interpreter between evaluation cycles.
+&gt; **Note:** Callback names are strings matching NeoLanguage function names
+&gt; defined in the same script. The host app dispatches GUI events back to
+&gt; the interpreter between evaluation cycles.
 
 ---
 
@@ -1591,7 +1591,7 @@ print(const_desc("alpha"))  # alpha = 7.29735e-3  — Fine-structure constant
 | `AU` | 1.495 978 707×10¹¹ m | Astronomical unit |
 | `eV` | 1.602 176 634×10⁻¹⁹ J | Electron-volt |
 
-> Full list: 54 constants. See `NeoPhysics.h` for the complete table.
+&gt; Full list: 54 constants. See `NeoPhysics.h` for the complete table.
 
 ---
 
@@ -1759,9 +1759,9 @@ for i in range(N / 2):
     plot_data = plot_data + [mag[i]]
 ```
 
-> **Note:** `fft()` pads the input to the next power-of-2 automatically.
-> The output length equals the padded size. For best frequency resolution,
-> use input lengths that are already powers of 2 (e.g. 32, 64, 128, 256).
+&gt; **Note:** `fft()` pads the input to the next power-of-2 automatically.
+&gt; The output length equals the padded size. For best frequency resolution,
+&gt; use input lengths that are already powers of 2 (e.g. 32, 64, 128, 256).
 
 ---
 
@@ -1867,7 +1867,7 @@ print("Recursive:", recur_ms, "ms")
 | **Matrix multiplication** | Full matrix-matrix multiply (dot product) is not yet built in; use `dot()` for vectors or implement with `map`/`for` loops. |
 | **`table()` and user functions** | `table()` currently only evaluates `native_function` (regression) callables. For user-defined functions, use `map()` over a generated list instead. |
 | **limit() is numerical only** | `limit()` uses Richardson extrapolation — it cannot compute symbolic limits (e.g. limits involving infinities algebraically). Use `n()` + manual evaluation for simple cases. |
-| **taylor() coefficient precision** | Taylor coefficients are computed via numerical differentiation. For high-order terms (k > 6), floating-point cancellation may reduce accuracy. |
+| **taylor() coefficient precision** | Taylor coefficients are computed via numerical differentiation. For high-order terms (k &gt; 6), floating-point cancellation may reduce accuracy. |
 | **Regression model persistence** | Regression models returned by `regress()` are in-memory only. They cannot be saved to flash directly. Save the coefficients as variables instead. |
 | **Unit compound expressions** | Complex compound unit strings like `"kg*m/s^2"` are not yet parsed. Use named units (`"N"`, `"J"`) or sequential arithmetic. |
 

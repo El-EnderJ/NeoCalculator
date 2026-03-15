@@ -1,6 +1,6 @@
 # 📐 NumOS — Especificaciones de Diseño 3D (Chasis V1.0)
 
-> Dimensiones críticas para el diseño del chasis de la calculadora. Todos los valores son los **mínimos recomendados** basados en las piezas de hardware reales. Siempre mide tus componentes específicos antes de finalizar el diseño.
+&gt; Dimensiones críticas para el diseño del chasis de la calculadora. Todos los valores son los **mínimos recomendados** basados en las piezas de hardware reales. Siempre mide tus componentes específicos antes de finalizar el diseño.
 
 ---
 
@@ -16,7 +16,7 @@
 | Puerto USB-C | Centrado en lado corto — hueco necesario: **12 mm × 6 mm** |
 | Montaje | Sin orificios estándar — usar snap-fit lateral o postes con clip |
 
-> El módulo CAM tiene antena WiFi/BT integrada + conector de cámara. Si no se usa la cámara, tapar o cubrir el conector para evitar acumulación de polvo.
+&gt; El módulo CAM tiene antena WiFi/BT integrada + conector de cámara. Si no se usa la cámara, tapar o cubrir el conector para evitar acumulación de polvo.
 
 ### Pantalla TFT IPS 3.2" (ILI9341)
 
@@ -28,7 +28,7 @@
 | **Profundidad desde cara frontal** | mínimo **7 mm** (panel + PCB + conector FPC) |
 | **Ángulo de visión** | IPS: 170° H/V — sin restricción ergonómica por ángulo |
 
-> Recomendado inclinar la pantalla ~12° respecto a la horizontal del chasis para ergonomía en sobremesa.
+&gt; Recomendado inclinar la pantalla ~12° respecto a la horizontal del chasis para ergonomía en sobremesa.
 
 ### Teclado — Pulsadores 6×6 mm
 
@@ -90,7 +90,7 @@
 | **Grosor (zona de pantalla)** | 12 mm | **15 mm** | 20 mm |
 | **Grosor (zona de teclado)** | 10 mm | **13 mm** | 18 mm |
 
-> El rango de 185 mm × 98 mm es equivalente al formato de la Casio fx-570/991, que resulta cómodo de sostener y de tamaño familiar para el usuario.
+&gt; El rango de 185 mm × 98 mm es equivalente al formato de la Casio fx-570/991, que resulta cómodo de sostener y de tamaño familiar para el usuario.
 
 ### Despiece de Grosor
 

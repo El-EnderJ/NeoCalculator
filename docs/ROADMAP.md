@@ -1,8 +1,8 @@
 # NumOS — Project Roadmap
 
-> **Last update:** March 2026
->
-> Historical record and future plan for NumOS. Each phase builds upon the previous one until achieving an open-source scientific calculator that rivals the best on the market.
+&gt; **Last update:** March 2026
+&gt;
+&gt; Historical record and future plan for NumOS. Each phase builds upon the previous one until achieving an open-source scientific calculator that rivals the best on the market.
 
 ---
 
@@ -56,7 +56,7 @@
 
 ## Phase 1 — The Foundation (Complete)
 
-> *Objective: A system that evaluates mathematical expressions and displays them on screen.*
+&gt; *Objective: A system that evaluates mathematical expressions and displays them on screen.*
 
 ### Math Engine
 - [x] **Tokenizer** (`Tokenizer.cpp`): String → list of `Token` — numbers, operators, functions, parentheses, variables.
@@ -74,7 +74,7 @@
 
 ## Phase 2 — Natural Display V.P.A.M. (Complete)
 
-> *Objective: Expressions are rendered exactly like on a modern physical calculator.*
+&gt; *Objective: Expressions are rendered exactly like on a modern physical calculator.*
 
 ### Visual Expression Tree (AST)
 - [x] **ExprNode** (`ExprNode.h`): Dynamic tree — `TEXT`, `FRACTION`, `ROOT`, `POWER` nodes.
@@ -94,7 +94,7 @@
 
 ## Phase 3 — Launcher 3.0 and Integration (Complete)
 
-> *Objective: Complete app system with launcher, navigation, and debugging tools.*
+&gt; *Objective: Complete app system with launcher, navigation, and debugging tools.*
 
 ### Launcher and SystemApp
 - [x] **3-column grid**: Icon launcher inspired by NumWorks/Casio fx-CG.
@@ -111,7 +111,7 @@
 
 ## Phase 4 — LVGL 9.x: Visual Revolution (Complete)
 
-> *Objective: Abandon direct rendering and adopt LVGL for a professional-grade UI.*
+&gt; *Objective: Abandon direct rendering and adopt LVGL for a professional-grade UI.*
 
 ### HW Bring-Up ESP32-S3 N16R8 CAM
 
@@ -134,11 +134,11 @@
 
 ## Phase 5 — CAS-Lite Engine + EquationsApp (Complete)
 
-> *Objective: Native symbolic algebra with detailed steps. The first open-source ESP32-S3 calculator with its own CAS in PSRAM.*
+&gt; *Objective: Native symbolic algebra with detailed steps. The first open-source ESP32-S3 calculator with its own CAS in PSRAM.*
 
 ### CAS-Lite Engine — Symbolic Algebra
 
-- [x] **PSRAMAllocator\<T\>** (`cas/PSRAMAllocator.h`)
+- [x] **PSRAMAllocator\&lt;T\&gt;** (`cas/PSRAMAllocator.h`)
   STL-compatible allocator that redirects `allocate`/`deallocate` to `ps_malloc`/`ps_free`. The entire CAS lives in the 8 MB PSRAM OPI, without pressure on internal RAM.
 
 - [x] **SymPoly** (`cas/SymPoly.h/.cpp`)
@@ -168,7 +168,7 @@
 |:------|:-----:|:-----------|
 | **Phase A** — Fundamentals | 1–18 | `Rational` (exact arithmetic, simplification, GCD). `SymPoly` (add, sub, mul, diff, eval). |
 | **Phase B** — ASTFlattener | 19–32 | AST → SymPoly conversion for polynomials, constants, powers, functions. |
-| **Phase C** — SingleSolver | 33–44 | Linear (1 solution), quadratic (2 real roots, double root, Δ < 0), with steps. |
+| **Phase C** — SingleSolver | 33–44 | Linear (1 solution), quadratic (2 real roots, double root, Δ &lt; 0), with steps. |
 | **Phase D** — SystemSolver | 45–53 | Determinate, indeterminate (∞ sol.), incompatible (no sol.) system. |
 
 ```ini
@@ -198,7 +198,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ## CAS Elite Phase — Pro-CAS Engine + Unified Calculus App (Complete)
 
-> *Objective: CAS-Lite → Pro-CAS evolution. Full symbolic engine with derivatives, integrals, multi-pass simplification, and non-linear equation solving. See [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) for the breakdown of the 6 internal phases.*
+&gt; *Objective: CAS-Lite → Pro-CAS evolution. Full symbolic engine with derivatives, integrals, multi-pass simplification, and non-linear equation solving. See [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) for the breakdown of the 6 internal phases.*
 
 ### Pro-CAS Engine — 6 Completed Phases
 
@@ -229,7 +229,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ## Phase 6 — Complete Scientific Apps (✅ Complete)
 
-> *Objective: NumOS becomes a complete scientific calculator for real academic use, surpassing the Casio fx-991EX in features.*
+&gt; *Objective: NumOS becomes a complete scientific calculator for real academic use, surpassing the Casio fx-991EX in features.*
 
 ### 6.1 Statistics App
 - [x] Introduction of data lists (up to 200 elements with scroll)
@@ -280,12 +280,12 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ### 6.8 ParticleLabApp — The Alchemy Update ✅ Complete
 
-> *Powder-Toy-class cellular automata sandbox with 30+ materials, discrete electronics, and phase transitions.*
+&gt; *Powder-Toy-class cellular automata sandbox with 30+ materials, discrete electronics, and phase transitions.*
 
 #### Material Library (31 materials)
-- [x] **Earth & Glass**: Sand (>1500°C → Molten Glass), Molten Glass (&lt;1000°C → Glass), Stone (inert, heavy), Glass
+- [x] **Earth & Glass**: Sand (&gt;1500°C → Molten Glass), Molten Glass (&lt;1000°C → Glass), Stone (inert, heavy), Glass
 - [x] **Organics**: Wood (burns → Smoke), Coal (burns 10× longer than wood), Plant (2% chance to grow near Water)
-- [x] **Thermal Extremes**: Lava (1500°C, cools &lt;800°C → Stone), LN2 (Liquid Nitrogen, -196°C, evaporates >-190°C → Gas)
+- [x] **Thermal Extremes**: Lava (1500°C, cools &lt;800°C → Stone), LN2 (Liquid Nitrogen, -196°C, evaporates &gt;-190°C → Gas)
 - [x] **Electronics**: Wire (conductive), Heater (sparked → 2000°C), Cooler (sparked → -200°C), C4 (sparked → massive explosion)
 - [x] **Advanced Solids**: HEAC (extremely high heat conductor), INSL (heat/electricity insulator, burns), Titan (melts 1668°C, conductive), Iron (melts 1538°C, conductive)
 - [x] **Special**: Clone (reads & replicates adjacent material), Smoke (gas, dissipates), Molten Titan
@@ -312,7 +312,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ## Phase 7 — Matrices + Complex + Bases (Planned)
 
-> *Objective: Achieve parity with the HP Prime G2 and NumWorks CAS.*
+&gt; *Objective: Achieve parity with the HP Prime G2 and NumWorks CAS.*
 
 ### 7.1 Advanced Simplification and Factorization
 - [ ] Reduction of like terms: 2x + x → 3x
@@ -346,7 +346,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ## Phase 8 — Final Hardware + Connectivity + Scripting (Planned)
 
-> *Objective: NumOS becomes a complete, portable, autonomous, and connected physical product.*
+&gt; *Objective: NumOS becomes a complete, portable, autonomous, and connected physical product.*
 
 ### 8.1 Physical Keyboard — GPIO Conflict Resolution
 - [ ] Reassign ROW3 (GPIO 4) and ROW4 (GPIO 5) to free GPIOs (proposal: GPIO 15, 16)
@@ -406,7 +406,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ## Phase 9 — NeoLanguage: Hybrid Symbolic Programming Language (🚧 In Progress)
 
-> *Objective: Give NumOS a native, hybrid programming language that blends Python's clean syntax with Wolfram Language's native symbolic mathematics — running directly on the ESP32-S3.*
+&gt; *Objective: Give NumOS a native, hybrid programming language that blends Python's clean syntax with Wolfram Language's native symbolic mathematics — running directly on the ESP32-S3.*
 
 ### 9.1 Compiler Frontend (Phase 1 — Complete)
 
@@ -436,7 +436,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [x] Full control flow: `if`/`elif`/`else` chains, `while`, `for x in iterable`
 - [x] Panic-mode error recovery: `syncToNextStatement()` skips to next `NEWLINE`/`DEDENT`
 - [x] Iterative program-body loop to avoid stack overflow on ESP32
-- [x] Correct operator precedences: `^` > `* /` > `+ -` > comparisons > `and`/`or`
+- [x] Correct operator precedences: `^` &gt; `* /` &gt; `+ -` &gt; comparisons &gt; `and`/`or`
 
 **NeoLanguageApp** (`src/apps/NeoLanguageApp.h` / `NeoLanguageApp.cpp`)
 - [x] Two-tab LVGL IDE: **Editor** (code textarea) + **Console** (output/errors)

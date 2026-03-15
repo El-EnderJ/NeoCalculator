@@ -14,7 +14,7 @@
 | **Col 2** (INPUT_PULLUP) | 8 | OK — free |
 | **Col 3 – 9** | 3,15,16,17,18,21,47 | Not wired yet |
 
-> ✅ **GPIO conflict resolved (2026-03-02):** C0 and C1 have been reassigned from GPIO 4 (`TFT_DC`) and GPIO 5 (`TFT_RST`) to GPIO 6 and GPIO 7 respectively. All three currently wired columns (GPIO 6, 7, 8) are free of TFT or row conflicts.
+&gt; ✅ **GPIO conflict resolved (2026-03-02):** C0 and C1 have been reassigned from GPIO 4 (`TFT_DC`) and GPIO 5 (`TFT_RST`) to GPIO 6 and GPIO 7 respectively. All three currently wired columns (GPIO 6, 7, 8) are free of TFT or row conflicts.
 
 ---
 

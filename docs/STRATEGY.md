@@ -77,5 +77,5 @@ The brand must bridge the gap between "Open-Source Hacker" and "NASA-level preci
 3.  **Fase Delta (Interaction)**: Implementation of the "CAS Playground" using a JS-compiled version of the C++ logic (via Emscripten).
 4.  **Fase Omega (Live)**: Performance optimization for mobile devices and investor notification.
 
-> [!IMPORTANT]
-> This plan ensures that investors perceive NumOS not as a weekend project, but as a sophisticated hardware/software platform ready for mass-market hardware production.
+&gt; [!IMPORTANT]
+&gt; This plan ensures that investors perceive NumOS not as a weekend project, but as a sophisticated hardware/software platform ready for mass-market hardware production.

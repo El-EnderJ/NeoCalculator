@@ -1,10 +1,10 @@
 # NumOS — Project Bible
 
-> **La documentación maestra del proyecto. Si algo no está aquí, no existe.**
->
-> **Plataforma**: ESP32-S3 N16R8 CAM · **UI**: LVGL 9.5
-> **Lenguaje**: C++17 · **Pro-CAS Engine**: Producción activa
-> **Última actualización**: Marzo 2026
+&gt; **La documentación maestra del proyecto. Si algo no está aquí, no existe.**
+&gt;
+&gt; **Plataforma**: ESP32-S3 N16R8 CAM · **UI**: LVGL 9.5
+&gt; **Lenguaje**: C++17 · **Pro-CAS Engine**: Producción activa
+&gt; **Última actualización**: Marzo 2026
 
 ---
 

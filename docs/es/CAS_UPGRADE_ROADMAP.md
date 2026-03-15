@@ -1,10 +1,10 @@
 # Elite OmniCAS — Master Plan & Feasibility Analysis
 
-> **NumOS Pro-CAS: Architectural Overhaul Roadmap**
-> Target: Compete with HP Prime G2 & Wolfram Engine on ESP32-S3 N16R8
-> Author: Chief Mathematics Software Architect
-> Date: March 2026
-> Status: ✅ ALL 6 PHASES COMPLETE — Production Ready
+&gt; **NumOS Pro-CAS: Architectural Overhaul Roadmap**
+&gt; Target: Compete with HP Prime G2 & Wolfram Engine on ESP32-S3 N16R8
+&gt; Author: Chief Mathematics Software Architect
+&gt; Date: March 2026
+&gt; Status: ✅ ALL 6 PHASES COMPLETE — Production Ready
 
 ---
 
@@ -215,7 +215,7 @@ construction.
 │ lookup
 ┌────────┴──────────────────────────────────────────────┐
 │ ConsTable (PSRAM hash map) │
-│ unordered_map<uint64_t, SymExpr*, ..., PSRAMAlloc> │
+│ unordered_map&lt;uint64_t, SymExpr*, ..., PSRAMAlloc&gt; │
 │ │
 │ Key = structuralHash(node) │
 │ Collision resolution: open addressing (Robin Hood) │
@@ -225,13 +225,13 @@ construction.
 
 **Hash function design** (structural, recursive, cached):
 
-hash(SymNum{val}) = mix(0x01, hash_int(val.num), hash_int(val.den))
-hash(SymVar{name}) = mix(0x02, name)
-hash(SymNeg{child}) = mix(0x03, child->_hash)
-hash(SymAdd{t[], n}) = mix(0x04, sorted_hash(t[0]..t[n-1]))
-hash(SymMul{f[], n}) = mix(0x05, sorted_hash(f[0]..f[n-1]))
-hash(SymPow{b, e}) = mix(0x06, b->_hash, e->_hash)
-hash(SymFunc{k, arg}) = mix(0x07, k, arg->_hash)
+hash(SymNum&#123;val&#125;) = mix(0x01, hash_int(val.num), hash_int(val.den))
+hash(SymVar&#123;name&#125;) = mix(0x02, name)
+hash(SymNeg&#123;child&#125;) = mix(0x03, child-&gt;_hash)
+hash(SymAdd&#123;t[], n&#125;) = mix(0x04, sorted_hash(t[0]..t[n-1]))
+hash(SymMul&#123;f[], n&#125;) = mix(0x05, sorted_hash(f[0]..f[n-1]))
+hash(SymPow&#123;b, e&#125;) = mix(0x06, b-&gt;_hash, e-&gt;_hash)
+hash(SymFunc&#123;k, arg&#125;) = mix(0x07, k, arg-&gt;_hash)
 
 
 - `sorted_hash` for Add/Mul uses **canonical ordering** (by hash value) to
@@ -245,7 +245,7 @@ SymExpr* cons(arena, consTable, SymExprType type, args...):
 Compute hash from type + args
 Probe consTable[hash]
 If found AND structurallyEqual → return existing pointer (DEDUP!)
-Else → arena.create<T>(args...), insert into consTable, return new
+Else → arena.create&lt;T&gt;(args...), insert into consTable, return new
 
 
 **Memory overhead**: ConsTable ≈ 16 bytes/entry (8 hash + 4 ptr + 4 next).
@@ -258,8 +258,8 @@ same bulk lifetime.
 **SymSimplify refactor**: Must become **pure-functional** — never mutate
 input nodes. Instead of `n->child = simplify(n->child)`, do:
 
-SymExpr* newChild = simplify(n->child, arena, table);
-if (newChild == n->child) return n; // No change → reuse
+SymExpr* newChild = simplify(n-&gt;child, arena, table);
+if (newChild == n-&gt;child) return n; // No change → reuse
 return cons(arena, table, Neg, newChild); // Changed → new immutable node
 
 
@@ -284,8 +284,8 @@ xa + xb → x(a+b) (factoring rule)
 Every expression has a unique canonical form defined by a total order on nodes:
 
 Order priority:
-Constants < Operations < Variables < Functions
-Among variables: alphabetical (a < b < x < y < z)
+Constants &lt; Operations &lt; Variables &lt; Functions
+Among variables: alphabetical (a &lt; b &lt; x &lt; y &lt; z)
 Among sums: sorted by descending hash of each term
 Among products: sorted by descending hash of each factor
 Among powers: base-first, then exponent
@@ -307,11 +307,11 @@ prevents unbounded expansion.
              weight computation
 weight(Num) = 1
 weight(Var) = 1
-weight(Neg{c}) = 1 + weight(c)
-weight(Add{t₁..tₙ}) = 1 + Σweight(tᵢ)
-weight(Mul{f₁..fₙ}) = 1 + Σweight(fᵢ)
-weight(Pow{b,e}) = 1 + weight(b) + weight(e)
-weight(Func{k,a}) = 1 + weight(a)
+weight(Neg&#123;c&#125;) = 1 + weight(c)
+weight(Add&#123;t₁..tₙ&#125;) = 1 + Σweight(tᵢ)
+weight(Mul&#123;f₁..fₙ&#125;) = 1 + Σweight(fᵢ)
+weight(Pow&#123;b,e&#125;) = 1 + weight(b) + weight(e)
+weight(Func&#123;k,a&#125;) = 1 + weight(a)
 
 
 A rule `r(expr) → expr'` is accepted only if `weight(expr') ≤ weight(expr)`.
@@ -321,11 +321,11 @@ allowance but are capped at 1 application per `tan` node.
 **Layer 3 — Hard Iteration Limit (absolute safety net):**
 
 MAX_SIMPLIFY_PASSES = 8
-for (int pass = 0; pass < MAX_SIMPLIFY_PASSES; pass++) {
+for (int pass = 0; pass &lt; MAX_SIMPLIFY_PASSES; pass++) &#123;
 SymExpr* after = applyAllRules(expr, arena, consTable);
 if (after == expr) break; // Fixed point reached (pointer identity via hash-consing!)
 expr = after;
-}
+&#125;
 
 
 Hash-consing makes the fixed-point check **free**: if `after == expr`
@@ -353,12 +353,12 @@ Hash-consing makes the fixed-point check **free**: if `after == expr`
 The full Risch algorithm requires:
 
 1. **Polynomial GCD over algebraic extensions** — needs multivariate polynomial
-   arithmetic with algebraic number fields ($\mathbb{Q}(\alpha)$).
-2. **Hermite reduction** — partial fraction decomposition over $\mathbb{Q}[x]$.
+   arithmetic with algebraic number fields ($\mathbb&#123;Q&#125;(\alpha)$).
+2. **Hermite reduction** — partial fraction decomposition over $\mathbb&#123;Q&#125;[x]$.
 3. **Rothstein-Trager** — resultant computation, polynomial factoring.
 4. **Logarithmic part** — solving systems of algebraic equations.
 
-Each of these subroutines alone can consume >1 MB of working memory for
+Each of these subroutines alone can consume &gt;1 MB of working memory for
 non-trivial inputs. The full Risch on ESP32-S3 is **architecturally infeasible**
 without radical compromises.
 
@@ -426,9 +426,9 @@ or high degree, fall back to multivariate Newton.
 
 ### Phase 1: BigInt Hybrid Engine ✅ COMPLETE
 
-> **Goal**: Eliminate all `int64_t` overflow bugs. Zero silent wraparound.
-> **Duration**: ~2 weeks → **Completed**
-> **Risk**: Low (isolated to numeric layer, no UI changes)
+&gt; **Goal**: Eliminate all `int64_t` overflow bugs. Zero silent wraparound.
+&gt; **Duration**: ~2 weeks → **Completed**
+&gt; **Risk**: Low (isolated to numeric layer, no UI changes)
 
 **Step 1.1 — Create `CASInt` wrapper class**
 - File: `src/math/cas/CASInt.h`
@@ -441,7 +441,7 @@ or high degree, fall back to multivariate Newton.
 
 **Step 1.2 — Create `CASRational` class**
 - File: `src/math/cas/CASRational.h`, `.cpp`
-- Fields: `CASInt num, den` (den always > 0, auto-GCD-reduced)
+- Fields: `CASInt num, den` (den always &gt; 0, auto-GCD-reduced)
 - Methods: `add`, `sub`, `mul`, `div`, `neg`, `pow(int exp)`, `cmp`, `isZero`, `isInteger`, `toDouble`
 - Replace every `int64_t` multiply in `exactAdd`/`exactMul`/`exactPow`/`exactSqrt` with `CASInt::mul`
 - Auto-normalize after every operation
@@ -468,9 +468,9 @@ wrap.
 
 ### Phase 2: Immutable DAG & Hash-Consing ✅ COMPLETE
 
-> **Goal**: SymExpr nodes become immutable with structural sharing via hash-consing.
-> **Duration**: ~3 weeks → **Completed**
-> **Risk**: Medium (SymSimplify refactor is the hardest part)
+&gt; **Goal**: SymExpr nodes become immutable with structural sharing via hash-consing.
+&gt; **Duration**: ~3 weeks → **Completed**
+&gt; **Risk**: Medium (SymSimplify refactor is the hardest part)
 
 **Step 2.1 — Add `_hash` field to `SymExpr`**
 - Add `uint64_t _hash` to `SymExpr` base class (8 bytes)
@@ -534,10 +534,10 @@ differentiating `sin(x)^10` is measurably lower than pre-consing baseline
 
 ### Phase 3: Fixed-Point Simplifier ✅ COMPLETE
 
-> **Goal**: Multi-pass rule engine with trig/log identities, canonical form,
-> guaranteed termination.
-> **Duration**: ~2 weeks → **Completed**
-> **Risk**: Medium (termination guarantee is the critical concern)
+&gt; **Goal**: Multi-pass rule engine with trig/log identities, canonical form,
+&gt; guaranteed termination.
+&gt; **Duration**: ~2 weeks → **Completed**
+&gt; **Risk**: Medium (termination guarantee is the critical concern)
 
 **Step 3.1 — Add `weight()` to SymExpr**
 - Add `virtual uint32_t weight() const = 0` to `SymExpr`
@@ -605,16 +605,16 @@ are simple nodes)
 - Target: **25 tests**
 
 **Verification**: Existing CAS tests pass. New simplifier produces same or simpler
-results for all existing differentiation test cases. No test takes >50ms.
+results for all existing differentiation test cases. No test takes &gt;50ms.
 
 ---
 
 ### Phase 4: Symbolic Integration (Slagle) ✅ COMPLETE
 
-> **Goal**: Implement a heuristic symbolic integration engine using
-> pattern matching, u-substitution, and integration by parts.
-> **Duration**: ~3 weeks → **Completed**
-> **Risk**: Medium-High (recursive heuristics need careful depth bounding)
+&gt; **Goal**: Implement a heuristic symbolic integration engine using
+&gt; pattern matching, u-substitution, and integration by parts.
+&gt; **Duration**: ~3 weeks → **Completed**
+&gt; **Risk**: Medium-High (recursive heuristics need careful depth bounding)
 
 **Step 4.1 — Create `SymIntegrate` static class**
 - File: `src/math/cas/SymIntegrate.h`, `src/math/cas/SymIntegrate.cpp`
@@ -653,7 +653,7 @@ substitute `u = g(x)` and recurse on `∫f(u) du`
 
 **Step 4.5 — Implement integration by parts (Level 4)**
 - LIATE rule for choosing `u` and `dv`:
-- **L**ogarithmic > **I**nverse trig > **A**lgebraic > **T**rig > **E**xponential
+- **L**ogarithmic &gt; **I**nverse trig &gt; **A**lgebraic &gt; **T**rig &gt; **E**xponential
 - `∫u dv = u·v - ∫v du` — recursion with depth limit 3
 - Detection: product of two "different type" expressions
 (e.g., `x · e^x`, `x² · sin(x)`, `ln(x) · x`)
@@ -693,10 +693,10 @@ match the integrand (via pointer identity after simplify).
 
 ### Phase 5: Multivariable & Resultant Solver ✅ COMPLETE
 
-> **Goal**: Extend SymExpr to native multivariate. Solve 2×2 nonlinear systems
-> via Sylvester resultant elimination.
-> **Duration**: ~2 weeks → **Completed**
-> **Risk**: Medium
+&gt; **Goal**: Extend SymExpr to native multivariate. Solve 2×2 nonlinear systems
+&gt; via Sylvester resultant elimination.
+&gt; **Duration**: ~2 weeks → **Completed**
+&gt; **Risk**: Medium
 
 **Step 5.1 — Extend `SymExpr::evaluate()` to multivariate**
 - Change: `virtual double evaluate(double varVal) const = 0`
@@ -726,7 +726,7 @@ that creates a VarMap with one entry
 3. Solve univariate via existing SingleSolver
 4. Back-substitute each `x` solution into either equation → solve for `y`
 5. Return solution pairs `{(x₁,y₁), (x₂,y₂), ...}`
-- Degree bound: reject if total degree > 6 (too expensive)
+- Degree bound: reject if total degree &gt; 6 (too expensive)
 
 **Step 5.5 — Extend HybridNewton to multivariate**
 - 2D Newton: `(x,y) -= J⁻¹·F(x,y)` where `J` is the 2×2 Jacobian
@@ -739,16 +739,16 @@ that creates a VarMap with one entry
 - Test: `x² + y² = 1, x + y = 1` → solve via resultant
 - Test: `xy = 6, x + y = 5` → `(2,3), (3,2)`
 - Test: `x² - y = 0, x - y² = 0` → `(0,0), (1,1)`
-- Test: degree > 6 → graceful fallback to Newton
+- Test: degree &gt; 6 → graceful fallback to Newton
 - Target: **20 tests**
 
 ---
 
 ### Phase 6: Unified Calculus App (d/dx + ∫dx) ✅ COMPLETE
 
-> **Goal**: Merge CalculusApp (derivatives) and IntegralApp into single unified Calculus App with tab-based mode switching, update all docs, final stress test.
-> **Duration**: ~2 weeks → **Completed**
-> **Risk**: Low (combines proven CalculusApp and integration pipelines)
+&gt; **Goal**: Merge CalculusApp (derivatives) and IntegralApp into single unified Calculus App with tab-based mode switching, update all docs, final stress test.
+&gt; **Duration**: ~2 weeks → **Completed**
+&gt; **Risk**: Low (combines proven CalculusApp and integration pipelines)
 
 **Step 6.1 — Unified `CalculusApp` Architecture**
 - File: `src/apps/CalculusApp.h`, `src/apps/CalculusApp.cpp`
@@ -784,7 +784,7 @@ that creates a VarMap with one entry
 - 100-iteration loop: random expressions from corpus of 50 functions
 - Toggle between derivative and integral modes for each expression
 - Simplify results and verify `simplify(diff(integrate(f))) ≈ f` where applicable
-- Log peak memory usage — must stay < 2 MB
+- Log peak memory usage — must stay &lt; 2 MB
 - Target: hardware Serial output with PASS/FAIL per iteration
 
 **Verification**: Full build. RAM 28.8%, Flash 19.3%. All 200+ tests pass. Both pipelines verified. Settings App operational.

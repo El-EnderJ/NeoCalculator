@@ -1,11 +1,11 @@
 # NumOS — Hardware Reference
 
-> **Platform**: ESP32-S3 N16R8 CAM · ILI9341 IPS 3.2" · 5×10 Keyboard
-> **Build Stats (Mar 2026)**: RAM 28.8% (94 512 B / 327 680 B) · Flash 19.3% (1 263 109 B / 6 553 600 B)
->
-> Complete hardware reference for NumOS. Covers pinout, wiring, known GPIO conflicts, critical bugs resolved, bring-up notes, and memory management (CAS-Lite PSRAM).
->
-> **Last updated**: March 2026
+&gt; **Platform**: ESP32-S3 N16R8 CAM · ILI9341 IPS 3.2" · 5×10 Keyboard
+&gt; **Build Stats (Mar 2026)**: RAM 28.8% (94 512 B / 327 680 B) · Flash 19.3% (1 263 109 B / 6 553 600 B)
+&gt;
+&gt; Complete hardware reference for NumOS. Covers pinout, wiring, known GPIO conflicts, critical bugs resolved, bring-up notes, and memory management (CAS-Lite PSRAM).
+&gt;
+&gt; **Last updated**: March 2026
 
 ---
 
@@ -31,7 +31,7 @@ board_upload.flash_size         = 16MB
 board_build.partitions          = default_16MB.csv
 ```
 
-> ⚠️ **If `qio_opi` is not specified**, ESP-IDF attempts to initialize PSRAM in standard SPI mode and boot ends with `Guru Meditation: Illegal Instruction` immediately.
+&gt; ⚠️ **If `qio_opi` is not specified**, ESP-IDF attempts to initialize PSRAM in standard SPI mode and boot ends with `Guru Meditation: Illegal Instruction` immediately.
 
 ---
 
@@ -64,16 +64,16 @@ board_build.partitions          = default_16MB.csv
 | BL / LED | **45** → 3.3V | Backlight — **hardwired to 3.3V** |
 | MISO / SDO | — | Not connected (no touch) |
 
-> ✅ **GPIO 45 (BL)**: In this build, the backlight pin is physically connected to 3.3V. Code **always** does `pinMode(45, INPUT)` to make the pin high-impedance. If set to `OUTPUT LOW`, it would short the power and the display would stop working.
+&gt; ✅ **GPIO 45 (BL)**: In this build, the backlight pin is physically connected to 3.3V. Code **always** does `pinMode(45, INPUT)` to make the pin high-impedance. If set to `OUTPUT LOW`, it would short the power and the display would stop working.
 
-> ✅ **GPIO 4/5 conflict — RESOLVED (2026-03-02)**:
-> Previously, `GPIO 4` (`TFT_DC`) and `GPIO 5` (`TFT_RST`) were also listed as keyboard column pins C0/C1,
-> which would have caused display corruption on any keypress. This has been fixed in `src/drivers/Keyboard.h`:
-> - **C0** reassigned from GPIO 4 → **GPIO 6** (free)
-> - **C1** reassigned from GPIO 5 → **GPIO 7** (free)
-> - **C2** reassigned from GPIO 6 → **GPIO 8** (free)
->
-> The three currently wired columns use GPIOs 6, 7, 8 — none of which conflict with TFT, PSRAM or row pins.
+&gt; ✅ **GPIO 4/5 conflict — RESOLVED (2026-03-02)**:
+&gt; Previously, `GPIO 4` (`TFT_DC`) and `GPIO 5` (`TFT_RST`) were also listed as keyboard column pins C0/C1,
+&gt; which would have caused display corruption on any keypress. This has been fixed in `src/drivers/Keyboard.h`:
+&gt; - **C0** reassigned from GPIO 4 → **GPIO 6** (free)
+&gt; - **C1** reassigned from GPIO 5 → **GPIO 7** (free)
+&gt; - **C2** reassigned from GPIO 6 → **GPIO 8** (free)
+&gt;
+&gt; The three currently wired columns use GPIOs 6, 7, 8 — none of which conflict with TFT, PSRAM or row pins.
 
 ### TFT Initialization (exact sequence in code)
 
@@ -92,10 +92,10 @@ The **CAS-Lite Engine** (EquationsApp) stores all symbolic data in PSRAM:
 - `CASStepLogger::StepVec` → `std::vector` with `PSRAMAllocator` → `ps_malloc`
 - LVGL and DMA buffers remain in internal RAM (`MALLOC_CAP_DMA | MALLOC_CAP_8BIT`)
 
-> ✅ **CAS-Lite does NOT interfere with display buffers.** PSRAM is shared by:
-> - General PSRAM heap (Arduino `ps_malloc`)
-> - CAS-Lite Engine (via `PSRAMAllocator`)
-> Display DMA buffers use **exclusively internal RAM** — separation guaranteed.
+&gt; ✅ **CAS-Lite does NOT interfere with display buffers.** PSRAM is shared by:
+&gt; - General PSRAM heap (Arduino `ps_malloc`)
+&gt; - CAS-Lite Engine (via `PSRAMAllocator`)
+&gt; Display DMA buffers use **exclusively internal RAM** — separation guaranteed.
 
 ---
 
@@ -134,7 +134,7 @@ void* buf2 = heap_caps_malloc(32 * 1024, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
 
 **32,768 bytes = ~51.2 scanlines × 320 px × 2 bytes (RGB565).** With `LV_DISPLAY_RENDER_MODE_PARTIAL`, LVGL renders in ≈51-line strips → ~5 `pushColors()` calls per full frame (vs ~25 with the old 6,400-byte buffer). Halving strip count roughly halves the "curtain" artifact visible on fast scroll.
 
-> ⚠️ **Single buffer only.** LVGL 9.x pipelining (`lv_display_set_flush_cb`) expects a DMA-done interrupt to release the buffer. TFT_eSPI uses blocking `pushColors()` — no ISR fires — so LVGL deadlocks waiting for a buffer-free signal if `buf2 != nullptr`.
+&gt; ⚠️ **Single buffer only.** LVGL 9.x pipelining (`lv_display_set_flush_cb`) expects a DMA-done interrupt to release the buffer. TFT_eSPI uses blocking `pushColors()` — no ISR fires — so LVGL deadlocks waiting for a buffer-free signal if `buf2 != nullptr`.
 
 ---
 
@@ -153,7 +153,7 @@ void* buf2 = heap_caps_malloc(32 * 1024, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
 
 ### Keyboard Pinout — Current Wiring (5 rows × 3 columns)
 
-> The physical PCB has 5 row traces and 10 column traces planned. Only 3 columns are wired in the current prototype. Full 5 × 10 matrix support is implemented in firmware; increase `KBD_CONNECTED_COLS` in `Config.h` when more columns are soldered.
+&gt; The physical PCB has 5 row traces and 10 column traces planned. Only 3 columns are wired in the current prototype. Full 5 × 10 matrix support is implemented in firmware; increase `KBD_CONNECTED_COLS` in `Config.h` when more columns are soldered.
 
 | Signal | GPIO | Direction | Note |
 |:-------|:----:|:---------:|:-----|
@@ -167,7 +167,7 @@ void* buf2 = heap_caps_malloc(32 * 1024, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
 | **C2** | **8** | INPUT_PULLUP | Column 2 — wired ✅ |
 | C3–C9 | 3,15,16,17,18,21,47 | INPUT_PULLUP | Not wired yet — defined in `Config.h` |
 
-> ✅ **GPIO 4/5 conflict resolved**: The new `Keyboard` driver (Phase 7) uses GPIOs 6, 7, 8 for the three currently wired columns. GPIO 4 and 5 are exclusively reserved for `TFT_DC` and `TFT_RST`.
+&gt; ✅ **GPIO 4/5 conflict resolved**: The new `Keyboard` driver (Phase 7) uses GPIOs 6, 7, 8 for the three currently wired columns. GPIO 4 and 5 are exclusively reserved for `TFT_DC` and `TFT_RST`.
 
 ### Key Layout
 
@@ -240,7 +240,7 @@ For testing without physical keyboard, the calculator can be controlled from PC 
   y          = VAR_Y
 ```
 
-> **Important**: `s` lowercase = DOWN. `S` uppercase = SHIFT. Monitor sends `\r\n` on Enter, which is **ignored** (use `z` for ENTER). Make sure you have `monitor_rts=0` and `monitor_dtr=0` in platformio.ini.
+&gt; **Important**: `s` lowercase = DOWN. `S` uppercase = SHIFT. Monitor sends `\r\n` on Enter, which is **ignored** (use `z` for ENTER). Make sure you have `monitor_rts=0` and `monitor_dtr=0` in platformio.ini.
 
 ---
 
@@ -274,7 +274,7 @@ For portable use:
 | **Booster** | MT3608: 3.7V → 5V to power via VIN |
 | **Monitor** | Resistive divider 100kΩ+100kΩ → analog GPIO (not yet implemented) |
 
-> Battery monitoring implementation in software is pending (Phase 5).
+&gt; Battery monitoring implementation in software is pending (Phase 5).
 
 ---
 

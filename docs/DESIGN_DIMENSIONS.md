@@ -1,6 +1,6 @@
 # 📐 NumOS — 3D Design Specifications (Chassis V1.0)
 
-> Critical dimensions for calculator chassis design. All values are **minimum recommended** based on actual hardware pieces. Always measure your specific components before completing the design.
+&gt; Critical dimensions for calculator chassis design. All values are **minimum recommended** based on actual hardware pieces. Always measure your specific components before completing the design.
 
 ---
 
@@ -16,7 +16,7 @@
 | USB-C Port | Centered on short end — cavity needed: **12 mm × 6 mm** |
 | Mounting | No standard holes — use lateral snap-fit or support posts |
 
-> The CAM module includes integrated WiFi/BT antenna + camera connector. If not using the camera, cover the connector to prevent dust accumulation.
+&gt; The CAM module includes integrated WiFi/BT antenna + camera connector. If not using the camera, cover the connector to prevent dust accumulation.
 
 ### 3.2" IPS TFT Display (ILI9341)
 
@@ -28,7 +28,7 @@
 | **Depth from front face** | minimum **7 mm** (panel + PCB + FPC connector) |
 | **Viewing angle** | IPS: 170° H/V — no ergonomic angle restriction |
 
-> Recommended to tilt display ~12° relative to chassis horizontal plane for desktop ergonomics.
+&gt; Recommended to tilt display ~12° relative to chassis horizontal plane for desktop ergonomics.
 
 ### Keyboard — 6×6 mm Tactile Buttons
 
@@ -90,7 +90,7 @@
 | **Thickness (display area)** | 12 mm | **15 mm** | 20 mm |
 | **Thickness (keyboard area)** | 10 mm | **13 mm** | 18 mm |
 
-> The 185 mm × 98 mm range matches the Casio fx-570/991 form factor, which is comfortable to hold and familiar to users.
+&gt; The 185 mm × 98 mm range matches the Casio fx-570/991 form factor, which is comfortable to hold and familiar to users.
 
 ### Thickness Breakdown
 

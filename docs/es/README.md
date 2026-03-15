@@ -1,6 +1,6 @@
-﻿<div align="center">
+﻿&lt;div align="center"&gt;
 
-<br>
+&lt;br&gt;
 
 # ◼ NumOS
 
@@ -8,7 +8,7 @@
 
 **ESP32-S3 N16R8 · ILI9341 IPS 320×240 · LVGL 9.x · Pro-CAS Engine · Natural Display V.P.A.M.**
 
-<br>
+&lt;br&gt;
 
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-espressif32_6.12-orange?logo=platformio&logoColor=white)](https://platformio.org/)
 [![LVGL](https://img.shields.io/badge/LVGL-9.5.0-blue?logo=c&logoColor=white)](https://lvgl.io/)
@@ -20,14 +20,14 @@
 [![RAM](https://img.shields.io/badge/RAM-28.8%25%20%E2%80%94%2094.5%20KB-informational)](#build-stats)
 [![Flash](https://img.shields.io/badge/Flash-19.3%25%20%E2%80%94%201.26%20MB-informational)](#build-stats)
 
-<br>
+&lt;br&gt;
 
-> *Una alternativa open-source real a las calculadoras comerciales.*
-> *Inspirada en NumWorks · TI-84 Plus · HP Prime G2 — construida desde cero en C++17.*
+&gt; *Una alternativa open-source real a las calculadoras comerciales.*
+&gt; *Inspirada en NumWorks · TI-84 Plus · HP Prime G2 — construida desde cero en C++17.*
 
-<br>
+&lt;br&gt;
 
-</div>
+&lt;/div&gt;
 
 ---
 
@@ -295,7 +295,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 | — | — | COL 6 | 48 |
 | — | — | COL 7 | 21 |
 
-> ⚠️ **Conflicto crítico**: GPIO 4 (TFT_DC) y GPIO 5 (TFT_RST) coinciden con ROW3/ROW4. **Reasignar estas filas del teclado a GPIOs libres antes de soldar.**
+&gt; ⚠️ **Conflicto crítico**: GPIO 4 (TFT_DC) y GPIO 5 (TFT_RST) coinciden con ROW3/ROW4. **Reasignar estas filas del teclado a GPIOs libres antes de soldar.**
 
 ---
 
@@ -338,7 +338,7 @@ Con el Serial Monitor abierto, escribe caracteres para controlar la calculadora:
 | `t` | sin | | `g` | GRAPH |
 | `e` | `=` (ecuación) | | `R` | SHOW STEPS (pasos) |
 
-> **Nota**: `s` minúscula = DOWN; `S` mayúscula = SHIFT. Desactivar CapsLock antes de usar.
+&gt; **Nota**: `s` minúscula = DOWN; `S` mayúscula = SHIFT. Desactivar CapsLock antes de usar.
 
 ---
 
@@ -357,7 +357,7 @@ La **EquationsApp** resuelve ecuaciones polinomiales de una variable y sistemas 
 2. Se abre el editor. Escribe tu ecuación con el signo `=`:
    - `x^2 - 5x + 6 = 0`  →  x₁=2, x₂=3
    - `2x + 3 = 7`  →  x=2
-   - `x^2 = -1`  →  sin solución real (Δ < 0)
+   - `x^2 = -1`  →  sin solución real (Δ &lt; 0)
 3. Pulsa **ENTER** para resolver.
 4. La pantalla de resultados muestra:
    - **Lineal**: una solución `x = valor`
@@ -476,7 +476,7 @@ numOS/
 
 ## Build Stats
 
-> Compilado con `pio run -e esp32s3_n16r8` en modo **producción** (tests CAS desactivados)
+&gt; Compilado con `pio run -e esp32s3_n16r8` en modo **producción** (tests CAS desactivados)
 
 | Recurso | Usado | Total | Porcentaje |
 |:--------|------:|------:|:----------:|
@@ -565,7 +565,7 @@ Problemas descubiertos y resueltos durante el bring-up. **Esenciales** para cual
 | Coste hardware estimado | **~15 €** | 79 € | 119 € | 179 € |
 | Plataforma | ESP32-S3 | STM32F730 | Zilog eZ80 | ARM Cortex-A7 |
 
-> 🏆 NumOS ya supera a la TI-84 en capacidades CAS y coste, y está en camino de igualar la NumWorks.
+&gt; 🏆 NumOS ya supera a la TI-84 en capacidades CAS y coste, y está en camino de igualar la NumWorks.
 
 ---
 
@@ -615,7 +615,7 @@ Este proyecto está bajo la licencia **MIT**. Ver [LICENSE](LICENSE) para más d
 
 ---
 
-<div align="center">
+&lt;div align="center"&gt;
 
 *Hecho con ❤️ y mucho C++17*
 
@@ -623,4 +623,4 @@ Este proyecto está bajo la licencia **MIT**. Ver [LICENSE](LICENSE) para más d
 
 *Última actualización: Marzo 2026*
 
-</div>
+&lt;/div&gt;

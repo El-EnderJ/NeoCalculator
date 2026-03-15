@@ -1,11 +1,11 @@
 # NumOS — Math Engine and Pro-CAS Engine
 
-> Complete technical documentation of the NumOS mathematical core.
-> Covers the numeric evaluation pipeline (Tokenizer→Parser→Evaluator),
-> the ExprNode visual tree, and the complete **Pro-CAS Engine** with exact
-> algebraic solving, symbolic differentiation and integration, PSRAM management, and educational step logging.
->
-> **Status**: Numeric Engine ✅ · Pro-CAS Engine ✅ · Tests passing ✅
+&gt; Complete technical documentation of the NumOS mathematical core.
+&gt; Covers the numeric evaluation pipeline (Tokenizer→Parser→Evaluator),
+&gt; the ExprNode visual tree, and the complete **Pro-CAS Engine** with exact
+&gt; algebraic solving, symbolic differentiation and integration, PSRAM management, and educational step logging.
+&gt;
+&gt; **Status**: Numeric Engine ✅ · Pro-CAS Engine ✅ · Tests passing ✅
 
 ---
 
@@ -92,8 +92,8 @@
 | Type | Description | Visual Example |
 |:-----|:------------|:---------------|
 | `TEXT` | Number, variable, operator, function | `3`, `x`, `sin`, `+` |
-| `FRACTION` | Fraction with numerator and denominator | $\frac{a}{b}$ |
-| `ROOT` | Root with index and radicand | $\sqrt[n]{x}$ |
+| `FRACTION` | Fraction with numerator and denominator | $\frac&#123;a&#125;&#123;b&#125;$ |
+| `ROOT` | Root with index and radicand | $\sqrt[n]&#123;x&#125;$ |
 | `POWER` | Base with raised exponent | $x^2$ |
 | `PAREN` | Grouping with parentheses | $(a+b)$ |
 
@@ -247,7 +247,7 @@ Stop criterion: |f(x)| < 1e-10  or  max 100 iterations
 Test seeds: x₀ ∈ {0, 1, -1, 2, -2, 5, -5, 10}
 ```
 
-> **Limitation**: Finds one real root. For exact algebra with all roots, use the **Pro-CAS Engine** (Section 8).
+&gt; **Limitation**: Finds one real root. For exact algebra with all roots, use the **Pro-CAS Engine** (Section 8).
 
 ---
 
@@ -572,7 +572,7 @@ ExprNode* SymToAST::systemResultToNode(const SystemResult& r, char v1, char v2);
 
 Output examples:
 - `Rational{3, 1}` → `ExprNode TEXT "3"`
-- `Rational{1, 2}` → `ExprNode FRACTION [TEXT "1" / TEXT "2"]` → renders $\frac{1}{2}$
+- `Rational{1, 2}` → `ExprNode FRACTION [TEXT "1" / TEXT "2"]` → renders $\frac&#123;1&#125;&#123;2&#125;$
 - `SolveResult(OK_TWO, -1/3, -2)` → `"x₁ = -1/3, x₂ = -2"`
 
 ---
@@ -822,7 +822,7 @@ Returns `nullptr` if unable to find a closed form antiderivative.
 | 2 | **Linearity** | ∫(af + bg)dx = a∫fdx + b∫gdx |
 | 3 | **Powers** | ∫xⁿdx = xⁿ⁺¹/(n+1) for n≠-1 |
 | 4 | **u-substitution** | ∫f(g(x))·g'(x)dx → ∫f(u)du with u=g(x) |
-| 5 | **Parts (LIATE)** | ∫u·dv = uv - ∫v·du, priority: Log > InvTrig > Alg > Trig > Exp |
+| 5 | **Parts (LIATE)** | ∫u·dv = uv - ∫v·du, priority: Log &gt; InvTrig &gt; Alg &gt; Trig &gt; Exp |
 
 **Complete pipeline**:
 ```

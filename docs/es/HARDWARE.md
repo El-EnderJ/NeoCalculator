@@ -1,11 +1,11 @@
 # NumOS — Hardware Reference
 
-> **Plataforma**: ESP32-S3 N16R8 CAM · ILI9341 IPS 3.2" · Teclado 5×10
-> **Build Stats (Mar 2026)**: RAM 28.8% (94 512 B / 327 680 B) · Flash 19.3% (1 263 109 B / 6 553 600 B)
->
-> Referencia completa de hardware para NumOS. Cubre pinout, wiring, conflictos GPIO conocidos, bugs críticos resueltos, notas de bring-up y gestión de memoria (CAS-Lite PSRAM).
->
-> **Última actualización**: Marzo 2026
+&gt; **Plataforma**: ESP32-S3 N16R8 CAM · ILI9341 IPS 3.2" · Teclado 5×10
+&gt; **Build Stats (Mar 2026)**: RAM 28.8% (94 512 B / 327 680 B) · Flash 19.3% (1 263 109 B / 6 553 600 B)
+&gt;
+&gt; Referencia completa de hardware para NumOS. Cubre pinout, wiring, conflictos GPIO conocidos, bugs críticos resueltos, notas de bring-up y gestión de memoria (CAS-Lite PSRAM).
+&gt;
+&gt; **Última actualización**: Marzo 2026
 
 ---
 
@@ -31,7 +31,7 @@ board_upload.flash_size         = 16MB
 board_build.partitions          = default_16MB.csv
 ```
 
-> ⚠️ **Si no se especifica `qio_opi`**, el ESP-IDF intenta inicializar la PSRAM en modo SPI estándar y el arranque termina en `Guru Meditation: Illegal Instruction` inmediatamente.
+&gt; ⚠️ **Si no se especifica `qio_opi`**, el ESP-IDF intenta inicializar la PSRAM en modo SPI estándar y el arranque termina en `Guru Meditation: Illegal Instruction` inmediatamente.
 
 ---
 
@@ -64,21 +64,21 @@ board_build.partitions          = default_16MB.csv
 | BL / LED | **45** → 3.3V | Backlight — **cableado fijo a 3.3V** |
 | MISO / SDO | — | No conectado (sin touch) |
 
-> ⚠️ **GPIO 45 (BL)**: En esta build, el pin de backlight está físicamente conectado a 3.3V. El código **siempre** hace `pinMode(45, INPUT)` para que el pin sea alto-impedancia. Si se pusiera en `OUTPUT LOW`, cortocircuitaría la alimentación y la pantalla dejaría de funcionar.
+&gt; ⚠️ **GPIO 45 (BL)**: En esta build, el pin de backlight está físicamente conectado a 3.3V. El código **siempre** hace `pinMode(45, INPUT)` para que el pin sea alto-impedancia. Si se pusiera en `OUTPUT LOW`, cortocircuitaría la alimentación y la pantalla dejaría de funcionar.
 
-> 🚨 **CONFLICTO CRÍTICO — GPIO 4 y GPIO 5**:
-> - `GPIO 4` = `TFT_DC` (Data/Command del display) = `ROW3` (fila 3 del teclado físico)
-> - `GPIO 5` = `TFT_RST` (Reset del display) = `ROW4` (fila 4 del teclado físico)
->
-> **Consecuencia**: Conectar el teclado físico sin resolver este conflicto producirá:
-> 1. Pulsaciones de teclas que modifican DC/RST del display → corrupción visual o reset no deseado de la pantalla.
-> 2. La inicialización del display puede activar filas del teclado involuntariamente.
->
-> **Resolución propuesta antes de soldar**:
-> - Reasignar `ROW3` a **GPIO 15** y `ROW4` a **GPIO 16** (libres y compatibles con matrix scan).
-> - Actualizar `Config.h`: `constexpr int KEY_ROWS[] = {21, 47, 48, 15, 16, 38};`
-> - Verificar que GPIO 15/16 no están en uso por PSRAM OPI (en N16R8 los GPIOs OPI son 35–37 internos — 15/16 son libres).
-> - **No soldar el teclado físico** hasta confirmar la nueva asignación en Wokwi con SerialBridge.
+&gt; 🚨 **CONFLICTO CRÍTICO — GPIO 4 y GPIO 5**:
+&gt; - `GPIO 4` = `TFT_DC` (Data/Command del display) = `ROW3` (fila 3 del teclado físico)
+&gt; - `GPIO 5` = `TFT_RST` (Reset del display) = `ROW4` (fila 4 del teclado físico)
+&gt;
+&gt; **Consecuencia**: Conectar el teclado físico sin resolver este conflicto producirá:
+&gt; 1. Pulsaciones de teclas que modifican DC/RST del display → corrupción visual o reset no deseado de la pantalla.
+&gt; 2. La inicialización del display puede activar filas del teclado involuntariamente.
+&gt;
+&gt; **Resolución propuesta antes de soldar**:
+&gt; - Reasignar `ROW3` a **GPIO 15** y `ROW4` a **GPIO 16** (libres y compatibles con matrix scan).
+&gt; - Actualizar `Config.h`: `constexpr int KEY_ROWS[] = {21, 47, 48, 15, 16, 38};`
+&gt; - Verificar que GPIO 15/16 no están en uso por PSRAM OPI (en N16R8 los GPIOs OPI son 35–37 internos — 15/16 son libres).
+&gt; - **No soldar el teclado físico** hasta confirmar la nueva asignación en Wokwi con SerialBridge.
 
 ### Inicialización TFT (secuencia exacta en código)
 
@@ -97,10 +97,10 @@ El **CAS-Lite Engine** (EquationsApp) almacena todos los datos simbólicos en PS
 - `CASStepLogger::StepVec` → `std::vector` con `PSRAMAllocator` → `ps_malloc`
 - Los buffers de LVGL y DMA permanecen en RAM interna (`MALLOC_CAP_DMA | MALLOC_CAP_8BIT`)
 
-> ✅ **El CAS-Lite NO interfiere con los buffers de display.** La PSRAM es compartida por:
-> - El heap de PSRAM general (Arduino `ps_malloc`)
-> - El CAS-Lite Engine (via `PSRAMAllocator`)
-> Los buffers DMA del ILI9341 usan **exclusivamente RAM interna** — separación garantizada.
+&gt; ✅ **El CAS-Lite NO interfiere con los buffers de display.** La PSRAM es compartida por:
+&gt; - El heap de PSRAM general (Arduino `ps_malloc`)
+&gt; - El CAS-Lite Engine (via `PSRAMAllocator`)
+&gt; Los buffers DMA del ILI9341 usan **exclusivamente RAM interna** — separación garantizada.
 
 ---
 
@@ -169,7 +169,7 @@ Los 6 400 bytes corresponden a **10 líneas × 320 px × 2 bytes (RGB565)**. Con
 | **C6** | 48 | OUTPUT | Columna 6 |
 | **C7** | 21 | OUTPUT | Columna 7 |
 
-> ⚠️ **Nota crítica**: GPIO 4 y 5 están en uso por el TFT (DC y RST). Antes de conectar el teclado físico, reasignar R3 y R4 a pines libres y actualizar `Config.h`.
+&gt; ⚠️ **Nota crítica**: GPIO 4 y 5 están en uso por el TFT (DC y RST). Antes de conectar el teclado físico, reasignar R3 y R4 a pines libres y actualizar `Config.h`.
 
 ### Layout de Teclas
 
@@ -242,7 +242,7 @@ Para pruebas sin teclado físico, la calculadora puede controlarse desde el Seri
   y          = VAR_Y
 ```
 
-> **Importante**: `s` minúscula = DOWN. `S` mayúscula = SHIFT. El monitor envía `\r\n` al pulsar Enter, que es **ignorado** (usa `z` para ENTER). Asegúrate de tener `monitor_rts=0` y `monitor_dtr=0` en platformio.ini.
+&gt; **Importante**: `s` minúscula = DOWN. `S` mayúscula = SHIFT. El monitor envía `\r\n` al pulsar Enter, que es **ignorado** (usa `z` para ENTER). Asegúrate de tener `monitor_rts=0` y `monitor_dtr=0` en platformio.ini.
 
 ---
 
@@ -276,7 +276,7 @@ Para uso portable:
 | **Regulador** | Boost MT3608: 3.7V → 5V para alimentar por VIN |
 | **Monitor** | Divisor resistivo 100kΩ+100kΩ → GPIO analógico (no implementado aún) |
 
-> La implementación del monitor de batería en software está pendiente (Fase 5).
+&gt; La implementación del monitor de batería en software está pendiente (Fase 5).
 
 ---
 

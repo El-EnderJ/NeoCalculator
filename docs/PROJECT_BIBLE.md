@@ -1,10 +1,10 @@
 # NumOS — Project Bible
 
-> **The master documentation of the project. If something is not here, it does not exist.**
->
-> **Platform**: ESP32-S3 N16R8 CAM · **UI**: LVGL 9.5
-> **Language**: C++17 · **Pro-CAS Engine**: Active Production
-> **Last Update**: April 2026
+&gt; **The master documentation of the project. If something is not here, it does not exist.**
+&gt;
+&gt; **Platform**: ESP32-S3 N16R8 CAM · **UI**: LVGL 9.5
+&gt; **Language**: C++17 · **Pro-CAS Engine**: Active Production
+&gt; **Last Update**: April 2026
 
 **Website / Project site:** https://neocalculator.tech (also available as the repo `index.html` and CNAME)
 
@@ -196,9 +196,9 @@ handleKey(MODE) [intercepted by SystemApp]:
 | Category | Materials |
 |:---------|:----------|
 | **Basic** | Wall, Sand, Water, Fire, Oil, Steam, Ice, Salt, Gunpowder, Acid |
-| **Earth & Glass** | Stone, Glass, Molten Glass (Sand >1500°C → Molten Glass → Glass &lt;1000°C) |
+| **Earth & Glass** | Stone, Glass, Molten Glass (Sand &gt;1500°C → Molten Glass → Glass &lt;1000°C) |
 | **Organics** | Wood (burns → Smoke), Coal (burns 10× longer), Plant (grows near Water) |
-| **Thermal** | Lava (1500°C, cools → Stone &lt;800°C), LN2 (-196°C, evaporates → Gas >-190°C) |
+| **Thermal** | Lava (1500°C, cools → Stone &lt;800°C), LN2 (-196°C, evaporates → Gas &gt;-190°C) |
 | **Electronics** | Wire, Heater (sparked → 2000°C), Cooler (sparked → -200°C), C4 (sparked → explode) |
 | **Advanced** | HEAC (high thermal conductor), INSL (heat/electricity blocker, burns), Iron, Titan (melts 1668°C) |
 | **Special** | Clone (reads & replicates neighbor), Smoke, Gas, Molten Titan |
@@ -771,7 +771,7 @@ steps.add(StepType::INFO, "Cardano's Method (degree 3)");
 
 ## 12. NeoLanguage — Compiler Frontend Architecture
 
-> **NeoLanguage** is a hybrid programming language for NumOS that blends Python's clean, indentation-based syntax with Wolfram Language's native symbolic mathematics. Phase 1 implements the complete compiler frontend: Lexer, AST, and Parser.
+&gt; **NeoLanguage** is a hybrid programming language for NumOS that blends Python's clean, indentation-based syntax with Wolfram Language's native symbolic mathematics. Phase 1 implements the complete compiler frontend: Lexer, AST, and Parser.
 
 ### 12.1 Language Overview
 
@@ -893,4 +893,4 @@ Future interpreter phases will populate `symexpr_ptr` automatically when an expr
 - The parser produces an AST but there is no interpreter yet (Phase 2).
 - `SymExprWrapperNode::symexpr_ptr` is always `nullptr` until the CAS bridge is implemented.
 - The editor textarea on ESP32 accepts key input via `handleKey()` only (no touch).
-- Long programs (>4 KB) may cause the LVGL textarea to slow down; future versions will use a line-buffer model.
+- Long programs (&gt;4 KB) may cause the LVGL textarea to slow down; future versions will use a line-buffer model.

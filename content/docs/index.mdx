@@ -1,0 +1,35 @@
+---
+title: System Architecture Overview
+date: '2025-10-15'
+category: Architecture
+---
+
+# NeoLanguage & NumOS Architecture
+
+NumOS is a custom-built bare-metal operating system designed specifically for the **ESP32-S3** inside the NeoCalculator. It bypasses conventional RTOS overhead to deliver raw hardware performance to the computing layer.
+
+## The 97KB SRAM Challenge
+
+Traditional CAS engines like SymPy or Maxima require Megabytes of RAM. But the ESP32-S3 has limited fast SRAM before paging to external PSRAM.
+
+```cpp
+// NeoLanguage Execution Core Example
+void executeMathNode(ASTNode* node) {
+    if (node->type == NODE_INTEGRAL) {
+        // Evaluate using Slagle's Algorithm internally
+        SlagleSolver solver;
+        Expression result = solver.solveSym(node->left, node->right);
+        DisplayManager::renderEquation(result);
+    }
+}
+```
+
+### Key Differences
+
+1. **DAG-Based Expressions:** We reuse common sub-expressions in memory. If you compute `sin(x)*cos(x) + sin(x)`, the `sin(x)` tree branch only exists once in SRAM.
+2. **Hardware Timers:** LVGL display ticking relies directly on the ESP timer interrupt to guarantee a strict 60 FPS `flush_cb`.
+3. **Hardware Decolonization:** By open-sourcing the design files (`.sch`, `.brd`), any student can order their own batch from JLCPCB for around $12 per unit in bulk.
+
+## Upcoming Roadmap
+
+Check the [Roadmap](/roadmap) for details, but our next step is releasing the pilot PCBs to beta testers and configuring the Kickstarter launch for Mass Manufacturing.

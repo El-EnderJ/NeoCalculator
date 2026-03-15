@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   },
 };
 
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -25,8 +28,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans bg-[#0a0a0a] text-white antialiased selection:bg-[#ccff00] selection:text-black`}>
-        {children}
+      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans bg-[#0a0a0a] text-white antialiased selection:bg-[#ccff00] selection:text-black flex flex-col min-h-screen`}>
+        <Navbar />
+        <div className="flex-grow pt-16">
+            {children}
+        </div>
+        <Footer />
       </body>
     </html>
   );

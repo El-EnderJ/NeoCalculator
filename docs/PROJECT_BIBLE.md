@@ -196,9 +196,9 @@ handleKey(MODE) [intercepted by SystemApp]:
 | Category | Materials |
 |:---------|:----------|
 | **Basic** | Wall, Sand, Water, Fire, Oil, Steam, Ice, Salt, Gunpowder, Acid |
-| **Earth & Glass** | Stone, Glass, Molten Glass (Sand >1500°C → Molten Glass → Glass <1000°C) |
+| **Earth & Glass** | Stone, Glass, Molten Glass (Sand >1500°C → Molten Glass → Glass &lt;1000°C) |
 | **Organics** | Wood (burns → Smoke), Coal (burns 10× longer), Plant (grows near Water) |
-| **Thermal** | Lava (1500°C, cools → Stone <800°C), LN2 (-196°C, evaporates → Gas >-190°C) |
+| **Thermal** | Lava (1500°C, cools → Stone &lt;800°C), LN2 (-196°C, evaporates → Gas >-190°C) |
 | **Electronics** | Wire, Heater (sparked → 2000°C), Cooler (sparked → -200°C), C4 (sparked → explode) |
 | **Advanced** | HEAC (high thermal conductor), INSL (heat/electricity blocker, burns), Iron, Titan (melts 1668°C) |
 | **Special** | Clone (reads & replicates neighbor), Smoke, Gas, Molten Titan |
@@ -709,7 +709,7 @@ case TokenType::LOG2:
 // 1. Reduce to depressed form: t³ + pt + q = 0
 // 2. Calculate discriminant Δ = -(4p³ + 27q²)
 // 3. Δ>0: 3 real roots (trigonometric method)
-//    Δ<0: 1 real + 2 complex
+//    Δ&lt;0: 1 real + 2 complex
 steps.add(StepType::INFO, "Cardano's Method (degree 3)");
 ```
 
@@ -752,7 +752,7 @@ steps.add(StepType::INFO, "Cardano's Method (degree 3)");
 | Screen with lines / artifacts | SPI too fast | `SPI_FREQUENCY=10000000` |
 | Black screen with LVGL active | Buffers in PSRAM | `heap_caps_malloc(MALLOC_CAP_DMA\|MALLOC_CAP_8BIT)` |
 | Empty Serial Monitor / board resets | DTR/RTS resets on connect | `monitor_rts=0`, `monitor_dtr=0` |
-| Serial output lost on boot | USB CDC not enumerated | `while(!Serial && millis()-t0<3000)` |
+| Serial output lost on boot | USB CDC not enumerated | `while(!Serial && millis()-t0&lt;3000)` |
 | LittleFS error on startup | No partition or `vars.dat` not exists | `LittleFS.begin(true)` — `formatOnFail=true` |
 | Physical keyboard not responding | GPIO 4/5 shared TFT/keyboard | Reassign ROW3/ROW4 to free GPIOs |
 | EquationsApp incorrect result | ASTFlattener didn't recognize node | Review `ASTFlattener::visit*()` |

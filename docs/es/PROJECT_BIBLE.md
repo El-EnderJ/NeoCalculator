@@ -554,7 +554,7 @@ case TokenType::LOG2:
 // 1. Reducir a forma deprimida: t³ + pt + q = 0
 // 2. Calcular discriminante Δ = -(4p³ + 27q²)
 // 3. Δ>0: 3 raíces reales (método trigonométrico)
-//    Δ<0: 1 real + 2 complejas
+//    Δ&lt;0: 1 real + 2 complejas
 steps.add(StepType::INFO, "Método de Cardano (grado 3)");
 ```
 
@@ -597,7 +597,7 @@ steps.add(StepType::INFO, "Método de Cardano (grado 3)");
 | Pantalla con líneas / artefactos | SPI demasiado rápido | `SPI_FREQUENCY=10000000` |
 | Pantalla negra con LVGL activo | Buffers en PSRAM | `heap_caps_malloc(MALLOC_CAP_DMA|MALLOC_CAP_8BIT)` |
 | Serial Monitor vacío / board se resetea | DTR/RTS reinicia al conectar | `monitor_rts=0`, `monitor_dtr=0` |
-| Output serie perdido en boot | USB CDC no enumerado | `while(!Serial && millis()-t0<3000)` |
+| Output serie perdido en boot | USB CDC no enumerado | `while(!Serial && millis()-t0&lt;3000)` |
 | LittleFS error al arrancar | Sin partición o `vars.dat` no existe | `LittleFS.begin(true)` — `formatOnFail=true` |
 | Teclado físico no responde | GPIO 4/5 compartidos TFT/teclado | Reasignar ROW3/ROW4 a GPIOs libres |
 | EquationsApp resultado incorrecto | ASTFlattener no reconoció nodo | Revisar `ASTFlattener::visit*()` |

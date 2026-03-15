@@ -805,7 +805,7 @@ mu    = 0.0
 sigma = 1.0
 
 print("P(x=0)   =", pdf_normal(0, mu, sigma))   # => 0.3989
-print("P(x<1.0) =", cdf_normal(1, mu, sigma))   # => 0.8413
+print("P(x&lt;1.0) =", cdf_normal(1, mu, sigma))   # => 0.8413
 print("P(x<-1)  =", cdf_normal(-1, mu, sigma))  # => 0.1587
 
 # 95% confidence interval: P(-1.96 < X < 1.96) ≈ 0.95

@@ -110,7 +110,7 @@ already-wrapped values. This is the most urgent problem.
 
 Replacing `int64_t` with `mbedtls_mpi` in `ExactVal` would make **every
 arithmetic operation** ~5-10x slower. A simplification loop that currently takes
-<1ms would take 5-10ms, potentially stalling the LVGL frame loop (16.6ms budget
+&lt;1ms would take 5-10ms, potentially stalling the LVGL frame loop (16.6ms budget
 at 60fps).
 
 #### Measured Characteristics of `mbedtls_mpi` on ESP32-S3
@@ -384,7 +384,7 @@ shared subexpressions reduce this further.
 
 **Performance profile**: Pattern matching is O(n) per rule × O(k) rules × O(d)
 recursion depth. For textbook integrals: n≤50 nodes, k≤100 rules, d≤10.
-Total: ~50,000 operations ≈ **<1 ms at 240 MHz**.
+Total: ~50,000 operations ≈ **&lt;1 ms at 240 MHz**.
 
 #### Gröbner Bases — Verdict: RESULTANT SUBSET ONLY
 
@@ -409,11 +409,11 @@ or high degree, fall back to multivariate Newton.
 
 | # | Decision | Rationale |
 |---|----------|-----------|
-| **D1** | Hybrid BigInt: `int64_t` fast-path + `mbedtls_mpi` on overflow | 95% of inputs use small numbers; <2 cycle overhead for overflow check |
+| **D1** | Hybrid BigInt: `int64_t` fast-path + `mbedtls_mpi` on overflow | 95% of inputs use small numbers; &lt;2 cycle overhead for overflow check |
 | **D2** | Hash-consing DAG in PSRAM via ConsTable + Arena | Deduplicates shared subexpressions; O(1) equality via pointer identity |
 | **D3** | Canonical ordering via hash-sorted children | Eliminates commutativity oscillation in simplifier |
 | **D4** | Monotonic weight metric + 8-pass hard limit | Guarantees simplifier termination without losing useful rules |
-| **D5** | Slagle heuristic integration (no Risch) | Covers ~90% of textbook integrals; fits in <5 KB arena per operation |
+| **D5** | Slagle heuristic integration (no Risch) | Covers ~90% of textbook integrals; fits in &lt;5 KB arena per operation |
 | **D6** | Resultant elimination for 2×2 nonlinear (no full Gröbner) | Bounded memory; reduces to existing univariate solver |
 | **D7** | ESP32-only CAS, no emulator | All CAS tests run on hardware via Serial Monitor |
 | **D8** | ExactVal → split into `CASRational` + symbolic constants in DAG | Cleaner separation; `π`, `e`, `√n` become tree nodes, not packed fields |
@@ -798,7 +798,7 @@ that creates a VarMap with one entry
 | **mbedtls_mpi too slow for inner loops** | High | Low | Hybrid int64 fast-path; mpi only on overflow |
 | **Hash-consing memory overhead exceeds PSRAM** | High | Low | ConsTable with 0.7 load factor; max 1MB arena; monitor via `blockCount()` |
 | **Simplifier oscillation despite canonical order** | Medium | Medium | Weight monotonicity + 8-pass hard limit + pointer-identity fixed-point |
-| **U-substitution recursion stack overflow** | Medium | Low | Depth limit = 5; each level uses <500B stack |
+| **U-substitution recursion stack overflow** | Medium | Low | Depth limit = 5; each level uses &lt;500B stack |
 | **Resultant matrix too large for high-degree systems** | Medium | Medium | Degree cap at 6; graceful Newton fallback |
 | **SymSimplify refactor breaks existing tests** | High | Medium | Pure-functional refactor is reversible; keep old code in `#if 0` blocks during transition |
 | **ExactVal→CASRational migration breaks CalculationApp** | Medium | Low | Bridge via `toExactVal()` converter; legacy path untouched |

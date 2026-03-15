@@ -874,7 +874,7 @@ Fase B — ASTFlattener (15 tests):
 Fase C — SingleSolver (16 tests):
   - Grado 0: INFINITE / NONE
   - Grado 1: x = entero, x = fracción, x = negativo
-  - Grado 2: discriminante 0, >0 (enteros), >0 (irracionales → double), <0
+  - Grado 2: discriminante 0, >0 (enteros), >0 (irracionales → double), &lt;0
   - Grado 2: fórmula cuadrática normalizada 2x²-5x+2=0 → x=2, x=1/2
   - Pasos: verificar que SingleSolver genera exactamente N pasos esperados
 

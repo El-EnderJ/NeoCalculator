@@ -122,7 +122,7 @@
 | ③ | Lines and artifacts on screen | `SPI_FREQUENCY=10000000` (10 MHz) |
 | ④ | LVGL screen always black | `heap_caps_malloc(DMA+8BIT)` — never `ps_malloc` for LVGL buffers |
 | ⑤ | GPIO 45 BL short circuit | `pinMode(45, INPUT)` — pin hardwired to 3.3V |
-| ⑥ | Serial CDC lost on boot | `while(!Serial && t0<3000)` + `monitor_rts=0` |
+| ⑥ | Serial CDC lost on boot | `while(!Serial && t0&lt;3000)` + `monitor_rts=0` |
 
 ### LVGL
 - [x] `lv_conf.h`: `LV_MEM_CUSTOM=1` (PSRAM), `LV_TICK_CUSTOM=1`, `LV_COLOR_DEPTH=16`, Montserrat 12/14/20 fonts.
@@ -283,9 +283,9 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 > *Powder-Toy-class cellular automata sandbox with 30+ materials, discrete electronics, and phase transitions.*
 
 #### Material Library (31 materials)
-- [x] **Earth & Glass**: Sand (>1500°C → Molten Glass), Molten Glass (<1000°C → Glass), Stone (inert, heavy), Glass
+- [x] **Earth & Glass**: Sand (>1500°C → Molten Glass), Molten Glass (&lt;1000°C → Glass), Stone (inert, heavy), Glass
 - [x] **Organics**: Wood (burns → Smoke), Coal (burns 10× longer than wood), Plant (2% chance to grow near Water)
-- [x] **Thermal Extremes**: Lava (1500°C, cools <800°C → Stone), LN2 (Liquid Nitrogen, -196°C, evaporates >-190°C → Gas)
+- [x] **Thermal Extremes**: Lava (1500°C, cools &lt;800°C → Stone), LN2 (Liquid Nitrogen, -196°C, evaporates >-190°C → Gas)
 - [x] **Electronics**: Wire (conductive), Heater (sparked → 2000°C), Cooler (sparked → -200°C), C4 (sparked → massive explosion)
 - [x] **Advanced Solids**: HEAC (extremely high heat conductor), INSL (heat/electricity insulator, burns), Titan (melts 1668°C, conductive), Iron (melts 1538°C, conductive)
 - [x] **Special**: Clone (reads & replicates adjacent material), Smoke (gas, dissipates), Molten Titan

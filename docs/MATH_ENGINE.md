@@ -874,7 +874,7 @@ Phase B — ASTFlattener (15 tests):
 Phase C — SingleSolver (16 tests):
   - Degree 0: INFINITE / NONE
   - Degree 1: x = integer, x = fraction, x = negative
-  - Degree 2: discriminant 0, >0 (integers), >0 (irrational → double), <0
+  - Degree 2: discriminant 0, >0 (integers), >0 (irrational → double), &lt;0
   - Degree 2: normalized quadratic formula 2x²-5x+2=0 → x=2, x=1/2
   - Steps: verify SingleSolver generates exactly N expected steps
 

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
 
-const docsDirectory = path.join(process.cwd(), 'content/docs');
+const docsDirectory = path.join(process.cwd(), 'docs');
 
 export function getDocsSlugs() {
   if (!fs.existsSync(docsDirectory)) return [];

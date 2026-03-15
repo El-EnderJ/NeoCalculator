@@ -20,6 +20,7 @@ export const metadata: Metadata = {
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { ScrollProgress } from "@/components/ScrollProgress";
 
 export default function RootLayout({
   children,
@@ -29,6 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans bg-[#0a0a0a] text-white antialiased selection:bg-[#ccff00] selection:text-black flex flex-col min-h-screen`}>
+        <ScrollProgress />
         <Navbar />
         <div className="flex-grow pt-16">
             {children}

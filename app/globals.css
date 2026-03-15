@@ -14,3 +14,23 @@
 body {
   background-color: #0a0a0a;
 }
+
+/* Custom Scrollbar for Obsidian / Cyber Lime aesthetic */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(204, 255, 0, 0.4);
+  border-radius: 4px;
+  transition: background 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(204, 255, 0, 0.8);
+}

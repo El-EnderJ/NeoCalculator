@@ -93,9 +93,18 @@ export default function HeroCanvas() {
           NUMOS<br/>
           <span className="text-white">REDEFINED</span>
         </h1>
-        <p className="font-mono text-gray-400 max-w-2xl mx-auto text-lg md:text-xl mt-6">
+        <p className="font-mono text-gray-400 max-w-2xl mx-auto text-lg md:text-xl mt-6 px-4">
           A <span className="text-white">$15</span> open-source scientific handheld disrupting a <span className="text-white">$150</span> monopoly.
         </p>
+
+        <div className="mt-12 flex flex-col sm:flex-row gap-4 justify-center items-center w-full px-4">
+          <a href="/manifesto" className="bg-[#ccff00] text-black font-black py-4 px-8 md:px-10 rounded-lg hover:bg-white transition-colors duration-300 w-full sm:w-auto text-center uppercase tracking-[0.1em] shadow-[0_0_20px_rgba(204,255,0,0.3)]">
+            Read the Manifesto
+          </a>
+          <a href="/compare" className="border border-white/20 bg-black/50 backdrop-blur-md text-white font-bold py-4 px-8 md:px-10 rounded-lg hover:border-white/60 hover:bg-white/10 transition-all duration-300 w-full sm:w-auto text-center uppercase tracking-[0.1em]">
+            View Specs
+          </a>
+        </div>
       </div>
     </div>
   );

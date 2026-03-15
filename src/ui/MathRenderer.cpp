@@ -83,10 +83,7 @@ void MathCanvas::create(lv_obj_t* parent) {
 
 void MathCanvas::destroy() {
     stopCursorBlink();
-    if (_obj) {
-        lv_obj_delete(_obj);
-        _obj = nullptr;
-    }
+    _obj = nullptr;
 }
 
 // ════════════════════════════════════════════════════════════════════════════

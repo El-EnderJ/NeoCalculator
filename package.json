@@ -9,7 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@gsap/react": "^2.1.2",
     "framer-motion": "^11.5.0",
+    "gsap": "^3.14.2",
     "lucide-react": "^0.440.0",
     "next": "14.2.0",
     "react": "^18.3.0",

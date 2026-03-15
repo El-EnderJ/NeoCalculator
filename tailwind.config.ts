@@ -9,14 +9,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        'cyber-lime': '#AFFE00',
-        'deep-lab': '#0A0A0E',
-        'electric-blue': '#00D1FF',
+        'cyber-lime': '#ccff00',
+        'deep-lab': '#0a0a0a',
+        'obsidian': '#111111',
       },
       fontFamily: {
         sans: ['var(--font-inter)'],
         mono: ['var(--font-jetbrains-mono)'],
       },
+      backgroundImage: {
+        'glass-gradient': 'linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)',
+      }
     },
   },
   plugins: [],

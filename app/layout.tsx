@@ -2,19 +2,19 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "700", "900"], variable: "--font-inter" });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono" });
 
 export const metadata: Metadata = {
-  title: "NumOS | Open Source CAS Calculator",
-  description: "A $15 open-source scientific calculator that outperforms $180 commercial models. Featuring an ESP32-S3 and Pro-CAS engine.",
-  keywords: ["Open Source CAS", "ESP32-S3 Calculator", "Low-cost Scientific Computing", "NumOS", "Hardware"],
-  authors: [{ name: "NumOS Team" }],
+  title: "NumOS | Open Source Scientific Calculator OS",
+  description: "An affordable graphing calculator alternative starring a high-performance CAS engine and ESP32-S3 firmware. Disrupting the market with a 70% BoM reduction.",
+  keywords: ["Open Source Scientific Calculator OS", "High-performance CAS engine", "ESP32-S3 calculator firmware", "Affordable graphing calculator alternative", "Symbolic Algebra System open hardware", "Pro-CAS", "DAG-based expressions", "Hardware Decolonization"],
+  authors: [{ name: "NumOS Team", url: "https://neocalculator.tech" }],
   openGraph: {
-    title: "NumOS | Open Source CAS Calculator",
-    description: "High-End Math, Zero-Cost Gatekeeping.",
+    title: "NumOS | The Ultimate Open Source Scientific Calculator OS",
+    description: "High-End Math, Zero-Cost Gatekeeping. Built on ESP32-S3.",
     type: "website",
-    url: "https://el-enderj.github.io/NeoCalculator",
+    url: "https://neocalculator.tech",
   },
 };
 
@@ -23,29 +23,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const schemaData = {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "NumOS",
-    "operatingSystem": "ESP32-S3",
-    "applicationCategory": "EducationalApplication",
-    "description": "An open-source scientific calculator with a Pro-CAS engine.",
-    "offers": {
-      "@type": "Offer",
-      "price": "15.00",
-      "priceCurrency": "USD"
-    }
-  };
-
   return (
     <html lang="en">
-      <head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaData) }}
-        />
-      </head>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans bg-[#0A0A0E] text-white antialiased`}>
+      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans bg-[#0a0a0a] text-white antialiased selection:bg-[#ccff00] selection:text-black`}>
         {children}
       </body>
     </html>

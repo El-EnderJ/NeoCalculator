@@ -2,18 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 10, 10, 14;
-  --background-end-rgb: 10, 10, 14;
+@layer utilities {
+  .text-glow-lime {
+    text-shadow: 0 0 20px rgba(204, 255, 0, 0.5);
+  }
+  .glass-panel {
+    @apply bg-glass-gradient backdrop-blur-md border border-white/10 rounded-2xl;
+  }
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background-color: #0a0a0a;
 }

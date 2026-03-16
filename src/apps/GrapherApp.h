@@ -13,10 +13,6 @@
 
 #include <lvgl.h>
 #include <vector>
-#include "../math/Tokenizer.h"
-#include "../math/Parser.h"
-#include "../math/Evaluator.h"
-#include "../math/VariableContext.h"
 #include "../math/MathAST.h"
 #include "../math/CursorController.h"
 #include "../math/MathEvaluator.h"
@@ -25,6 +21,8 @@
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
 #include "../input/KeyboardManager.h"
+#include "GraphModel.h"
+#include "GraphView.h"
 
 class GrapherApp {
 public:
@@ -60,12 +58,10 @@ private:
     static constexpr int PILL_RADIUS  = 6;    // NumWorks pill corner radius
     static constexpr int PILL_PAD     = 5;    // Internal padding (all sides)
     static constexpr int TPL_LOAD_INTERVAL_MS = 30;  // Lazy template load interval
-    static constexpr int MAX_POIS     = 10;   // Max pre-computed points of interest
-    static constexpr int INIT_SAMPLE_N= 40;   // Initial coarse-grid sample count
-    static constexpr int ADAPT_DEPTH  = 3;    // Adaptive subdivision depth
-    static constexpr float ADAPT_THRESHOLD_PX = 2.0f;  // Pixel error threshold for subdivision
-    static constexpr float POI_SNAP_THRESHOLD_PX = 5.0f; // Magnetic snap radius in screen pixels
+    static constexpr int MAX_POIS     = 20;   // Max pre-computed points of interest (roots + intersections)
     static constexpr int BISECTION_ITER = 25; // Bisection iterations for root/POI refinement
+    static constexpr int ASYNC_POI_STEPS_PER_TICK = 4; // Scan steps computed per LVGL timer tick
+    static constexpr float POI_SNAP_THRESHOLD_PX = 5.0f; // Magnetic snap radius in screen pixels
     static constexpr int TBL_HDR_H    = 22;   // Sticky table header height
 
     // Function colours (NumWorks palette)
@@ -84,18 +80,13 @@ private:
     enum class ExprMode : uint8_t { LIST, EDITING };
     enum class GrMode   : uint8_t { IDLE, NAVIGATE, TRACE };
 
-    // ── Per-function slot ────────────────────────────────────────────
-    struct FuncSlot {
-        char     text[64];   // expression string
-        int      len;        // strlen(text)
-        bool     valid;      // has parseable content
-        uint32_t color;
-    };
+    // ── Per-function slot (MVC: Model data, stored here for UI access) ──
+    using FuncSlot = grapher::CartesianFunction;
 
     // ── Point of Interest (for snap-to-POI) ──────────────────────────
     struct POI {
         float x, y;
-        char  label[16];   // "Root", "Min", "Max", "Intercept"
+        char  label[22];   // "Root", "Min", "Max", "Intercept", "Intersection"
     };
 
     // ── LVGL root ────────────────────────────────────────────────────
@@ -144,9 +135,6 @@ private:
     static constexpr int GRAPH_CANVAS_W = SCREEN_W;
     static constexpr int GRAPH_CANVAS_H = SCREEN_H - BAR_H - TAB_H - TOOLBAR_H - INFO_BAR_H;
 
-    // Lightweight integer point (replaces lv_point_precise_t in sampling)
-    struct PlotPt { int16_t x, y; };
-
     // ── Graph panel widgets ──────────────────────────────────────────
     lv_obj_t*       _graphToolbar;
     lv_obj_t*       _toolLabels[4];     // Auto  Axes  Pan  Trace
@@ -167,16 +155,22 @@ private:
     lv_obj_t*       _modeBadge;         // Mode indicator "[Trace]" / "[Pan]"
 
     // ── Calculate menu (floating overlay) ────────────────────────────
-    static constexpr int CALC_MENU_ITEMS = 5;
+    static constexpr int CALC_MENU_ITEMS = 6;  // +1 for "Draw Tangent"
     lv_obj_t*       _calcMenu;          // Floating menu container (nullptr when closed)
     lv_obj_t*       _calcMenuRows[CALC_MENU_ITEMS]; // Menu option labels
     int             _calcMenuIdx;       // Currently highlighted menu item
     bool            _calcMenuOpen;      // Menu is visible
 
-    // ── Integral area shading ────────────────────────────────────────
-    lv_obj_t*       _shadingLines[320]; // Vertical lines for area shading (max 320px)
-    int             _shadingCount;      // Number of active shading lines
-    bool            _shadingActive;     // Shading is currently displayed
+    // ── Integral area shading (pixel-buffer based) ───────────────────
+    bool            _shadingActive;     // Shading is currently applied to buffer
+    int             _shadingFuncIdx;    // Which function is shaded
+    float           _shadingX0;         // Shading left bound (world)
+    float           _shadingX1;         // Shading right bound (world)
+
+    // ── Tangent overlay (pixel-buffer based) ─────────────────────────
+    bool            _tangentActive;     // Tangent is currently drawn in buffer
+    int             _tangentFuncIdx;    // Which function the tangent belongs to
+    float           _tangentX;          // Point of tangency (world x)
 
     // ── Table panel widgets ──────────────────────────────────────────
     lv_obj_t*       _tblTable;          // native lv_table widget
@@ -185,11 +179,7 @@ private:
     static constexpr int TBL_ROWS = 21; // data rows in table
     static constexpr int TBL_COLS = 1 + MAX_FUNCS;  // x + one column per function
 
-    // ── Cached RPN per function (eliminates re-parsing in evalAt) ────
-    std::vector<Token>  _cachedRPN[MAX_FUNCS];
-    bool                _rpnCacheValid[MAX_FUNCS];
-
-    // ── Points of interest (roots, extrema) for snap-to-POI ─────────
+    // ── Points of interest (roots, extrema, intersections) ───────────
     POI  _pois[MAX_POIS];
     int  _numPOIs;
     bool _snappedToPOI;     // cursor is currently at a snapped POI
@@ -220,11 +210,9 @@ private:
     float           _tblStep;           // x step
     int             _tblFuncIdx;        // which function
 
-    // Eval engine
-    Tokenizer       _tokenizer;
-    Parser          _parser;
-    Evaluator       _evaluator;
-    VariableContext  _vars;
+    // Eval engine (MVC: Model layer)
+    grapher::GraphModel  _model;        // Mathematical evaluation engine
+    grapher::GraphView   _view;         // Pixel rendering engine (Kandinsky)
     vpam::MathEvaluator _vpamEval;
 
     // ── UI creation ──────────────────────────────────────────────────
@@ -260,33 +248,23 @@ private:
     // ── Graph helpers ────────────────────────────────────────────────
     void refreshToolbar();
     void replot();
-    void drawAxes();
-    void plotFunc(int idx);
     void drawTraceCursor();
     void updateInfoBar();
     void autoFit();
-
-    // Adaptive sampling: replaces pixel-by-pixel plotFunc
-    int  sampleFuncAdaptive(int fi, PlotPt* pts, int areaW, int areaH);
-    static void adaptSeg(GrapherApp* app, int fi,
-                         float xMin, float xRange,
-                         float yMin, float yRange,
-                         float areaW, float areaH,
-                         float wx0, float sy0,
-                         float wx1, float sy1,
-                         int depth,
-                         PlotPt* pts, int& n, int maxN);
-
-    // Kandinsky direct-pixel helpers
-    static uint16_t rgb888to565(uint32_t rgb);
-    static void fastDrawLine(uint16_t* buf, int bufW, int bufH,
-                             int x0, int y0, int x1, int y1, uint16_t color);
 
     // POI (snap-to-point) helpers
     void preCacheFuncRPN(int idx);
     void computePOIs(int funcIdx);
     void snapToPOI();
     void syncViewportToCursor();  // Camera follow: re-center viewport on trace cursor
+
+    // Async POI computation (sliced over LVGL timer ticks — keeps UI at 60 FPS)
+    void startAsyncPOI(int fi);
+    static void poiAsyncTimerCb(lv_timer_t* t);
+
+    // ── Tangent overlay ───────────────────────────────────────────────
+    void drawTangentOverlay(int funcIdx, float xTarget);
+    void clearTangent();
 
     // ── Calculate menu helpers ───────────────────────────────────────
     void openCalcMenu();
@@ -297,6 +275,13 @@ private:
     // ── Integral shading ─────────────────────────────────────────────
     void drawIntegralShading(int funcIdx, float shadeXMin, float shadeXMax);
     void clearIntegralShading();
+
+    // ── Async POI internal state ──────────────────────────────────────
+    lv_timer_t* _poiAsyncTimer;
+    int         _poiAsyncFi;
+    int         _poiAsyncStep;
+    float       _poiAsyncYPrev;
+    float       _poiAsyncYPrev2;
 
     // ── Table helpers ────────────────────────────────────────────────
     void rebuildTable();

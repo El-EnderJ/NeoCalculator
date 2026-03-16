@@ -73,7 +73,8 @@ GrapherApp::GrapherApp()
     , _tracePill(nullptr), _tracePillDot(nullptr), _tracePillLabel(nullptr)
     , _infoBar(nullptr), _infoLabel(nullptr)
     , _calcMenu(nullptr), _calcMenuIdx(0), _calcMenuOpen(false)
-    , _shadingCount(0), _shadingActive(false)
+    , _shadingActive(false), _shadingFuncIdx(-1), _shadingX0(0.0f), _shadingX1(0.0f)
+    , _tangentActive(false), _tangentFuncIdx(-1), _tangentX(0.0f)
     , _tblTable(nullptr)
     , _tab(Tab::EXPRESSIONS), _focus(Focus::TAB_BAR), _tabIdx(0)
     , _numFuncs(0), _exprIdx(0), _exprMode(ExprMode::LIST)
@@ -81,6 +82,8 @@ GrapherApp::GrapherApp()
     , _xMin(-10.0f), _xMax(10.0f), _yMin(-7.0f), _yMax(7.0f)
     , _traceX(0.0f), _traceFn(0), _plotDirty(true)
     , _tblRow(0), _tblStart(-5.0f), _tblStep(1.0f), _tblFuncIdx(0)
+    , _poiAsyncTimer(nullptr), _poiAsyncFi(-1), _poiAsyncStep(0)
+    , _poiAsyncYPrev(NAN), _poiAsyncYPrev2(NAN)
 {
     for (int i = 0; i < 3; ++i) { _tabLabels[i] = nullptr; _tabPills[i] = nullptr; }
     for (int i = 0; i < MAX_FUNCS; ++i) {
@@ -95,7 +98,6 @@ GrapherApp::GrapherApp()
     }
     for (int i = 0; i < 4; ++i) _toolLabels[i] = nullptr;
     for (int i = 0; i < CALC_MENU_ITEMS; ++i) _calcMenuRows[i] = nullptr;
-    for (int i = 0; i < 320; ++i) _shadingLines[i] = nullptr;
     _tblTable = nullptr;
     _tblHeaderBar = nullptr;
     for (int i = 0; i < 2; ++i) _tblHdrLabels[i] = nullptr;
@@ -104,7 +106,6 @@ GrapherApp::GrapherApp()
     _tplLoadTimer = nullptr; _tplLoadNext = 0;
     _tplCardW = 0; _tplRowH = 0;
     for (int i = 0; i < 6; ++i) { _tplRows[i] = nullptr; }
-    for (int i = 0; i < MAX_FUNCS; ++i) { _rpnCacheValid[i] = false; }
     _numPOIs = 0;
     _snappedToPOI = false;
     _snapEscapeCount = 0;
@@ -147,6 +148,8 @@ void GrapherApp::end() {
     }
 
     if (_graphBuf) { heap_caps_free(_graphBuf); _graphBuf = nullptr; }
+    // Stop async POI timer if running
+    if (_poiAsyncTimer) { lv_timer_delete(_poiAsyncTimer); _poiAsyncTimer = nullptr; }
     _statusBar.destroy();
     if (_screen) {
         lv_obj_delete(_screen);
@@ -165,8 +168,8 @@ void GrapherApp::end() {
         _infoBar = nullptr; _infoLabel = nullptr;
         _calcMenu = nullptr; _calcMenuOpen = false;
         for (int i = 0; i < CALC_MENU_ITEMS; ++i) _calcMenuRows[i] = nullptr;
-        for (int i = 0; i < 320; ++i) _shadingLines[i] = nullptr;
-        _shadingCount = 0; _shadingActive = false;
+        _shadingActive = false;
+        _tangentActive = false;
         _tblTable = nullptr; _tblHeaderBar = nullptr;
         for (int i = 0; i < 2; ++i) _tblHdrLabels[i] = nullptr;
         _modeBadge = nullptr;
@@ -917,9 +920,7 @@ void GrapherApp::refreshExprFocus() {
 void GrapherApp::addFunction() {
     if (_numFuncs >= MAX_FUNCS) return;
     int idx = _numFuncs;
-    _funcs[idx].text[0] = '\0';
-    _funcs[idx].len = 0;
-    _funcs[idx].valid = false;
+    _funcs[idx] = FuncSlot{};
     _funcs[idx].color = FUNC_COLORS[idx];
     initSlotAST(idx);
     _numFuncs++;
@@ -934,9 +935,9 @@ void GrapherApp::removeFunction(int idx) {
     // Destroy VPAM resources for this slot
     _exprCanvas[idx].stopCursorBlink();
 
-    // Shift down data
+    // Shift down data (use assignment, NOT memcpy — FuncSlot has std::vector)
     for (int i = idx; i < _numFuncs - 1; ++i) {
-        memcpy(&_funcs[i], &_funcs[i + 1], sizeof(FuncSlot));
+        _funcs[i] = _funcs[i + 1];
         _exprAST[i] = std::move(_exprAST[i + 1]);
         _exprASTRow[i] = _exprAST[i] ? static_cast<NodeRow*>(_exprAST[i].get()) : nullptr;
         _exprCursor[i] = _exprCursor[i + 1];
@@ -993,10 +994,6 @@ void GrapherApp::stopEditing() {
 
         // Validate expression and cache RPN for fast evalAt()
         preCacheFuncRPN(idx);
-        if (!_funcs[idx].valid) {
-            // preCacheFuncRPN sets valid=false on failure; also clear cache
-            _rpnCacheValid[idx] = false;
-        }
     }
     _plotDirty = true;
     lv_label_set_text(_exprHint, "ENTER=edit  AC=back");

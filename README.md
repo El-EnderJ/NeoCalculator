@@ -30,8 +30,7 @@
 
 </div>
 
-<small style="color: gray;">This project is currently in active development. Featured on Hackaday. Contributors welcome!
-This was Vibe-Coded, because a proyect of this magnitude, by hand, would have taken years, but with this, I was able to make it in 30 days. This is the future of programming, not writing every line by hand, where are in 2026, not in 2015.</small>
+<sub>*This project is currently in active development. Featured on Hackaday. Contributors welcome! This was Vibe-Coded, because a project of this magnitude, by hand, would have taken years, but with this, I was able to make it in 30 days. This is the future of programming, not writing every line by hand, we are in 2026, not in 2015.*</sub>
 
 ---
 

@@ -30,8 +30,6 @@
 
 </div>
 
-<sub>*This project was developed with AI assistance (Claude/Copilot) for code generation, guided by the author's systems architecture decisions. All design choices like DAG structure, memory management, parser design, were made and validated by the author.*</sub>
-
 ---
 
 ![Image](https://github.com/user-attachments/assets/e1b1df29-362b-4f5c-b824-bacb8e9a28f4)
@@ -65,7 +63,6 @@
 
 - **Full Pro-CAS Engine** — Advanced symbolic algebra: immutable DAG with hash-consing (`ConsTable`), overflow-safe bignum arithmetic (`CASInt`/`CASRational`), multi-pass fixed-point simplifier, symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), and non-linear equation/system solving via Sylvester resultant. All memory managed in PSRAM with an STL-compatible allocator.
 - **Natural Display V.P.A.M.** — Formulae rendered as they appear on paper: real stacked fractions, radical symbols (√), genuine superscripts, 2D navigation with a structural smart cursor.
-- **Modern LVGL 9.x Interface** — Smooth transitions, animated splash screen, NumWorks-style launcher with icons and a 3×N grid, apps with multiple states and clean lifecycle management.
  - **Modern LVGL 9.x Interface** — Smooth transitions, animated splash screen, NumWorks-style launcher.
     Recent launcher refactor: the launcher now uses LVGL Flex `ROW_WRAP` (dynamic rows) with fixed card sizing
     instead of a static grid descriptor. See `docs/UI_CHANGES.md` for developer migration notes and
@@ -555,13 +552,13 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | Solution steps | ✅ | ❌ | ❌ | ✅ |
 | Colour graphing | ✅ | ✅ | ✅ | ✅ |
 | Multi-function graphing | 🔲 | ✅ | ✅ | ✅ |
-| Statistics & Regression | 🔲 | ✅ | ✅ | ✅ |
+| Statistics & Regression | ✅ | ✅ | ✅ | ✅ |
 | Matrices | 🔲 | ✅ | ✅ | ✅ |
 | Complex numbers | 🔲 | ✅ | ✅ | ✅ |
-| Scripting / Python | 🔲 | ✅ | ✅ TI-BASIC | ✅ HP PPL |
-| WiFi / Connectivity | 🔲 | ✅ | ❌ | ❌ |
-| Rechargeable battery | 🔲 | ✅ | ❌ | ✅ |
-| Estimated HW cost | **~€15** | €79 | €119 | €179 |
+| Scripting / Python | ✅ NeoLanguage + Python | ✅ | ✅ TI-BASIC | ✅ HP PPL |
+| WiFi / Connectivity | ✅ | ✅ | ❌ | ❌ |
+| Rechargeable battery | ✅ | ✅ | ❌ | ✅ |
+| Estimated HW cost | **~€15-20** | €79 | €149 | €179 |
 | Platform | ESP32-S3 | STM32F730 | Zilog eZ80 | ARM Cortex-A7 |
 
 > 🏆 NumOS already surpasses the TI-84 in CAS capability and cost, and is on track to match the NumWorks.
@@ -602,11 +599,14 @@ NumOS is an open-source project that aspires to grow with a community. Contribut
 | **Sequences App** | Arithmetic and geometric sequences, Nth term, partial sums |
 | **Settings App** | ~~Angle mode DEG/RAD/GRA, brightness, factory reset~~ ✅ Done — remaining: brightness PWM, factory reset |
 | **Advanced CAS** | ~~Symbolic derivatives and integrals~~ ✅ Done — remaining: definite integrals, series |
+| **Better UI/UX** | General improvement on UI and UX for real product release |
 | **Matrices** | Matrix editor, determinant, inverse, multiplication |
 | **Physical keyboard** | ✅ GPIO 4/5 conflict resolved — `Keyboard` driver 5×10 implemented (Phase 7) |
 | **Custom PCB** | KiCad schematic with integrated ESP32-S3 + TP4056 charger |
 
 ---
+
+<sub>*This project was developed with AI assistance (Claude/Copilot) for code generation, guided by the author's systems architecture decisions. All design choices like DAG structure, memory management, parser design, were made and validated by the author.*</sub>
 
 ## Licence
 
@@ -618,7 +618,7 @@ This project is licensed under the **MIT** licence. See [LICENSE](LICENSE) for d
 
 *Built with ❤️ and a lot of C++17*
 
-**NumOS — The best open-source scientific calculator for ESP32-S3**
+**NumOS, The best open-source scientific calculator for ESP32-S3**
 
 *Last updated: March 2026*
 

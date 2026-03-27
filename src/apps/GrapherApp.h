@@ -15,6 +15,7 @@
 #include <vector>
 #include "../math/MathAST.h"
 #include "../math/CursorController.h"
+#include "../utils/MemoryUtils.h"
 #include "../math/MathEvaluator.h"
 #include "../math/MathAnalysis.h"
 #include "../ui/MathRenderer.h"
@@ -148,7 +149,7 @@ private:
     lv_obj_t*       _toolLabels[4];     // Auto  Axes  Pan  Trace
     lv_obj_t*       _graphArea;         // Plain container for plots
     lv_obj_t*       _graphCanvas;       // lv_image showing the raw pixel canvas
-    uint16_t*       _graphBuf;          // PSRAM RGB565 pixel buffer (Kandinsky)
+    utils::PSRAMBuffer<uint16_t> _graphBuf;  // PSRAM RGB565 pixel buffer (Kandinsky)
     lv_image_dsc_t  _graphImgDsc;       // LVGL image descriptor for _graphBuf
     lv_obj_t*       _traceDot;          // Small circle for trace cursor
     lv_obj_t*       _traceLineH;        // Crosshair horizontal lv_line

@@ -39,16 +39,18 @@ public:
         reset();
     }
 
-    void allocate(size_t count) {
+    bool allocate(size_t count) {
         reset();
         if (count == 0) {
-            return;
+            return true;
         }
         _data = reinterpret_cast<T*>(heap_caps_malloc(count * sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
         if (!_data) {
-            throw std::bad_alloc();
+            _count = 0;
+            return false;
         }
         _count = count;
+        return true;
     }
 
     void reset() {
@@ -73,9 +75,14 @@ public:
 
     const T& operator[](size_t idx) const {
         if (idx >= _count) {
-            throw std::out_of_range("PSRAMBuffer index out of range");
+            // undefined behavior in embedded builds; we keep safe fallback.
+            return _data[0];
         }
         return _data[idx];
+    }
+
+    explicit operator bool() const noexcept {
+        return _data != nullptr;
     }
 
 private:

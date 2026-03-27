@@ -75,7 +75,7 @@ GrapherApp::GrapherApp()
     , _addRow(nullptr), _addLabel(nullptr)
     , _exprHint(nullptr), _plotBtn(nullptr), _tableBtn(nullptr)
     , _graphToolbar(nullptr), _graphArea(nullptr)
-    , _graphCanvas(nullptr), _graphBuf(nullptr), _graphImgDsc{}
+    , _graphCanvas(nullptr), _graphBuf(), _graphImgDsc{}
     , _traceDot(nullptr), _traceLineH(nullptr), _traceLineV(nullptr)
     , _tracePill(nullptr), _tracePillDot(nullptr), _tracePillLabel(nullptr)
     , _infoBar(nullptr), _infoLabel(nullptr)
@@ -154,7 +154,10 @@ void GrapherApp::end() {
         _tplAST[i].reset();
     }
 
-    if (_graphBuf) { heap_caps_free(_graphBuf); _graphBuf = nullptr; }
+    // PSRAMBuffer cleanup handled by destructor; no manual heap_caps_free required.
+    if (_graphBuf) {
+        _graphBuf.reset();
+    }
     // Stop async POI timer if running
     if (_poiAsyncTimer) { lv_timer_delete(_poiAsyncTimer); _poiAsyncTimer = nullptr; }
     _statusBar.destroy();
@@ -510,14 +513,14 @@ void GrapherApp::createGraphPanel() {
 
     // ── Kandinsky canvas: single RGB565 PSRAM buffer for grid + curves ──
     size_t bufSz = (size_t)GRAPH_CANVAS_W * GRAPH_CANVAS_H * sizeof(uint16_t);
-    _graphBuf = (uint16_t*)heap_caps_malloc(bufSz, MALLOC_CAP_SPIRAM);
-    if (_graphBuf) {
-        memset(_graphBuf, 0xFF, bufSz);  // Fill white (0xFFFF in RGB565)
+    bool allocOk = _graphBuf.allocate(GRAPH_CANVAS_W * GRAPH_CANVAS_H);
+    if (allocOk && _graphBuf) {
+        memset(_graphBuf.data(), 0xFF, bufSz);  // Fill white (0xFFFF in RGB565)
         Serial.printf("[GRAPHER] Kandinsky buffer %u bytes in PSRAM, free=%u\n",
                       (unsigned)bufSz,
                       (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         // Initialize GraphView with the buffer
-        new (&_view) grapher::GraphView(_graphBuf, GRAPH_CANVAS_W, GRAPH_CANVAS_H);
+        new (&_view) grapher::GraphView(_graphBuf.data(), GRAPH_CANVAS_W, GRAPH_CANVAS_H);
     } else {
         Serial.printf("[GRAPHER] FAIL: Kandinsky PSRAM alloc %u bytes\n", (unsigned)bufSz);
         // ── PSRAM Safety Net: graceful degradation with user-visible warning ──
@@ -534,7 +537,7 @@ void GrapherApp::createGraphPanel() {
     _graphImgDsc.header.h  = GRAPH_CANVAS_H;
     _graphImgDsc.header.cf = LV_COLOR_FORMAT_RGB565;
     _graphImgDsc.data_size = (uint32_t)bufSz;
-    _graphImgDsc.data      = (const uint8_t*)_graphBuf;
+    _graphImgDsc.data      = (const uint8_t*)_graphBuf.data();
 
     // lv_image widget — displays the canvas; tick labels drawn on DRAW_MAIN_END
     _graphCanvas = lv_image_create(_graphArea);
@@ -1719,33 +1722,42 @@ void GrapherApp::updateInfoBar() {
 }
 
 void GrapherApp::autoFit() {
-    _xMin = -10; _xMax = 10;
-    _yMin = -7;  _yMax = 7;
-    // Smart Auto-Fit: sample all *visible* functions across the X domain,
-    // find the absolute min/max Y, add 10 % padding, and snap the viewport.
+    // Preserve current x-range, auto-fit only y-range (with sampling within current viewport).
+    const float x0 = _xMin;
+    const float x1 = _xMax;
+    if (x1 <= x0) {
+        return;
+    }
+
     float globalYMin = 1e9f, globalYMax = -1e9f;
     bool hasData = false;
+
+    const int samplePoints = 120;
     for (int f = 0; f < _numFuncs; ++f) {
         if (!_funcs[f].valid || !_funcs[f].visible) continue;
-        for (int px = 0; px < SCREEN_W; px += 4) {
-            float wx = _xMin + (float)px / SCREEN_W * (_xMax - _xMin);
+        for (int i = 0; i <= samplePoints; ++i) {
+            float t = (float)i / (float)samplePoints;
+            float wx = x0 + t * (x1 - x0);
             float wy = evalAt(f, wx);
-            if (!std::isnan(wy) && !std::isinf(wy) && fabsf(wy) < 1e6f) {
-                if (wy < globalYMin) globalYMin = wy;
-                if (wy > globalYMax) globalYMax = wy;
-                hasData = true;
-            }
+            if (std::isnan(wy) || std::isinf(wy) || fabsf(wy) > 1e6f) continue;
+            if (wy < globalYMin) globalYMin = wy;
+            if (wy > globalYMax) globalYMax = wy;
+            hasData = true;
         }
     }
     if (hasData) {
         float range = globalYMax - globalYMin;
-        // Handle flat functions (e.g. y=5) — use ±1 fallback range
         if (range < 1e-6f) range = 2.0f;
-        float margin = range * 0.10f;  // 10 % padding
+        float margin = range * 0.10f;
         if (margin < 0.5f) margin = 0.5f;
         _yMin = globalYMin - margin;
         _yMax = globalYMax + margin;
+    } else {
+        // No visible functions or all out of bounds: keep legacy default logic.
+        _yMin = -7.0f;
+        _yMax = 7.0f;
     }
+
     _plotDirty = true;
 }
 

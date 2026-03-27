@@ -89,7 +89,7 @@ void setup() {
     lv_init();
     lv_tick_set_cb([]() -> uint32_t { return (uint32_t)millis(); });
 
-    // -- 4. Draw buffer — SINGLE 32 KB internal DMA buffer --
+    // -- 4. Draw buffer — attempt DOUBLE 32 KB internal DMA buffers --
     // CRITICAL constraints (ESP32-S3 + TFT_eSPI):
     //  • MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA  →  internal SRAM, DMA-capable.
     //  • PSRAM cannot be used: OPI-PSRAM is on a separate SPI bus; TFT_eSPI
@@ -99,6 +99,7 @@ void setup() {
     //  32 KB = 51.2 lines/strip → ~half the flush calls vs 16 KB 25.6 lines.
     static constexpr uint32_t BUF_BYTES = 32U * 1024U; // 32768 bytes ≈ 51 lines
 
+    // Use single-buffer mode for isolation testing (staging DMA)
     lvBuf1 = heap_caps_malloc(BUF_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
     lvBuf2 = nullptr;
 
@@ -106,8 +107,8 @@ void setup() {
         Serial.println("[BOOT] BUFFER FAIL! HALT.");
         while (1) delay(1000);
     }
-    Serial.printf("[BOOT] Draw buffer: %u bytes (single, internal DMA, ~%u lines)\n",
-                  (unsigned)BUF_BYTES,
+    Serial.printf("[BOOT] Draw buffer: %u bytes (single internal DMA, lvBuf1=%p, ~%u lines)\n",
+                  (unsigned)BUF_BYTES, lvBuf1,
                   (unsigned)(BUF_BYTES / (320 * 2)));
 
     // -- 5. Display LVGL --

@@ -92,6 +92,8 @@ private:
     bool        _dmaPending  = false;  ///< true si hay un DMA en vuelo
 
     // Buffer internal DMA que se utiliza como staging si pxMap no es DMA-capable
+    // _dmaStagingAlloc: pointer returned by heap_caps_malloc (for free)
+    void*       _dmaStagingAlloc     = nullptr;
     uint16_t*   _dmaStagingBuf       = nullptr;
     uint32_t    _dmaStagingBufBytes  = 0;
     #endif

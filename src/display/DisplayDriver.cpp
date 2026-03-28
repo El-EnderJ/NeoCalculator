@@ -8,6 +8,7 @@
 #include <esp_heap_caps.h>
 #include <cstring>
 #include <cstdint>
+#include <SPI.h>
 
 // Diagnostic and strict-sync helpers — enable during debugging.
 #define DISPLAY_DRIVER_DIAG
@@ -33,17 +34,79 @@ void DisplayDriver::begin() {
     Serial.println("[TFT] Initializing...");
 
     // BL pin: prefer leaving as INPUT initially; LVGL init will drive it HIGH.
+#ifdef TFT_BL
     pinMode(TFT_BL, INPUT);
+#else
+    (void)0;
+#endif
 
-    // Reset physical panel
+    // Print compile-time pin mapping so user can verify wiring.
+#ifdef TFT_MOSI
+    Serial.printf("[TFT PINS] MOSI=%d ", (int)TFT_MOSI);
+#else
+    Serial.print("[TFT PINS] MOSI=<undef> ");
+#endif
+#ifdef TFT_SCLK
+    Serial.printf("SCLK=%d ", (int)TFT_SCLK);
+#else
+    Serial.print("SCLK=<undef> ");
+#endif
+#ifdef TFT_CS
+    Serial.printf("CS=%d ", (int)TFT_CS);
+#else
+    Serial.print("CS=<undef> ");
+#endif
+#ifdef TFT_DC
+    Serial.printf("DC=%d ", (int)TFT_DC);
+#else
+    Serial.print("DC=<undef> ");
+#endif
+#ifdef TFT_RST
+    Serial.printf("RST=%d\n", (int)TFT_RST);
+#else
+    Serial.println("RST=<undef>");
+#endif
+
+    // Manual hardware reset: pulse RST low for 10ms, then high for 150ms
+#ifdef TFT_RST
+#if TFT_RST >= 0
     pinMode(TFT_RST, OUTPUT);
-    digitalWrite(TFT_RST, HIGH); delay(50);
-    digitalWrite(TFT_RST, LOW);  delay(100);
-    digitalWrite(TFT_RST, HIGH); delay(200);
+    Serial.printf("[TFT] Performing manual hardware reset on pin %d\n", (int)TFT_RST);
+    // Ensure known high then pulse low briefly
+    digitalWrite(TFT_RST, HIGH);
+    delay(10);
+    digitalWrite(TFT_RST, LOW);
+    delay(150); // Aggressive reset: hold low for 150ms
+    digitalWrite(TFT_RST, HIGH);
+    delay(150); // hold high for 150ms before init
+#else
+    Serial.println("[TFT] TFT_RST defined as -1; skipping manual reset");
+#endif
+#else
+    Serial.println("[TFT] TFT_RST not defined; skipping manual reset");
+#endif
 
     _tft.init();
+    // Reverted to simple init logic that previously worked with display_test_patterns.
+
+#ifdef DISPLAY_DRIVER_DIAG
+    // Diagnostic: attempt to read controller ID using available readcommand API.
+    {
+        uint32_t id = 0;
+        id = _tft.readcommand32(0x04); // Try READ_DISPLAY_ID (0x04)
+        if (id == 0 || id == 0xFFFFFFFF) {
+            id = _tft.readcommand32(0xD3); // Try alternative READ_ID (0xD3)
+        }
+        Serial.printf("[TFT] readcmd ID = 0x%08X (%u)\n", (unsigned)id, (unsigned)id);
+    }
+#endif
     _tft.setRotation(SCREEN_ROTATION);
-    _tft.invertDisplay(true); // IPS panels
+    _tft.invertDisplay(true); // colors inverted
+
+    // Ensure CS and DC pins are correctly configured for manual control
+    pinMode(TFT_CS, OUTPUT);
+    digitalWrite(TFT_CS, HIGH);
+    pinMode(TFT_DC, OUTPUT);
 
     // Clear GRAM
     _tft.fillScreen(0x0000);
@@ -73,6 +136,21 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
                            bufBytes,
                            LV_DISPLAY_RENDER_MODE_PARTIAL);
 
+    // Diagnostic color stress test disabled: colors verified in hardware.
+#if 0
+    // Diagnostic color stress test: paint red then blue to verify the
+    // TFT SPI driver and controller respond to simple blocking writes.
+    // This runs after the TFT init (called in begin()) and before LVGL
+    // takes ownership of the display pipeline.
+    Serial.println("[LVGL] Running red/blue screen test...");
+    _tft.invertDisplay(true);
+    _tft.fillScreen(TFT_RED);
+    delay(1000);
+    _tft.fillScreen(TFT_BLUE);
+    delay(1000);
+    Serial.printf("[LVGL] TFT SPI mode macro value: %d\n", (int)TFT_SPI_MODE);
+#endif
+
     // Prepare aligned staging buffer (overallocate and align to 32)
     _dmaStagingBufBytes = bufBytes;
     if (!_dmaStagingAlloc && bufBytes > 0) {
@@ -95,26 +173,25 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
                   (unsigned)_dmaStagingBufBytes,
                   (unsigned)(_dmaStagingBufBytes / (SCREEN_WIDTH * 2)));
 
-    _dmaEnabled = (_dmaStagingBuf != nullptr);
-    Serial.printf("[DisplayDriver] DMA enabled: %s\n",
+    // Force DMA off for diagnostic testing
+    _dmaEnabled = false;
+    Serial.printf("[DisplayDriver] DMA enabled: FORCE %s\n",
                   _dmaEnabled ? "YES" : "NO");
 
-    // Try to initialise the TFT_eSPI DMA engine (do not let SPI driver
-    // control CS; we use startWrite()/endWrite() in the flush path).
+    // Skip TFT DMA initialization for diagnostic testing
+    /*
     if (_dmaStagingBuf) {
         bool dmaInitOk = _tft.initDMA(false);
         Serial.printf("[LVGL] TFT initDMA() returned: %s\n", dmaInitOk ? "OK" : "FAILED/ALREADY");
     }
+    */
 
 #ifdef TFT_BL
     pinMode(TFT_BL, OUTPUT);
-    // Set HIGH then toggle LOW briefly to detect active-low backlight hardware.
     digitalWrite(TFT_BL, HIGH);
-    delay(50);
-    digitalWrite(TFT_BL, LOW);
-    delay(50);
-    digitalWrite(TFT_BL, HIGH);
-    Serial.println("[TFT] Backlight set HIGH (initLvgl) - toggled for diag");
+    
+    // Force hold HIGH unequivocally to prevent blanking
+    Serial.println("[TFT] Backlight explicitly set HIGH (initLvgl)");
     // Quick hardware self-test: fill white then clear, to verify panel responds.
 #ifdef DISPLAY_DRIVER_DIAG
     _tft.fillScreen(0xFFFF); // white
@@ -157,70 +234,97 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
 #ifdef DISPLAY_DRIVER_DIAG
         Serial.println("G endWrite");
 #endif
+        // Ensure CS is in a known idle state after reclaiming the previous DMA.
+        digitalWrite(TFT_CS, HIGH);
     }
 
-    self->_tft.startWrite();
+        // Force CS LOW for the upcoming transfer and hold it low until we call endWrite().
+        digitalWrite(TFT_CS, LOW);
+
+        self->_tft.startWrite();
     self->_tft.setAddrWindow(area->x1, area->y1, w, h);
 #ifdef DISPLAY_DRIVER_DIAG
     Serial.printf("C startWrite win=%d,%d %dx%d\n", area->x1, area->y1, w, h);
 #endif
 
-    // PRIORITY: Staging (S) path — copy to our aligned internal buffer and DMA from it.
-    if (self->_dmaEnabled && self->_dmaStagingBuf &&
+        // PRIORITY: Staging (S) path — copy to our aligned internal buffer and write from it (blocking).
+        if (self->_dmaEnabled && self->_dmaStagingBuf &&
         self->_dmaStagingBufBytes >= pxCount * sizeof(uint16_t)) {
-#ifdef DISPLAY_DRIVER_DIAG
+    #ifdef DISPLAY_DRIVER_DIAG
         Serial.printf("E staging cp=%u -> %p\n", (unsigned)(pxCount * 2), (void*)self->_dmaStagingBuf);
-#endif
+    #endif
+    #if 0
         memcpy(self->_dmaStagingBuf, src, pxCount * sizeof(uint16_t));
-#ifdef DISPLAY_DRIVER_STRICT_SYNC
-        self->_tft.pushPixelsDMA(self->_dmaStagingBuf, pxCount);
-        // Wait until DMA finishes before releasing CS
-        self->_tft.dmaWait();
-        self->_tft.endWrite();
-        self->_dmaPending = false;
-#ifdef DISPLAY_DRIVER_DIAG
-        Serial.println("G endWrite");
-#endif
-        lv_display_flush_ready(disp);
-        return;
-#else
+        // Start DMA-based transfer and keep CS asserted until DMA completes
+        Serial.println("[DisplayDriver] Starting DMA pushPixelsDMA...");
         self->_tft.pushPixelsDMA(self->_dmaStagingBuf, pxCount);
         self->_dmaPending = true;
+        // Leave CS low and return immediately — dmaWait()/endWrite() will be
+        // invoked at the start of the next flush when _dmaPending is detected.
         lv_display_flush_ready(disp);
         return;
-#endif
-    }
+    #else
+        memcpy(self->_dmaStagingBuf, src, pxCount * sizeof(uint16_t));
+
+        // Force synchronous blocking transfer (CPU) to avoid DMA corruption.
+        self->_tft.pushColors(self->_dmaStagingBuf, pxCount, true);
+        self->_tft.endWrite();
+        // Release forced CS after transfer
+        digitalWrite(TFT_CS, HIGH);
+        Serial.println("[DisplayDriver] Write complete");
+    #endif
+    #ifdef DISPLAY_DRIVER_DIAG
+        Serial.println("G endWrite");
+    #endif
+        lv_display_flush_ready(disp);
+        return;
+        }
 
     // If staging isn't available, try direct DMA from pxMap (last resort before CPU copy).
-    if (self->_dmaEnabled && esp_ptr_dma_capable(pxMap)) {
-#ifdef DISPLAY_DRIVER_DIAG
+        if (self->_dmaEnabled && esp_ptr_dma_capable(pxMap)) {
+    #ifdef DISPLAY_DRIVER_DIAG
         Serial.printf("D directDMA src=%p px=%u\n", src, pxCount);
-#endif
-#ifdef DISPLAY_DRIVER_STRICT_SYNC
-        self->_tft.pushPixelsDMA(src, pxCount);
-        self->_tft.dmaWait();
-        self->_tft.endWrite();
-        self->_dmaPending = false;
-#ifdef DISPLAY_DRIVER_DIAG
-        Serial.println("G endWrite");
-#endif
-        lv_display_flush_ready(disp);
-        return;
-#else
+    #endif
+    #if 0
+        // Start DMA from source buffer (pxMap is DMA-capable per check above)
+        Serial.println("[DisplayDriver] Starting DMA pushPixelsDMA(src)...");
         self->_tft.pushPixelsDMA(src, pxCount);
         self->_dmaPending = true;
         lv_display_flush_ready(disp);
         return;
-#endif
-    }
+    #else
+        // Use blocking write for reliability
+        self->_tft.pushColors(src, pxCount, true);
+        self->_tft.endWrite();
+        // Release forced CS after transfer
+        digitalWrite(TFT_CS, HIGH);
+        Serial.println("[DisplayDriver] Write complete");
+    #endif
+    #ifdef DISPLAY_DRIVER_DIAG
+        Serial.println("G endWrite");
+    #endif
+        lv_display_flush_ready(disp);
+        return;
+        }
 
     // Fallback: blocking CPU transfer
 #ifdef DISPLAY_DRIVER_DIAG
     Serial.printf("F blocking px=%u\n", (unsigned)pxCount);
 #endif
+#if 0
+    // Start DMA from source buffer
+    self->_tft.pushPixelsDMA(src, pxCount);
+    self->_dmaPending = true;
+    lv_display_flush_ready(disp);
+    return;
+#else
     self->_tft.pushColors(src, pxCount, true);
     self->_tft.endWrite();
+    // Release forced CS after transfer
+    digitalWrite(TFT_CS, HIGH);
+#endif
 #ifdef DISPLAY_DRIVER_DIAG
+    Serial.println("[DisplayDriver] Write complete");
     Serial.println("G endWrite");
 #endif
     lv_display_flush_ready(disp);

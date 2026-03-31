@@ -6,6 +6,13 @@
 #include "../ui/StatusBar.h"
 #include "../math/FractalEngine.h"
 
+#ifdef ARDUINO
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#else
+#include "../hal/ArduinoCompat.h"
+#endif
+
 class FractalApp {
 public:
     FractalApp();
@@ -41,7 +48,16 @@ private:
     float _zoom;
     int   _maxIter;
 
+    // Dual-core FreeRTOS rendering variables
+    TaskHandle_t _renderTaskHandle = nullptr;
+    lv_timer_t*  _updateTimer      = nullptr;
+    volatile bool _renderRequested = false;
+    volatile bool _renderComplete  = false;
+
     void createUI();
     void initializeBuffer();
     void renderFractal();
+
+    static void renderTaskWrapper(void* param);
+    static void checkStatusTimer(lv_timer_t* timer);
 };

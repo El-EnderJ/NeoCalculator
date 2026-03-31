@@ -83,6 +83,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     { 16, "Neural Lab", 0x9C27B0,   0xCE93D8 },   // Purple (AI/ML)
     { 17, "OpticsLab",  0x00BCD4,   0x80DEEA },   // Cyan/Teal (Optics)
     { 18, "NeoLang",    0x4CAF50,   0xA5D6A7 },   // Terminal Green (Language/IDE)
+    { 19, "Fractals",   0x3F51B5,   0x7986CB },   // Indigo (Math)
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);
@@ -724,6 +725,13 @@ void MainMenu::onIconDraw(lv_event_t* e) {
             drawLine(cx + 2, cy - 11, cx + 2, cy - 7,  2, light, LV_OPA_80);
             drawLine(cx + 2, cy - 5,  cx + 2, cy - 1,  2, light, LV_OPA_80);
             drawLine(cx + 2, cy - 1,  cx + 6, cy - 1,  2, light, LV_OPA_80);
+            break;
+        }
+        case 19: {
+            // Fractals: spiral/nested geometric pattern (Mandelbrot abstraction)
+            drawRect(cx - 10, cy - 10, cx + 10, cy + 10, 2, light, LV_OPA_50);
+            drawRect(cx - 6,  cy - 6,  cx + 6,  cy + 6,  2, white, LV_OPA_70);
+            drawRect(cx - 2,  cy - 2,  cx + 2,  cy + 2,  1, white, LV_OPA_COVER);
             break;
         }
         default:

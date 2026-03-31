@@ -27,9 +27,38 @@ void FractalApp::begin() {
 
     createUI();
     initializeBuffer();
+
+    _renderRequested = false;
+    _renderComplete  = false;
+
+#ifdef ARDUINO
+    xTaskCreatePinnedToCore(
+        renderTaskWrapper,     // Task function
+        "fractalTask",         // Name
+        8192,                  // Stack size
+        this,                  // Parameters
+        1,                     // Priority
+        &_renderTaskHandle,    // Task handle
+        1                      // Core 1
+    );
+#endif
+
+    // Timer to poll _renderComplete at ~30 FPS (33 ms)
+    _updateTimer = lv_timer_create(checkStatusTimer, 33, this);
 }
 
 void FractalApp::end() {
+    if (_updateTimer) {
+        lv_timer_delete(_updateTimer);
+        _updateTimer = nullptr;
+    }
+#ifdef ARDUINO
+    if (_renderTaskHandle) {
+        vTaskDelete(_renderTaskHandle);
+        _renderTaskHandle = nullptr;
+    }
+#endif
+
     if (_screen) {
         lv_obj_delete(_screen);
         _screen = nullptr;
@@ -139,16 +168,57 @@ void FractalApp::initializeBuffer() {
 void FractalApp::renderFractal() {
     if (!_buffer.data()) return;
 
-    // Use the math engine
+#ifdef ARDUINO
+    // Signal task to start
+    _renderRequested = true;
+    if (_renderTaskHandle) {
+        xTaskNotifyGive(_renderTaskHandle);
+    }
+#else
+    // Fallback for PC emulator
     FractalEngine::renderMandelbrot(
         _buffer.data(),
         SCREEN_W, CANVAS_H,
         _centerX, _centerY,
         _zoom, _maxIter,
-        true // invertY = true matching standard cartesian y-up
+        true 
     );
 
-    // Refresh LVGL image
     lv_image_set_src(_fractalImage, &_imgDsc);
     lv_obj_invalidate(_fractalImage);
+#endif
+}
+
+void FractalApp::renderTaskWrapper(void* param) {
+#ifdef ARDUINO
+    FractalApp* app = static_cast<FractalApp*>(param);
+    while (true) {
+        // Wait for notification from renderFractal()
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        if (app->_renderRequested && app->_buffer.data()) {
+            app->_renderRequested = false;
+
+            FractalEngine::renderMandelbrot(
+                app->_buffer.data(),
+                FractalApp::SCREEN_W, FractalApp::CANVAS_H,
+                app->_centerX, app->_centerY,
+                app->_zoom, app->_maxIter,
+                true
+            );
+
+            app->_renderComplete = true; // Signal completion to LVGL timer
+        }
+    }
+#endif
+}
+
+void FractalApp::checkStatusTimer(lv_timer_t* timer) {
+    FractalApp* app = static_cast<FractalApp*>(lv_timer_get_user_data(timer));
+    if (app && app->_renderComplete) {
+        app->_renderComplete = false;
+        
+        lv_image_set_src(app->_fractalImage, &app->_imgDsc);
+        lv_obj_invalidate(app->_fractalImage);
+    }
 }

@@ -1,43 +1,232 @@
 #include "FractalEngine.h"
+#include <cmath>
 
 // ── Simple RGB565 macro ──
 static inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
+namespace {
+constexpr int kAbortCheckInterval = 64;
+constexpr float kRebaseThresholdSq = 64.0f;
+
+struct LutEntry {
+    float s;
+    float c;
+};
+
+static LutEntry gTrigLut[512];
+static bool gTrigLutInit = false;
+
+inline void ensureTrigLut() {
+    if (gTrigLutInit) return;
+    constexpr float twoPi = 6.28318530717958647692f;
+    for (int i = 0; i < 512; ++i) {
+        float a = twoPi * (float)i / 512.0f;
+        gTrigLut[i].s = sinf(a);
+        gTrigLut[i].c = cosf(a);
+    }
+    gTrigLutInit = true;
+}
+
+inline void sinCosLut(float angle, float& s, float& c) {
+    constexpr float twoPi = 6.28318530717958647692f;
+    float norm = angle / twoPi;
+    norm -= floorf(norm);
+    int idx = (int)(norm * 512.0f) & 511;
+    s = gTrigLut[idx].s;
+    c = gTrigLut[idx].c;
+}
+}
+
 void FractalEngine::renderMandelbrot(uint16_t* buffer, int width, int height, 
                                      float centerX, float centerY, float zoom, 
                                      int maxIter, bool invertY) {
-    // 1.5f and 1.0f are base aspect ratio bounds (roughly 3:2)
-    // Scale by 1.0/zoom to get world window size
+    ReferenceOrbit orbit;
+    buildReferenceOrbit(orbit, (double)centerX, (double)centerY, maxIter);
+    bool rebaseRequired = false;
+    renderMandelbrotPerturbationStrip(
+        buffer, width, height, centerX, centerY, zoom, maxIter,
+        0, height, orbit, nullptr, &rebaseRequired, invertY
+    );
+}
+
+void FractalEngine::buildReferenceOrbit(ReferenceOrbit& orbit, double cRe, double cIm, int maxIter) {
+    orbit.cRe = cRe;
+    orbit.cIm = cIm;
+    orbit.count = 0;
+
+    double zRe = 0.0;
+    double zIm = 0.0;
+    int limit = maxIter;
+    if (limit > ReferenceOrbit::MAX_POINTS) {
+        limit = ReferenceOrbit::MAX_POINTS;
+    }
+
+    for (int i = 0; i < limit; ++i) {
+        orbit.points[i].re = zRe;
+        orbit.points[i].im = zIm;
+        orbit.count++;
+
+        double nextRe = zRe * zRe - zIm * zIm + cRe;
+        double nextIm = 2.0 * zRe * zIm + cIm;
+        zRe = nextRe;
+        zIm = nextIm;
+
+        if ((zRe * zRe + zIm * zIm) > 16.0) {
+            break;
+        }
+    }
+}
+
+void FractalEngine::renderMandelbrotPerturbationStrip(
+    uint16_t* buffer,
+    int width,
+    int height,
+    float centerX,
+    float centerY,
+    float zoom,
+    int maxIter,
+    int yStart,
+    int yEnd,
+    ReferenceOrbit& orbit,
+    volatile bool* abortRequested,
+    volatile bool* rebaseRequired,
+    bool invertY
+) {
     float aspect = (float)width / (float)height;
-    
     float windowW = 3.0f / zoom;
-    float windowH = windowW / aspect; 
-
-    float xMin = centerX - windowW / 2.0f;
-    float yMin = centerY - windowH / 2.0f;
-
+    float windowH = windowW / aspect;
+    float xMin = centerX - windowW * 0.5f;
+    float yMin = centerY - windowH * 0.5f;
     float dx = windowW / (float)width;
     float dy = windowH / (float)height;
+    int checkCounter = 0;
+    int orbitCount = orbit.count;
+    if (orbitCount <= 0) {
+        return;
+    }
+    int effectiveIter = maxIter < orbitCount ? maxIter : orbitCount;
 
-    for (int py = 0; py < height; py++) {
-        // Handle inverted graphics Y axis if necessary
+    for (int py = yStart; py < yEnd; ++py) {
         int screenY = invertY ? (height - 1 - py) : py;
         float cy = yMin + py * dy;
+        for (int px = 0; px < width; ++px) {
+            if (abortRequested && (++checkCounter >= kAbortCheckInterval)) {
+                checkCounter = 0;
+                if (*abortRequested) {
+                    return;
+                }
+            }
 
-        for (int px = 0; px < width; px++) {
             float cx = xMin + px * dx;
-            float zx = 0;
-            float zy = 0;
+            float dcRe = cx - (float)orbit.cRe;
+            float dcIm = cy - (float)orbit.cIm;
+            float dzRe = 0.0f;
+            float dzIm = 0.0f;
             int iter = 0;
-            
-            // Standard z_{n+1} = z_n^2 + c
-            while ((zx * zx + zy * zy) <= 4.0f && iter < maxIter) {
-                float tempX = zx * zx - zy * zy + cx;
-                zy = 2.0f * zx * zy + cy;
-                zx = tempX;
-                iter++;
+            bool escaped = false;
+
+            while (iter < effectiveIter) {
+                float zr = (float)orbit.points[iter].re;
+                float zi = (float)orbit.points[iter].im;
+
+                float twoZDzRe = 2.0f * (zr * dzRe - zi * dzIm);
+                float twoZDzIm = 2.0f * (zr * dzIm + zi * dzRe);
+                float dz2Re = dzRe * dzRe - dzIm * dzIm;
+                float dz2Im = 2.0f * dzRe * dzIm;
+
+                dzRe = twoZDzRe + dz2Re + dcRe;
+                dzIm = twoZDzIm + dz2Im + dcIm;
+
+                float absSq = dzRe * dzRe + dzIm * dzIm;
+                if (rebaseRequired && absSq > kRebaseThresholdSq) {
+                    *rebaseRequired = true;
+                }
+
+                float pixelRe = zr + dzRe;
+                float pixelIm = zi + dzIm;
+                if ((pixelRe * pixelRe + pixelIm * pixelIm) > 4.0f) {
+                    escaped = true;
+                    break;
+                }
+                ++iter;
+            }
+            if (!escaped && iter >= effectiveIter) {
+                iter = maxIter;
+            }
+            buffer[screenY * width + px] = mapColor(iter, maxIter);
+        }
+    }
+}
+
+void FractalEngine::renderMandelbulbSliceStrip(
+    uint16_t* buffer,
+    int width,
+    int height,
+    float centerX,
+    float centerY,
+    float sliceZ,
+    float zoom,
+    int maxIter,
+    int power,
+    int yStart,
+    int yEnd,
+    volatile bool* abortRequested,
+    bool invertY
+) {
+    ensureTrigLut();
+
+    float aspect = (float)width / (float)height;
+    float windowW = 3.0f / zoom;
+    float windowH = windowW / aspect;
+    float xMin = centerX - windowW * 0.5f;
+    float yMin = centerY - windowH * 0.5f;
+    float dx = windowW / (float)width;
+    float dy = windowH / (float)height;
+    int checkCounter = 0;
+
+    for (int py = yStart; py < yEnd; ++py) {
+        int screenY = invertY ? (height - 1 - py) : py;
+        float y0 = yMin + py * dy;
+        for (int px = 0; px < width; ++px) {
+            if (abortRequested && (++checkCounter >= kAbortCheckInterval)) {
+                checkCounter = 0;
+                if (*abortRequested) return;
+            }
+
+            float x0 = xMin + px * dx;
+            float z0 = sliceZ;
+            float x = 0.0f;
+            float y = 0.0f;
+            float z = 0.0f;
+            int iter = 0;
+
+            while (iter < maxIter) {
+                float r2 = x * x + y * y + z * z;
+                if (r2 > 4.0f) break;
+                float r = sqrtf(r2);
+                if (r < 1e-6f) {
+                    x = x0;
+                    y = y0;
+                    z = z0;
+                    ++iter;
+                    continue;
+                }
+
+                float theta = acosf(z / r);
+                float phi = atan2f(y, x);
+                float rn = powf(r, (float)power);
+                float pTheta = (float)power * theta;
+                float pPhi = (float)power * phi;
+                float sinTheta, cosTheta, sinPhi, cosPhi;
+                sinCosLut(pTheta, sinTheta, cosTheta);
+                sinCosLut(pPhi, sinPhi, cosPhi);
+
+                x = rn * sinTheta * cosPhi + x0;
+                y = rn * sinTheta * sinPhi + y0;
+                z = rn * cosTheta + z0;
+                ++iter;
             }
 
             buffer[screenY * width + px] = mapColor(iter, maxIter);

@@ -1,6 +1,7 @@
 #include "FractalApp.h"
 #include "../input/KeyboardManager.h"
 #include <cstring>
+#include <new>
 
 FractalApp::FractalApp() 
     : _screen(nullptr),
@@ -31,6 +32,11 @@ void FractalApp::begin() {
     createUI();
     initializeBuffer();
 
+    _orbit = new (std::nothrow) FractalEngine::ReferenceOrbit();
+    if (!_orbit) {
+        // Handle failure if needed, although on ESP32-S3 with 16MB PSRAM this should rarely happen
+    }
+
     _renderRequested = false;
     _renderComplete  = false;
     _abortRequested  = false;
@@ -43,7 +49,7 @@ void FractalApp::begin() {
     xTaskCreatePinnedToCore(
         renderTaskWrapper,     // Task function
         "fractalTask",         // Name
-        8192,                  // Stack size
+        32768,                 // Increased stack size to 32KB (ReferenceOrbit is 32KB!)
         this,                  // Parameters
         3,                     // Priority
         &_renderTaskHandle,    // Task handle
@@ -85,6 +91,11 @@ void FractalApp::end() {
     }
     _statusBar.resetPointers();
     _buffer.reset(); // Free PSRAM
+
+    if (_orbit) {
+        delete _orbit;
+        _orbit = nullptr;
+    }
 }
 
 void FractalApp::load() {
@@ -361,10 +372,11 @@ void FractalApp::renderTaskWrapper(void* param) {
             app->_renderRequested = false;
             app->_isIdle = false;
 
+            if (!app->_orbit) return; // safety check
+
             constexpr int STRIP_H = 16;
-            FractalEngine::ReferenceOrbit orbit;
             if (app->_mode == RenderMode::Mandelbrot) {
-                FractalEngine::buildReferenceOrbit(orbit, (double)app->_centerX, (double)app->_centerY, app->_maxIter);
+                FractalEngine::buildReferenceOrbit(*app->_orbit, (double)app->_centerX, (double)app->_centerY, app->_maxIter);
             }
 
             for (int y = 0; y < FractalApp::CANVAS_H; y += STRIP_H) {
@@ -389,7 +401,7 @@ void FractalApp::renderTaskWrapper(void* param) {
                         app->_centerX, app->_centerY,
                         app->_zoom, app->_maxIter,
                         y, yEnd,
-                        orbit,
+                        *app->_orbit,
                         &app->_abortRequested,
                         &app->_rebaseRequired,
                         true
@@ -397,7 +409,7 @@ void FractalApp::renderTaskWrapper(void* param) {
                     if (app->_rebaseRequired) {
                         app->_rebaseRequired = false;
                         FractalEngine::buildReferenceOrbit(
-                            orbit,
+                            *app->_orbit,
                             (double)app->_centerX,
                             (double)app->_centerY,
                             app->_maxIter

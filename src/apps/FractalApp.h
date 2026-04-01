@@ -74,6 +74,8 @@ private:
     std::atomic<bool> _taskShouldExit{false};
     std::atomic<bool> _taskExited{false};
 
+    FractalEngine::ReferenceOrbit* _orbit = nullptr; // Heap-allocated reference orbit (32KB)
+
     void createUI();
     void initializeBuffer();
     // Replaced renderFractal() with these finer-grain methods

@@ -1,5 +1,6 @@
 #include "FractalEngine.h"
 #include <cmath>
+#include <new>
 
 // ── Simple RGB565 macro ──
 static inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
@@ -15,7 +16,13 @@ struct LutEntry {
     float c;
 };
 
+#ifdef ARDUINO
+#include <esp_attr.h>
+static DRAM_ATTR LutEntry gTrigLut[512];
+#else
 static LutEntry gTrigLut[512];
+#endif
+
 static bool gTrigLutInit = false;
 
 inline void ensureTrigLut() {
@@ -41,14 +48,18 @@ inline void sinCosLut(float angle, float& s, float& c) {
 
 void FractalEngine::renderMandelbrot(uint16_t* buffer, int width, int height, 
                                      float centerX, float centerY, float zoom, 
-                                     int maxIter, bool invertY) {
-    ReferenceOrbit orbit;
-    buildReferenceOrbit(orbit, (double)centerX, (double)centerY, maxIter);
+                                     int maxIter, int step, bool invertY) {
+    ReferenceOrbit* orbit = new (std::nothrow) ReferenceOrbit();
+    if (!orbit) return;
+
+    buildReferenceOrbit(*orbit, (double)centerX, (double)centerY, maxIter);
     bool rebaseRequired = false;
     renderMandelbrotPerturbationStrip(
         buffer, width, height, centerX, centerY, zoom, maxIter,
-        0, height, orbit, nullptr, &rebaseRequired, invertY
+        0, height, *orbit, nullptr, &rebaseRequired, step, invertY
     );
+    
+    delete orbit;
 }
 
 void FractalEngine::buildReferenceOrbit(ReferenceOrbit& orbit, double cRe, double cIm, int maxIter) {
@@ -92,6 +103,7 @@ void FractalEngine::renderMandelbrotPerturbationStrip(
     ReferenceOrbit& orbit,
     volatile bool* abortRequested,
     volatile bool* rebaseRequired,
+    int step,
     bool invertY
 ) {
     float aspect = (float)width / (float)height;
@@ -108,10 +120,14 @@ void FractalEngine::renderMandelbrotPerturbationStrip(
     }
     int effectiveIter = maxIter < orbitCount ? maxIter : orbitCount;
 
-    for (int py = yStart; py < yEnd; ++py) {
-        int screenY = invertY ? (height - 1 - py) : py;
+    // Use a fast local SRAM line buffer to prevent PSRAM single-write bottlenecks
+    uint16_t rowBuffer[320];
+
+    for (int py = yStart; py < yEnd; py += step) {
         float cy = yMin + py * dy;
-        for (int px = 0; px < width; ++px) {
+        
+        // Horizontal pixel processing
+        for (int px = 0; px < width; px += step) {
             if (abortRequested && (++checkCounter >= kAbortCheckInterval)) {
                 checkCounter = 0;
                 if (*abortRequested) {
@@ -144,9 +160,10 @@ void FractalEngine::renderMandelbrotPerturbationStrip(
                     *rebaseRequired = true;
                 }
 
+                // Optimization: Branch hint for escape condition
                 float pixelRe = zr + dzRe;
                 float pixelIm = zi + dzIm;
-                if ((pixelRe * pixelRe + pixelIm * pixelIm) > 4.0f) {
+                if (__builtin_expect((pixelRe * pixelRe + pixelIm * pixelIm) > 4.0f, 0)) {
                     escaped = true;
                     break;
                 }
@@ -155,7 +172,20 @@ void FractalEngine::renderMandelbrotPerturbationStrip(
             if (!escaped && iter >= effectiveIter) {
                 iter = maxIter;
             }
-            buffer[screenY * width + px] = mapColor(iter, maxIter);
+            
+            uint16_t color = mapColor(iter, maxIter);
+            
+            // Replicate horizontally in local buffer
+            for (int dxP = 0; dxP < step && (px + dxP) < width; ++dxP) {
+                rowBuffer[px + dxP] = color;
+            }
+        }
+        
+        // Blocky replication vertically and fast commit to PSRAM
+        for (int stepY = 0; stepY < step && (py + stepY) < yEnd; ++stepY) {
+            int targetY = py + stepY;
+            int screenY = invertY ? (height - 1 - targetY) : targetY;
+            memcpy(&buffer[screenY * width], rowBuffer, width * sizeof(uint16_t));
         }
     }
 }
@@ -173,6 +203,7 @@ void FractalEngine::renderMandelbulbSliceStrip(
     int yStart,
     int yEnd,
     volatile bool* abortRequested,
+    int step,
     bool invertY
 ) {
     ensureTrigLut();
@@ -186,10 +217,12 @@ void FractalEngine::renderMandelbulbSliceStrip(
     float dy = windowH / (float)height;
     int checkCounter = 0;
 
-    for (int py = yStart; py < yEnd; ++py) {
-        int screenY = invertY ? (height - 1 - py) : py;
+    // Use a fast local SRAM line buffer
+    uint16_t rowBuffer[320];
+
+    for (int py = yStart; py < yEnd; py += step) {
         float y0 = yMin + py * dy;
-        for (int px = 0; px < width; ++px) {
+        for (int px = 0; px < width; px += step) {
             if (abortRequested && (++checkCounter >= kAbortCheckInterval)) {
                 checkCounter = 0;
                 if (*abortRequested) return;
@@ -204,9 +237,9 @@ void FractalEngine::renderMandelbulbSliceStrip(
 
             while (iter < maxIter) {
                 float r2 = x * x + y * y + z * z;
-                if (r2 > 4.0f) break;
+                if (__builtin_expect(r2 > 4.0f, 0)) break;
                 float r = sqrtf(r2);
-                if (r < 1e-6f) {
+                if (__builtin_expect(r < 1e-6f, 0)) {
                     x = x0;
                     y = y0;
                     z = z0;
@@ -229,7 +262,19 @@ void FractalEngine::renderMandelbulbSliceStrip(
                 ++iter;
             }
 
-            buffer[screenY * width + px] = mapColor(iter, maxIter);
+            uint16_t color = mapColor(iter, maxIter);
+            
+            // Replicate horizontally in local buffer
+            for (int dxP = 0; dxP < step && (px + dxP) < width; ++dxP) {
+                rowBuffer[px + dxP] = color;
+            }
+        }
+        
+        // Blocky replication vertically and fast commit to PSRAM
+        for (int stepY = 0; stepY < step && (py + stepY) < yEnd; ++stepY) {
+            int targetY = py + stepY;
+            int screenY = invertY ? (height - 1 - targetY) : targetY;
+            memcpy(&buffer[screenY * width], rowBuffer, width * sizeof(uint16_t));
         }
     }
 }

@@ -11,7 +11,8 @@
 #include <SPI.h>
 
 // Diagnostic and strict-sync helpers — enable during debugging.
-#define DISPLAY_DRIVER_DIAG
+// Uncomment to enable verbose display diagnostics during development.
+// #define DISPLAY_DRIVER_DIAG
 #define DISPLAY_DRIVER_STRICT_SYNC
 
 DisplayDriver::DisplayDriver() : _tft(), _sprite(&_tft), _useSprite(false), _lvDisp(nullptr) {
@@ -271,7 +272,9 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
         self->_tft.endWrite();
         // Release forced CS after transfer
         digitalWrite(TFT_CS, HIGH);
+    #ifdef DISPLAY_DRIVER_DIAG
         Serial.println("[DisplayDriver] Write complete");
+    #endif
     #endif
     #ifdef DISPLAY_DRIVER_DIAG
         Serial.println("G endWrite");
@@ -298,7 +301,9 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
         self->_tft.endWrite();
         // Release forced CS after transfer
         digitalWrite(TFT_CS, HIGH);
+    #ifdef DISPLAY_DRIVER_DIAG
         Serial.println("[DisplayDriver] Write complete");
+    #endif
     #endif
     #ifdef DISPLAY_DRIVER_DIAG
         Serial.println("G endWrite");

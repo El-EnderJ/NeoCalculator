@@ -37,7 +37,7 @@ public:
      */
     static void renderMandelbrot(uint16_t* buffer, int width, int height, 
                                  float centerX, float centerY, float zoom, 
-                                 int maxIter, bool invertY = true);
+                                 int maxIter, int step = 1, bool invertY = true);
 
     /**
      * Builds the high precision reference orbit for perturbation.
@@ -61,6 +61,7 @@ public:
         ReferenceOrbit& orbit,
         volatile bool* abortRequested,
         volatile bool* rebaseRequired,
+        int step = 1,
         bool invertY = true
     );
 
@@ -80,6 +81,7 @@ public:
         int yStart,
         int yEnd,
         volatile bool* abortRequested,
+        int step = 1,
         bool invertY = true
     );
     

@@ -552,6 +552,19 @@ static RewriteRule makeMoveConstantsToRHSRule() {
             if (!eq.lhs || !eq.rhs) return nullptr;
             if (eq.lhs->nodeType != NodeType::Sum) return nullptr;
 
+            // For quadratic-or-higher equations in standard form (RHS = 0),
+            // do not run linear isolation transposition. This prevents
+            // repeatedly adding/subtracting the same constant term and lets
+            // checkNonLinearHandover trigger the quadratic path.
+            if (maxDegreeOf(eq.lhs, 'x') >= 2 ||
+                maxDegreeOf(eq.lhs, 'y') >= 2 ||
+                maxDegreeOf(eq.lhs, 'z') >= 2) {
+                double rhsVal = getNumericValue(eq.rhs);
+                if (!std::isnan(rhsVal) && isApprox(rhsVal, 0.0)) {
+                    return nullptr;
+                }
+            }
+
             const auto& lhsSum = static_cast<const SumNode&>(*eq.lhs);
 
             // Find the first non-zero purely-numeric child in LHS

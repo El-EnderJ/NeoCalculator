@@ -1275,45 +1275,22 @@ void EquationsApp::update() {
                     break;
                 }
 
-                constexpr std::size_t kSolveBudgetPerTick = 4;
-                for (std::size_t n = 0; n < kSolveBudgetPerTick; ++n) {
-                    if (_stepsSolveIterations >= STEPS_SOLVE_MAX) {
-                        break;
-                    }
+                _casResult = _casEngine->applyToFixedPoint(_stepsCurrentTree,
+                                                           STEPS_SOLVE_MAX);
+                cas::checkNonLinearHandover(_casResult, _stepsVar1);
 
-                    cas::RewriteResult r = _casEngine->applyOneStep(_stepsCurrentTree);
-                    if (!r.changed) {
-                        _stepsReachedFixedPoint = true;
-                        break;
-                    }
+                _stepsCurrentTree = _casResult.finalTree;
+                _stepsCasPendingLogs = _casResult.steps;
+                _stepsSolveIterations = _stepsCasPendingLogs.size();
+                _stepsReachedFixedPoint = _casResult.reachedFixedPoint
+                                          || _casResult.haltedByNoProgress
+                                          || _casResult.haltedByCycle
+                                          || _casResult.hitStepLimit;
 
-                    cas::RuleEngine::StepLog log;
-                    log.ruleName = std::move(r.ruleName);
-                    log.ruleDesc = std::move(r.ruleDesc);
-                    log.phase = r.phase;
-                    log.tree = r.newTree;
-                    log.affectedNode = r.affectedNode;
-                    _stepsCasPendingLogs.push_back(std::move(log));
-                    _stepsCurrentTree = r.newTree;
-                    ++_stepsSolveIterations;
-                }
-
-                char prog[40];
-                snprintf(prog, sizeof(prog), "Solving... %u/%u",
-                         static_cast<unsigned>(_stepsSolveIterations),
-                         static_cast<unsigned>(STEPS_SOLVE_MAX));
-                setProgress(prog);
-
-                if (_stepsReachedFixedPoint || _stepsSolveIterations >= STEPS_SOLVE_MAX) {
-                    _casResult.finalTree = _stepsCurrentTree;
-                    _casResult.steps = _stepsCasPendingLogs;
-                    _casResult.reachedFixedPoint = _stepsReachedFixedPoint;
-                    cas::checkNonLinearHandover(_casResult, _stepsVar1);
-                    _hasCasResult = true;
-                    _stepsRenderIndex = 0;
-                    _stepsStage = StepsStage::RENDER_CHUNK;
-                    setProgress("Rendering...");
-                }
+                _hasCasResult = true;
+                _stepsRenderIndex = 0;
+                _stepsStage = StepsStage::RENDER_CHUNK;
+                setProgress("Rendering...");
             } else {
                 cas::SystemTutorResult tutorResult = cas::SystemTutor::solveSystem(
                     _stepsParsedEq1, _stepsParsedEq2, *_casPool, _stepsVar1, _stepsVar2);

@@ -25,6 +25,7 @@
 #include "../math/cas/CasToVpam.h"
 #include "../math/cas/PersistentAST.h"
 #include "../math/cas/RuleEngine.h"
+#include "../math/cas/TutorTemplates.h"
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -367,6 +368,8 @@ void EquationsApp::resetStepsPipeline() {
     _stepsCurrentTree.reset();
     _stepsCasPendingLogs.clear();
     _stepsSystemPendingLogs.clear();
+    _stepsTutorResult = cas::SolveResult();
+    _stepsTutorActive = false;
     _stepsSolveIterations = 0;
     _stepsRenderIndex = 0;
     _stepsProgressLabel = nullptr;
@@ -1279,9 +1282,48 @@ void EquationsApp::update() {
                                                            STEPS_SOLVE_MAX);
                 cas::checkNonLinearHandover(_casResult, _stepsVar1);
 
+                _stepsTutorResult = cas::SolveResult();
+                _stepsTutorActive = false;
+
+                bool hasHandover = false;
+                for (const auto& step : _casResult.steps) {
+                    if (step.ruleName == cas::RULE_NONLINEAR_HANDOVER) {
+                        hasHandover = true;
+                        break;
+                    }
+                }
+
+                if (hasHandover && _stepsParsedEq1) {
+                    NodePtr lhsTree;
+                    NodePtr rhsTree;
+                    if (splitAtEquals(_eqRowData[0], lhsTree, rhsTree)) {
+                        cas::ASTFlattener flattener;
+                        flattener.setArena(&_arena);
+                        auto eqFlat = flattener.flattenEquation(lhsTree.get(), rhsTree.get());
+                        if (eqFlat.ok && !eqFlat.transcendental) {
+                            cas::PedagogicalLogger tutorLog;
+                            const int16_t degree = eqFlat.eq.moveAllToLHS().lhs.degree();
+                            if (degree == 2) {
+                                _stepsTutorResult = cas::solveQuadraticTutor(eqFlat.eq, _stepsVar1,
+                                                                             tutorLog, &_arena);
+                                _stepsTutorResult.steps = std::move(tutorLog);
+                                _stepsTutorActive = _stepsTutorResult.ok;
+                            } else if (degree == 3) {
+                                _stepsTutorResult = cas::solveCubicTutor(eqFlat.eq, _stepsVar1,
+                                                                         tutorLog, &_arena);
+                                _stepsTutorResult.steps = std::move(tutorLog);
+                                _stepsTutorActive = _stepsTutorResult.ok;
+                            }
+                        }
+                    }
+                }
+
                 _stepsCurrentTree = _casResult.finalTree;
                 _stepsCasPendingLogs = _casResult.steps;
                 _stepsSolveIterations = _stepsCasPendingLogs.size();
+                if (_stepsTutorActive) {
+                    _stepsSolveIterations += _stepsTutorResult.steps.count();
+                }
                 _stepsReachedFixedPoint = _casResult.reachedFixedPoint;
 
                 _hasCasResult = true;
@@ -1357,8 +1399,110 @@ void EquationsApp::update() {
                     ++rendered;
                 }
 
+                while (_stepsTutorActive &&
+                       (_stepsRenderIndex - 1) >= _casResult.steps.size() &&
+                       (_stepsRenderIndex - 1 - _casResult.steps.size()) <
+                           _stepsTutorResult.steps.count() &&
+                       rendered < kRenderBudgetPerTick)
+                {
+                    const std::size_t tutorIdx =
+                        (_stepsRenderIndex - 1 - _casResult.steps.size());
+                    const auto& step = _stepsTutorResult.steps.steps()[tutorIdx];
+                    const bool isFinal =
+                        (tutorIdx + 1 == _stepsTutorResult.steps.count()) &&
+                        (step.kind == cas::StepKind::Result ||
+                         step.kind == cas::StepKind::ComplexResult);
+                    const uint32_t descColHex = isFinal ? COL_ACCENT_HEX : COL_DESC_HEX;
+
+                    char buf[200];
+                    if (!step.description.empty()) {
+                        snprintf(buf, sizeof(buf), "%d. %s", (int)(_stepsRenderIndex),
+                                 step.description.c_str());
+                    } else {
+                        snprintf(buf, sizeof(buf), "%d. Step", (int)(_stepsRenderIndex));
+                    }
+
+                    if (!appendMessage(static_cast<int>(_stepsRenderIndex), buf, descColHex)) {
+                        appendMemoryLimitReached(_stepsRenderIndex);
+                        break;
+                    }
+
+                    if (step.mathExpr) {
+                        vpam::NodePtr astNode = cas::SymExprToAST::convert(step.mathExpr);
+                        astNode = cas::SymExprToAST::ensureRow(std::move(astNode));
+                        if (!astNode || !isValidLvObj(_stepsContainer)) {
+                            appendMemoryLimitReached(_stepsRenderIndex);
+                            break;
+                        }
+                        logStepBudget(static_cast<int>(_stepsRenderIndex));
+                        if (!canAllocStep(STEPS_CANVAS_BUDGET)) {
+                            appendMemoryLimitReached(_stepsRenderIndex);
+                            break;
+                        }
+                        auto srd = std::make_unique<StepRenderData>();
+                        srd->nodeData = std::move(astNode);
+                        srd->canvas.create(_stepsContainer);
+                        if (!srd->canvas.obj()) {
+                            appendMemoryLimitReached(_stepsRenderIndex);
+                            break;
+                        }
+                        auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
+                        srd->canvas.setExpression(row, nullptr);
+                        row->calculateLayout(srd->canvas.normalMetrics());
+                        int16_t w = static_cast<int16_t>(row->layout().width + 24);
+                        int16_t h = static_cast<int16_t>(
+                            row->layout().ascent + row->layout().descent + 8);
+                        if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
+                        if (h < 20) h = 20;
+                        lv_obj_set_size(srd->canvas.obj(), w, h);
+                        srd->canvas.invalidate();
+                        _stepRenderers.push_back(std::move(srd));
+                    } else if (step.kind == cas::StepKind::Transform ||
+                               step.kind == cas::StepKind::Result) {
+                        std::string eqText = step.snapshot.toString();
+                        if (!eqText.empty() && eqText != "0" && eqText != "0 = 0") {
+                            vpam::NodePtr snapNode = cas::SymToAST::fromSymEquation(step.snapshot);
+                            snapNode = cas::SymExprToAST::ensureRow(std::move(snapNode));
+                            if (!snapNode || !isValidLvObj(_stepsContainer)) {
+                                appendMemoryLimitReached(_stepsRenderIndex);
+                                break;
+                            }
+                            logStepBudget(static_cast<int>(_stepsRenderIndex));
+                            if (!canAllocStep(STEPS_CANVAS_BUDGET)) {
+                                appendMemoryLimitReached(_stepsRenderIndex);
+                                break;
+                            }
+                            auto srd = std::make_unique<StepRenderData>();
+                            srd->nodeData = std::move(snapNode);
+                            srd->canvas.create(_stepsContainer);
+                            if (!srd->canvas.obj()) {
+                                appendMemoryLimitReached(_stepsRenderIndex);
+                                break;
+                            }
+                            auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
+                            srd->canvas.setExpression(row, nullptr);
+                            row->calculateLayout(srd->canvas.normalMetrics());
+                            int16_t w = static_cast<int16_t>(row->layout().width + 24);
+                            int16_t h = static_cast<int16_t>(
+                                row->layout().ascent + row->layout().descent + 8);
+                            if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
+                            if (h < 20) h = 20;
+                            lv_obj_set_size(srd->canvas.obj(), w, h);
+                            srd->canvas.invalidate();
+                            _stepRenderers.push_back(std::move(srd));
+                        }
+                    }
+
+                    ++_stepsRenderIndex;
+                    ++rendered;
+                }
+
                 if (_stepsStage == StepsStage::RENDER_CHUNK) {
-                    if ((_stepsRenderIndex - 1) >= _casResult.steps.size()) {
+                    const std::size_t totalCas = _casResult.steps.size();
+                    const std::size_t totalTutor =
+                        _stepsTutorActive ? _stepsTutorResult.steps.count() : 0U;
+                    const std::size_t totalSteps = totalCas + totalTutor;
+                    if ((_stepsRenderIndex - 1) >= totalSteps) {
                         if (!appendHint(static_cast<int>(_stepsRenderIndex - 1))) {
                             appendMemoryLimitReached(_stepsRenderIndex - 1);
                         }
@@ -1369,7 +1513,7 @@ void EquationsApp::update() {
                         char prog[40];
                         snprintf(prog, sizeof(prog), "Rendering... %u/%u",
                                  static_cast<unsigned>(_stepsRenderIndex - 1),
-                                 static_cast<unsigned>(_casResult.steps.size()));
+                                 static_cast<unsigned>(totalSteps));
                         setProgress(prog);
                     }
                 }

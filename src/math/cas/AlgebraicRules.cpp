@@ -890,10 +890,10 @@ void checkNonLinearHandover(RuleEngine::SolveResult& result, char var) {
     if (!result.finalTree || !result.finalTree->isEquation()) return;
     const auto* eq = static_cast<const EquationNode*>(result.finalTree.get());
 
-    // Only hand over to the Quadratic Formula once LHS is degree 2 AND
+    // Only hand over to non-linear tutors once LHS is degree 2/3 AND
     // the RHS has already been normalised to zero (= 0 form).
     int degree = maxDegreeOf(eq->lhs, var);
-    if (degree != 2) return;
+    if (degree != 2 && degree != 3) return;
 
     double rhsVal = getNumericValue(eq->rhs);
     if (!isApprox(rhsVal, 0.0)) return;   // RHS not yet zero — transposition pending
@@ -901,7 +901,11 @@ void checkNonLinearHandover(RuleEngine::SolveResult& result, char var) {
     // Append a special handover step.
     RuleEngine::StepLog handover;
     handover.ruleName     = RULE_NONLINEAR_HANDOVER;
-    handover.ruleDesc     = "Equation is quadratic. Transitioning to Quadratic Formula.";
+    if (degree == 2) {
+        handover.ruleDesc = "Equation is quadratic. Transitioning to Quadratic Formula.";
+    } else {
+        handover.ruleDesc = "Equation is cubic. Transitioning to Cubic Tutor.";
+    }
     handover.phase        = RulePhase::Reduction;
     handover.tree         = result.finalTree;   // share the final tree
     handover.affectedNode = result.finalTree;   // highlight the whole equation

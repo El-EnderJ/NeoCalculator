@@ -183,6 +183,8 @@ private:
 
     std::vector<cas::RuleEngine::StepLog> _stepsCasPendingLogs;
     std::vector<cas::SystemTutorStep>     _stepsSystemPendingLogs;
+    cas::SolveResult                      _stepsTutorResult;
+    bool                                  _stepsTutorActive = false;
 
     std::size_t _stepsSolveIterations = 0;
     std::size_t _stepsRenderIndex = 0;

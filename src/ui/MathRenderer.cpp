@@ -20,6 +20,11 @@ namespace vpam {
 
 namespace {
 
+constexpr int16_t kPlusMinusStrokeDivisor = 10;
+constexpr int16_t kParenMinSegments = 7;
+constexpr int16_t kParenSegmentHeightDivisor = 6;
+constexpr int16_t kParenStrokeWidthDivisor = 5;
+
 struct SymbolAlias {
     const char* token;
     const char* utf8;
@@ -760,7 +765,9 @@ void MathCanvas::drawOperator(lv_layer_t* layer, const NodeOperator* node,
                                         std::min<int16_t>(plusCenterY,
                                                           static_cast<int16_t>(bottomY - plusHalf)));
 
-        int16_t stroke = static_cast<int16_t>(std::max<int16_t>(1, glyphW / 10));
+        // Slightly thinner stroke than legacy `/9` keeps ± fully inside the box on TFT.
+        int16_t stroke = static_cast<int16_t>(
+            std::max<int16_t>(1, glyphW / kPlusMinusStrokeDivisor));
 
         drawLine(layer,
                  static_cast<int16_t>(glyphCenterX - minusHalfW), minusY,
@@ -1120,8 +1127,12 @@ void MathCanvas::drawRoundedParenthesis(lv_layer_t* layer,
         ? static_cast<int16_t>(xInner + std::max<int16_t>(1, width / 4))
         : static_cast<int16_t>(xInner - std::max<int16_t>(1, width / 4));
 
-    const int16_t segs = static_cast<int16_t>(std::max<int>(7, height / 6));
-    const int16_t stroke = static_cast<int16_t>(std::max<int16_t>(1, width / 5));
+    // Adaptive sampling: more segments for tall parens, with minimum for short content.
+    const int16_t segs = static_cast<int16_t>(
+        std::max<int>(kParenMinSegments, height / kParenSegmentHeightDivisor));
+    // Adaptive stroke to avoid thin/pixelated look on larger elastic parentheses.
+    const int16_t stroke = static_cast<int16_t>(
+        std::max<int16_t>(1, width / kParenStrokeWidthDivisor));
 
     drawQuadraticCurve(layer,
                        xOuter, yTop,

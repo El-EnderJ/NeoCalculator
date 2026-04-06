@@ -41,7 +41,16 @@ fi
 RANGES="0x20-0x7E,0xA0-0xFF,0x370-0x3FF,0x2070-0x209F,0x2100-0x214F,0x2190-0x21FF,0x2200-0x22FF,0x2300-0x23FF,0x25A0-0x25FF,0x27C0-0x27EF"
 
 # Explicit symbols required by math list that may live outside selected ranges.
-SYMBOLS="∀∃∄∴∵⇒⇔¬∧∨∈∉⊂⊆∪∩∖∅≡≢→←↔⊕∝∇∂∞∆∫∬∭∮∯∑∏√≤≥≠±∓×⊗⊥∥∠≅∼≈°△′″‴ℏℕℤℚℝℂℍℵ⌊⌋⌈⌉†∗⋘⋙∘□"
+# Grouped for auditability:
+SYMBOLS_GREEK=""
+SYMBOLS_CALC="∇∂∞∆∫∬∭∮∯∑∏√"
+SYMBOLS_LOGIC_SETS="∀∃∄∴∵⇒⇔¬∧∨∈∉⊂⊆∪∩∖∅≡≢"
+SYMBOLS_ARROWS="→←↔"
+SYMBOLS_ALG_GEO="⊕∝≤≥≠±∓×⊗⊥∥∠≅∼≈°△"
+SYMBOLS_DERIVATIVES="′″‴"
+SYMBOLS_SPECIAL_SETS="ℏℕℤℚℝℂℍℵ"
+SYMBOLS_BRACKETS_PROOF="⌊⌋⌈⌉†∗⋘⋙∘□"
+SYMBOLS="${SYMBOLS_GREEK}${SYMBOLS_CALC}${SYMBOLS_LOGIC_SETS}${SYMBOLS_ARROWS}${SYMBOLS_ALG_GEO}${SYMBOLS_DERIVATIVES}${SYMBOLS_SPECIAL_SETS}${SYMBOLS_BRACKETS_PROOF}"
 
 gen_font() {
   local size="$1"

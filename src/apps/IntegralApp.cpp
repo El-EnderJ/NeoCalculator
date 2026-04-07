@@ -7,7 +7,7 @@
  *   MathAST → ASTFlattener → SymExpr → SymIntegrate::integrate() →
  *   SymSimplify::simplify() → SymExprToAST::convertIntegral() → MathCanvas
  *
- * Part of: NumOS Pro-CAS — Phase 6B (Integration App & Final Polish)
+ * Part of: NumOS CAS — Phase 6B (Integration App & Final Polish)
  */
 
 #include "IntegralApp.h"

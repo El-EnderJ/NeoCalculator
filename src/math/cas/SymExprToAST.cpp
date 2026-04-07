@@ -16,7 +16,7 @@
  * All layout computation is delegated to MathNode::calculateLayout(),
  * which recursively sizes each sub-tree using FontMetrics.
  *
- * Part of: NumOS Pro-CAS — Phase 3 (SymExpr → MathAST bridge)
+ * Part of: NumOS CAS — Phase 3 (SymExpr → MathAST bridge)
  */
 
 #include "SymExprToAST.h"

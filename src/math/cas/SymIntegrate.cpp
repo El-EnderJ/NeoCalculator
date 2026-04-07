@@ -10,7 +10,7 @@
  * All results are simplified via SymSimplify before return.
  * Uses Phase 2 cons'd factories throughout.
  *
- * Part of: NumOS Pro-CAS — Phase 6A (Symbolic Integration)
+ * Part of: NumOS CAS — Phase 6A (Symbolic Integration)
  */
 
 #include "SymIntegrate.h"

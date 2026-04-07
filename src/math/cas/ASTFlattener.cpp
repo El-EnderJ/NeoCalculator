@@ -10,7 +10,7 @@
  *   · Transcendental functions (sin, cos, ln, log) are rejected with a flag
  *   · NodeFraction with constant denominator → divScalar distribution
  *
- * Part of: NumOS Pro-CAS — Phase B (AST Bridge)
+ * Part of: NumOS CAS — Phase B (AST Bridge)
  */
 
 #include "ASTFlattener.h"

@@ -15,7 +15,7 @@
 | **Phase 3** | Launcher 3.0, SerialBridge and Documentation | ✅ Complete | 100% |
 | **Phase 4** | Migration to LVGL 9.x — HW Bring-Up ESP32-S3 | ✅ Complete | 100% |
 | **Phase 5** | CAS-Lite Engine + EquationsApp | ✅ Complete | 100% |
-| **CAS Elite** | Pro-CAS: BigNum, DAG, Derivatives, Integrals, Unified CalculusApp, SettingsApp | ✅ **Complete** | 100% |
+| **CAS** | CAS: BigNum, DAG, Derivatives, Integrals, Unified CalculusApp, SettingsApp | ✅ **Complete** | 100% |
 | **Phase 6** | Complete Scientific Apps | ✅ **Complete** | 100% |
 | **Phase 7** | Matrices + Complex + Bases | 🔲 Planned | 0% |
 | **Phase 8** | Final Hardware + Connectivity + Scripting | 🔲 Planned | 0% |
@@ -35,7 +35,7 @@
 | Feb 2026 | Animated splash screen + SerialBridge + LittleFS in production |
 | **Feb 2026** | **Complete CAS-Lite Engine: SymPoly · SingleSolver · SystemSolver · 53 tests** |
 | **Feb 2026** | **EquationsApp UI: linear, quadratic, 2×2 system with steps in PSRAM** |
-| **Feb 2026** | **Pro-CAS Engine: CASInt, CASRational, SymExpr DAG, ConsTable, SymDiff (17 rules), SymIntegrate (Slagle), SymSimplify 8-pass, OmniSolver, SymPolyMulti (resultant)** |
+| **Feb 2026** | **CAS Engine: CASInt, CASRational, SymExpr DAG, ConsTable, SymDiff (17 rules), SymIntegrate (Slagle), SymSimplify 8-pass, OmniSolver, SymPolyMulti (resultant)** |
 | **Feb 2026** | **CalculusApp: symbolic derivatives with Natural Display and steps** |
 | **Feb 2026** | **IntegralApp: Slagle integrals (table/u-sub/parts), +C, steps** |
 | **Feb 2026** | **Active production: RAM 29.0% · Flash 18.5% · tests disabled** |
@@ -196,11 +196,11 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ---
 
-## CAS Elite Phase — Pro-CAS Engine + Unified Calculus App (Complete)
+## CAS Phase — CAS Engine + Unified Calculus App (Complete)
 
-&gt; *Objective: CAS-Lite → Pro-CAS evolution. Full symbolic engine with derivatives, integrals, multi-pass simplification, and non-linear equation solving. See [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) for the breakdown of the 6 internal phases.*
+&gt; *Objective: CAS-Lite → CAS evolution. Full symbolic engine with derivatives, integrals, multi-pass simplification, and non-linear equation solving. See [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) for the breakdown of the 6 internal phases.*
 
-### Pro-CAS Engine — 6 Completed Phases
+### CAS Engine — 6 Completed Phases
 
 - [x] **Phase 0**: Research & Planning — SymExpr DAG design, hash-consing, bignum arithmetic
 - [x] **Phase 1**: CASInt + CASRational — Hybrid BigInt (int64+mbedtls_mpi), overflow-safe fraction
@@ -426,7 +426,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [x] Complete node hierarchy (13 node kinds): `Number`, `Symbol`, `BinaryOp`, `UnaryOp`, `FunctionCall`, `Assignment`, `If`, `While`, `ForIn`, `FunctionDef`, `Return`, `SymExprWrapper`, `Program`
 - [x] `NumberNode`: stores `double` value + exact CASRational (int64 numerator/denominator) + raw text
 - [x] `AssignmentNode`: distinguishes `=` (standard) from `:=` (delayed/symbolic, Wolfram-style)
-- [x] `SymExprWrapperNode`: CAS integration hook holding a `void* symexpr_ptr` to a Pro-CAS `SymExpr` DAG node + string `repr`
+- [x] `SymExprWrapperNode`: CAS integration hook holding a `void* symexpr_ptr` to a CAS `SymExpr` DAG node + string `repr`
 - [x] All nodes carry `line` and `col` for error messages
 
 **NeoParser** (`src/apps/NeoParser.h` / `NeoParser.cpp`)

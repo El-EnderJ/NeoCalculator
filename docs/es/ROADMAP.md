@@ -15,7 +15,7 @@
 | **Fase 3** | Launcher 3.0, SerialBridge y Documentacin | ? Completo | 100% |
 | **Fase 4** | Migracin a LVGL 9.x  HW Bring-Up ESP32-S3 | ? Completo | 100% |
 | **Fase 5** | CAS-Lite Engine + EquationsApp | ? Completo | 100% |
-| **CAS Elite** | Pro-CAS: BigNum, DAG, Derivadas, Integrales, CalculusApp unificada, SettingsApp | ? **Completo** | 100% |
+| **CAS** | CAS: BigNum, DAG, Derivadas, Integrales, CalculusApp unificada, SettingsApp | ? **Completo** | 100% |
 | **Fase 6** | Apps Cientficas Completas | ? **Completo** | 100% |
 | **Simulaciones** | ParticleLab (30+ materiales), CircuitCore (SPICE), Fluid2D | ? **Completo** | 100% |
 | **Fase 7** | Matrices + Complejos + Bases | ?? Planificado | 0% |
@@ -35,7 +35,7 @@
 | Feb 2026 | Splash screen animado + SerialBridge + LittleFS en produccin |
 | **Feb 2026** | **CAS-Lite Engine completo: SymPoly  SingleSolver  SystemSolver  53 tests** |
 | **Feb 2026** | **EquationsApp UI: lineal, cuadrtica, sistema 22 con pasos en PSRAM** |
-| **Feb 2026** | **Pro-CAS Engine: CASInt, CASRational, SymExpr DAG, ConsTable, SymDiff (17 reglas), SymIntegrate (Slagle), SymSimplify 8-pass, OmniSolver, SymPolyMulti (resultante)** |
+| **Feb 2026** | **CAS Engine: CASInt, CASRational, SymExpr DAG, ConsTable, SymDiff (17 reglas), SymIntegrate (Slagle), SymSimplify 8-pass, OmniSolver, SymPolyMulti (resultante)** |
 | **Feb 2026** | **CalculusApp: derivadas simblicas con Natural Display y pasos** |
 | **Feb 2026** | **IntegralApp: integrales Slagle (tabla/u-sub/partes), +C, pasos** |
 | **Feb 2026** | **Produccin activa: RAM 29.0%  Flash 18.5%  tests desactivados** |
@@ -189,11 +189,11 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ---
 
-## Fase CAS Elite  Pro-CAS Engine + CalculusApp Unificada (Completo)
+## Fase CAS Engine + CalculusApp Unificada (Completo)
 
-&gt; *Objetivo: Evolucin CAS-Lite ? Pro-CAS. Motor simblico completo con derivadas, integrales, simplificacin multi-pass y resolucin de ecuaciones no lineales. Ver [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) para el desglose de las 6 fases internas.*
+&gt; *Objetivo: Evolucion del CAS-Lite a CAS. Motor simblico completo con derivadas, integrales, simplificacin multi-pass y resolucin de ecuaciones no lineales. Ver [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) para el desglose de las 6 fases internas.*
 
-### Pro-CAS Engine  6 Fases completadas
+### CAS Engine  6 Fases completadas
 
 - [x] **Fase 0**: Research & Planning  Diseo de SymExpr DAG, hash-consing, aritmtica bignum
 - [x] **Fase 1**: CASInt + CASRational  BigInt hbrido (int64+mbedtls_mpi), fraccin overflow-safe

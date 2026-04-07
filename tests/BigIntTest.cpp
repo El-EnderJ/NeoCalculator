@@ -8,7 +8,7 @@
  *   D)  CASRational arithmetic & normalisation (7 tests)
  *   E)  CASRational bridge, pow, error propagation (3 tests)
  *
- * Part of: NumOS Elite OmniCAS — Phase 1 (BigInt Hybrid Engine)
+ * Part of: NumOS CAS — Phase 1 (BigInt Hybrid Engine)
  */
 
 #include "BigIntTest.h"

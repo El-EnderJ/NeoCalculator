@@ -7,7 +7,7 @@
  *   3. Dispatch:  SingleSolver / AlgebraicIsolator / HybridNewton
  *   4. Log every decision to CASStepLogger
  *
- * Part of: NumOS Pro-CAS — Phase 4 (Omni-Solver)
+ * Part of: NumOS CAS — Phase 4 (Omni-Solver)
  */
 
 #include "OmniSolver.h"

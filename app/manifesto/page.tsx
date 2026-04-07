@@ -27,7 +27,7 @@ export default function ManifestoPage() {
         </div>
 
         <p>
-          We didn't just build a calculator. We built a platform. The Pro-CAS engine fits entirely within 97KB of SRAM, executing symbolic algebra and complex integrals faster than processors that cost 10x more. Every schematic, every line of C++, is open-source.
+          We didn't just build a calculator. We built a platform. The CAS engine fits entirely within 97KB of SRAM, executing symbolic algebra and complex integrals faster than processors that cost 10x more. Every schematic, every line of C++, is open-source.
         </p>
 
         <p className="text-xl font-bold text-white mt-12">

@@ -1,5 +1,5 @@
 /**
- * SymExpr.h — Immutable symbolic expression DAG for Pro-CAS.
+ * SymExpr.h — Immutable symbolic expression DAG for CAS.
  *
  * Phase 2 upgrade: all nodes are now IMMUTABLE after construction.
  * Every node carries a precomputed `_hash` enabling O(1) hash-consing
@@ -34,7 +34,7 @@
  *         No destructors — the arena bulk-frees on reset().
  *         ConsTable deduplicates structurally-identical nodes.
  *
- * Part of: NumOS Pro-CAS — Phase 2 (Immutable DAG & Hash-Consing)
+ * Part of: NumOS CAS — Phase 2 (Immutable DAG & Hash-Consing)
  */
 
 #pragma once

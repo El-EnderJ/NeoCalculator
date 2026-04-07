@@ -9,7 +9,7 @@
  *   · Set an arena on the flattener to enable the SymExpr path.
  *   · Verify exprTree is non-null, transcendental flag, and evaluate().
  *
- * Part of: NumOS Pro-CAS — Phase 2 (ASTFlattener Dual-Mode)
+ * Part of: NumOS CAS — Phase 2 (ASTFlattener Dual-Mode)
  */
 
 #include "ASTFlatExprTest.h"

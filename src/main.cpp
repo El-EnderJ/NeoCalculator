@@ -59,7 +59,7 @@ void setup() {
     // El puerto está disponible inmediatamente tras el reset.
     delay(50);  // Breve margen para que el chip puente termine el reset
 
-    Serial.println("\n>>> NumOS Elite: System Ready (UART Mode)");
+    Serial.println("\n>>> NumOS: System Ready (UART Mode)");
     Serial.println("=== NumOS Boot ===");
 
     // -- CAS-Lite Phase A Tests (if enabled) --

@@ -3,7 +3,7 @@
 &gt; **La documentación maestra del proyecto. Si algo no está aquí, no existe.**
 &gt;
 &gt; **Plataforma**: ESP32-S3 N16R8 CAM · **UI**: LVGL 9.5
-&gt; **Lenguaje**: C++17 · **Pro-CAS Engine**: Producción activa
+&gt; **Lenguaje**: C++17 · **CAS Engine**: Producción activa
 &gt; **Última actualización**: Marzo 2026
 
 ---
@@ -12,14 +12,14 @@
 
 1. [Visión General](#1-visión-general)
 2. [Arquitectura de Software](#2-arquitectura-de-software)
-3. [Pro-CAS Engine — Arquitectura Interna](#3-pro-cas-engine--arquitectura-interna)
+3. [CAS Engine — Arquitectura Interna](#3-CAS-engine--arquitectura-interna)
 4. [Módulos — Inventario Completo](#4-módulos--inventario-completo)
 5. [Configuración del Build](#5-configuración-del-build)
 6. [Estado Actual (Febrero 2026)](#6-estado-actual-febrero-2026)
 7. [Guía de Estilo de Código](#7-guía-de-estilo-de-código)
 8. [Cómo Añadir una Nueva App](#8-cómo-añadir-una-nueva-app)
 9. [Cómo Añadir una Función Matemática](#9-cómo-añadir-una-función-matemática)
-10. [Cómo Ampliar el Pro-CAS](#10-cómo-ampliar-el-pro-cas)
+10. [Cómo Ampliar el CAS](#10-cómo-ampliar-el-CAS)
 11. [Troubleshooting](#11-troubleshooting)
 
 ---
@@ -64,12 +64,12 @@
 │  │  3×N scroll  │  │  Historial 32    │  │  Tabla de valores      │   │
 │  └──────────────┘  └──────────────────┘  └────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │              EquationsApp (Pro-CAS UI)                          │  │
+│  │              EquationsApp (CAS UI)                          │  │
 │  │  States: SELECT → EQ_INPUT → RESULT → STEPS                     │  │
 │  │  Pipeline: MathAST → ASTFlattener → Solver → SymToAST           │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │  CalculusApp (Pro-CAS)  — Unificada: d/dx + ∫dx             │  │
+│  │  CalculusApp (CAS)  — Unificada: d/dx + ∫dx             │  │
 │  │  Cambio de modo por pestañas · Derivadas + Integrales         │  │
 │  │  17 reglas · Slagle · Steps · +C · Natural Display          │  │
 │  └──────────────────────────────────────────────────────────────┘  │
@@ -79,7 +79,7 @@
        │                       │                        │
        ▼                       ▼                        ▼
 ┌─────────────┐   ┌────────────────────────┐   ┌───────────────────────┐
-│ Math Engine │   │ Pro-CAS Engine ★       │   │    Hardware Layer     │
+│ Math Engine │   │ CAS Engine ★       │   │    Hardware Layer     │
 │             │   │                        │   │                       │
 │ Tokenizer   │   │ CASInt / CASRational   │   │ DisplayDriver         │
 │ Parser      │   │ SymExpr DAG (consed)   │   │ (TFT_eSPI FSPI)       │
@@ -171,9 +171,9 @@ handleKey(MODE) [interceptado por SystemApp]:
 
 ---
 
-## 3. Pro-CAS Engine — Arquitectura Interna
+## 3. CAS Engine — Arquitectura Interna
 
-El Pro-CAS es un motor de álgebra simbólica completo, evolución del CAS-Lite original. Implementa un DAG inmutable con hash-consing, aritmética bignum overflow-safe (`CASInt`/`CASRational`), simplificación multi-pass con punto fijo (8 iteraciones), derivación simbólica (17 reglas), integración simbólica (Slagle heurístico), y resolución de sistemas no lineales via resultante de Sylvester. Todo vive en PSRAM.
+El CAS es un motor de álgebra simbólica completo, evolución del CAS-Lite original. Implementa un DAG inmutable con hash-consing, aritmética bignum overflow-safe (`CASInt`/`CASRational`), simplificación multi-pass con punto fijo (8 iteraciones), derivación simbólica (17 reglas), integración simbólica (Slagle heurístico), y resolución de sistemas no lineales via resultante de Sylvester. Todo vive en PSRAM.
 
 ### 3.1 Estructura de Módulos
 
@@ -320,7 +320,7 @@ Sin esto, la PSRAM acumula allocations entre sesiones de la app.
 | `CASStepLogger` | `math/cas/CASStepLogger.h/.cpp` | `StepVec` PSRAM — 4 tipos de paso |
 | `SymToAST` | `math/cas/SymToAST.h/.cpp` | `SolveResult` → `MathAST` visual |
 
-### Pro-CAS Engine (extensiones avanzadas)
+### CAS Engine (extensiones avanzadas)
 
 | Módulo | Archivo | Responsabilidad |
 |:-------|:--------|:----------------|
@@ -343,8 +343,8 @@ Sin esto, la PSRAM acumula allocations entre sesiones de la app.
 |:----|:--------|:------:|:------------|
 | `CalculationApp` | `apps/CalculationApp.cpp/.h` | ✅ | Natural VPAM, historial 32, variables |
 | `GrapherApp` | `apps/GrapherApp.cpp/.h` | ✅ | y=f(x), zoom, pan, tabla (UI base) |
-| `EquationsApp` | `apps/EquationsApp.cpp/.h` | ✅ | Pro-CAS: 1-var, 2×2, pasos PSRAM |
-| `CalculusApp` | `apps/CalculusApp.cpp/.h` | ✅ | Pro-CAS: derivadas (d/dx) + integrales (∫dx) unificadas, pestañas, pasos |
+| `EquationsApp` | `apps/EquationsApp.cpp/.h` | ✅ | CAS: 1-var, 2×2, pasos PSRAM |
+| `CalculusApp` | `apps/CalculusApp.cpp/.h` | ✅ | CAS: derivadas (d/dx) + integrales (∫dx) unificadas, pestañas, pasos |
 | `SettingsApp` | `apps/SettingsApp.cpp/.h` | ✅ | Configuración: raíces complejas, precisión, modo angular |
 | `StatisticsApp` | `apps/StatisticsApp.cpp/.h` | ✅ | Listas de datos, media/mediana/σ/s, histograma |
 | `ProbabilityApp` | `apps/ProbabilityApp.cpp/.h` | ✅ | nCr, nPr, n!, binomial, normal, Poisson |
@@ -454,7 +454,7 @@ buf1 = ps_malloc(6400);
 - ✅ LittleFS — variables persistentes
 - ✅ CalculationApp — Natural VPAM, historial 32, A-Z+Ans
 - ✅ GrapherApp — y=f(x) zoom/pan
-- ✅ **Pro-CAS Engine** — SymExpr DAG, CASInt, CASRational, SymDiff, SymIntegrate, SymSimplify, OmniSolver, SymPolyMulti
+- ✅ **CAS Engine** — SymExpr DAG, CASInt, CASRational, SymDiff, SymIntegrate, SymSimplify, OmniSolver, SymPolyMulti
 - ✅ **EquationsApp** — 4 estados, modos 1-var y 2×2 (lineal + NL), pasos PSRAM
 - ✅ **CalculusApp** — Unificada: derivadas simbólicas (17 reglas) + integrales (Slagle), pestañas d/dx ↔ ∫dx, simplificación, pasos
 - ✅ **SettingsApp** — Toggle raíces complejas, selector precisión decimal, modo angular
@@ -545,7 +545,7 @@ case TokenType::LOG2:
 
 ---
 
-## 10. Cómo Ampliar el Pro-CAS
+## 10. Cómo Ampliar el CAS
 
 ### Nuevo solver (ej. Cardano para grado 3)
 

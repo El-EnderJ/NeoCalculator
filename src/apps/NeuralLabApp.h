@@ -1,6 +1,6 @@
 /**
  * NeuralLabApp.h
- * Visual Neural Network Playground for NumOS — "Neural Lab Elite"
+ * Visual Neural Network Playground for NumOS — "Neural Lab"
  * App ID 16 — LVGL-native, renders decision boundary via upscaled buffer.
  *
  * Design, train, and visualize Multi-Layer Perceptrons (MLP) from scratch.

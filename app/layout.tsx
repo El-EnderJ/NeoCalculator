@@ -8,7 +8,7 @@ const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jet
 export const metadata: Metadata = {
   title: "NumOS | Open Source Scientific Calculator OS",
   description: "An affordable graphing calculator alternative starring a high-performance CAS engine and ESP32-S3 firmware. Disrupting the market with a 70% BoM reduction.",
-  keywords: ["Open Source Scientific Calculator OS", "High-performance CAS engine", "ESP32-S3 calculator firmware", "Affordable graphing calculator alternative", "Symbolic Algebra System open hardware", "Pro-CAS", "DAG-based expressions", "Hardware Decolonization"],
+  keywords: ["Open Source Scientific Calculator OS", "High-performance CAS engine", "ESP32-S3 calculator firmware", "Affordable graphing calculator alternative", "Symbolic Algebra System open hardware", "CAS", "DAG-based expressions", "Hardware Decolonization"],
   authors: [{ name: "NumOS Team", url: "https://neocalculator.tech" }],
   openGraph: {
     title: "NumOS | The Ultimate Open Source Scientific Calculator OS",

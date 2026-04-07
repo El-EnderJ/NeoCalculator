@@ -25,7 +25,7 @@
  *           On ESP32: mbedtls (bundled in ESP-IDF, no extra lib_deps).
  *           On native: overflow returns error state (no BigInt promotion).
  *
- * Part of: NumOS Elite OmniCAS — Phase 1 (BigInt Hybrid Engine)
+ * Part of: NumOS CAS — Phase 1 (BigInt Hybrid Engine)
  */
 
 #pragma once

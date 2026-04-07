@@ -6,7 +6,7 @@
 
 ### Open-Source Scientific Graphing Calculator OS
 
-**ESP32-S3 N16R8 · ILI9341 IPS 320×240 · LVGL 9.x · Pro-CAS Engine · Natural Display V.P.A.M.**
+**ESP32-S3 N16R8 · ILI9341 IPS 320×240 · LVGL 9.x · CAS Engine · Natural Display V.P.A.M.**
 
 <br>
 
@@ -42,7 +42,7 @@
 1. [What is NumOS?](#what-is-numos)
 2. [Key Features](#key-features)
 3. [System Architecture](#system-architecture)
-4. [Pro-CAS Engine](#pro-cas-engine)
+4. [CAS Engine](#CAS-engine)
 5. [Hardware](#hardware)
 6. [Quick Start](#quick-start)
 7. [User Manual — EquationsApp](#user-manual--equationsapp)
@@ -63,7 +63,7 @@
 
 **NumOS delivers:**
 
-- **Full Pro-CAS Engine** — Advanced symbolic algebra: immutable DAG with hash-consing (`ConsTable`), overflow-safe bignum arithmetic (`CASInt`/`CASRational`), multi-pass fixed-point simplifier, symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), and non-linear equation/system solving via Sylvester resultant. All memory managed in PSRAM with an STL-compatible allocator.
+- **Full CAS Engine** — Advanced symbolic algebra: immutable DAG with hash-consing (`ConsTable`), overflow-safe bignum arithmetic (`CASInt`/`CASRational`), multi-pass fixed-point simplifier, symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), and non-linear equation/system solving via Sylvester resultant. All memory managed in PSRAM with an STL-compatible allocator.
 - **Natural Display V.P.A.M.** — Formulae rendered as they appear on paper: real stacked fractions, radical symbols (√), genuine superscripts, 2D navigation with a structural smart cursor.
  - **Modern LVGL 9.x Interface** — Smooth transitions, animated splash screen, NumWorks-style launcher.
     Recent launcher refactor: the launcher now uses LVGL Flex `ROW_WRAP` (dynamic rows) with fixed card sizing
@@ -86,7 +86,7 @@
 | **Settings App** | System-wide toggles for complex number output (ON/OFF), decimal precision selector (6/8/10/12 digits), and angle-mode display |
 | **Natural Display** | Real fractions, radicals, exponents, 2D cursors — mathematical rendering as it appears on paper |
 | **Graphing: y=f(x)** | Real-time function plotter with zoom, pan, and value table |
-| **85+ CAS Unit Tests** | Comprehensive test suite for the Pro-CAS, enable/disable via compile-time flag |
+| **85+ CAS Unit Tests** | Comprehensive test suite for the CAS, enable/disable via compile-time flag |
 | **PSRAMAllocator** | CAS uses `PSRAMAllocator<T>` to isolate memory usage in the 8 MB PSRAM OPI |
 | **Variables A–Z + Ans** | Persistent storage via LittleFS — 216 bytes in `/vars.dat` |
 | **SerialBridge** | Full calculator control from PC via Serial Monitor without physical hardware |
@@ -150,7 +150,7 @@ flowchart TB
       mm["MainMenu (LVGL)"]
       calc["CalculationApp (Natural VPAM, History)"]
       grapher["GrapherApp (y=f(x), Zoom & Pan)"]
-      eq["EquationsApp (Pro-CAS)"]
+      eq["EquationsApp (CAS)"]
       calculus["CalculusApp (d/dx, ∫dx)"]
       settings["SettingsApp"]
    end
@@ -163,7 +163,7 @@ flowchart TB
    system --> settings
 
    math["Math Engine: Tokenizer · Parser · Evaluator · ExprNode · VariableContext · EquationSolver"]
-   procas["Pro-CAS Engine: CASInt · CASRational · SymExpr DAG · SymSimplify · SymDiff · SymIntegrate"]
+   procas["CAS Engine: CASInt · CASRational · SymExpr DAG · SymSimplify · SymDiff · SymIntegrate"]
 
    system --> math
    math --> procas
@@ -180,9 +180,9 @@ flowchart TB
 
 ---
 
-## Pro-CAS Engine
+## CAS Engine
 
-The **Pro-CAS** (Computer Algebra System) is NumOS's complete symbolic-algebra engine. Evolved from the original CAS-Lite, it implements an immutable DAG with hash-consing, overflow-safe bignum arithmetic, multi-pass fixed-point simplification, symbolic differentiation, symbolic integration (Slagle), and non-linear system solving via Sylvester resultant. All CAS memory resides in PSRAM.
+The **CAS** (Computer Algebra System) is NumOS's complete symbolic-algebra engine. Evolved from the original CAS-Lite, it implements an immutable DAG with hash-consing, overflow-safe bignum arithmetic, multi-pass fixed-point simplification, symbolic differentiation, symbolic integration (Slagle), and non-linear system solving via Sylvester resultant. All CAS memory resides in PSRAM.
 
 ### CAS Pipeline (Derivatives)
 
@@ -209,7 +209,7 @@ flowchart TB
    conv --> canvas2["MathCanvas renders: x·sin(x) + cos(x) + C"]
 ```
 
-### Pro-CAS Components
+### CAS Components
 
 | Module | File | Responsibility |
 |:-------|:-----|:---------------|
@@ -336,7 +336,7 @@ With the Serial Monitor open, type characters to control the calculator:
 
 ## User Manual — EquationsApp
 
-The **EquationsApp** solves single-variable polynomial equations and 2×2 systems (linear and non-linear), displaying complete solution steps via the Pro-CAS engine.
+The **EquationsApp** solves single-variable polynomial equations and 2×2 systems (linear and non-linear), displaying complete solution steps via the CAS engine.
 
 ### Access
 
@@ -399,8 +399,8 @@ numOS/
 │   ├── apps/
 │   │   ├── CalculationApp.cpp/.h     # Natural V.P.A.M. calculator
 │   │   ├── GrapherApp.cpp/.h         # y=f(x) graphing plotter
-│   │   ├── EquationsApp.cpp/.h       # Pro-CAS — Equation solver
-│   │   ├── CalculusApp.cpp/.h        # Pro-CAS — Unified symbolic derivatives + integrals
+│   │   ├── EquationsApp.cpp/.h       # CAS — Equation solver
+│   │   ├── CalculusApp.cpp/.h        # CAS — Unified symbolic derivatives + integrals
 │   │   ├── BridgeDesignerApp.cpp/.h  # Bridge structural simulator (Verlet physics)
 │   │   ├── CircuitCoreApp.cpp/.h    # Circuit simulator (MNA, 30 components)
 │   │   ├── Fluid2DApp.cpp/.h        # 2D fluid dynamics (Navier-Stokes)
@@ -425,7 +425,7 @@ numOS/
 │   │   ├── VariableContext.cpp/.h    # Variables A–Z + Ans
 │   │   ├── VariableManager.h/.cpp    # Persistent ExactVal storage
 │   │   ├── StepLogger.cpp/.h         # Parser step logger
-│   │   └── cas/                      # ★ Complete Pro-CAS Engine
+│   │   └── cas/                      # ★ Complete CAS Engine
 │   │       ├── CASInt.h              # Hybrid BigInt (int64 + mbedtls_mpi)
 │   │       ├── CASRational.h/.cpp    # Overflow-safe exact fraction
 │   │       ├── ConsTable.h           # Hash-consing PSRAM (dedup)
@@ -457,10 +457,10 @@ numOS/
 │   ├── HardwareTest.cpp              # TFT + physical keyboard test
 │   └── TokenizerTest_temp.cpp        # Tokenizer test
 ├── docs/
-│   ├── CAS_UPGRADE_ROADMAP.md        # ★ CAS Elite roadmap (6 phases, complete)
+│   ├── CAS_UPGRADE_ROADMAP.md        # ★ CAS roadmap (6 phases, complete)
 │   ├── ROADMAP.md                    # Phase history + future plan
 │   ├── PROJECT_BIBLE.md              # Master software architecture
-│   ├── MATH_ENGINE.md                # Math engine + Pro-CAS in detail
+│   ├── MATH_ENGINE.md                # Math engine + CAS in detail
 │   ├── HARDWARE.md                   # ESP32-S3 pinout, wiring, and bring-up
 │   ├── CONSTRUCCION.md               # Physical assembly guide
 │   └── DIMENSIONES_DISEÑO.md         # 3D chassis specifications
@@ -519,7 +519,7 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | **Phase 3** | Launcher 3.0, SerialBridge, CalculationApp history, GrapherApp zoom/pan | ✅ Complete |
 | **Phase 4** | LVGL 9.x — ESP32-S3 HW bring-up, DMA, animated splash screen, icon launcher | ✅ Complete |
 | **Phase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI | ✅ Complete |
-| **CAS Elite** | CAS-S3-ULTRA: BigNum, hash-consed DAG, SymDiff 17 rules, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver, Unified CalculusApp (d/dx + ∫dx), SettingsApp | ✅ **Complete** |
+| **CAS** | CAS-S3-ULTRA: BigNum, hash-consed DAG, SymDiff 17 rules, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver, Unified CalculusApp (d/dx + ∫dx), SettingsApp | ✅ **Complete** |
 | **Phase 6** | Statistics, Regression, Sequences, Probability, Matrices, Bridge Designer | ✅ **Complete** |
 | **Simulations** | ParticleLab (30+ materials, electronics), CircuitCore (SPICE), Fluid2D (Navier-Stokes) | ✅ **Complete** |
 | **Phase 7** | Complex numbers, base conversions | 🔲 Planned |
@@ -573,8 +573,8 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 |:---------|:------------|
 | [ROADMAP.md](docs/ROADMAP.md) | Complete phase history, milestones, and detailed future plan |
 | [PROJECT_BIBLE.md](docs/PROJECT_BIBLE.md) | Master architecture, modules, code conventions, and development guides |
-| [CAS_UPGRADE_ROADMAP.md](docs/CAS_UPGRADE_ROADMAP.md) | Full roadmap for the 6-phase CAS Elite upgrade |
-| [MATH_ENGINE.md](docs/MATH_ENGINE.md) | Math engine + Pro-CAS: design, algorithms, pipeline, and examples |
+| [CAS_UPGRADE_ROADMAP.md](docs/CAS_UPGRADE_ROADMAP.md) | Full roadmap for the 6-phase CAS upgrade |
+| [MATH_ENGINE.md](docs/MATH_ENGINE.md) | Math engine + CAS: design, algorithms, pipeline, and examples |
 | [HARDWARE.md](docs/HARDWARE.md) | ESP32-S3 pinout, complete wiring, critical bugs, and bring-up notes |
 | [CONSTRUCCION.md](docs/CONSTRUCCION.md) | Physical assembly guide, 3D printing, and hardware testing |
 | [DIMENSIONES_DISEÑO.md](docs/DIMENSIONES_DISEÑO.md) | Dimensional specifications for the 3D chassis |

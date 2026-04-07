@@ -26,7 +26,7 @@
  *   All SymExpr nodes live in the provided SymExprArena.
  *   Results use ExactVal (for polynomial/inverse) or double (for Newton).
  *
- * Part of: NumOS Pro-CAS — Phase 4 (Omni-Solver)
+ * Part of: NumOS CAS — Phase 4 (Omni-Solver)
  */
 
 #pragma once

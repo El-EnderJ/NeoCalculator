@@ -1,6 +1,6 @@
 /**
  * NeuralLabApp.cpp
- * Visual Neural Network Playground for NumOS — "Neural Lab Elite"
+ * Visual Neural Network Playground for NumOS — "Neural Lab"
  * App ID 16 — LVGL-native, decision boundary visualization.
  *
  * Cyberpunk-themed UI with bilinear-interpolated decision boundary,
@@ -169,7 +169,7 @@ void NeuralLabApp::end() {
 
 void NeuralLabApp::load() {
     if (!_screen) begin();
-    _statusBar.setTitle("Neural Lab Elite");
+    _statusBar.setTitle("Neural Lab");
     _statusBar.update();
     lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
 }
@@ -191,7 +191,7 @@ void NeuralLabApp::createUI() {
     lv_obj_set_style_text_color(_infoLabel, lv_color_hex(COL_ACCENT), 0);
     lv_obj_set_style_text_font(_infoLabel, &lv_font_montserrat_10, 0);
     lv_obj_align(_infoLabel, LV_ALIGN_BOTTOM_LEFT, 4, -2);
-    lv_label_set_text(_infoLabel, "Neural Lab Elite | F2:Train F4:Scenario");
+    lv_label_set_text(_infoLabel, "Neural Lab | F2:Train F4:Scenario");
 
     // ── Topology HUD label (top-left overlay) ──
     _hudLabel = lv_label_create(_screen);

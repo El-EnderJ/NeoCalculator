@@ -23,7 +23,7 @@
  *   so the existing rendering pipeline (MathCanvas, SymExprToAST,
  *   CalculationApp) continues to work unchanged.
  *
- * Part of: NumOS Elite OmniCAS — Phase 1 (BigInt Hybrid Engine)
+ * Part of: NumOS CAS — Phase 1 (BigInt Hybrid Engine)
  */
 
 #pragma once

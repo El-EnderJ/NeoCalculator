@@ -6,7 +6,7 @@
  *   Boolean   — true / false
  *   Number    — IEEE-754 double
  *   Exact     — CASRational (exact rational arithmetic)
- *   Symbolic  — cas::SymExpr* (symbolic mathematical expression via Pro-CAS)
+ *   Symbolic  — cas::SymExpr* (symbolic mathematical expression via CAS)
  *   Function  — user-defined function (FunctionDefNode* + closure NeoEnv*)
  *   List      — ordered collection of NeoValues (1-D list or row-major matrix)
  *

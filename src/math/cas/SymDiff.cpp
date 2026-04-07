@@ -4,7 +4,7 @@
  * Implements all differentiation rules recursively.
  * All output nodes are arena-allocated (zero individual frees).
  *
- * Part of: NumOS Pro-CAS — Phase 3 (Symbolic Differentiation)
+ * Part of: NumOS CAS — Phase 3 (Symbolic Differentiation)
  */
 
 #include "SymDiff.h"

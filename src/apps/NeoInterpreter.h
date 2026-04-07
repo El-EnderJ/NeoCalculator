@@ -16,7 +16,7 @@
  *   Undefined variables do NOT cause errors.  They are returned as
  *   Symbolic NeoValues wrapping a cas::SymExpr* (SymVar node).
  *   Any arithmetic involving a Symbolic value escalates the result to
- *   Symbolic using the Pro-CAS factories (symAdd, symMul, etc.).
+ *   Symbolic using the CAS factories (symAdd, symMul, etc.).
  *
  * Return propagation:
  *   Because ESP32 projects typically disable C++ exceptions,

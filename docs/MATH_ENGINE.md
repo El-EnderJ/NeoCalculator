@@ -1,11 +1,11 @@
-# NumOS — Math Engine and Pro-CAS Engine
+# NumOS — Math Engine and CAS Engine
 
 &gt; Complete technical documentation of the NumOS mathematical core.
 &gt; Covers the numeric evaluation pipeline (Tokenizer→Parser→Evaluator),
-&gt; the ExprNode visual tree, and the complete **Pro-CAS Engine** with exact
+&gt; the ExprNode visual tree, and the complete **CAS Engine** with exact
 &gt; algebraic solving, symbolic differentiation and integration, PSRAM management, and educational step logging.
 &gt;
-&gt; **Status**: Numeric Engine ✅ · Pro-CAS Engine ✅ · Tests passing ✅
+&gt; **Status**: Numeric Engine ✅ · CAS Engine ✅ · Tests passing ✅
 
 ---
 
@@ -18,7 +18,7 @@
 5. [Evaluator](#5-evaluator)
 6. [VariableContext](#6-variablecontext)
 7. [Numeric EquationSolver](#7-numeric-equationsolver)
-8. [Pro-CAS Engine](#8-pro-cas-engine)
+8. [CAS Engine](#8-CAS-engine)
    - 8.1 [Architecture and Modules](#81-architecture-and-modules)
    - 8.2 [PSRAMAllocator](#82-psramallocator)
    - 8.3 [Rational and SymPoly](#83-rational-and-sympoly)
@@ -247,11 +247,11 @@ Stop criterion: |f(x)| < 1e-10  or  max 100 iterations
 Test seeds: x₀ ∈ {0, 1, -1, 2, -2, 5, -5, 10}
 ```
 
-&gt; **Limitation**: Finds one real root. For exact algebra with all roots, use the **Pro-CAS Engine** (Section 8).
+&gt; **Limitation**: Finds one real root. For exact algebra with all roots, use the **CAS Engine** (Section 8).
 
 ---
 
-## 8. Pro-CAS Engine
+## 8. CAS Engine
 
 ★ Complete computational algebra motor designed for embedded systems. Evolution of the original CAS-Lite. Includes polynomial equation solving with exact results, symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), multi-pass simplification, and immutable DAG with hash-consing. All CAS memory lives in PSRAM with `PSRAMAllocator`.
 

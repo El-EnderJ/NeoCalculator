@@ -14,7 +14,7 @@
  * All intermediate SymExpr nodes (the derivative tree) live in the
  * caller-provided SymExprArena.
  *
- * Part of: NumOS Pro-CAS — Phase 4 (Omni-Solver)
+ * Part of: NumOS CAS — Phase 4 (Omni-Solver)
  */
 
 #pragma once

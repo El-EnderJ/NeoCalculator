@@ -1,7 +1,7 @@
 /**
  * SymExprToAST.h — Converts SymExpr trees back to MathAST for rendering.
  *
- * This is the Pro-CAS counterpart of SymToAST (which handles SymPoly).
+ * This is the CAS counterpart of SymToAST (which handles SymPoly).
  * It takes a SymExpr tree (output of SymDiff or SymSimplify) and builds
  * a vpam::MathNode tree suitable for rendering via MathCanvas.
  *
@@ -26,7 +26,7 @@
  *
  * Memory: Uses std::unique_ptr (vpam::NodePtr) — standard heap, not arena.
  *
- * Part of: NumOS Pro-CAS — Phase 3 (SymExpr → MathAST bridge)
+ * Part of: NumOS CAS — Phase 3 (SymExpr → MathAST bridge)
  */
 
 #pragma once

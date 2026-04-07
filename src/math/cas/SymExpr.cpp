@@ -7,7 +7,7 @@
  * Phase 2: all members are const.  clone() bypasses ConsTable
  * (creates a deep copy without dedup — useful for cross-arena cloning).
  *
- * Part of: NumOS Pro-CAS — Phase 2 (Immutable DAG & Hash-Consing)
+ * Part of: NumOS CAS — Phase 2 (Immutable DAG & Hash-Consing)
  */
 
 #include "SymExpr.h"

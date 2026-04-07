@@ -15,7 +15,7 @@
  *   solve()                → arena.alloc<SymAdd>(...);  // O(1) bump
  *   EquationsApp::end()    → arena.reset();  // or destructor
  *
- * Part of: NumOS Pro-CAS — Phase 1 (Data Structure Overhaul)
+ * Part of: NumOS CAS — Phase 1 (Data Structure Overhaul)
  */
 
 #pragma once

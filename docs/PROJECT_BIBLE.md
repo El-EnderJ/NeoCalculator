@@ -3,7 +3,7 @@
 &gt; **The master documentation of the project. If something is not here, it does not exist.**
 &gt;
 &gt; **Platform**: ESP32-S3 N16R8 CAM · **UI**: LVGL 9.5
-&gt; **Language**: C++17 · **Pro-CAS Engine**: Active Production
+&gt; **Language**: C++17 · **CAS Engine**: Active Production
 &gt; **Last Update**: April 2026
 
 **Website / Project site:** https://neocalculator.tech (also available as the repo `index.html` and CNAME)
@@ -14,14 +14,14 @@
 
 1. [Vision](#1-vision)
 2. [Software Architecture](#2-software-architecture)
-3. [Pro-CAS Engine — Internal Architecture](#3-pro-cas-engine--internal-architecture)
+3. [CAS Engine — Internal Architecture](#3-CAS-engine--internal-architecture)
 4. [Modules — Complete Inventory](#4-modules--complete-inventory)
 5. [Build Configuration](#5-build-configuration)
 6. [Current State (April 2026)](#6-current-state-april-2026)
 7. [Code Style Guide](#7-code-style-guide)
 8. [How to Add a New App](#8-how-to-add-a-new-app)
 9. [How to Add a Math Function](#9-how-to-add-a-math-function)
-10. [How to Extend the Pro-CAS](#10-how-to-extend-the-pro-cas)
+10. [How to Extend the CAS](#10-how-to-extend-the-CAS)
 11. [Troubleshooting](#11-troubleshooting)
 12. [NeoLanguage — Compiler Frontend Architecture](#12-neolanguage--compiler-frontend-architecture)
 
@@ -67,12 +67,12 @@
 │  │  3×N scroll  │  │  History 32      │  │  Values Table          │   │
 │  └──────────────┘  └──────────────────┘  └────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │              EquationsApp (Pro-CAS UI)                          │  │
+│  │              EquationsApp (CAS UI)                          │  │
 │  │  States: SELECT → EQ_INPUT → RESULT → STEPS                     │  │
 │  │  Pipeline: MathAST → ASTFlattener → Solver → SymToAST           │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │  CalculusApp (Pro-CAS)  — Unified: d/dx + ∫dx             │  │
+│  │  CalculusApp (CAS)  — Unified: d/dx + ∫dx             │  │
 │  │  Tab-based mode switch · Derivatives + Integrals          │  │
 │  │  17 rules · Slagle · Steps · +C · Natural Display          │  │
 │  └──────────────────────────────────────────────────────────────┘  │
@@ -82,7 +82,7 @@
        │                       │                        │
        ▼                       ▼                        ▼
 ┌─────────────┐   ┌────────────────────────┐   ┌───────────────────────┐
-│ Math Engine │   │ Pro-CAS Engine ★       │   │    Hardware Layer     │
+│ Math Engine │   │ CAS Engine ★       │   │    Hardware Layer     │
 │             │   │                        │   │                       │
 │ Tokenizer   │   │ CASInt / CASRational   │   │ DisplayDriver         │
 │ Parser      │   │ SymExpr DAG (consed)   │   │ (TFT_eSPI FSPI)       │
@@ -240,9 +240,9 @@ Spark propagation uses the `PF_SPARKED` flag (bit 1 of `Particle::flags`):
 
 ---
 
-## 3. Pro-CAS Engine — Internal Architecture
+## 3. CAS Engine — Internal Architecture
 
-The Pro-CAS is a complete symbolic algebra engine, evolution of the original CAS-Lite. It implements an immutable DAG with hash-consing, overflow-safe bignum arithmetic (`CASInt`/`CASRational`), multi-pass simplification with fixed point (8 iterations), symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), and non-linear system solving via Sylvester resultant. Everything lives in PSRAM.
+The CAS is a complete symbolic algebra engine, evolution of the original CAS-Lite. It implements an immutable DAG with hash-consing, overflow-safe bignum arithmetic (`CASInt`/`CASRational`), multi-pass simplification with fixed point (8 iterations), symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), and non-linear system solving via Sylvester resultant. Everything lives in PSRAM.
 
 ### 3.1 Module Structure
 
@@ -389,7 +389,7 @@ Without this, PSRAM accumulates allocations between app sessions.
 | `CASStepLogger` | `math/cas/CASStepLogger.h/.cpp` | `StepVec` PSRAM — 4 step types |
 | `SymToAST` | `math/cas/SymToAST.h/.cpp` | `SolveResult` → visual `MathAST` |
 
-### Pro-CAS Engine (advanced extensions)
+### CAS Engine (advanced extensions)
 
 | Module | File | Responsibility |
 |:-------|:-----|:----------------|
@@ -412,8 +412,8 @@ Without this, PSRAM accumulates allocations between app sessions.
 |:----|:-----|:------:|:------------|
 | `CalculationApp` | `apps/CalculationApp.cpp/.h` | ✅ | Natural VPAM, history 32, A-Z+Ans variables |
 | `GrapherApp` | `apps/GrapherApp.cpp/.h` | ✅ | y=f(x), zoom, pan, expression list, table |
-| `EquationsApp` | `apps/EquationsApp.cpp/.h` | ✅ | Pro-CAS: 1-var, 2×2 (linear+NL), PSRAM steps |
-| `CalculusApp` | `apps/CalculusApp.cpp/.h` | ✅ | Pro-CAS: symbolic d/dx (17 rules) + ∯dx (Slagle), tabs, +C, steps |
+| `EquationsApp` | `apps/EquationsApp.cpp/.h` | ✅ | CAS: 1-var, 2×2 (linear+NL), PSRAM steps |
+| `CalculusApp` | `apps/CalculusApp.cpp/.h` | ✅ | CAS: symbolic d/dx (17 rules) + ∯dx (Slagle), tabs, +C, steps |
 | `SettingsApp` | `apps/SettingsApp.cpp/.h` | ✅ | Complex roots toggle, decimal precision, angle mode |
 | `StatisticsApp` | `apps/StatisticsApp.cpp/.h` | ✅ | Data lists, mean/median/σ/s, histogram UI |
 | `ProbabilityApp` | `apps/ProbabilityApp.cpp/.h` | ✅ | nCr, nPr, n!, binomial, normal, Poisson distributions |
@@ -530,7 +530,7 @@ buf1 = ps_malloc(6400);
 - ✅ LittleFS — persistent variables (proactive /vars.dat creation on first boot)
 - ✅ CalculationApp — Natural VPAM, history 32, A-Z+Ans
 - ✅ GrapherApp — y=f(x) zoom/pan, expression list, values table
-- ✅ **Pro-CAS Engine** — SymExpr DAG, CASInt, CASRational, SymDiff, SymIntegrate, SymSimplify, OmniSolver, SymPolyMulti
+- ✅ **CAS Engine** — SymExpr DAG, CASInt, CASRational, SymDiff, SymIntegrate, SymSimplify, OmniSolver, SymPolyMulti
 - ✅ **EquationsApp** — 4 states, modes 1-var and 2×2 (linear + NL), PSRAM steps
 - ✅ **CalculusApp** — Unified: symbolic derivatives (17 rules) + integrals (Slagle), tab-based d/dx ↔ ∯dx mode switching, simplification, steps
 - ✅ **SettingsApp** — Complex roots toggle, decimal precision selector, angle mode
@@ -700,7 +700,7 @@ case TokenType::LOG2:
 
 ---
 
-## 10. How to Extend the Pro-CAS
+## 10. How to Extend the CAS
 
 ### New solver (ex. Cardano for degree 3)
 
@@ -783,7 +783,7 @@ steps.add(StepType::INFO, "Cardano's Method (degree 3)");
 | **Functions** | `def f(x): return x^2 + 1` or `f(x) := x^2 + 1` |
 | **Control flow** | `if/elif/else`, `while`, `for x in iterable` |
 | **Power** | `^` or `**` (both supported) |
-| **CAS hook** | `SymExprWrapperNode` holds pointer to Pro-CAS `SymExpr` DAG |
+| **CAS hook** | `SymExprWrapperNode` holds pointer to CAS `SymExpr` DAG |
 | **Memory** | All AST nodes allocated from `NeoArena` (PSRAM bump allocator) |
 
 ### 12.2 File Map
@@ -867,7 +867,7 @@ NeoNode (base: kind, line, col)
 
 ### 12.7 CAS Integration Hook
 
-`SymExprWrapperNode` is the bridge between NeoLanguage and the Pro-CAS engine:
+`SymExprWrapperNode` is the bridge between NeoLanguage and the CAS engine:
 
 ```cpp
 // Create a SymExprWrapperNode from an existing SymExpr DAG node:

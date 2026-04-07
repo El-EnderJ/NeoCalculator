@@ -38,7 +38,7 @@ fi
 # 2300-23FF   Misc technical (⌈⌉⌊⌋)
 # 25A0-25FF   Geometric shapes (□ △)
 # 27C0-27EF   Misc math symbols-A
-RANGES="0x20-0x7E,0xA0-0xFF,0x370-0x3FF,0x2070-0x209F,0x2100-0x214F,0x2190-0x21FF,0x2200-0x22FF,0x2300-0x23FF,0x25A0-0x25FF,0x27C0-0x27EF"
+RANGES="0x20-0x7E,0xA0-0xFF,0x370-0x3FF,0x2070-0x209F,0x2100-0x214F,0x2190-0x21FF,0x2200-0x22FF,0x25A0-0x25FF,0x27C0-0x27EF"
 
 # Explicit symbols required by math list that may live outside selected ranges.
 # Grouped for auditability:
@@ -79,3 +79,9 @@ Example quick command without script:
   lv_font_conv --font "${FONT_FILE}" --size 14 --bpp 4 --format lvgl \\
     --range "${RANGES}" --symbols "${SYMBOLS}" -o "${OUT_DIR}/lv_font_montserrat_math_14.c"
 EOF
+
+# Corregir la ruta de inclusión de LVGL para compatibilidad con PlatformIO
+sed -i 's|#include "lvgl/lvgl.h"|#include "lvgl.h"|g' "${OUT_DIR}/lv_font_montserrat_math_12.c"
+sed -i 's|#include "lvgl/lvgl.h"|#include "lvgl.h"|g' "${OUT_DIR}/lv_font_montserrat_math_14.c"
+
+echo "Inclusion paths patched for PlatformIO!"

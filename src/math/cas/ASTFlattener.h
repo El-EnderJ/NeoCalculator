@@ -23,7 +23,7 @@
  *   flattenEquation(lhsRoot, rhsRoot) → SymEquation from two ASTs.
  *   The EquationsApp UI provides separate editors for each side.
  *
- * Part of: NumOS Pro-CAS — Phase B (AST Bridge)
+ * Part of: NumOS CAS — Phase B (AST Bridge)
  */
 
 #pragma once

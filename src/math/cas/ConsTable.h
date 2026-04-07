@@ -18,7 +18,7 @@
  *         Default 4096 buckets → 16 KB initial.
  *         Max capacity scales to ~32K entries → 128 KB.
  *
- * Part of: NumOS Pro-CAS — Phase 2 (Immutable DAG & Hash-Consing)
+ * Part of: NumOS CAS — Phase 2 (Immutable DAG & Hash-Consing)
  */
 
 #pragma once

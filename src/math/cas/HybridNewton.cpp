@@ -15,7 +15,7 @@
  *   4. De-duplicate converged roots (|r1 - r2| < DEDUP_TOL)
  *   5. Verify each root: |f(root)| < VERIFY_TOL
  *
- * Part of: NumOS Pro-CAS — Phase 4 (Omni-Solver)
+ * Part of: NumOS CAS — Phase 4 (Omni-Solver)
  */
 
 #include "HybridNewton.h"

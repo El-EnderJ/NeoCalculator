@@ -26,7 +26,7 @@
  *   - Dynamic input height adapting to expression content
  *   - PSRAM arena-based memory (no heap fragmentation)
  *
- * Part of: NumOS Pro-CAS — Phase 4 (Unified Calculus App)
+ * Part of: NumOS CAS — Phase 4 (Unified Calculus App)
  */
 
 #pragma once

@@ -20,7 +20,7 @@
  *   - Dynamic input height adapting to expression content
  *   - PSRAM arena-based memory (no heap fragmentation)
  *
- * Part of: NumOS Pro-CAS — Phase 6B (Integration App & Final Polish)
+ * Part of: NumOS CAS — Phase 6B (Integration App & Final Polish)
  */
 
 #pragma once

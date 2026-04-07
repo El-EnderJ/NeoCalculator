@@ -10,7 +10,7 @@
  *   · Every returned node is cons'd through the arena's ConsTable.
  *   · MAX_PASSES = 8 absolute safety net against oscillation.
  *
- * Part of: NumOS Pro-CAS — Phase 3 (Fixed-Point Simplifier)
+ * Part of: NumOS CAS — Phase 3 (Fixed-Point Simplifier)
  */
 
 #include "SymSimplify.h"

@@ -1,5 +1,5 @@
 /**
- * SymIntegrate.h — Symbolic indefinite integration engine for Pro-CAS.
+ * SymIntegrate.h — Symbolic indefinite integration engine for CAS.
  *
  * Provides symbolic integration of SymExpr trees with respect to a
  * single variable.  All output nodes are arena-allocated and cons'd.
@@ -15,7 +15,7 @@
  *
  * Memory: ALL output nodes live in the provided SymExprArena.
  *
- * Part of: NumOS Pro-CAS — Phase 6A (Symbolic Integration)
+ * Part of: NumOS CAS — Phase 6A (Symbolic Integration)
  */
 
 #pragma once

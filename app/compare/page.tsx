@@ -48,7 +48,7 @@ export default function ComparePage() {
 
           {/* Row 1: CAS */}
           <div className="p-6 border-b border-white/5 flex items-center font-mono text-sm text-gray-400">Symbolic CAS</div>
-          <div className="p-6 border-x-2 border-[#ccff00] bg-[#0a0a0a] flex items-center justify-center text-[#ccff00] font-bold"><Check className="w-5 h-5 mr-2"/> NumOS Pro-CAS</div>
+          <div className="p-6 border-x-2 border-[#ccff00] bg-[#0a0a0a] flex items-center justify-center text-[#ccff00] font-bold"><Check className="w-5 h-5 mr-2"/> NumOS CAS</div>
           <div className="p-6 border-x border-b border-white/10 flex items-center justify-center text-gray-300">NumWorks CAS</div>
           <div className="p-6 border-x border-b border-white/10 flex items-center justify-center text-red-500"><X className="w-5 h-5"/></div>
           <div className="p-6 border-x border-b border-white/10 flex items-center justify-center text-green-500"><Check className="w-5 h-5 mr-2"/> Available</div>

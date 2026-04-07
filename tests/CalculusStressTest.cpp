@@ -8,7 +8,7 @@
  *   3) All results produce valid SymExpr pointers
  *   4) Arena block count stays bounded (≤ 4 blocks)
  *
- * Part of: NumOS Pro-CAS — Phase 6 (Calculus & Production Polish)
+ * Part of: NumOS CAS — Phase 6 (Calculus & Production Polish)
  */
 
 #include "CalculusStressTest.h"

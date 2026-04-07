@@ -8,7 +8,7 @@ This blueprint outlines the vision to transform **NumOS** from a high-performanc
 
 Investors look for defensible advantages. NumOS has three distinct technical barriers that translate into massive business value:
 
-### Moat 1: Pro-CAS Symbolic Engine (Symbolic Supremacy)
+### Moat 1: CAS Symbolic Engine (Symbolic Supremacy)
 *   **Technical Asset**: Immutable DAG with hash-consing, Slagle integration, and symbolic differentiation in PSRAM.
 *   **Business Value**: NumOS provides $180 (TI-Nspire/HP Prime) functionality for $15 in hardware.
 *   **Metric**: **12x ROI per unit** for users. Educational systems can deploy university-level tools at primary school prices.

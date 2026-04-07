@@ -13,7 +13,7 @@
  *   · Differentiate, simplify, then verify via evaluate()
  *   · Verify AST conversion produces correct node types
  *
- * Part of: NumOS Pro-CAS — Phase 3 (Differentiation & Simplifier)
+ * Part of: NumOS CAS — Phase 3 (Differentiation & Simplifier)
  */
 
 #include "SymDiffTest.h"

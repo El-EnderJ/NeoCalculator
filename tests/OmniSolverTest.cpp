@@ -15,7 +15,7 @@
  *   · Solve, then verify solutions numerically
  *   · arena.reset() between test groups
  *
- * Part of: NumOS Pro-CAS — Phase 4 (Omni-Solver)
+ * Part of: NumOS CAS — Phase 4 (Omni-Solver)
  */
 
 #include "OmniSolverTest.h"

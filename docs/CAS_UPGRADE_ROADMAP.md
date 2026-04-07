@@ -1,6 +1,6 @@
-# Elite OmniCAS — Master Plan & Feasibility Analysis
+# CAS — Master Plan & Feasibility Analysis
 
-&gt; **NumOS Pro-CAS: Architectural Overhaul Roadmap**
+&gt; **NumOS CAS: Architectural Overhaul Roadmap**
 &gt; Target: Compete with HP Prime G2 & Wolfram Engine on ESP32-S3 N16R8
 &gt; Author: Chief Mathematics Software Architect
 &gt; Date: March 2026
@@ -10,7 +10,7 @@
 
 ## Executive Summary — Project Completed
 
-All six phases of the Elite OmniCAS upgrade have been implemented and verified:
+All six phases of the CAS upgrade have been implemented and verified:
 
 | Phase | Description | Status | Build |
 |-------|-------------|--------|-------|
@@ -928,7 +928,7 @@ Phase 6 (App & Polish) ← Requires Phase 4 + 5
 
 ---
 
-*NumOS Elite OmniCAS — From scientific calculator to symbolic mathematics engine.*
+*NumOS CAS — From scientific calculator to symbolic mathematics engine.*
 *Target hardware: ESP32-S3 N16R8 (240 MHz, 8 MB PSRAM, 16 MB Flash)*
 *March 2026*
 

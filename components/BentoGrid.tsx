@@ -54,8 +54,8 @@ export default function BentoGrid() {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[300px]">
           <BentoCard 
-            title="Pro-CAS Engine" 
-            description="Our Pro-CAS engine fits entirely within 97KB SRAM, utilizing optimized DAG expressions for complex symbolic algebra without ever dropping performance."
+            title="CAS Engine" 
+            description="Our CAS engine fits entirely within 97KB SRAM, utilizing optimized DAG expressions for complex symbolic algebra without ever dropping performance."
             highlight="97KB RAM"
             colSpan="md:col-span-1"
           />

@@ -13,7 +13,7 @@
  *
  * All nodes are immutable and cons'd through the arena factories.
  *
- * Part of: NumOS Pro-CAS — Phase 5 (Multivariable & Resultant Solver)
+ * Part of: NumOS CAS — Phase 5 (Multivariable & Resultant Solver)
  */
 
 #pragma once

@@ -8,7 +8,7 @@
  *
  * All construction uses immutable cons factories (symAdd, symMul, etc.).
  *
- * Part of: NumOS Pro-CAS — Phase 5 (Multivariable & Resultant Solver)
+ * Part of: NumOS CAS — Phase 5 (Multivariable & Resultant Solver)
  */
 
 #include "SymPolyMulti.h"

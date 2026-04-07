@@ -394,7 +394,7 @@ struct ReturnNode : NeoNode {
 };
 
 // ════════════════════════════════════════════════════════════════════
-// SymExprWrapperNode — wraps a Pro-CAS SymExpr* (forward-declared)
+// SymExprWrapperNode — wraps a CAS SymExpr* (forward-declared)
 // ════════════════════════════════════════════════════════════════════
 
 /**

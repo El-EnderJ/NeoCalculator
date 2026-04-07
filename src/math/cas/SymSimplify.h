@@ -27,7 +27,7 @@
  *   · Weight can only stay equal or decrease (no unbounded expansion)
  *   · MAX_PASSES = 10 provides an absolute safety net
  *
- * Part of: NumOS Pro-CAS — Phase 3 (Fixed-Point Simplifier)
+ * Part of: NumOS CAS — Phase 3 (Fixed-Point Simplifier)
  */
 
 #pragma once

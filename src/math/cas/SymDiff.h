@@ -1,5 +1,5 @@
 /**
- * SymDiff.h — Symbolic differentiation engine for Pro-CAS.
+ * SymDiff.h — Symbolic differentiation engine for CAS.
  *
  * Provides recursive differentiation of SymExpr trees with respect
  * to a single variable. All output nodes are arena-allocated.
@@ -24,7 +24,7 @@
  *
  * Memory: ALL output nodes are allocated in the provided SymExprArena.
  *
- * Part of: NumOS Pro-CAS — Phase 3 (Symbolic Differentiation)
+ * Part of: NumOS CAS — Phase 3 (Symbolic Differentiation)
  */
 
 #pragma once

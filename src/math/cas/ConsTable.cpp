@@ -4,7 +4,7 @@
  * Implements find, insert, getOrCreate, rehash and the structural
  * equality comparator that resolves hash collisions.
  *
- * Part of: NumOS Pro-CAS — Phase 2 (Immutable DAG & Hash-Consing)
+ * Part of: NumOS CAS — Phase 2 (Immutable DAG & Hash-Consing)
  */
 
 #include "ConsTable.h"

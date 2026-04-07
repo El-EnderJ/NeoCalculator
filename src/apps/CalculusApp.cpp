@@ -8,7 +8,7 @@
  *     [SymDiff::diff() | SymIntegrate::integrate()] →
  *   SymSimplify::simplify() → SymExprToAST → MathCanvas display
  *
- * Part of: NumOS Pro-CAS — Phase 4 (Unified Calculus App)
+ * Part of: NumOS CAS — Phase 4 (Unified Calculus App)
  */
 
 #include "CalculusApp.h"

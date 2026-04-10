@@ -130,11 +130,11 @@ void SerialBridge::processChar(int ch) {
 
         // If line starts with ':' → Giac command
         if (!line.empty() && line[0] == ':') {
-            std::string expr = line.substr(1);
-            // trim leading spaces from expr
-            auto ep = expr.find_first_not_of(" \t");
-            if (ep != std::string::npos) expr = expr.substr(ep);
-            String in(expr.c_str());
+            String in(line.c_str());
+            if (in.startsWith(":")) {
+                in = in.substring(1);
+            }
+            in.trim();
             String out = solveWithGiac(in);
             Serial.print(": => ");
             Serial.println(out);

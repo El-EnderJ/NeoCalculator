@@ -126,7 +126,7 @@ namespace giac {
   and define GINT_MALLOC/KMALLOC in Makefile and in ../libc/stdlib.c 
   rebuild libc, kgen.cc and main.cc
   */
-#if 1
+#if 0
 #define ALLOCSMALL
 #endif
 
@@ -258,7 +258,7 @@ namespace giac {
         goto end36;
       }
     }
-    void * p =  malloc(size);
+    void * p =  calloc(1,size);
     if (!p)
       ctrl_c=interrupted=true;
     return p;
@@ -322,6 +322,17 @@ namespace giac {
     return res;
   }
 #else // ALLOCSMALL
+  static void * allocfast(size_t size){
+    void * p = calloc(1,size);
+    if (!p)
+      ctrl_c=interrupted=true;
+    return p;
+  }
+
+  static void deletefast(void * obj){
+    free(obj);
+  }
+
   size_t freeslotmem(){
     return 0;
   }

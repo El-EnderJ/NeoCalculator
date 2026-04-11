@@ -2513,6 +2513,8 @@ namespace giac {
       gen first_try=subst(e,x,lim_point,false,contextptr);
       first_try=eval(first_try,1,contextptr);
       first_try=simplifier(first_try,contextptr);
+      if (has_op(e,*at_inv) && has_num_coeff(first_try))
+        first_try=undef;
       // if (first_try==plus_inf || first_try==minus_inf) return first_try;
       if (!contains(lidnt(first_try),unsigned_inf)){
 	if (has_num_coeff(first_try))
@@ -2557,7 +2559,7 @@ namespace giac {
       eval_abs(absb,contextptr);
       if (is_undef(first_try) && first_try.type==_STRNG)
 	return first_try;
-      if (!is_undef(first_try) && !is_undef(numtry)){
+      if (!is_undef(first_try) && !is_undef(numtry) && !has_op(e,*at_inv)){
 	// if (!direction) return first_try;
 	if (first_try!=unsigned_inf && numtry!=unsigned_inf)
 	  return first_try;
@@ -3069,7 +3071,7 @@ namespace giac {
       if (d==int(d))
 	return limit(e,x,int(d),direction,contextptr);
     }
-    if (has_num_coeff(lim_point)) // otherwise A:=conic(x^2/4+y^2/3=1); B:=element(A,1)+nop(-1.666-1.243*i) runs forever
+    if (has_num_coeff(lim_point) && is_constant_wrt(e,x,contextptr))
       return subst(e,x,lim_point,false,contextptr);
     // Insert here code for cleaning limit remember
     int save_series_flags=series_flags(contextptr);

@@ -126,7 +126,8 @@ namespace giac {
   }
   static const alias_ref_identificateur ref_undef={-1,0,0,string_undef,0,0};
   const define_alias_gen(alias_undef,_IDNT,0,&ref_undef);
-  const gen & undef = * (gen *) & alias_undef;
+  static const gen undef_storage(_IDNT_undef());
+  const gen & undef = undef_storage;
 
 #endif // GIAC_GENERIC_CONSTANTS
 

@@ -130,9 +130,14 @@ namespace giac {
       return true;
     normalize_env(env);
     int rs=int(r.size());
-    if ((rs-1)*env->pn.val<qsize){
-      s=x_to_xp(r,env->pn.val);
-      return !is_undef(s);
+    const long long rs_deg = static_cast<long long>(rs - 1);
+    const long long pn_val = static_cast<long long>(env->pn.val);
+    if (pn_val > 0 && rs_deg >= 0) {
+      const long long shifted_deg = rs_deg * pn_val;
+      if (shifted_deg < static_cast<long long>(qsize)) {
+        s=x_to_xp(r,static_cast<int>(pn_val));
+        return !is_undef(s);
+      }
     }
     int d=int(v.size());
     if (rs-1>=d)

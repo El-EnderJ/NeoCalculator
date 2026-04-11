@@ -27,6 +27,9 @@ using namespace std;
 #if !defined NSPIRE && !defined FXCG && !defined TICE
 #include <cstdlib>
 #include <iomanip>
+#if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)
+#include <esp_heap_caps.h>
+#endif
 #endif
 #ifdef TICE
 //extern "C" long my_strtol(const char * nptr, char ** endptr, int base);
@@ -115,6 +118,18 @@ void mpz_mul_si(mpz_t & c,mpz_t & a,int B){
 #ifndef NO_NAMESPACE_GIAC
 namespace giac {
 #endif // ndef NO_NAMESPACE_GIAC
+
+  static inline void * giac_calloc(size_t count,size_t size){
+#if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)
+    void * p=heap_caps_calloc(count,size,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+    if (!p)
+      p=heap_caps_calloc(count,size,MALLOC_CAP_8BIT);
+    return p;
+#else
+    return calloc(count,size);
+#endif
+  }
+
   /*
   Current FXCG35 memory lyaout:
   stack size about 26K
@@ -258,7 +273,7 @@ namespace giac {
         goto end36;
       }
     }
-    void * p =  calloc(1,size);
+    void * p =  giac_calloc(1,size);
     if (!p)
       ctrl_c=interrupted=true;
     return p;
@@ -323,7 +338,7 @@ namespace giac {
   }
 #else // ALLOCSMALL
   static void * allocfast(size_t size){
-    void * p = calloc(1,size);
+    void * p = giac_calloc(1,size);
     if (!p)
       ctrl_c=interrupted=true;
     return p;

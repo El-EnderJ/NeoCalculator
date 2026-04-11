@@ -358,7 +358,7 @@ namespace giac {
 	  if (is_inequation(e)){
 	    vecteur tmp=solve(e._SYMBptr->feuille._VECTptr->front()-e._SYMBptr->feuille._VECTptr->back(),x,cplxmode,contextptr);
 	    // is *it continuous at tmp
-	    gen etoileit=subst(*it,undef,identificateur("undef_"),false,contextptr);
+         gen etoileit=subst(*it,gen(_IDNT_undef()),identificateur("undef_"),false,contextptr);
 	    const_iterateur jt=tmp.begin(),jtend=tmp.end();
 	    for (;jt!=jtend;++jt){
 	      if (!is_zero(limit(etoileit,x,*jt,1,contextptr)-limit(etoileit,x,*jt,-1,contextptr),contextptr))
@@ -2540,7 +2540,7 @@ namespace giac {
     arg1=apply(arg1,equal2diff);
     if (arg1.is_program())
       return gensizeerr(contextptr);
-    arg1=subst(arg1,undef,identificateur("undef_"),true,contextptr);
+    arg1=subst(arg1,gen(_IDNT_undef()),identificateur("undef_"),true,contextptr);
     vecteur _res=solve(arg1,v.back(),isolate_mode,contextptr);
     if (_res.empty() || _res.front().type==_STRNG || is_undef(_res))
       return _res;
@@ -3759,7 +3759,7 @@ namespace giac {
     for (int j=1;j<5;j++,niter2 *=2, niter1 *=2){ 
       gen a;
       int b;
-      //on prend un départ au hasard (a=x0=un _DOUBLE_)
+      // on prend un depart au hasard (a=x0=un _DOUBLE_)
       // a=gen(2.0);
       if (guess_first)
 	a=j*4*(rand()/(RAND_MAX+1.0)-0.5);

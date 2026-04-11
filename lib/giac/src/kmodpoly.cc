@@ -364,7 +364,14 @@ namespace giac {
       return v;
     const_iterateur it=v.begin(),itend=v.end();
     vecteur res;
-    res.reserve(1+(itend-it-1)*p);
+    const size_t nonconst_terms = static_cast<size_t>(itend - it - 1);
+    const size_t p_size = static_cast<size_t>(p);
+    if (nonconst_terms > (size_t(-1) - 1) / p_size)
+      return vecteur(1,gensizeerr(gettext("modpoly.cc/x_to_xp")));
+    const size_t reserve_count = 1 + nonconst_terms * p_size;
+    if (reserve_count > res.max_size())
+      return vecteur(1,gensizeerr(gettext("modpoly.cc/x_to_xp")));
+    res.reserve(reserve_count);
     res.push_back(*it);
     ++it;
     for (;it!=itend;++it){

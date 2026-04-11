@@ -43,6 +43,9 @@
 #include <cstdint>
 #include <string>
 #include <cmath>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 
 namespace vpam {
 
@@ -72,6 +75,14 @@ enum class ResultMode : uint8_t {
 class MathEvaluator {
 public:
     MathEvaluator() = default;
+
+#ifdef ARDUINO
+    /**
+     * Helper bridge for LVGL apps that want full CAS evaluation through Giac.
+     * It normalizes line endings and delegates to solveWithGiac().
+     */
+    static String evaluateWithGiac(String input);
+#endif
 
     // ── Evaluación principal ─────────────────────────────────────────────
 

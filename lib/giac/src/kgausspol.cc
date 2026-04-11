@@ -4806,44 +4806,51 @@ namespace giac {
       return true;
     }
     int d;
+  #if defined(ARDUINO)
+    const bool enable_cyclotomic_speedup = false;
+  #else
+    const bool enable_cyclotomic_speedup = true;
+  #endif
     // special speedup for x^n +/- 1
-    if (p.coord.size()==2 && p.coord.front().value==1 && is_zero(p.coord.back().index.iref())){
+    if (enable_cyclotomic_speedup && p.coord.size()==2 && p.coord.front().value==1 && is_zero(p.coord.back().index.iref())){
       d=p.lexsorted_degree();
-      if (p.coord.back().value==-1){
-	// product of cyclotomic(n) where n divides d
-	gen dd=idivis(d,context0);
-	if (dd.type==_VECT){
-	  const_iterateur it=dd._VECTptr->begin(),itend=dd._VECTptr->end();
-	  for (;it!=itend;++it){
-	    polynome tmp=poly12polynome(cyclotomic(it->val),1);
-	    addtov(tmp,v,with_sqrt,complexmode);
-	  }
-	  return true;
-	}
-      }
-      if (d%4==0 && with_sqrt){
-	gen e=algebraic_EXTension(makevecteur(1,0),makevecteur(1,0,-2));
-	gen an=1,extra_div=1;
-	factorization f;
-	polynome p_content(p.dim);
-	if (ext_factor(p,e,an,p_content,f,complexmode,extra_div) && an==1 && extra_div==1){
-	  for (size_t i=0;i<f.size();++i){
-	    v.push_back(f[i].fact);
-	  }
-	  return true;
-	}
-      }
-      if (p.coord.back().value==1){
-	// product of cyclotomic(n) where n divides 2d and does not divide d
-	gen dd=_minus(makesequence(idivis(2*d,context0),idivis(d,context0)),context0);
-	if (dd.type==_VECT){
-	  const_iterateur it=dd._VECTptr->begin(),itend=dd._VECTptr->end();
-	  for (;it!=itend;++it){
-	    polynome tmp=poly12polynome(cyclotomic(it->val),1);
-	    addtov(tmp,v,with_sqrt,complexmode);
-	  }
-	  return true;
-	}
+      if (d>0 && d<=4096){
+        if (p.coord.back().value==-1){
+          // product of cyclotomic(n) where n divides d
+          gen dd=idivis(d,context0);
+          if (dd.type==_VECT){
+            const_iterateur it=dd._VECTptr->begin(),itend=dd._VECTptr->end();
+            for (;it!=itend;++it){
+              polynome tmp=poly12polynome(cyclotomic(it->val),1);
+              addtov(tmp,v,with_sqrt,complexmode);
+            }
+            return true;
+          }
+        }
+        if (d%4==0 && with_sqrt){
+          gen e=algebraic_EXTension(makevecteur(1,0),makevecteur(1,0,-2));
+          gen an=1,extra_div=1;
+          factorization f;
+          polynome p_content(p.dim);
+          if (ext_factor(p,e,an,p_content,f,complexmode,extra_div) && an==1 && extra_div==1){
+            for (size_t i=0;i<f.size();++i){
+              v.push_back(f[i].fact);
+            }
+            return true;
+          }
+        }
+        if (p.coord.back().value==1){
+          // product of cyclotomic(n) where n divides 2d and does not divide d
+          gen dd=_minus(makesequence(idivis(2*d,context0),idivis(d,context0)),context0);
+          if (dd.type==_VECT){
+            const_iterateur it=dd._VECTptr->begin(),itend=dd._VECTptr->end();
+            for (;it!=itend;++it){
+              polynome tmp=poly12polynome(cyclotomic(it->val),1);
+              addtov(tmp,v,with_sqrt,complexmode);
+            }
+            return true;
+          }
+        }
       }
     }
     // find the gcd of the degrees of *it

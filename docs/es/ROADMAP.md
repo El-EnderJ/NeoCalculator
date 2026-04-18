@@ -14,8 +14,9 @@
 | **Fase 2** | Natural Display V.P.A.M. y Navegacin 2D | ? Completo | 100% |
 | **Fase 3** | Launcher 3.0, SerialBridge y Documentacin | ? Completo | 100% |
 | **Fase 4** | Migracin a LVGL 9.x  HW Bring-Up ESP32-S3 | ? Completo | 100% |
-| **Fase 5** | CAS-Lite Engine + EquationsApp | ? Completo | 100% |
-| **CAS** | CAS: BigNum, DAG, Derivadas, Integrales, CalculusApp unificada, SettingsApp | ? **Completo** | 100% |
+| **Fase 5** | CAS-Lite Engine + EquationsApp (hito historico) | ? Completo | 100% |
+| **CAS** | Hitos internos CAS-S3: BigNum, DAG, derivadas, integrales, CalculusApp unificada, SettingsApp | ? **Completo** | 100% |
+| **Migracion Giac** | Big Switch: integracion GiacBridge, flujo UART parser/eval, DOUBLEVAL, stack 64 KB, modo real por defecto | ? **Completo** | 100% |
 | **Fase 6** | Apps Cientficas Completas | ? **Completo** | 100% |
 | **Simulaciones** | ParticleLab (30+ materiales), CircuitCore (SPICE), Fluid2D | ? **Completo** | 100% |
 | **Fase 7** | Matrices + Complejos + Bases | ?? Planificado | 0% |
@@ -44,6 +45,9 @@
 | **Mar 2026** | **Produccin activa: RAM 28.8%  Flash 19.3%  tests desactivados** |
 | **Mar 2026** | **ParticleLabApp (ID 15)  Alchemy Update: 30+ materiales, electrnica spark, transiciones de fase, matriz de reacciones, herramienta de lnea Bresenham, guardado/carga LittleFS** |
 | **Mar 2026** | **Produccin activa: RAM 29.7%  Flash 23.2%  16 apps en launcher** |
+| **Abr 2026** | **Big Switch completado: backend simbolico migrado a Giac C++ via GiacBridge** |
+| **Abr 2026** | **Baseline embebido de Giac fijado: DOUBLEVAL, stack 65536, modo real con i preservado** |
+| **Abr 2026** | **Certificacion UART en hardware para familias de comando sum, int, solve, simplify** |
 
 ---
 
@@ -125,9 +129,9 @@
 
 ---
 
-## Fase 5  CAS-Lite Engine + EquationsApp (Completo)
+## Fase 5  CAS-Lite Engine + EquationsApp (Completo, hito historico)
 
-&gt; *Objetivo: lgebra simblica nativa con pasos detallados. La primera calculadora open-source ESP32-S3 con CAS propio en PSRAM.*
+&gt; *Objetivo: hito de algebra simbolica nativa con pasos detallados antes de la migracion del backend a Giac.*
 
 ### CAS-Lite Engine  lgebra Simblica
 
@@ -189,9 +193,9 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ---
 
-## Fase CAS Engine + CalculusApp Unificada (Completo)
+## Fase CAS Engine + CalculusApp Unificada (Completo, hitos CAS-S3 historicos)
 
-&gt; *Objetivo: Evolucion del CAS-Lite a CAS. Motor simblico completo con derivadas, integrales, simplificacin multi-pass y resolucin de ecuaciones no lineales. Ver [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) para el desglose de las 6 fases internas.*
+&gt; *Objetivo: evolucion de CAS-Lite a CAS-S3 (hitos historicos) antes de cambiar el backend simbolico canonico a Giac. Ver [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md).*
 
 ### CAS Engine  6 Fases completadas
 
@@ -207,6 +211,16 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [x] **Fase 6B**: SymExprToAST  Bridge SymExpr ? MathAST con `convertIntegral()` (+C)
 - [x] **Fase 7**: **CalculusApp unificada**  Derivadas + Integrales en app nica con pestaas d/dx ? ?dx
 - [x] **Fase 7**: **SettingsApp**  Races complejas, precisin decimal, modo angular
+
+## Fase Migracion Giac  Switch de backend simbolico (Completo)
+
+&gt; *Objetivo: migrar del backend simbolico propio a Giac sin perder UX y flujo educativo de NumOS.*
+
+- [x] Backend simbolico canonico cambiado a Giac C++.
+- [x] Integracion consolidada en `src/math/giac/GiacBridge.cpp`.
+- [x] Flujo UART certificado por `src/input/SerialBridge.cpp`.
+- [x] Baseline de estabilidad embebida completado: `-DDOUBLEVAL`, `-DARDUINO_LOOP_STACK_SIZE=65536`.
+- [x] Modo real por defecto completado: `complex_mode(false)` y `i^2 = -1` preservado.
 
 ### Build Stats (Produccin  Marzo 2026)
 

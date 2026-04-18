@@ -57,10 +57,10 @@
 
 **NumOS incorpora:**
 
-- **Motor CAS completo** — Álgebra simbólica avanzada: DAG inmutable con hash-consing (`ConsTable`), aritmética bignum overflow-safe (`CASInt`/`CASRational`), simplificador multi-pass con punto fijo, derivación simbólica (17 reglas), integración simbólica (Slagle heurístico), solver de ecuaciones y sistemas no lineales via resultante de Sylvester. Todo en PSRAM con allocator STL-compatible.
+- **Motor CAS basado en Giac** — El backend simbólico actual corre sobre Giac C++ a través de `src/math/giac/GiacBridge.cpp` (The Big Switch). Los módulos CAS-S3 propios quedan documentados como hitos históricos y tooling local opcional.
 - **Natural Display V.P.A.M.** — Las fórmulas se renderizan como en papel: fracciones apiladas reales, raíces con símbolo √, superíndices genuinos, navegación 2D con cursor inteligente estructural.
 - **Interfaz moderna LVGL 9.x** — Transiciones fluidas, splash screen animado, launcher estilo NumWorks con iconos y grid 3×N, apps con estados múltiples y ciclo de vida limpio.
-- **Motor matemático propio** — Pipeline completo: Tokenizador → Parser Shunting-Yard → Evaluador RPN + AST visual, implementado en C++17 desde cero.
+- **Motor numérico propio** — Pipeline completo: Tokenizador → Parser Shunting-Yard → Evaluador RPN + AST visual, implementado en C++17 desde cero.
 - **Arquitectura de Apps modular** — Cada aplicación es un módulo intercambiable con ciclo de vida explícito (`begin/end/load/handleKey`), gestionado por `SystemApp`.
 
 ---
@@ -69,7 +69,7 @@
 
 | Característica | Descripción |
 |:---------------|:------------|
-| **CAS Engine** | Motor CAS completo: solver ecuaciones, derivadas e integrales simbólicas, DAG hash-consed, simplificador multi-pass, pasos en PSRAM |
+| **CAS Engine (Giac)** | Evaluación simbólica vía `GiacBridge` con flujo UART parser/eval validado en hardware. Hitos de migración completados: `-DDOUBLEVAL`, stack de loop 64 KB, `complex_mode(false)` con `i^2=-1` preservado |
 | **EquationsApp** | Resuelve lineales, cuadráticas y sistemas 2×2 (lineales + no lineales via resultante Sylvester) |
 | **CalculusApp** | App unificada de cálculo: derivadas simbólicas (17 reglas) + integrales simbólicas (Slagle), cambio de modo por pestañas d/dx ↔ ∫dx, simplificación automática y pasos detallados |
 | **Natural Display** | Fracciones reales, raíces, potencias, cursores 2D — renderizado matemático como en papel |
@@ -154,7 +154,17 @@
 
 ## CAS Engine
 
-El **CAS** (Computer Algebra System) es el motor de álgebra simbólica completo de NumOS. Evolución del CAS-Lite original, implementa un DAG inmutable con hash-consing, aritmética bignum overflow-safe, simplificación multi-pass con punto fijo, derivación simbólica, integración simbólica (Slagle), y resolución de sistemas no lineales via resultante de Sylvester. Toda la memoria CAS vive en PSRAM.
+El **CAS** (Computer Algebra System) usa ahora **Giac C++ como backend simbólico canónico**. La migración se enruta por `src/math/giac/GiacBridge.cpp` y se consume desde el flujo UART en `src/input/SerialBridge.cpp`.
+
+Los módulos CAS-S3 documentados debajo se mantienen como hitos históricos y componentes locales opcionales, pero la verdad simbólica del backend vigente viene de Giac.
+
+### Hitos de migración a Giac
+
+- Big Switch completado: backend simbólico propio reemplazado por Giac.
+- Estabilidad numérica embebida completada con `-DDOUBLEVAL`.
+- Estabilidad de stack completada con `-DARDUINO_LOOP_STACK_SIZE=65536`.
+- Modo real por defecto completado: `complex_mode(false)` con unidad imaginaria preservada (`i^2 = -1`).
+- Flujo UART certificado en hardware para `sum`, `int`, `solve` y `simplify`.
 
 ### Pipeline CAS (Derivadas)
 
@@ -521,8 +531,9 @@ Problemas descubiertos y resueltos durante el bring-up. **Esenciales** para cual
 | **Fase 2** | Natural Display V.P.A.M. — fracciones, raíces, potencias, cursor 2D inteligente | ✅ Completo |
 | **Fase 3** | Launcher 3.0, SerialBridge, CalculationApp historial, GrapherApp zoom/pan | ✅ Completo |
 | **Fase 4** | LVGL 9.x — HW bring-up ESP32-S3, DMA, splash screen animado, launcer iconos | ✅ Completo |
-| **Fase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI | ✅ Completo |
-| **CAS** | CAS: BigNum, DAG hash-consed, SymDiff 17 reglas, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver, CalculusApp unificada (d/dx + ∫dx), SettingsApp | ✅ **Completo** |
+| **Fase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI (hito histórico) | ✅ Completo |
+| **CAS** | Hitos internos CAS-S3: BigNum, DAG hash-consed, SymDiff 17 reglas, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver | ✅ **Completo** |
+| **Migración Giac** | Big Switch a Giac: integración de GiacBridge, flujo UART parser/eval, `-DDOUBLEVAL`, stack 64 KB, modo real por defecto con `i` preservado | ✅ **Completo** |
 | **Fase 6** | Statistics, Regression, Sequences, Probability | 🔲 Planificado |
 | **Fase 7** | Matrices, números complejos, base conversions | 🔲 Planificado |
 | **Fase 8** | Teclado físico, PCB propia, batería recargable, carcasa 3D, WiFi OTA | 🔲 Planificado |

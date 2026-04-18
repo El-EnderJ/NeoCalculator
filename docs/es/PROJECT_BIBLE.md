@@ -28,7 +28,7 @@
 
 **NumOS** es un sistema operativo de calculadora científica y graficadora de código abierto, construido sobre el microcontrolador **ESP32-S3 N16R8 CAM** y la librería gráfica **LVGL 9.x**.
 
-**Objetivo Principal**: Crear la mejor alternativa open-source a calculadoras comerciales como la Casio fx-991EX ClassWiz, la NumWorks, la TI-84 Plus CE y la HP Prime G2. Con pantalla de color 320×240, Natural Display matemático, CAS-Lite propio y arquitectura modular extensible.
+**Objetivo Principal**: Crear la mejor alternativa open-source a calculadoras comerciales como la Casio fx-991EX ClassWiz, la NumWorks, la TI-84 Plus CE y la HP Prime G2. Con pantalla de color 320×240, Natural Display matemático, CAS simbólico basado en Giac y arquitectura modular extensible.
 
 ### Principios de Diseño
 
@@ -173,7 +173,9 @@ handleKey(MODE) [interceptado por SystemApp]:
 
 ## 3. CAS Engine — Arquitectura Interna
 
-El CAS es un motor de álgebra simbólica completo, evolución del CAS-Lite original. Implementa un DAG inmutable con hash-consing, aritmética bignum overflow-safe (`CASInt`/`CASRational`), simplificación multi-pass con punto fijo (8 iteraciones), derivación simbólica (17 reglas), integración simbólica (Slagle heurístico), y resolución de sistemas no lineales via resultante de Sylvester. Todo vive en PSRAM.
+El backend simbólico canónico ahora corre sobre **Giac C++** mediante `src/math/giac/GiacBridge.cpp`.
+
+Los módulos CAS-S3 que aparecen abajo se mantienen como hitos históricos y tooling local opcional. Siguen siendo útiles para entender decisiones de arquitectura previas y pipelines educativos de pasos.
 
 ### 3.1 Estructura de Módulos
 
@@ -308,7 +310,7 @@ Sin esto, la PSRAM acumula allocations entre sesiones de la app.
 | `EquationSolver` | `math/EquationSolver.cpp/.h` | Newton-Raphson numérico general |
 | `StepLogger` | `math/StepLogger.cpp/.h` | Log de pasos del parser (debug) |
 
-### CAS-Lite Engine
+### CAS-Lite Engine (hito historico)
 
 | Módulo | Archivo | Responsabilidad |
 |:-------|:--------|:----------------|
@@ -541,7 +543,7 @@ case TokenType::LOG2:
 
 4. **`ExprNode.h`** (opcional): Si necesita renderizado especial (subíndice 2 bajo `log`).
 
-5. **CAS-Lite** (opcional): En `ASTFlattener::visitText()`, convertir el nodo a valor numérico equivalente para el análisis polinomial.
+5. **Ruta ASTFlattener legacy** (opcional): En `ASTFlattener::visitText()`, convertir el nodo a valor numérico equivalente para el análisis polinomial.
 
 ---
 

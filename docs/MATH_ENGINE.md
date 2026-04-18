@@ -5,7 +5,7 @@
 &gt; the ExprNode visual tree, and the complete **CAS Engine** with exact
 &gt; algebraic solving, symbolic differentiation and integration, PSRAM management, and educational step logging.
 &gt;
-&gt; **Status**: Numeric Engine ✅ · CAS Engine ✅ · Tests passing ✅
+&gt; **Status**: Numeric Engine ✅ · Giac CAS backend ✅ · Tests passing ✅
 
 ---
 
@@ -63,7 +63,7 @@
            ▼                                              ▼
   ┌─────────────────┐                         ┌──────────────────────────┐
   │   Evaluator     │                         │     ASTFlattener         │
-  │  (numeric)      │                         │  (CAS-Lite — symbolic)   │
+  │  (numeric)      │                         │  (legacy CAS-S3 path)    │
   │  double result  │                         │  ExprNode → SymPoly      │
   └─────────────────┘                         └────────────┬─────────────┘
                                                            │
@@ -253,7 +253,17 @@ Test seeds: x₀ ∈ {0, 1, -1, 2, -2, 5, -5, 10}
 
 ## 8. CAS Engine
 
-★ Complete computational algebra motor designed for embedded systems. Evolution of the original CAS-Lite. Includes polynomial equation solving with exact results, symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), multi-pass simplification, and immutable DAG with hash-consing. All CAS memory lives in PSRAM with `PSRAMAllocator`.
+★ The canonical symbolic backend is now **Giac C++**, routed through `src/math/giac/GiacBridge.cpp`.
+
+The CAS-Lite/CAS-S3 modules described in this section are preserved as historical milestones and optional local tooling for specific workflows.
+
+Giac migration milestones completed:
+
+1. Big Switch from custom symbolic backend to Giac.
+2. Embedded stabilization with `-DDOUBLEVAL`.
+3. Loop stack stabilization with `-DARDUINO_LOOP_STACK_SIZE=65536`.
+4. Real-style defaults with `complex_mode(false)` and preserved `i^2 = -1` behavior.
+5. Hardware UART validation for `sum`, `int`, `solve`, and `simplify`.
 
 ### 8.1 Architecture and Modules
 

@@ -5,7 +5,7 @@
 &gt; el árbol visual ExprNode, y el **CAS Engine** completo con resolución
 &gt; algebraica exacta, derivación e integración simbólicas, gestión en PSRAM y log de pasos educativo.
 &gt;
-&gt; **Estado**: Motor numérico ✅ · CAS Engine ✅ · Tests passing ✅
+&gt; **Estado**: Motor numérico ✅ · Backend CAS Giac ✅ · Tests passing ✅
 
 ---
 
@@ -63,7 +63,7 @@
            ▼                                              ▼
   ┌─────────────────┐                         ┌──────────────────────────┐
   │   Evaluator     │                         │     ASTFlattener         │
-  │  (numérico)     │                         │  (CAS-Lite — simbólico)  │
+  │  (numérico)     │                         │  (ruta CAS-S3 legacy)    │
   │  double result  │                         │  ExprNode → SymPoly      │
   └─────────────────┘                         └────────────┬─────────────┘
                                                            │
@@ -253,7 +253,17 @@ Semillas probadas: x₀ ∈ {0, 1, -1, 2, -2, 5, -5, 10}
 
 ## 8. CAS Engine
 
-★ Motor de álgebra computacional completo diseñado para embedded. Evolución del CAS-Lite original. Incluye resolución de ecuaciones polinomiales con resultado exacto, derivación simbólica (17 reglas), integración simbólica (Slagle heurístico), simplificación multi-pass, y DAG inmutable con hash-consing. Toda la memoria CAS vive en PSRAM con `PSRAMAllocator`.
+★ El backend simbólico canónico ahora es **Giac C++**, enroutado por `src/math/giac/GiacBridge.cpp`.
+
+Los módulos CAS-Lite/CAS-S3 de esta sección se conservan como hitos históricos y tooling local opcional para flujos específicos.
+
+Hitos de migración a Giac completados:
+
+1. Big Switch del backend simbólico propio a Giac.
+2. Estabilización embebida con `-DDOUBLEVAL`.
+3. Estabilización de stack con `-DARDUINO_LOOP_STACK_SIZE=65536`.
+4. Modo real por defecto con `complex_mode(false)` y `i^2 = -1` preservado.
+5. Validación UART en hardware para `sum`, `int`, `solve` y `simplify`.
 
 ### 8.1 Arquitectura y Módulos
 

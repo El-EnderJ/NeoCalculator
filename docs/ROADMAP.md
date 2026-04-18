@@ -14,8 +14,9 @@
 | **Phase 2** | Natural Display V.P.A.M. and 2D Navigation | ✅ Complete | 100% |
 | **Phase 3** | Launcher 3.0, SerialBridge and Documentation | ✅ Complete | 100% |
 | **Phase 4** | Migration to LVGL 9.x — HW Bring-Up ESP32-S3 | ✅ Complete | 100% |
-| **Phase 5** | CAS-Lite Engine + EquationsApp | ✅ Complete | 100% |
-| **CAS** | CAS: BigNum, DAG, Derivatives, Integrals, Unified CalculusApp, SettingsApp | ✅ **Complete** | 100% |
+| **Phase 5** | CAS-Lite Engine + EquationsApp (legacy milestone) | ✅ Complete | 100% |
+| **CAS** | CAS-S3 internal milestones: BigNum, DAG, derivatives, integrals, unified CalculusApp, SettingsApp | ✅ **Complete** | 100% |
+| **Giac Migration** | Big Switch: GiacBridge integration, UART parser/eval flow, DOUBLEVAL, 64 KB loop stack, real-style defaults | ✅ **Complete** | 100% |
 | **Phase 6** | Complete Scientific Apps | ✅ **Complete** | 100% |
 | **Phase 7** | Matrices + Complex + Bases | 🔲 Planned | 0% |
 | **Phase 8** | Final Hardware + Connectivity + Scripting | 🔲 Planned | 0% |
@@ -52,6 +53,9 @@
 | **Mar 2026** | **Active production: RAM 29.7% · Flash 23.2% · 16 apps in launcher** |
 | **Mar 2026** | **OpticsLabApp (ID 17): 2D ray-tracing visualiser added — OpticsEngine (ABCD, Snell, paraxial + exact trace)** |
 | **Mar 2026** | **NeoLanguageApp (ID 18): NeoLanguage compiler frontend — NeoLexer, NeoAST, NeoParser; two-tab IDE (Editor + Console)** |
+| **Apr 2026** | **The Big Switch completed: symbolic backend migrated to Giac C++ through GiacBridge** |
+| **Apr 2026** | **Embedded Giac baseline locked: DOUBLEVAL, loop stack 65536, real-style defaults with imaginary support preserved** |
+| **Apr 2026** | **UART hardware certification complete for sum, int, solve, simplify command families** |
 ---
 
 ## Phase 1 — The Foundation (Complete)
@@ -132,9 +136,9 @@
 
 ---
 
-## Phase 5 — CAS-Lite Engine + EquationsApp (Complete)
+## Phase 5 — CAS-Lite Engine + EquationsApp (Complete, legacy milestone)
 
-&gt; *Objective: Native symbolic algebra with detailed steps. The first open-source ESP32-S3 calculator with its own CAS in PSRAM.*
+&gt; *Objective: Native symbolic algebra milestone with detailed steps before the Giac backend migration.*
 
 ### CAS-Lite Engine — Symbolic Algebra
 
@@ -196,9 +200,9 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 
 ---
 
-## CAS Phase — CAS Engine + Unified Calculus App (Complete)
+## CAS Phase — CAS Engine + Unified Calculus App (Complete, legacy CAS-S3 milestones)
 
-&gt; *Objective: CAS-Lite → CAS evolution. Full symbolic engine with derivatives, integrals, multi-pass simplification, and non-linear equation solving. See [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md) for the breakdown of the 6 internal phases.*
+&gt; *Objective: CAS-Lite → CAS-S3 evolution (historical milestones) before switching the canonical symbolic backend to Giac. See [CAS_UPGRADE_ROADMAP.md](CAS_UPGRADE_ROADMAP.md).*
 
 ### CAS Engine — 6 Completed Phases
 
@@ -217,6 +221,16 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 - [x] **Phase 8**: **Scientific Apps (Phase 6)** — StatisticsApp, ProbabilityApp, RegressionApp, MatricesApp, SequencesApp, PythonApp
 - [x] **Phase 9**: **Stability** — Boot lazy-init, HOME deferred teardown 250 ms, SettingsApp null crash fix
 - [x] **Phase 10**: **Simulation Apps** — CircuitCoreApp (SPICE), Fluid2DApp (Navier-Stokes), ParticleLabApp (Alchemy Update)
+
+## Giac Migration Phase — Symbolic Backend Switch (Complete)
+
+&gt; *Objective: migrate from custom symbolic backend to Giac while preserving NumOS UX and educational workflows.*
+
+- [x] Canonical symbolic backend switched to Giac C++.
+- [x] Integration consolidated through `src/math/giac/GiacBridge.cpp`.
+- [x] UART command path certified via `src/input/SerialBridge.cpp`.
+- [x] Embedded stability baseline completed: `-DDOUBLEVAL`, `-DARDUINO_LOOP_STACK_SIZE=65536`.
+- [x] Real-style defaults completed: `complex_mode(false)` and preserved `i^2 = -1` behavior.
 
 ### Build Stats (Production — March 2026)
 

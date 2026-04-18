@@ -1,9 +1,16 @@
 # CAS Constitution: Giac/KhiCAS Migration for NumOS (ESP32-S3)
 
-Version: 1.0
-Status: Active constitution for CAS migration
+Version: 1.1
+Status: Adopted and executed (migration complete)
 Scope: `src/math`, `src/apps/EquationsApp.*`, `src/ui/MathRenderer.*`, PlatformIO build and memory policy
 Supersedes: Any previous roadmap claiming the custom CAS stack is the long-term final architecture
+
+Execution update (April 2026):
+
+1. Big Switch to Giac completed through `src/math/giac/GiacBridge.cpp`.
+2. Embedded baseline locked: `-DDOUBLEVAL` and `-DARDUINO_LOOP_STACK_SIZE=65536`.
+3. Real-style defaults locked: `complex_mode(false)` with preserved `i^2 = -1` behavior.
+4. UART hardware validation completed for `sum`, `int`, `solve`, and `simplify`.
 
 ---
 

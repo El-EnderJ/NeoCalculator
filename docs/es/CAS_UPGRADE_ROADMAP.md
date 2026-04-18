@@ -1,5 +1,7 @@
 # CAS — Master Plan & Feasibility Analysis
 
+Update (Abril 2026): este plan queda como referencia historica. El backend simbolico canonico actual ya migro a Giac C++ via `src/math/giac/GiacBridge.cpp`, con baseline estable (`-DDOUBLEVAL`, stack 65536, modo real por defecto) y validacion UART en hardware para `sum`, `int`, `solve` y `simplify`.
+
 &gt; **NumOS CAS: Architectural Overhaul Roadmap**
 &gt; Target: Compete with HP Prime G2 & Wolfram Engine on ESP32-S3 N16R8
 &gt; Author: Chief Mathematics Software Architect

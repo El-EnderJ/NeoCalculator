@@ -63,13 +63,13 @@
 
 **NumOS delivers:**
 
-- **Full CAS Engine** — Advanced symbolic algebra: immutable DAG with hash-consing (`ConsTable`), overflow-safe bignum arithmetic (`CASInt`/`CASRational`), multi-pass fixed-point simplifier, symbolic differentiation (17 rules), symbolic integration (Slagle heuristic), and non-linear equation/system solving via Sylvester resultant. All memory managed in PSRAM with an STL-compatible allocator.
+- **Giac-backed CAS Engine** — Symbolic math now runs through Giac C++ via `src/math/giac/GiacBridge.cpp` (The Big Switch). Legacy CAS-S3 modules remain documented as historical milestones and optional local tooling.
 - **Natural Display V.P.A.M.** — Formulae rendered as they appear on paper: real stacked fractions, radical symbols (√), genuine superscripts, 2D navigation with a structural smart cursor.
  - **Modern LVGL 9.x Interface** — Smooth transitions, animated splash screen, NumWorks-style launcher.
     Recent launcher refactor: the launcher now uses LVGL Flex `ROW_WRAP` (dynamic rows) with fixed card sizing
     instead of a static grid descriptor. See `docs/UI_CHANGES.md` for developer migration notes and
     `docs/fluid2d_plan.md` for an example app (Fluid2D) integrated into the new APPS[] schema.
-- **Custom Math Engine** — Complete pipeline: Tokenizer → Shunting-Yard Parser → RPN Evaluator + Visual AST, implemented from scratch in C++17.
+- **Custom Numeric Math Engine** — Complete pipeline: Tokenizer → Shunting-Yard Parser → RPN Evaluator + Visual AST, implemented from scratch in C++17.
 - **Modular App Architecture** — Each application is a self-contained module with explicit lifecycle (`begin/end/load/handleKey`), orchestrated by `SystemApp`.
 
 ---
@@ -78,7 +78,7 @@
 
 | Feature | Description |
 |:--------|:------------|
-| **CAS-S3 Engine** | Sylvester Resultant solver (3×3 NL systems), 16-seed Newton-Raphson, BigInt precision (`CASInt` + `CASRational`), hash-consed DAG, 8-pass fixed-point simplifier, PSRAM-backed step logger |
+| **Giac CAS Backend** | Symbolic evaluation through `GiacBridge` with UART parser/eval flow validated on hardware. Migration milestones completed: `-DDOUBLEVAL`, 64 KB loop stack, real-style `complex_mode(false)` with preserved `i^2=-1` behavior |
 | **Unified Calculus App** | Symbolic $d/dx$ differentiation (17 rules) and numerical/symbolic $\int dx$ integration (Slagle heuristic: table lookup, linearity, u-substitution, integration by parts/LIATE), tab-based mode switching, automatic simplification, and detailed step-by-step output |
 | **EquationsApp** | Solves linear, quadratic, and 2×2 systems (linear + non-linear via Sylvester resultant) with full step-by-step display |
 | **Bridge Designer** | Real-time structural bridge simulator with Verlet integration physics, stress analysis (green→red beam visualisation), snap-to-grid editor, wood/steel/cable materials, and truck/car load testing — PSRAM-backed, 60 Hz fixed timestep |
@@ -182,7 +182,17 @@ flowchart TB
 
 ## CAS Engine
 
-The **CAS** (Computer Algebra System) is NumOS's complete symbolic-algebra engine. Evolved from the original CAS-Lite, it implements an immutable DAG with hash-consing, overflow-safe bignum arithmetic, multi-pass fixed-point simplification, symbolic differentiation, symbolic integration (Slagle), and non-linear system solving via Sylvester resultant. All CAS memory resides in PSRAM.
+The **CAS** (Computer Algebra System) now uses **Giac C++ as the canonical symbolic backend**. The migration is routed through `src/math/giac/GiacBridge.cpp` and consumed by the UART command path in `src/input/SerialBridge.cpp`.
+
+Legacy CAS-S3 internals documented below remain as historical milestones and optional local components, but symbolic truth for current backend flows comes from Giac.
+
+### Giac Migration Milestones
+
+- Big Switch complete: custom symbolic backend replaced by Giac as canonical CAS.
+- Embedded numeric stabilization complete with `-DDOUBLEVAL`.
+- Stack stabilization complete with `-DARDUINO_LOOP_STACK_SIZE=65536`.
+- Real-style defaults complete: `complex_mode(false)` and preserved imaginary unit behavior (`i^2 = -1`).
+- UART command path certified on hardware for `sum`, `int`, `solve`, and `simplify`.
 
 ### CAS Pipeline (Derivatives)
 
@@ -518,8 +528,9 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | **Phase 2** | Natural Display V.P.A.M. — fractions, radicals, exponents, smart 2D cursor | ✅ Complete |
 | **Phase 3** | Launcher 3.0, SerialBridge, CalculationApp history, GrapherApp zoom/pan | ✅ Complete |
 | **Phase 4** | LVGL 9.x — ESP32-S3 HW bring-up, DMA, animated splash screen, icon launcher | ✅ Complete |
-| **Phase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI | ✅ Complete |
-| **CAS** | CAS-S3: BigNum, hash-consed DAG, SymDiff 17 rules, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver, Unified CalculusApp (d/dx + ∫dx), SettingsApp | ✅ **Complete** |
+| **Phase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI (legacy milestone) | ✅ Complete |
+| **CAS** | CAS-S3 internal milestones: BigNum, hash-consed DAG, SymDiff 17 rules, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver | ✅ **Complete** |
+| **Giac Migration** | Big Switch to Giac: GiacBridge integration, UART parser/eval flow, `-DDOUBLEVAL`, 64 KB loop stack, real-mode defaults with `i` preserved | ✅ **Complete** |
 | **Phase 6** | Statistics, Regression, Sequences, Probability, Matrices, Bridge Designer | ✅ **Complete** |
 | **Simulations** | ParticleLab (30+ materials, electronics), CircuitCore (SPICE), Fluid2D (Navier-Stokes) | ✅ **Complete** |
 | **Phase 7** | Complex numbers, base conversions | 🔲 Planned |

@@ -75,12 +75,17 @@ static NodePtr makeEmptyRow() {
     return row;
 }
 
+static inline void applyScriptLevel(MathNode* node, const FontMetrics& fm) {
+    if (node) node->setScriptLevel(fm.scriptLevel);
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 //  N o d e R o w
 // ════════════════════════════════════════════════════════════════════════════
 NodeRow::NodeRow() : MathNode(NodeType::Row) {}
 
 void NodeRow::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     if (_children.empty()) {
         // Fila vacía: tamaño cero pero conserva baseline coherente
         _layout.width   = 0;
@@ -163,6 +168,7 @@ NodeNumber::NodeNumber(const std::string& value)
 }
 
 void NodeNumber::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     int len = static_cast<int>(_value.size());
     if (len == 0) len = 1;   // Mínimo 1 carácter de ancho (para cursor)
 
@@ -197,6 +203,7 @@ NodeOperator::NodeOperator(OpKind op)
 }
 
 void NodeOperator::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // Ancho: 1 carácter + padding a cada lado.
     // PlusMinus needs extra room to avoid clipping in low-resolution vector drawing.
     if (_op == OpKind::PlusMinus) {
@@ -227,6 +234,7 @@ const char* NodeOperator::symbol() const {
 NodeEmpty::NodeEmpty() : MathNode(NodeType::Empty) {}
 
 void NodeEmpty::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // El placeholder se alinea con el texto normal por baseline.
     // Su ancho/alto es al menos el mínimo visual, pero no menor que la fuente.
     _layout.width   = std::max(MIN_WIDTH,  fm.charWidth);
@@ -256,6 +264,7 @@ NodeFraction::NodeFraction(NodePtr numerator, NodePtr denominator)
 }
 
 void NodeFraction::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // 1. Calcular layout de hijos
     _numerator->calculateLayout(fm);
     _denominator->calculateLayout(fm);
@@ -336,6 +345,7 @@ NodePower::NodePower(NodePtr base, NodePtr exponent)
 }
 
 void NodePower::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // 1. Base en fuente normal
     _base->calculateLayout(fm);
     const auto& baseL = _base->layout();
@@ -350,10 +360,10 @@ void NodePower::calculateLayout(const FontMetrics& fm) {
 
     // 4. Elevación del exponente:
     //    El fondo del exponente se sitúa a EXP_RAISE_NUM/EXP_RAISE_DEN
-    //    (≈60%) del ascent de la base sobre el baseline.
+    //    (≈60%) de la altura total de la base sobre el baseline.
     //
     //    expShift = distancia del baseline al fondo del exponente
-    int16_t expShift = (baseL.ascent * EXP_RAISE_NUM) / EXP_RAISE_DEN;
+    int16_t expShift = static_cast<int16_t>((baseL.height() * EXP_RAISE_NUM) / EXP_RAISE_DEN);
 
     // El tope del exponente está a expShift + expL.ascent sobre el baseline
     _layout.ascent  = std::max(baseL.ascent,
@@ -395,6 +405,7 @@ NodeRoot::NodeRoot(NodePtr radicand, NodePtr degree)
 }
 
 void NodeRoot::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // 1. Radicando (contenido bajo la raíz)
     _radicand->calculateLayout(fm);
     const auto& radL = _radicand->layout();
@@ -470,6 +481,7 @@ NodeParen::NodeParen(NodePtr content)
 }
 
 void NodeParen::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     _content->calculateLayout(fm);
     const auto& cl = _content->layout();
 
@@ -522,6 +534,7 @@ const char* NodeFunction::label() const {
 }
 
 void NodeFunction::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // 1. Etiqueta: ancho basado en charWidth × longitud del texto visible
     // Para funciones cortas (sin, cos, ln) es suficiente
     const char* lbl = label();
@@ -579,6 +592,7 @@ NodeLogBase::NodeLogBase(NodePtr base, NodePtr argument)
 }
 
 void NodeLogBase::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // 1. Etiqueta "log": 3 chars
     _labelWidth = fm.charWidth * 3;
 
@@ -647,6 +661,7 @@ const char* NodeConstant::symbol() const {
 }
 
 void NodeConstant::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // La constante ocupa exactamente 1 carácter de ancho
     _layout.width   = fm.charWidth;
     _layout.ascent  = fm.ascent;
@@ -723,6 +738,7 @@ const char* NodeVariable::label() const {
 }
 
 void NodeVariable::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // Ancho = charWidth × longitud del label
     const char* lbl = label();
     int len = 0;
@@ -748,6 +764,7 @@ NodePeriodicDecimal::NodePeriodicDecimal(const std::string& intPart,
 }
 
 void NodePeriodicDecimal::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // Contar caracteres totales:
     //   [signo] + intPart + "." + nonRepeat + repeat
     int chars = 0;
@@ -836,6 +853,7 @@ void NodeDefIntegral::setVariable(NodePtr node) {
 }
 
 void NodeDefIntegral::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     FontMetrics fmLimit = fm.superscript();
 
     _lower->calculateLayout(fmLimit);
@@ -930,6 +948,7 @@ void NodeSummation::setVariable(NodePtr node) {
 }
 
 void NodeSummation::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     FontMetrics fmLimit = fm.superscript();
 
     _lower->calculateLayout(fmLimit);
@@ -973,6 +992,7 @@ NodeSubscript::NodeSubscript(NodePtr base, NodePtr subscript)
 }
 
 void NodeSubscript::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
     // 1. Base en fuente normal
     _base->calculateLayout(fm);
     const auto& baseL = _base->layout();

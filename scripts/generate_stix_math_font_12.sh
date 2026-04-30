@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Generate STIX Two Math font for LVGL.
+# Generate STIX Two Math 12pt font for LVGL.
 # Requirements:
 #   npm i -g lv_font_conv
 # Usage:
-#   ./scripts/generate_stix_math_font.sh [path-to-STIXTwoMath-Regular.ttf] [bpp]
+#   ./scripts/generate_stix_math_font_12.sh [path-to-STIXTwoMath-Regular.ttf] [bpp]
 #
 # Examples:
-#   ./scripts/generate_stix_math_font.sh "C:/.../STIXTwoMath-Regular.ttf"
-#   ./scripts/generate_stix_math_font.sh "C:/.../STIXTwoMath-Regular.ttf" 2
-#   STIX_BPP=1 ./scripts/generate_stix_math_font.sh "C:/.../STIXTwoMath-Regular.ttf"
+#   ./scripts/generate_stix_math_font_12.sh "C:/.../STIXTwoMath-Regular.ttf"
+#   ./scripts/generate_stix_math_font_12.sh "C:/.../STIXTwoMath-Regular.ttf" 2
+#   STIX_BPP=1 ./scripts/generate_stix_math_font_12.sh "C:/.../STIXTwoMath-Regular.ttf"
 #
 # Default output:
-#   src/fonts/stix_math_18.c
+#   src/fonts/stix_math_12.c
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FONT_FILE="${1:-${ROOT_DIR}/assets/fonts/STIXTwoMath-Regular.ttf}"
@@ -25,22 +25,18 @@ if [[ "${FONT_FILE}" =~ ^([A-Za-z]):[\\/](.*)$ ]]; then
   path_tail="${BASH_REMATCH[2]//\\//}"
   FONT_FILE="/mnt/${drive_letter}/${path_tail}"
 fi
-FONT_SIZE="${STIX_SIZE:-18}"
-if [[ "${FONT_SIZE}" == "12" ]]; then
-  OUT_FILE="${ROOT_DIR}/src/fonts/stix_math_12.c"
-else
-  OUT_FILE="${ROOT_DIR}/src/fonts/stix_math_18.c"
-fi
+
+OUT_FILE="${ROOT_DIR}/src/fonts/stix_math_12.c"
 
 # LVGL font bitmap depth (1,2,3,4,8). Default keeps previous behavior.
-BPP_RAW="${2:-${STIX_BPP:-4}}"
+BPP_RAW="${2:-${STIX_BPP:-1}}"
 case "${BPP_RAW}" in
   1|2|3|4|8) ;;
   *)
     echo "Invalid BPP '${BPP_RAW}'. Allowed values: 1,2,3,4,8" >&2
     exit 1
     ;;
-esac
+ esac
 
 if [[ ! -f "${FONT_FILE}" ]]; then
   echo "Missing font file: ${FONT_FILE}" >&2
@@ -59,7 +55,7 @@ run_conv() {
   local ranges="$1"
   lv_font_conv \
     --font "${FONT_FILE}" \
-    --size "${FONT_SIZE}" \
+    --size 12 \
     --bpp "${BPP_RAW}" \
     --format lvgl \
     --range "${ranges}" \
@@ -67,7 +63,7 @@ run_conv() {
     -o "${OUT_FILE}"
 }
 
-echo "[stix] Generating ${OUT_FILE} (size=${FONT_SIZE}, bpp=${BPP_RAW})"
+echo "[stix] Generating ${OUT_FILE} (size=12, bpp=${BPP_RAW})"
 if ! run_conv "${BASE_RANGES},${OPTIONAL_RANGE}"; then
   echo "[stix] Optional range ${OPTIONAL_RANGE} not present in this TTF, retrying without it"
   run_conv "${BASE_RANGES}"

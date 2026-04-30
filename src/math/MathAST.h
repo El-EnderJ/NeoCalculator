@@ -127,6 +127,8 @@ struct FontMetrics {
     int16_t charWidth;   ///< Ancho promedio de un dígito (monoespaciado)
     int16_t ascent;      ///< Píxeles del baseline al tope del glyph
     int16_t descent;     ///< Píxeles del baseline a la parte baja (≥0)
+    uint8_t scriptLevel = 0;             ///< 0 = base, 1 = script
+    const FontMetrics* script = nullptr; ///< Métricas del nivel de script (Level 1)
 
     /// Altura total de línea
     int16_t height() const { return ascent + descent; }
@@ -137,17 +139,28 @@ struct FontMetrics {
 
     /// Métricas reducidas para superíndices/subíndices (≈70%, mínimo seguro).
     FontMetrics superscript() const {
+        if (script) {
+            FontMetrics out = *script;
+            out.script = script;
+            return out;
+        }
         auto clamp = [](int16_t v, int16_t mn) -> int16_t {
             int16_t r = static_cast<int16_t>((v * 7) / 10);
             return r < mn ? mn : r;
         };
-        return { clamp(charWidth, 6), clamp(ascent, 8), clamp(descent, 1) };
+        FontMetrics out;
+        out.charWidth = clamp(charWidth, 6);
+        out.ascent = clamp(ascent, 8);
+        out.descent = clamp(descent, 1);
+        out.scriptLevel = 1;
+        out.script = nullptr;
+        return out;
     }
 };
 
 /// Métricas por defecto razonables (≈ STIX Two Math 18 a ~10 px de ancho).
 inline FontMetrics defaultFontMetrics() {
-    return { 10, 14, 3 };
+    return { 10, 14, 3, 0, nullptr };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -179,6 +192,10 @@ public:
     // ── Identidad ──
     NodeType type() const { return _type; }
 
+    // ── Script level ──
+    uint8_t scriptLevel() const { return _scriptLevel; }
+    void setScriptLevel(uint8_t level) { _scriptLevel = (level > 1) ? 1 : level; }
+
     // ── Navegación por el árbol (padre no-owning) ──
     MathNode* parent() const    { return _parent; }
     void setParent(MathNode* p) { _parent = p; }
@@ -198,10 +215,11 @@ public:
     virtual MathNode*  child(int /*index*/)  const { return nullptr; }
 
 protected:
-    explicit MathNode(NodeType t) : _type(t), _parent(nullptr) {}
+    explicit MathNode(NodeType t) : _type(t), _parent(nullptr), _scriptLevel(0) {}
 
     NodeType     _type;
     MathNode*    _parent;
+    uint8_t      _scriptLevel;
     LayoutResult _layout;
 };
 

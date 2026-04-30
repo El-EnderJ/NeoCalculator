@@ -34,6 +34,9 @@
 #include "MathSymbols.h"
 #include "MathTypography.h"
 
+// Ajuste empírico para centrar la caja de STIX Two Math con la caja de los nodos VPAM
+#define STIX_Y_OFFSET -8
+
 namespace vpam {
 
 namespace {
@@ -122,7 +125,7 @@ MathCanvas::MathCanvas()
     , _root(nullptr)
     , _cursorCtrl(nullptr)
     , _fontNormal(ui::mathPrimaryFont())
-    , _fontSmall(ui::mathPrimaryFont())
+    , _fontSmall(ui::mathScriptFont())
     , _cursorTimer(nullptr)
     , _cursorVisible(true)
     , _cursorX(0), _cursorY(0), _cursorH(0)
@@ -133,6 +136,10 @@ MathCanvas::MathCanvas()
 {
     _fmNormal = metricsFromFont(_fontNormal);
     _fmSmall  = metricsFromFont(_fontSmall);
+    _fmNormal.scriptLevel = 0;
+    _fmSmall.scriptLevel = 1;
+    _fmNormal.script = &_fmSmall;
+    _fmSmall.script = &_fmSmall;
 }
 
 MathCanvas::~MathCanvas() {
@@ -147,6 +154,8 @@ FontMetrics MathCanvas::metricsFromFont(const lv_font_t* font) {
     FontMetrics fm;
     fm.ascent  = static_cast<int16_t>(font->line_height - font->base_line);
     fm.descent = static_cast<int16_t>(font->base_line);
+    fm.scriptLevel = 0;
+    fm.script = nullptr;
 
     // Medir el ancho del carácter '0' como referencia
     lv_font_glyph_dsc_t glyph;
@@ -341,8 +350,9 @@ void MathCanvas::onDraw(lv_event_t* e) {
 void MathCanvas::computeCursorPosition(int16_t baseX, int16_t baseY) {
     if (!_cursorCtrl || !_cursorCtrl->cursor().isValid()) {
         _cursorX = baseX;
-        _cursorY = baseY - _fmNormal.ascent;
-        _cursorH = _fmNormal.height();
+        int16_t cursorCap = static_cast<int16_t>(std::min<int16_t>(14, _fmNormal.ascent));
+        _cursorY = static_cast<int16_t>(baseY - cursorCap - CURSOR_PAD);
+        _cursorH = static_cast<int16_t>(cursorCap + 2 * CURSOR_PAD);
         return;
     }
 
@@ -607,14 +617,15 @@ void MathCanvas::computeCursorPosition(int16_t baseX, int16_t baseY) {
     if (finder.result.found) {
         int16_t offsetX = childXOffset(cur.row, cur.index, finder.result.fm);
         _cursorX = static_cast<int16_t>(finder.result.x + offsetX);
-        _cursorY = static_cast<int16_t>(finder.result.yBaseline -
-                   cur.row->layout().ascent - CURSOR_PAD);
-        _cursorH = static_cast<int16_t>(cur.row->layout().height() + 2 * CURSOR_PAD);
+        int16_t cursorCap = static_cast<int16_t>(std::min<int16_t>(14, finder.result.fm.ascent));
+        _cursorY = static_cast<int16_t>(finder.result.yBaseline - cursorCap - CURSOR_PAD);
+        _cursorH = static_cast<int16_t>(cursorCap + 2 * CURSOR_PAD);
     } else {
         // Fallback: inicio de la expresión
         _cursorX = baseX;
-        _cursorY = static_cast<int16_t>(baseY - _fmNormal.ascent - CURSOR_PAD);
-        _cursorH = static_cast<int16_t>(_fmNormal.height() + 2 * CURSOR_PAD);
+        int16_t cursorCap = static_cast<int16_t>(std::min<int16_t>(14, _fmNormal.ascent));
+        _cursorY = static_cast<int16_t>(baseY - cursorCap - CURSOR_PAD);
+        _cursorH = static_cast<int16_t>(cursorCap + 2 * CURSOR_PAD);
     }
 }
 
@@ -647,7 +658,7 @@ void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
         drawFilledRect(layer, x, static_cast<int16_t>(yBaseline - fm.ascent),
                        static_cast<int16_t>(fm.charWidth * 3), fm.height(),
                        lv_color_hex(0xFF0000), LV_OPA_60);
-        drawText(layer, x, yBaseline, "...", font, lv_color_hex(0xFF0000));
+        drawText(layer, x, yBaseline, "...", fm.scriptLevel, lv_color_hex(0xFF0000));
         return;
     }
 
@@ -759,7 +770,7 @@ void MathCanvas::drawNumber(lv_layer_t* layer, const NodeNumber* node,
     const std::string& val = node->value();
     if (val.empty()) return;
     lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
-    drawText(layer, x, yBaseline, val.c_str(), font, color);
+    drawText(layer, x, yBaseline, val.c_str(), node->scriptLevel(), color);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -816,7 +827,7 @@ void MathCanvas::drawOperator(lv_layer_t* layer, const NodeOperator* node,
         return;
     }
 
-    drawText(layer, textX, yBaseline, node->symbol(), font, color);
+    drawText(layer, textX, yBaseline, node->symbol(), node->scriptLevel(), color);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -898,7 +909,7 @@ void MathCanvas::drawPower(lv_layer_t* layer, const NodePower* node,
     // ── Exponente (fuente reducida, elevado) ──
     FontMetrics fmSup = fm.superscript();
     int16_t expShift = static_cast<int16_t>(
-        (baseL.ascent * NodePower::EXP_RAISE_NUM) / NodePower::EXP_RAISE_DEN);
+        (baseL.height() * NodePower::EXP_RAISE_NUM) / NodePower::EXP_RAISE_DEN);
 
     // El baseline del exponente: el fondo del exp está a expShift sobre el baseline
     int16_t expBaseline = static_cast<int16_t>(yBaseline - expShift);
@@ -1021,7 +1032,7 @@ void MathCanvas::drawFunction(lv_layer_t* layer, const NodeFunction* node,
     int16_t labelW = static_cast<int16_t>(funcL.width - NodeFunction::LABEL_GAP - parenBlock);
 
     // ── Label (texto de la función) ──
-    drawText(layer, x, yBaseline, node->label(), font,
+    drawText(layer, x, yBaseline, node->label(), node->scriptLevel(),
              _highlightActive ? _highlightColor : lv_color_hex(0x1a1a1a));
 
     // ── Paréntesis automáticos + argumento ──
@@ -1070,7 +1081,7 @@ void MathCanvas::drawLogBase(lv_layer_t* layer, const NodeLogBase* node,
                      - NodeLogBase::LABEL_GAP - parenBlock);
 
     // ── Label "log" ──
-    drawText(layer, x, yBaseline, "log", font,
+    drawText(layer, x, yBaseline, "log", node->scriptLevel(),
              _highlightActive ? _highlightColor : lv_color_hex(0x1a1a1a));
 
     // ── Base / subíndice (fuente reducida, bajada) ──
@@ -1177,7 +1188,7 @@ void MathCanvas::drawConstant(lv_layer_t* layer, const NodeConstant* node,
                               int16_t x, int16_t yBaseline,
                               const FontMetrics& fm, const lv_font_t* font) {
     lv_color_t color = _highlightActive ? _highlightColor : lv_color_hex(0x0060C0);
-    drawText(layer, x, yBaseline, node->symbol(), font, color);
+    drawText(layer, x, yBaseline, node->symbol(), node->scriptLevel(), color);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1197,7 +1208,7 @@ void MathCanvas::drawVariable(lv_layer_t* layer, const NodeVariable* node,
     // with the × operator.
     lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
 
-    drawText(layer, x, yBaseline, node->label(), font, color);
+    drawText(layer, x, yBaseline, node->label(), node->scriptLevel(), color);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1227,7 +1238,7 @@ void MathCanvas::drawPeriodicDecimal(lv_layer_t* layer,
     // Dibujar la parte que NO tiene overline
     int16_t cx = x;
     if (!prefix.empty()) {
-        drawText(layer, cx, yBaseline, prefix.c_str(), font, lv_color_black());
+        drawText(layer, cx, yBaseline, prefix.c_str(), node->scriptLevel(), lv_color_black());
         // Calcular ancho del texto dibujado
         cx += static_cast<int16_t>(prefix.size() * fm.charWidth);
     }
@@ -1235,7 +1246,7 @@ void MathCanvas::drawPeriodicDecimal(lv_layer_t* layer,
     // Dibujar la parte periódica (con overline)
     const std::string& rep = node->repeat();
     if (!rep.empty()) {
-        drawText(layer, cx, yBaseline, rep.c_str(), font, lv_color_black());
+        drawText(layer, cx, yBaseline, rep.c_str(), node->scriptLevel(), lv_color_black());
         int16_t repW = static_cast<int16_t>(rep.size() * fm.charWidth);
 
         // Overline: línea horizontal sobre los dígitos periódicos
@@ -1298,7 +1309,7 @@ void MathCanvas::drawDefIntegral(lv_layer_t* layer, const NodeDefIntegral* node,
 
     // ── "d" + variable (e.g. "dx") ──
     int16_t dX = static_cast<int16_t>(bodyX + bodyL.width + NodeDefIntegral::D_GAP);
-    drawText(layer, dX, yBaseline, "d", font, lv_color_hex(0x333333));
+    drawText(layer, dX, yBaseline, "d", node->scriptLevel(), lv_color_hex(0x333333));
     int16_t varX = static_cast<int16_t>(dX + fm.charWidth + NodeDefIntegral::D_GAP);
     drawNode(layer, node->variable(), varX, yBaseline, fm, font, depth + 1);
 }
@@ -1483,18 +1494,14 @@ void MathCanvas::drawCursor(lv_layer_t* layer) {
 // ════════════════════════════════════════════════════════════════════════════
 
 void MathCanvas::drawText(lv_layer_t* layer, int16_t x, int16_t yBaseline,
-                          const char* text, const lv_font_t* font,
+                          const char* text, uint8_t scriptLevel,
                           lv_color_t color) {
     if (!text || !text[0]) return;
 
     const std::string normalized = normalizeSymbolText(text);
     const char* renderText = normalized.empty() ? text : normalized.c_str();
 
-    // El área define el bounding box del texto.
-    // LVGL dibuja el texto desde el tope del área.
-    // Tope = yBaseline - ascent (donde ascent = line_height - base_line)
-    int16_t fontAscent = static_cast<int16_t>(font->line_height - font->base_line);
-    int16_t yTop = static_cast<int16_t>(yBaseline - fontAscent);
+    const lv_font_t* font = (scriptLevel > 0) ? _fontSmall : _fontNormal;
 
     auto decodeUtf8 = [](const uint8_t* s, uint32_t* outCp) -> uint8_t {
         if (!s || !s[0]) {
@@ -1559,7 +1566,7 @@ void MathCanvas::drawText(lv_layer_t* layer, int16_t x, int16_t yBaseline,
 
             lv_point_t letterPos;
             letterPos.x = static_cast<int32_t>(penX);
-            letterPos.y = static_cast<int32_t>(yTop);
+            letterPos.y = static_cast<int32_t>(yBaseline) + STIX_Y_OFFSET;
 
             lv_draw_letter(layer, &dsc, &letterPos);
             penX += glyph.adv_w;

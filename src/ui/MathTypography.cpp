@@ -40,4 +40,8 @@ const lv_font_t* mathPrimaryFont() {
     return &stix_math_18;
 }
 
+const lv_font_t* mathScriptFont() {
+    return &stix_math_18;
+}
+
 } // namespace ui

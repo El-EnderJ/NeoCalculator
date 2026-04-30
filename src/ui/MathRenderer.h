@@ -122,7 +122,7 @@ public:
     /** FontMetrics para la fuente normal (STIX Two Math 18) */
     const FontMetrics& normalMetrics() const { return _fmNormal; }
 
-    /** FontMetrics para la fuente secundaria/superscript (STIX Two Math 18) */
+    /** FontMetrics para la fuente secundaria/superscript (STIX Two Math 12) */
     const FontMetrics& smallMetrics() const { return _fmSmall; }
 
     /**
@@ -150,7 +150,7 @@ private:
 
     // Fuentes LVGL
     const lv_font_t*  _fontNormal;     // STIX Two Math 18
-    const lv_font_t*  _fontSmall;      // STIX Two Math 18 (super/subscript)
+    const lv_font_t*  _fontSmall;      // STIX Two Math 12 (super/subscript)
     FontMetrics        _fmNormal;
     FontMetrics        _fmSmall;
 
@@ -343,7 +343,7 @@ private:
 
     // ── Helpers de dibujo ────────────────────────────────────────────────
     void drawText(lv_layer_t* layer, int16_t x, int16_t yBaseline,
-                  const char* text, const lv_font_t* font, lv_color_t color);
+                  const char* text, uint8_t scriptLevel, lv_color_t color);
 
     void drawLine(lv_layer_t* layer,
                   int16_t x1, int16_t y1, int16_t x2, int16_t y2,

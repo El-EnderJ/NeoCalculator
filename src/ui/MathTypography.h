@@ -28,4 +28,7 @@ void initMathTypography();
 // Canonical font for VPAM/MathRenderer equation drawing.
 const lv_font_t* mathPrimaryFont();
 
+// Script-level font (e.g., superscripts/subscripts).
+const lv_font_t* mathScriptFont();
+
 } // namespace ui

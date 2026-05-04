@@ -22,6 +22,7 @@
 [![Flash](https://img.shields.io/badge/Flash-23.2%25%20%E2%80%94%201.52%20MB-informational)](#build-stats)
 [![GitHub Stars](https://img.shields.io/github/stars/El-EnderJ/NeoCalculator?style=social)](https://github.com/El-EnderJ/NeoCalculator)
 [![GitHub Forks](https://img.shields.io/github/forks/El-EnderJ/NeoCalculator?style=social)](https://github.com/El-EnderJ/NeoCalculator)
+[![Support via Ko-fi](https://img.shields.io/badge/Support-Ko--fi-F16061?logo=ko-fi&logoColor=white)](https://ko-fi.com/enderdesigns)
 
 <br>
 
@@ -589,6 +590,21 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | [HARDWARE.md](docs/HARDWARE.md) | ESP32-S3 pinout, complete wiring, critical bugs, and bring-up notes |
 | [CONSTRUCCION.md](docs/CONSTRUCCION.md) | Physical assembly guide, 3D printing, and hardware testing |
 | [DIMENSIONES_DISEÑO.md](docs/DIMENSIONES_DISEÑO.md) | Dimensional specifications for the 3D chassis |
+
+---
+
+## Support the Project ☕
+
+The EV grant covers the main hardware. I've set up a **€500 goal** on Ko-fi to fund the "invisible" part of NumOS:
+1. **AI & Dev Tools:** Claude/Copilot for C++ optimization and porting.
+2. **Digital Presence:** Domain (`numos.org` or similar) and web services.
+3. **Shipping:** Sending beta units to expert contributors to grow the project.
+
+Your support keeps me focused on the mission, ensuring NumOS stays independent and open-source.
+
+<a href="https://ko-fi.com/enderdesigns" target="_blank">
+  <img src="https://ko-fi.com/img/githubbutton_sm.svg" border="0" alt="Support me on ko-fi.com" height="36">
+</a>
 
 ---
 

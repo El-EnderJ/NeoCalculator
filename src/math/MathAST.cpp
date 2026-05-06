@@ -360,10 +360,10 @@ void NodePower::calculateLayout(const FontMetrics& fm) {
 
     // 4. Elevación del exponente:
     //    El fondo del exponente se sitúa a EXP_RAISE_NUM/EXP_RAISE_DEN
-    //    (≈60%) de la altura total de la base sobre el baseline.
+    //    (≈45%) del ascent de la base sobre el baseline.
     //
     //    expShift = distancia del baseline al fondo del exponente
-    int16_t expShift = static_cast<int16_t>((baseL.height() * EXP_RAISE_NUM) / EXP_RAISE_DEN);
+    int16_t expShift = static_cast<int16_t>((fm.ascent * EXP_RAISE_NUM) / EXP_RAISE_DEN);
 
     // El tope del exponente está a expShift + expL.ascent sobre el baseline
     _layout.ascent  = std::max(baseL.ascent,

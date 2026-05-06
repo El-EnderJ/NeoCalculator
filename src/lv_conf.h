@@ -151,6 +151,7 @@ extern "C" {
 struct _lv_font_t;
 typedef struct _lv_font_t lv_font_t;
 extern const lv_font_t stix_math_18;
+extern const lv_font_t stix_math_12;
 #ifdef __cplusplus
 }
 #endif

@@ -369,7 +369,7 @@ private:
 // exponent → NodeRow (superíndice, se renderiza en fuente reducida)
 //
 // Layout:
-//   ┌base┐┌exp┐   El exponente se eleva al ~60% del ascent de la base.
+//   ┌base┐┌exp┐   El exponente se eleva al ~45% del ascent de la base.
 //   │ 23 ││ 4 │   La fuente del exponente es ~70% de la normal.
 //   └────┘└───┘
 // ════════════════════════════════════════════════════════════════════════════
@@ -390,8 +390,8 @@ public:
     void setExponent(NodePtr node);
 
     /// Fracción del ascent de la base donde arranca el fondo del exponente
-    static constexpr int16_t EXP_RAISE_NUM = 3;   // numerador
-    static constexpr int16_t EXP_RAISE_DEN = 5;   // denominador → 3/5 = 60%
+    static constexpr int16_t EXP_RAISE_NUM = 9;   // numerador
+    static constexpr int16_t EXP_RAISE_DEN = 20;  // denominador → 9/20 = 45%
 
 private:
     NodePtr _base;

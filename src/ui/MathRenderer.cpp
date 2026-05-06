@@ -157,11 +157,21 @@ FontMetrics MathCanvas::metricsFromFont(const lv_font_t* font) {
     fm.scriptLevel = 0;
     fm.script = nullptr;
 
+    // Derivar ascent/descent desde un glyph representativo (baseline-aware).
+    lv_font_glyph_dsc_t refGlyph;
+    bool refOk = lv_font_get_glyph_dsc(font, &refGlyph, 'x', '1');
+    if (refOk) {
+        int16_t top = static_cast<int16_t>(refGlyph.ofs_y);
+        int16_t bottom = static_cast<int16_t>(refGlyph.ofs_y + refGlyph.box_h);
+        fm.ascent = std::max<int16_t>(0, static_cast<int16_t>(-top));
+        fm.descent = std::max<int16_t>(0, bottom);
+    }
+
     // Medir el ancho del carácter '0' como referencia
-    lv_font_glyph_dsc_t glyph;
-    bool ok = lv_font_get_glyph_dsc(font, &glyph, '0', '1');
-    fm.charWidth = ok ? static_cast<int16_t>(glyph.adv_w)
-                      : static_cast<int16_t>(font->line_height * 6 / 10);
+    lv_font_glyph_dsc_t widthGlyph;
+    bool widthOk = lv_font_get_glyph_dsc(font, &widthGlyph, '0', '1');
+    fm.charWidth = widthOk ? static_cast<int16_t>(widthGlyph.adv_w)
+                           : static_cast<int16_t>(font->line_height * 6 / 10);
     return fm;
 }
 
@@ -430,13 +440,9 @@ void MathCanvas::computeCursorPosition(int16_t baseX, int16_t baseY) {
 
                 // Exponente (fuente reducida)
                 FontMetrics fmSup = fm.superscript();
-                int16_t expShift = static_cast<int16_t>(
-                    (baseL.ascent * NodePower::EXP_RAISE_NUM) / NodePower::EXP_RAISE_DEN);
+                int32_t expShift = (static_cast<int32_t>(fm.ascent)
+                                    * NodePower::EXP_RAISE_NUM) / NodePower::EXP_RAISE_DEN;
                 int16_t expX = static_cast<int16_t>(x + baseL.width);
-                int16_t expY = static_cast<int16_t>(yBaseline - expShift -
-                               pow->exponent()->layout().descent);
-                // Ajustar baseline del exponente correctamente
-                const auto& expL = pow->exponent()->layout();
                 int16_t expBaseline = static_cast<int16_t>(yBaseline - expShift);
 
                 search(pow->exponent(), expX, expBaseline, fmSup,
@@ -892,7 +898,7 @@ void MathCanvas::drawFraction(lv_layer_t* layer, const NodeFraction* node,
 // ════════════════════════════════════════════════════════════════════════════
 // drawPower — Base ^ Exponente (superíndice)
 //
-//    ┌base┐┌exp┐     Exponente elevado al 60% del ascent de base
+//    ┌base┐┌exp┐     Exponente elevado al 45% del ascent de base
 //    │ 23 ││ 4 │     Fuente reducida (~70%)
 //    └────┘└───┘
 // ════════════════════════════════════════════════════════════════════════════
@@ -908,8 +914,8 @@ void MathCanvas::drawPower(lv_layer_t* layer, const NodePower* node,
 
     // ── Exponente (fuente reducida, elevado) ──
     FontMetrics fmSup = fm.superscript();
-    int16_t expShift = static_cast<int16_t>(
-        (baseL.height() * NodePower::EXP_RAISE_NUM) / NodePower::EXP_RAISE_DEN);
+    int32_t expShift = (static_cast<int32_t>(fm.ascent)
+                        * NodePower::EXP_RAISE_NUM) / NodePower::EXP_RAISE_DEN;
 
     // El baseline del exponente: el fondo del exp está a expShift sobre el baseline
     int16_t expBaseline = static_cast<int16_t>(yBaseline - expShift);
@@ -1502,6 +1508,9 @@ void MathCanvas::drawText(lv_layer_t* layer, int16_t x, int16_t yBaseline,
     const char* renderText = normalized.empty() ? text : normalized.c_str();
 
     const lv_font_t* font = (scriptLevel > 0) ? _fontSmall : _fontNormal;
+    const int16_t scriptAdjust = (scriptLevel > 0)
+        ? static_cast<int16_t>(font->base_line - _fontNormal->base_line)
+        : 0;
 
     auto decodeUtf8 = [](const uint8_t* s, uint32_t* outCp) -> uint8_t {
         if (!s || !s[0]) {
@@ -1566,7 +1575,7 @@ void MathCanvas::drawText(lv_layer_t* layer, int16_t x, int16_t yBaseline,
 
             lv_point_t letterPos;
             letterPos.x = static_cast<int32_t>(penX);
-            letterPos.y = static_cast<int32_t>(yBaseline) + STIX_Y_OFFSET;
+            letterPos.y = static_cast<int32_t>(yBaseline) + STIX_Y_OFFSET + scriptAdjust;
 
             lv_draw_letter(layer, &dsc, &letterPos);
             penX += glyph.adv_w;

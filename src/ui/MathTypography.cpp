@@ -41,7 +41,7 @@ const lv_font_t* mathPrimaryFont() {
 }
 
 const lv_font_t* mathScriptFont() {
-    return &stix_math_18;
+    return &stix_math_12;
 }
 
 } // namespace ui

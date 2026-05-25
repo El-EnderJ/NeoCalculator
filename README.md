@@ -16,7 +16,8 @@
 [![Website](https://img.shields.io/badge/Website-neocalculator.tech-purple?logo=google-chrome&logoColor=white)](https://neocalculator.tech)
 [![Framework](https://img.shields.io/badge/Framework-Arduino-teal?logo=arduino&logoColor=white)](https://www.arduino.cc/)
 [![Language](https://img.shields.io/badge/Language-C%2B%2B17-blue?logo=cplusplus&logoColor=white)](https://en.cppreference.com/)
-[![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Software License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Hardware License](https://img.shields.io/badge/Hardware-CERN--OHL--S-orange.svg)](https://cern.ch/cern-ohl)
 [![Status](https://img.shields.io/badge/Status-Pro--CAS%20Production-brightgreen)](#project-status)
 [![RAM](https://img.shields.io/badge/RAM-29.7%25%20%E2%80%94%2097.2%20KB-informational)](#build-stats)
 [![Flash](https://img.shields.io/badge/Flash-23.2%25%20%E2%80%94%201.52%20MB-informational)](#build-stats)
@@ -25,10 +26,6 @@
 [![Support via Ko-fi](https://img.shields.io/badge/Support-Ko--fi-F16061?logo=ko-fi&logoColor=white)](https://ko-fi.com/enderdesigns)
 
 <br>
-
-> **👋 ¡Hola, lectores de Xataka!**
-> *Si venís desde el reportaje y compartís la misión de democratizar las calculadoras científicas, podéis apoyar el proyecto en **[Ko-fi](https://ko-fi.com/enderdesigns)**. Mientras el Grant de EE.UU. cubre el hardware, vuestras aportaciones financian la "parte invisible" (herramientas de IA para optimización C++, dominios y envío de betas) para que NumOS siga siendo independiente y Open Source.*
-
 <div align="center">
   </div>
 
@@ -657,14 +654,17 @@ The **NeoCalculator** firmware (**NumOS**) is licensed under the **GNU GPL v3**.
 We are proud to build upon the **Giac** engine by Bernard Parisse. In accordance with the GPL v3, all software source code in this repository is open for study, modification, and redistribution.
 
 ### Hardware & Industrial Design
-**All rights reserved.** The hardware design, including but not limited to:
+
+The hardware architecture of the **NeoCalculator**, including but not limited to:
 * PCB Schematics and Layouts (KiCad files, Gerbers).
 * Industrial Design and 3D Models (STL, STEP, CAD files).
 * The "Exam Key" security architecture.
 
-Are **proprietary** and the intellectual property of Juan Ramón. No commercial use or reproduction of the hardware is permitted without express authorization.
+Is licensed under the **CERN Open Hardware Licence Version 2 - Strongly Reciprocal (CERN-OHL-S v2)**. 
 
-> **Note on Hardware IP:** This proprietary status is a necessary measure *for now*. Our primary goal is to maintain the strict hardware control required to eventually achieve official "Exam Legal" certification and to protect the project's integrity from low-quality, unauthorized clones. Once the ecosystem is mature and certified, we plan to evaluate open-hardware licensing models.
+We believe that hardware accessibility is crucial for education. Under this license, anyone is free to study, modify, manufacture, and distribute the physical calculator. 
+
+**The Reciprocal Rule:** If you modify these designs and distribute or sell the resulting hardware, you **must** release your modified source files under this exact same CERN-OHL-S v2 license, ensuring the hardware ecosystem remains open and accessible forever. 
 
 ---
 
@@ -672,7 +672,7 @@ Are **proprietary** and the intellectual property of Juan Ramón. No commercial 
 
 *Built with ❤️ and a lot of C++17*
 
-**NumOS, The best open-source scientific calculator for ESP32-S3**
+**NumOS, The best open-source graphing calculator for ESP32-S3**
 
 *Last updated: May 2026*
 

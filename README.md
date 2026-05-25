@@ -326,8 +326,8 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 ### Build and Flash
 
 ```bash
-git clone https://github.com/your-user/numOS.git
-cd numOS
+git clone https://github.com/El-EnderJ/NeoCalculator.git
+cd NeoCalculator
 
 # Build only
 pio run -e esp32s3_n16r8
@@ -571,9 +571,9 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 
 | Feature | **NumOS** | NumWorks | TI-84 Plus CE | HP Prime G2 |
 |:--------|:---------:|:--------:|:-------------:|:-----------:|
-| Open Source | ✅ MIT | ✅ MIT | ❌ | ❌ |
+| Open Source | ✅ GPL-3.0 | ✅ Source-available | ❌ | ❌ |
 | Natural Display | ✅ | ✅ | ✅ | ✅ |
-| Symbolic CAS | ✅ Pro | ✅ SymPy | ❌ | ✅ |
+| Symbolic CAS | ✅ Giac | ✅ SymPy | ❌ | ✅ |
 | Symbolic derivatives | ✅ | ✅ | ❌ | ✅ |
 | Symbolic integrals | ✅ | ✅ | ❌ | ✅ |
 | Solution steps | ✅ | ❌ | ❌ | ✅ |
@@ -585,7 +585,7 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | Scripting / Python | ✅ NeoLanguage + Python | ✅ | ✅ TI-BASIC | ✅ HP PPL |
 | WiFi / Connectivity | 🔲 | ✅ | ❌ | ❌ |
 | Rechargeable battery | 🔲 | ✅ | ❌ | ✅ |
-| Estimated HW cost | **~€15-20** | €79 | €149 | €179 |
+| Estimated HW cost | **~€15-25** | €79 | €149 | €179 |
 | Platform | ESP32-S3 | STM32F730 | Zilog eZ80 | ARM Cortex-A7 |
 
 > 🏆 NumOS already surpasses the TI-84 in CAS capability and cost, and is on track to match the NumWorks.

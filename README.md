@@ -25,25 +25,11 @@
 [![GitHub Forks](https://img.shields.io/github/forks/El-EnderJ/NeoCalculator?style=social)](https://github.com/El-EnderJ/NeoCalculator)
 [![Support via Ko-fi](https://img.shields.io/badge/Support-Ko--fi-F16061?logo=ko-fi&logoColor=white)](https://ko-fi.com/enderdesigns)
 
-<br>
-<div align="center">
-  </div>
-
-<br>
-</div>
-
-> [!IMPORTANT]  
-> **Technical Status: Major Architectural Refactor**  
-> We are currently migrating the core math engine to **Giac** and implementing **STIX Two Math** for LaTeX-quality rendering. If you are compiling from `main`, you might experience UI glitches. For a stable experience, please check the [Releases](https://github.com/El-EnderJ/NeoCalculator/releases) section.
-
-<br>
-
-<div align="center">
-  </div>
-
-</div>
+**[🚀 Join the Hardware Waitlist here](https://neocalculator.tech)** to get notified when PCB beta units drop.
 
 ---
+
+</div>
 
 ![Image](https://github.com/user-attachments/assets/e1b1df29-362b-4f5c-b824-bacb8e9a28f4)
 
@@ -52,19 +38,20 @@
 0. [Webpage](https://neocalculator.tech/)
 1. [What is NumOS?](#what-is-numos)
 2. [Key Features](#key-features)
-3. [System Architecture](#system-architecture)
-4. [CAS Engine](#CAS-engine)
-5. [Hardware](#hardware)
-6. [Quick Start](#quick-start)
-7. [User Manual — EquationsApp](#user-manual--equationsapp)
-8. [Project Structure](#project-structure)
-9. [Build Stats](#build-stats)
-10. [Critical Hardware Fixes](#critical-hardware-fixes)
-11. [Project Status](#project-status)
-12. [Technology Stack](#technology-stack)
-13. [Comparison with Commercial Calculators](#comparison-with-commercial-calculators)
-14. [Documentation](#documentation)
-15. [Contributing](#contributing)
+3. [Photo Gallery](#photo-gallery)
+4. [System Architecture](#system-architecture)
+5. [CAS Engine](#CAS-engine)
+6. [Hardware](#hardware)
+7. [Quick Start](#quick-start)
+8. [User Manual — EquationsApp](#user-manual--equationsapp)
+9. [Project Structure](#project-structure)
+10. [Build Stats](#build-stats)
+11. [Critical Hardware Fixes](#critical-hardware-fixes)
+12. [Project Status](#project-status)
+13. [Technology Stack](#technology-stack)
+14. [Comparison with Commercial Calculators](#comparison-with-commercial-calculators)
+15. [Documentation](#documentation)
+16. [Contributing](#contributing)
 
 ---
 
@@ -675,5 +662,7 @@ We believe that hardware accessibility is crucial for education. Under this lice
 **NumOS, The best open-source graphing calculator for ESP32-S3**
 
 *Last updated: May 2026*
+
+<div align="center">
 
 </div>

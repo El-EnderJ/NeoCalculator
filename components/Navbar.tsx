@@ -32,6 +32,7 @@ export default function Navbar() {
           <li><a href="#tech" onClick={handleLinkClick}>Tech Stack</a></li>
           <li><a href="#hardware" onClick={handleLinkClick}>Hardware</a></li>
           <li><a href="#roadmap" onClick={handleLinkClick}>Roadmap</a></li>
+          <li><a href="https://github.com/El-EnderJ/NeoCalculator#system-architecture" target="_blank" rel="noopener" onClick={handleLinkClick}>Docs / Architecture ↗</a></li>
           <li><a href="https://github.com/El-EnderJ/NeoCalculator" target="_blank" rel="noopener" className="btn-nav" onClick={handleLinkClick}>GitHub ↗</a></li>
           <li><a href="mailto:el.enderj2020@gmail.com" className="btn-nav btn-outline" onClick={handleLinkClick}>✉ Email me</a></li>
           <li><a href="https://ko-fi.com/enderdesigns" target="_blank" rel="noopener" className="btn-nav btn-kofi" onClick={handleLinkClick}>☕ Support Me</a></li>

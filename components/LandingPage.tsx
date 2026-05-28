@@ -36,8 +36,25 @@ export default function LandingPage() {
   const rootRef = useRef<HTMLDivElement>(null);
   const submittedRef = useRef(false);
   const [waitlistSuccess, setWaitlistSuccess] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = () => setPrefersReducedMotion(media.matches);
+    updatePreference();
+
+    if (media.addEventListener) {
+      media.addEventListener('change', updatePreference);
+      return () => media.removeEventListener('change', updatePreference);
+    }
+
+    media.addListener(updatePreference);
+    return () => media.removeListener(updatePreference);
+  }, []);
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+
     const root = rootRef.current;
     if (!root) return;
 
@@ -642,7 +659,7 @@ export default function LandingPage() {
     return () => {
       cleanupFns.forEach((fn) => fn());
     };
-  }, []);
+  }, [prefersReducedMotion]);
 
   const handleWaitlistSubmit = () => {
     submittedRef.current = true;
@@ -658,13 +675,20 @@ export default function LandingPage() {
     <div ref={rootRef}>
       {/* HERO */}
       <section className="hero" id="hero">
-        <canvas id="heroCanvas" />
+        {!prefersReducedMotion && <canvas id="heroCanvas" />}
         <div className="hero-grid-overlay" />
 
         <div className="hero-content">
           <div className="hero-badge" id="heroBadge">
             <span className="badge-dot" />
-            <strong>Backed by Emergent Ventures</strong> (Mercatus Center, George Mason University)
+            <a
+              href="https://www.mercatus.org/emergent-ventures"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <strong>Backed by Emergent Ventures</strong>
+            </a>
+            (Mercatus Center, George Mason University)
           </div>
 
           <h1 className="hero-title" id="heroTitle">
@@ -696,7 +720,29 @@ export default function LandingPage() {
               </svg>
               Star on GitHub
             </a>
+            <a href="#waitlist-form" className="btn btn-outline">Join Waitlist</a>
             <a href="#moat" className="btn btn-ghost">See The Moat ↓</a>
+          </div>
+
+          <div
+            style={{
+              margin: '0 auto 48px',
+              maxWidth: '680px',
+              width: '100%',
+              borderRadius: '20px',
+              overflow: 'hidden',
+              border: '1px solid rgba(175,254,0,0.25)',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
+              background: 'rgba(10,10,14,0.6)',
+            }}
+          >
+            <img
+              src="/frames/frame_090.webp"
+              alt="NeoCalculator prototype render"
+              loading="eager"
+              fetchPriority="high"
+              style={{ width: '100%', display: 'block' }}
+            />
           </div>
         </div>
 
@@ -1225,7 +1271,7 @@ export default function LandingPage() {
                 </svg>
                 Join Waitlist
               </button>
-              <div className="wl-privacy">🔒 We respect your privacy. Unsubscribe anytime.</div>
+              <div className="wl-privacy">We respect your data. No spam, just pure hardware engineering updates. Unsubscribe anytime.</div>
             </form>
 
             <div id="waitlist-success" style={{ display: waitlistSuccess ? 'block' : 'none' }}>
@@ -1240,11 +1286,22 @@ export default function LandingPage() {
       {/* CTA */}
       <section className="section cta" id="cta">
         <div className="container">
-          <canvas id="ctaCanvas" />
+          {prefersReducedMotion ? (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(175,254,0,0.08), transparent)',
+              }}
+            />
+          ) : (
+            <canvas id="ctaCanvas" />
+          )}
           <div className="cta-content">
             <div className="section-label">JOIN THE MISSION</div>
             <h2 className="cta-title">The calculator industry<br />hasn't been disrupted yet.</h2>
-            <p className="cta-sub">Built by a 15-year-old systems architect from Spain. Invited to the <strong>1517 Fund</strong> builder community. EV Grantee. The code is live, the hardware works, and the monopoly is crumbling.</p>
+            <p className="cta-sub">Built by a 15-year-old systems architect from Spain. Invited to the <a href="https://www.1517fund.com/" target="_blank" rel="noopener noreferrer"><strong>1517 Fund</strong></a> builder community. EV Grantee. The code is live, the hardware works, and the monopoly is crumbling.</p>
             <div className="cta-actions">
               <a href="https://github.com/El-EnderJ/NeoCalculator" target="_blank" rel="noopener" className="btn btn-primary btn-xl">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

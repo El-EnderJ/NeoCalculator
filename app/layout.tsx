@@ -21,11 +21,11 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     title: "NeoCalculator: The €20 Open-Source Graphing Calculator",
-    description: "NumOS runs a full CAS engine, real-time Navier-Stokes physics, and 17 university-grade apps on a $5 ESP32-S3 with 97 KB RAM. Open-source hardware disrupting the $150 calculator monopoly.",
+    description: "Scientific Mastery, Decolonized. Open-source, ESP32-based graphing calculator with a heavy CAS engine for €20. Join the revolution.",
     url: "https://neocalculator.tech",
     images: [
       {
-        url: "https://neocalculator.tech/og-image.png",
+        url: "https://neocalculator.tech/og-image.jpg",
         width: 1200,
         height: 630,
         alt: "NeoCalculator",
@@ -36,8 +36,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "NeoCalculator: The €20 Open-Source Graphing Calculator",
-    description: "NumOS: CAS engine + 17 apps on $5 silicon. Open-source hardware that surpasses a TI-84 at 8× lower cost.",
-    images: ["https://neocalculator.tech/og-image.png"],
+    description: "Scientific Mastery, Decolonized. Open-source, ESP32-based graphing calculator with a heavy CAS engine for €20. Join the revolution.",
+    images: ["https://neocalculator.tech/og-image.jpg"],
   },
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔢</text></svg>",

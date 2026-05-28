@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 
 import Navbar from "@/components/Navbar";
@@ -61,6 +62,11 @@ export default function RootLayout({
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+        />
+        <Script
+          defer
+          src="https://cloud.umami.is/script.js"
+          data-website-id="1a6202d4-439e-48e6-a031-e74f75f1e6e3"
         />
       </head>
       <body className="antialiased">

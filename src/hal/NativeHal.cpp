@@ -76,9 +76,22 @@
 #include "../ui/MainMenu.h"
 
 // ════════════════════════════════════════════════════════════════════════════
+// Global CAS settings (native definitions)
+//
+// Declarados extern en Config.h y definidos en main.cpp, pero main.cpp es
+// #ifdef ARDUINO. En la simulación nativa main.cpp no se compila, así que
+// definimos aquí las tres variables con los mismos tipos (Config.h:77-79) y
+// los mismos valores por defecto que el firmware (main.cpp:31-33).
+// ════════════════════════════════════════════════════════════════════════════
+bool setting_complex_enabled  = true;
+int  setting_decimal_precision = 10;
+bool setting_edu_steps         = false;
+
+// ════════════════════════════════════════════════════════════════════════════
 // DisplayDriver stubs (MainMenu almacena una referencia pero nunca la usa)
 // ════════════════════════════════════════════════════════════════════════════
 DisplayDriver::DisplayDriver() {}
+DisplayDriver::~DisplayDriver() {}
 void DisplayDriver::begin() {}
 void DisplayDriver::initLvgl(void*, void*, uint32_t) {}
 void DisplayDriver::lvglFlushCb(lv_display_t*, const lv_area_t*, uint8_t*) {}

@@ -386,6 +386,7 @@ lv_font_conv --font STIXTwoMath-Regular.otf \
   --range 0x1D400-0x1D7FF \        # Mathematical Alphanumeric Symbols
   --range 0x2308-0x230B \          # Ceil/Floor brackets
   --range 0x27E8-0x27EB \          # Angle brackets
+  --range 0x239B-0x23A6 \          # Stretchy delimiter assembly parts (MANDATORY for elastic (/{/[)
   -o stix_math_18.c
 ```
 
@@ -405,8 +406,9 @@ STIX Two Math contains ~4,000 glyphs. We cannot fit all of them. The following U
 | `U+2102, U+2115, U+2119, U+211A, U+211D, U+2124` | 6 | ℂ, ℕ, ℙ, ℚ, ℝ, ℤ (double-struck) |
 | `U+2200–U+22FF` | ~256 | Mathematical Operators (∀, ∃, ∈, ∉, ⊂, ⊆, ∪, ∩, ∫, ∬, ∭, ∂, ∇, √, ∛, ∜, ∞, ∼, ≈, ≅, ≠, ≡, ≤, ≥, ≪, ≫, ⊕, ⊗, ⊥, ∥, ∠, ∡, ∢, ∤, ∥, ∦, ∧, ∨, ¬, →, ←, ↔, ⇒, ⇐, ⇔, ↑, ↓, ±, ∓, ×, ⋅, ⋆, ⋄) |
 | `U+2308–U+230B` | 4 | ⌈ ⌉ ⌊ ⌋ (ceiling/floor) |
+| `U+239B–U+23A6` | 12 | Delimiter assembly pieces: parentheses hooks/extensions (U+239B–U+23A0) and bracket corners/extensions (U+23A1–U+23A6). **CRITICAL:** without these, elastic delimiters silently fall back to the unscaled base glyph — tall fractions inside parentheses will show undersized delimiters. |
 | `U+2A00–U+2AFF` | ~60 | Supplemental Math Ops (⨀, ⨁, ⨂, large operators etc.) |
-| **Subtotal** | **~502** | |
+| **Subtotal** | **~514** | |
 
 #### Tier 2 — Calculus & Advanced Notation (SHOULD HAVE, ~300 glyphs)
 
@@ -431,7 +433,7 @@ STIX Two Math contains ~4,000 glyphs. We cannot fit all of them. The following U
 | `U+2980–U+29FF` | ~30 | Fences |
 | **Subtotal** | **~200** | |
 
-**Total: ~969 glyphs** (Tier 1+2+3). This is ~24% of the full STIX Two Math font and should fit comfortably within 16 MB Flash.
+**Total: ~981 glyphs** (Tier 1+2+3, including 12 assembly pieces). This is ~25% of the full STIX Two Math font and should fit comfortably within 16 MB Flash.
 
 ### 5.3 Build-Time Font Extraction Pipeline
 

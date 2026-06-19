@@ -467,7 +467,7 @@ void TutorApp::onSolveClicked() {
         row->calculateLayout(srd->canvas.normalMetrics());
 
         int16_t w = static_cast<int16_t>(row->layout().width + 24);
-        int16_t h = static_cast<int16_t>(row->layout().ascent + row->layout().descent + 8);
+        int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
         if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
         if (h < 20) h = 20;
         lv_obj_set_size(srd->canvas.obj(), w, h);

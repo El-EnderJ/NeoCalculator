@@ -59,6 +59,10 @@
 #include "apps/OpticsLabApp.h"
 #include "apps/NeoLanguageApp.h"
 #include "apps/FractalApp.h"
+#if defined(NUMOS_MATH_VISUAL_VERIFY)
+#define NUMOS_MATH_VISUAL_APP_ENABLED 1
+#include "apps/MathRenderVisualTestApp.h"
+#endif
 
 // ── App descriptor ──
 struct AppData {
@@ -91,6 +95,9 @@ enum class Mode : uint8_t {
     APP_OPTICS_LAB,      // 2D optical ray-tracing simulator
     APP_NEO_LANGUAGE,    // NeoLanguage compiler frontend IDE
     APP_FRACTAL,         // Mandelbrot Fractal Explorer
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+    APP_MATH_VISUAL,     // Math renderer hardware verification screen
+#endif
     APP_SETTINGS,      // Settings (placeholder)
     STEP_VIEW          // Step-by-step view
 };
@@ -148,6 +155,9 @@ private:
     OpticsLabApp*      _opticsLabApp;
     NeoLanguageApp*    _neoLangApp;
     FractalApp*        _fractalApp;
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+    MathRenderVisualTestApp* _mathVisualApp;
+#endif
 
     // Math Engine
     Tokenizer _tokenizer;

@@ -58,7 +58,7 @@ public:
 
     /// Convert a SymEquation to a MathAST NodeRow.
     /// e.g., 2x + 3 = 5 → NodeRow{ 2x, +, 3, =, 5 }
-    /// Note: '=' is rendered as a NodeOperator-like element (NodeVariable('=') hack).
+    /// Note: '=' is rendered as a NodeOperator with OpKind::Eq (MathClass::REL for TeX spacing).
     static vpam::NodePtr fromSymEquation(const SymEquation& eq);
 };
 

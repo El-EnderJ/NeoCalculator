@@ -304,8 +304,8 @@ NodePtr SymToAST::fromSymEquation(const SymEquation& eq) {
     // LHS
     appendFlat(r, fromSymPoly(eq.lhs));
 
-    // = sign (rendered via NodeVariable('=') — display-only)
-    r->appendChild(makeVariable('='));
+    // = sign (rendered via NodeOperator with OpKind::Eq, MathClass::REL for TeX spacing)
+    r->appendChild(makeRelation(OpKind::Eq));
 
     // RHS
     appendFlat(r, fromSymPoly(eq.rhs));

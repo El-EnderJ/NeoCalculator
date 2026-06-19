@@ -560,7 +560,7 @@ NodePtr SymExprToAST::convertCoeffAssign(const SymCoeffAssign* coeff) {
 
     auto appendSlot = [&](char label, const SymExpr* val) {
         r->appendChild(makeVariable(label));
-        r->appendChild(makeVariable('='));
+        r->appendChild(makeRelation(OpKind::Eq));
         if (val) appendFlat(r, convert(val));
         else r->appendChild(makeNumber("?"));
     };

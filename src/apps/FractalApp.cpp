@@ -114,12 +114,13 @@ void FractalApp::end() {
     destroyModuleUI();
     destroyAtlasLauncher();
 
+    _statusBar.destroy();
+
     if (_screen) {
         lv_obj_delete(_screen);
         _screen = nullptr;
     }
 
-    _statusBar.resetPointers();
     _buffer.reset();
 
     if (_orbit) {

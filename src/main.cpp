@@ -35,9 +35,16 @@ bool setting_edu_steps = false;
 #include "input/KeyMatrix.h"   // legacy driver — no instanciado; conservado por si acaso
 #include "drivers/Keyboard.h"  // nuevo driver 5×10
 #include "input/SerialBridge.h"
+#include "input/NumosSerialBackend.h"
 #include "input/LvglKeypad.h"
 #include "SystemApp.h"
 #include "ui/SplashScreen.h"
+
+#define Serial NUMOS_SERIAL
+
+#ifdef NUMOS_MATH_STRESS_DIAGNOSTICS
+#include "math/MathRenderStressDiagnostics.h"
+#endif
 
 #ifdef NUMOS_STIX_DIAGNOSTICS
 #include "ui/StixGlyphGallery.h"
@@ -77,9 +84,20 @@ void setup() {
     Serial.begin(115200);
     // UART0 física (chip puente externo) — no necesita while(!Serial).
     // El puerto está disponible inmediatamente tras el reset.
-    delay(50);  // Breve margen para que el chip puente termine el reset
+    // Native USB CDC needs a bounded wait so the serial monitor can enumerate
+    // before boot diagnostics and SerialBridge input start flowing.
+#if NUMOS_SERIAL_BACKEND_USB_CDC
+    const uint32_t serialWaitStart = millis();
+    while (!Serial && (millis() - serialWaitStart) < 3000U) {
+        delay(10);
+    }
+#else
+    delay(50);  // UART bridge reset margin when Serial is routed to UART0.
+#endif
 
-    Serial.println("\n>>> NumOS: System Ready (UART Mode)");
+    Serial.print("\n>>> NumOS: System Ready (");
+    Serial.print(NUMOS_SERIAL_BACKEND_LABEL);
+    Serial.println(")");
     Serial.println("=== NumOS Boot ===");
 
     // -- CAS-Lite Phase A Tests (if enabled) --
@@ -145,6 +163,10 @@ void setup() {
     LvglKeypad::init();
     Serial.println("[LVGL] LvglKeypad indev creado (post-display)");
 
+#ifdef NUMOS_MATH_STRESS_DIAGNOSTICS
+    vpam::runMathRenderStressDiagnostics();
+#endif
+
     // -- 6. SplashScreen con animacion fade-in --
     volatile bool splashDone = false;
     g_splash.create();
@@ -185,7 +207,7 @@ void setup() {
                   (void*)focusGrp, (void*)focused);
 
     Serial.println("[BOOT] OK — Use w/a/s/d to navigate, Enter=EXE, c=AC");
-    Serial.println("[BOOT] Deep sleep DISABLED (USB mode)");
+    Serial.println("[BOOT] Deep sleep DISABLED (serial monitor mode)");
 }
 
 // ====================================================================

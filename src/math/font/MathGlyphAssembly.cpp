@@ -1,34 +1,26 @@
 /*
- * NumOS — Glyph Assembly Engine Implementation
+ * NumOS - Glyph Assembly Engine Implementation
  * Copyright (C) 2026 Juan Ramon
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 #include "MathGlyphAssembly.h"
+
 #include <algorithm>
 
-#include "../MathTypography.h"  // for duToPx
+#include "../MathTypography.h"
 
 namespace vpam {
 
-// ════════════════════════════════════════════════════════════════════════════
-// DU → Pixel conversion helpers
-// ════════════════════════════════════════════════════════════════════════════
-
 int16_t DelimiterAssembler::duToPxCeil(int16_t du, int16_t emSizePx) {
-    // Ceiling division: (du * emSize + upm - 1) / upm
-    int32_t num = static_cast<int32_t>(du) * emSizePx + kStixMathUPM - 1;
+    const int32_t num = static_cast<int32_t>(du) * emSizePx + kStixMathUPM - 1;
     return static_cast<int16_t>(num / kStixMathUPM);
 }
 
 int16_t DelimiterAssembler::duToPxRound(int16_t du, int16_t emSizePx) {
-    int32_t num = static_cast<int32_t>(du) * emSizePx + kStixMathUPM / 2;
+    const int32_t num = static_cast<int32_t>(du) * emSizePx + kStixMathUPM / 2;
     return static_cast<int16_t>(num / kStixMathUPM);
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// 6-State FSM — Validate & Split assembly parts
-// ════════════════════════════════════════════════════════════════════════════
 
 DelimiterAssembler::FsmResult
 DelimiterAssembler::validateAndSplit(const GlyphPartRecord* parts,
@@ -38,7 +30,7 @@ DelimiterAssembler::validateAndSplit(const GlyphPartRecord* parts,
     result.extenderPart = nullptr;
 
     if (count == 0 || parts == nullptr) {
-        result.valid = true;  // empty assembly → just use base glyph
+        result.valid = true;
         return result;
     }
 
@@ -49,206 +41,267 @@ DelimiterAssembler::validateAndSplit(const GlyphPartRecord* parts,
         const GlyphPartRecord& part = parts[i];
 
         if (part.isExtender) {
-            // ── Extender piece ────────────────────────────────────────
             switch (state) {
                 case FsmState::START:
                 case FsmState::BOTTOM_PIECES:
-                    // First extender: this is the repeatable piece
-                    if (result.extenderPart != nullptr) {
-                        // Already seen an extender → duplicate extender error
-                        return result;
-                    }
+                    if (result.extenderPart != nullptr) return result;
                     result.extenderPart = &part;
                     state = FsmState::EXTENDER_SEEN;
                     break;
-
                 case FsmState::EXTENDER_SEEN:
                 case FsmState::TOP_PIECES:
-                    // Duplicate extender after already seeing one → error
-                    return result;
-
                 default:
                     return result;
             }
         } else {
-            // ── Non-extender piece ────────────────────────────────────
-            nonExtenderCount++;
-            if (nonExtenderCount > 3) {
-                // Gecko constraint: max 3 non-extender pieces
-                return result;
-            }
+            ++nonExtenderCount;
+            if (nonExtenderCount > 3) return result;
 
             switch (state) {
                 case FsmState::START:
                 case FsmState::BOTTOM_PIECES:
-                    // Bottom piece (start of OpenType bottom-to-top list)
-                    if (result.bottomCount < 3) {
-                        result.bottomParts[result.bottomCount++] = &part;
-                    }
+                    result.bottomParts[result.bottomCount++] = &part;
                     state = FsmState::BOTTOM_PIECES;
                     break;
-
                 case FsmState::EXTENDER_SEEN:
                 case FsmState::TOP_PIECES:
-                    // Top piece (after extender in OpenType order)
-                    if (result.topCount < 3) {
-                        result.topParts[result.topCount++] = &part;
-                    }
+                    result.topParts[result.topCount++] = &part;
                     state = FsmState::TOP_PIECES;
                     break;
-
                 default:
                     return result;
             }
         }
     }
 
+    state = FsmState::DONE;
+    (void)state;
     result.valid = true;
     return result;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// assemble() — Canonical OpenType 1.9.1 assembly algorithm
-// ════════════════════════════════════════════════════════════════════════════
-
 DelimiterAssembler::AssemblyResult
 DelimiterAssembler::assemble(int16_t targetHeightPx,
-                             uint32_t /*baseCp*/,
                              const MathVariantTable& table,
                              int16_t emSizePx) {
     AssemblyResult result;
 
-    // ── Step 1: Size variant search (Spec §4.4) ───────────────────────────
-    // Start from index 0 (base glyph), iterate upward until a variant
-    // covers the target height or we exhaust the list.
-    {
-        int16_t baseH = duToPxCeil(table.baseHeight, emSizePx);
-        int16_t bestH = baseH;
-        uint32_t bestCp = table.baseCodepoint;
-        int16_t bestW = duToPxRound(table.baseWidth, emSizePx);
+    int16_t bestH = duToPxCeil(table.baseHeight, emSizePx);
+    uint32_t bestCp = table.baseCodepoint;
+    int16_t bestW = duToPxRound(table.baseWidth, emSizePx);
 
-        for (uint8_t i = 0; i < table.sizeVariantCount; ++i) {
-            const auto& sv = table.sizeVariants[i];
-            int16_t svH = duToPxCeil(sv.height, emSizePx);
-            if (svH >= targetHeightPx) {
-                // Found a variant that covers the target height
-                bestH = svH;
-                bestCp = sv.glyphCp;
-                bestW = duToPxRound(sv.glyphWidth, emSizePx);
-                break;  // First that fits → use it
-            }
-            // Track the tallest variant seen (for fallback)
-            if (svH > bestH) {
-                bestH = svH;
-                bestCp = sv.glyphCp;
-                bestW = duToPxRound(sv.glyphWidth, emSizePx);
-            }
+    for (uint8_t i = 0; i < table.sizeVariantCount; ++i) {
+        const auto& sv = table.sizeVariants[i];
+        const int16_t svH = duToPxCeil(sv.height, emSizePx);
+        const int16_t svW = duToPxRound(sv.glyphWidth, emSizePx);
+        if (svH >= targetHeightPx) {
+            bestH = svH;
+            bestCp = sv.glyphCp;
+            bestW = svW;
+            break;
         }
-
-        // If the best variant is tall enough AND we don't need assembly,
-        // return a single-glyph result.
-        if (bestH >= targetHeightPx) {
-            result.pieces[0] = { bestCp, false, bestH };
-            result.pieceCount = 1;
-            result.widthPx = bestW;
-            result.totalHeightPx = bestH;
-            result.isAssembly = false;
-            result.valid = true;
-            return result;
+        if (svH > bestH) {
+            bestH = svH;
+            bestCp = sv.glyphCp;
+            bestW = svW;
         }
     }
 
-    // ── Step 2: Assemble from parts (Spec §4.2, §4.3) ────────────────────
+    auto returnBestVariant = [&]() {
+        result.pieces[0] = { bestCp, false, bestH, 0, 0, 0 };
+        result.pieceCount = 1;
+        result.widthPx = bestW;
+        result.totalHeightPx = bestH;
+        result.isAssembly = false;
+        result.valid = true;
+    };
+
+    if (bestH >= targetHeightPx) {
+        returnBestVariant();
+        return result;
+    }
+
     if (table.assemblyPartCount == 0 || table.assemblyParts == nullptr) {
-        // No assembly data → fall back to largest size variant
-        int16_t baseH = duToPxCeil(table.baseHeight, emSizePx);
-        result.pieces[0] = { table.baseCodepoint, false, baseH };
-        result.pieceCount = 1;
-        result.widthPx = duToPxRound(table.baseWidth, emSizePx);
-        result.totalHeightPx = baseH;
-        result.isAssembly = false;
-        result.valid = true;
+        returnBestVariant();
         return result;
     }
 
-    // Validate and split assembly parts (bottom-to-top → bottom/extender/top)
-    FsmResult fsm = validateAndSplit(table.assemblyParts,
-                                     table.assemblyPartCount);
-    if (!fsm.valid) {
-        // FSM validation failed → fallback to base glyph
-        int16_t baseH = duToPxCeil(table.baseHeight, emSizePx);
-        result.pieces[0] = { table.baseCodepoint, false, baseH };
-        result.pieceCount = 1;
-        result.widthPx = duToPxRound(table.baseWidth, emSizePx);
-        result.totalHeightPx = baseH;
-        result.isAssembly = false;
-        result.valid = true;
+    const FsmResult fsm = validateAndSplit(table.assemblyParts,
+                                           table.assemblyPartCount);
+    if (!fsm.valid || fsm.extenderPart == nullptr) {
+        returnBestVariant();
         return result;
     }
 
-    // ── Step 3: Build top-to-bottom output ────────────────────────────────
-    // OpenType stores: [bottomNonExt…, extender, topNonExt…]  (bottom→top)
-    // We output:       [reverse(topNonExt), extender, bottomNonExt] (top→bottom)
-    //
-    // Final output order for renderer:
-    //   pieces[0..topCount-1]     = top non-extenders (reversed)
-    //   pieces[topCount]          = extender (repeated to fill gap)
-    //   pieces[topCount+1..end]   = bottom non-extenders
+    struct TempPiece {
+        uint32_t glyphCp;
+        bool isExtender;
+        int16_t rawAdvancePx;
+        uint8_t partIdx;
+    };
 
+    auto partConnectorStart = [&](uint8_t pi) -> int16_t {
+        return duToPxCeil(table.assemblyParts[pi].startConnector, emSizePx);
+    };
+    auto partConnectorEnd = [&](uint8_t pi) -> int16_t {
+        return duToPxCeil(table.assemblyParts[pi].endConnector, emSizePx);
+    };
+
+    const uint8_t extPartIdx = static_cast<uint8_t>(
+        fsm.extenderPart - table.assemblyParts);
+    const int16_t extAdvancePx = duToPxCeil(
+        fsm.extenderPart->fullAdvance, emSizePx);
+
+    auto buildTemp = [&](uint8_t extenderCopies, TempPiece* temp,
+                         uint8_t& tempCount) {
+        tempCount = 0;
+
+        for (int8_t i = static_cast<int8_t>(fsm.topCount) - 1;
+             i >= 0 && tempCount < kMaxParts; --i) {
+            const auto* part = fsm.topParts[i];
+            const uint8_t pi = static_cast<uint8_t>(part - table.assemblyParts);
+            temp[tempCount++] = {
+                part->glyphCp, false,
+                duToPxCeil(part->fullAdvance, emSizePx), pi
+            };
+        }
+
+        for (uint8_t i = 0; i < extenderCopies && tempCount < kMaxParts; ++i) {
+            temp[tempCount++] = {
+                fsm.extenderPart->glyphCp, true, extAdvancePx, extPartIdx
+            };
+        }
+
+        for (uint8_t i = 0; i < fsm.bottomCount && tempCount < kMaxParts; ++i) {
+            const auto* part = fsm.bottomParts[i];
+            const uint8_t pi = static_cast<uint8_t>(part - table.assemblyParts);
+            temp[tempCount++] = {
+                part->glyphCp, false,
+                duToPxCeil(part->fullAdvance, emSizePx), pi
+            };
+        }
+    };
+
+    auto rawHeight = [](const TempPiece* temp, uint8_t count) -> int16_t {
+        int16_t total = 0;
+        for (uint8_t i = 0; i < count; ++i) {
+            total = static_cast<int16_t>(total + temp[i].rawAdvancePx);
+        }
+        return total;
+    };
+
+    auto maxOverlapAt = [&](const TempPiece* temp, uint8_t i) -> int16_t {
+        return static_cast<int16_t>(std::min(
+            partConnectorEnd(temp[i].partIdx),
+            partConnectorStart(temp[i + 1].partIdx)));
+    };
+
+    auto minHeightWithMaxOverlap = [&](const TempPiece* temp,
+                                       uint8_t count) -> int16_t {
+        int16_t total = rawHeight(temp, count);
+        for (uint8_t i = 0; i + 1 < count; ++i) {
+            total = static_cast<int16_t>(total - maxOverlapAt(temp, i));
+        }
+        return total;
+    };
+
+    TempPiece temp[kMaxParts];
+    uint8_t tempCount = 0;
+    uint8_t extenderCopies = 0;
+    buildTemp(extenderCopies, temp, tempCount);
+
+    // WHY: OpenType assembly grows by reducing connector overlap before
+    // inserting another extender. That avoids visibly oversized delimiters.
+    while (tempCount < kMaxParts && rawHeight(temp, tempCount) < targetHeightPx) {
+        ++extenderCopies;
+        buildTemp(extenderCopies, temp, tempCount);
+    }
+
+    const int16_t rawH = rawHeight(temp, tempCount);
+    const int16_t minH = minHeightWithMaxOverlap(temp, tempCount);
+    const int16_t desiredH = static_cast<int16_t>(
+        std::max<int16_t>(minH, std::min<int16_t>(targetHeightPx, rawH)));
+    int16_t overlapBudget = static_cast<int16_t>(rawH - desiredH);
+
+    int16_t chosenOverlap[kMaxParts] = {};
+    // Step 2: extend all connections EQUALLY by reducing overlap (Spec §4.2).
+    // First count seams with non-zero overlap capacity, then distribute the
+    // overlapBudget evenly across all of them so no single seam is compressed
+    // more than its neighbours.
+    {
+        uint8_t seamCount = 0;
+        for (uint8_t i = 0; i + 1 < tempCount; ++i) {
+            if (maxOverlapAt(temp, i) > 0) ++seamCount;
+        }
+        if (seamCount > 0) {
+            const int16_t perSeam = static_cast<int16_t>(overlapBudget / seamCount);
+            int16_t remainder = static_cast<int16_t>(overlapBudget % seamCount);
+            for (uint8_t i = 0; i + 1 < tempCount; ++i) {
+                const int16_t maxOv = maxOverlapAt(temp, i);
+                if (maxOv > 0) {
+                    int16_t share = perSeam;
+                    if (remainder > 0) { ++share; --remainder; }
+                    chosenOverlap[i] = std::min(maxOv, share);
+                }
+            }
+        }
+    }
+
+    int16_t actualH = rawH;
+    for (uint8_t i = 0; i + 1 < tempCount; ++i) {
+        actualH = static_cast<int16_t>(actualH - chosenOverlap[i]);
+    }
+
+    const int16_t asmWidthPx = duToPxRound(table.assemblyParts[0].glyphWidth,
+                                           emSizePx);
     uint8_t outIdx = 0;
-
-    // Determine assembly glyph width (all parts share same horizontal advance)
-    int16_t asmWidthDU = table.assemblyParts[0].glyphWidth;
-    int16_t asmWidthPx = duToPxRound(asmWidthDU, emSizePx);
-
-    // 3a. Top pieces (reversed from OpenType order, which is bottom→top)
-    for (int8_t i = static_cast<int8_t>(fsm.topCount) - 1; i >= 0; --i) {
-        const auto* part = fsm.topParts[i];
+    for (uint8_t i = 0; i < tempCount && outIdx < kMaxParts; ++i) {
         result.pieces[outIdx++] = {
-            part->glyphCp, false,
-            duToPxCeil(part->fullAdvance, emSizePx)
+            temp[i].glyphCp,
+            temp[i].isExtender,
+            temp[i].rawAdvancePx,
+            partConnectorStart(temp[i].partIdx),
+            partConnectorEnd(temp[i].partIdx),
+            static_cast<int16_t>((i + 1 < tempCount) ? chosenOverlap[i] : 0)
         };
     }
-
-    // 3b. Extender (the repeatable middle piece)
-    if (fsm.extenderPart != nullptr && outIdx < kMaxParts) {
-        result.pieces[outIdx++] = {
-            fsm.extenderPart->glyphCp, true,
-            duToPxCeil(fsm.extenderPart->fullAdvance, emSizePx)
-        };
-    }
-
-    // 3c. Bottom pieces (in OpenType order = the first pieces in the table)
-    for (uint8_t i = 0; i < fsm.bottomCount && outIdx < kMaxParts; ++i) {
-        const auto* part = fsm.bottomParts[i];
-        result.pieces[outIdx++] = {
-            part->glyphCp, false,
-            duToPxCeil(part->fullAdvance, emSizePx)
-        };
-    }
-
-    // ── Compute total height ──────────────────────────────────────────────
-    int16_t totalH = 0;
-    for (uint8_t i = 0; i < outIdx; ++i) {
-        totalH = static_cast<int16_t>(totalH + result.pieces[i].heightPx);
-    }
-    result.totalHeightPx = totalH;
 
     result.pieceCount = outIdx;
     result.widthPx = asmWidthPx;
+    result.totalHeightPx = actualH;
     result.isAssembly = (outIdx > 1);
     result.valid = true;
     return result;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// glyphWidthPx() — Quick width lookup for layout
-// ════════════════════════════════════════════════════════════════════════════
-
 int16_t DelimiterAssembler::glyphWidthPx(uint32_t baseCp, int16_t emSizePx) {
     const MathVariantTable* table = lookupVariantTable(baseCp);
     if (!table) return 0;
+
     return duToPxRound(table->baseWidth, emSizePx);
+}
+
+DelimiterAssembler::GlyphMetrics
+DelimiterAssembler::glyphMetricsForHeightPx(uint32_t baseCp,
+                                            int16_t targetHeightPx,
+                                            int16_t emSizePx) {
+    const MathVariantTable* table = lookupVariantTable(baseCp);
+    if (!table) {
+        return { 0, 0, 0, false, false };
+    }
+
+    const AssemblyResult assembly = assemble(targetHeightPx, *table, emSizePx);
+    if (!assembly.valid) {
+        return { 0, 0, 0, false, false };
+    }
+
+    return {
+        assembly.isAssembly ? 0 : assembly.pieces[0].glyphCp,
+        assembly.widthPx,
+        assembly.totalHeightPx,
+        assembly.isAssembly,
+        true
+    };
 }
 
 }  // namespace vpam

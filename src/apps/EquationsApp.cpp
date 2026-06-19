@@ -677,7 +677,7 @@ void EquationsApp::createUI() {
             _templateCanvas[i].setExpression(row, nullptr);
             row->calculateLayout(_templateCanvas[i].normalMetrics());
             int16_t cw = row->layout().width + 8;
-            int16_t ch = row->layout().ascent + row->layout().descent + 4;
+            int16_t ch = vpam::mathObjectHeightPx(row->layout(), _templateCanvas[i].normalMetrics(), 4);
             if (ch < 20) ch = 20;
             if (cw > 160) cw = 160;
             lv_obj_set_size(_templateCanvas[i].obj(), cw, ch);
@@ -1150,8 +1150,7 @@ void EquationsApp::update() {
         row->calculateLayout(srd->canvas.normalMetrics());
 
         int16_t w = static_cast<int16_t>(row->layout().width + 24);
-        int16_t h = static_cast<int16_t>(
-            row->layout().ascent + row->layout().descent + 8);
+        int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
         if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
         if (h < 20) h = 20;
         lv_obj_set_size(srd->canvas.obj(), w, h);
@@ -1191,8 +1190,7 @@ void EquationsApp::update() {
         row->calculateLayout(srd->canvas.normalMetrics());
 
         int16_t w = static_cast<int16_t>(row->layout().width + 24);
-        int16_t h = static_cast<int16_t>(
-            row->layout().ascent + row->layout().descent + 8);
+        int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
         if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
         if (h < 20) h = 20;
         lv_obj_set_size(srd->canvas.obj(), w, h);
@@ -1471,8 +1469,7 @@ void EquationsApp::update() {
                         srd->canvas.setExpression(row, nullptr);
                         row->calculateLayout(srd->canvas.normalMetrics());
                         int16_t w = static_cast<int16_t>(row->layout().width + 24);
-                        int16_t h = static_cast<int16_t>(
-                            row->layout().ascent + row->layout().descent + 8);
+                        int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
                         if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
                         if (h < 20) h = 20;
                         lv_obj_set_size(srd->canvas.obj(), w, h);
@@ -1504,8 +1501,7 @@ void EquationsApp::update() {
                             srd->canvas.setExpression(row, nullptr);
                             row->calculateLayout(srd->canvas.normalMetrics());
                             int16_t w = static_cast<int16_t>(row->layout().width + 24);
-                            int16_t h = static_cast<int16_t>(
-                                row->layout().ascent + row->layout().descent + 8);
+                            int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
                             if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
                             if (h < 20) h = 20;
                             lv_obj_set_size(srd->canvas.obj(), w, h);
@@ -1996,7 +1992,7 @@ vpam::NodePtr EquationsApp::buildTemplateAST(int templateIdx) {
             r->appendChild(makeVariable('x'));
             r->appendChild(makeOperator(OpKind::Add));
             r->appendChild(makeVariable('c'));
-            r->appendChild(makeVariable('='));
+            r->appendChild(makeRelation(OpKind::Eq));
             r->appendChild(makeNumber("0"));
             break;
 
@@ -2006,7 +2002,7 @@ vpam::NodePtr EquationsApp::buildTemplateAST(int templateIdx) {
                 makeConstant(ConstKind::E), makeVariable('x')));
             r->appendChild(makeOperator(OpKind::Add));
             r->appendChild(makeVariable('b'));
-            r->appendChild(makeVariable('='));
+            r->appendChild(makeRelation(OpKind::Eq));
             r->appendChild(makeNumber("0"));
             break;
         }
@@ -2015,7 +2011,7 @@ vpam::NodePtr EquationsApp::buildTemplateAST(int templateIdx) {
             r->appendChild(makeFunction(FuncKind::Ln, makeVariable('x')));
             r->appendChild(makeOperator(OpKind::Add));
             r->appendChild(makeVariable('a'));
-            r->appendChild(makeVariable('='));
+            r->appendChild(makeRelation(OpKind::Eq));
             r->appendChild(makeNumber("0"));
             break;
         }
@@ -2057,7 +2053,7 @@ void EquationsApp::adjustEditHeight() {
 
     _editRow->calculateLayout(_editCanvas.normalMetrics());
 
-    int contentH = _editRow->layout().ascent + _editRow->layout().descent;
+    int contentH = vpam::mathObjectHeightPx(_editRow->layout(), _editCanvas.normalMetrics(), 0);
     int minH = 50;
     int maxH = 140;
 
@@ -2400,7 +2396,7 @@ void EquationsApp::buildResultDisplay() {
                 auto* r = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(_omniResult.variable));
                 r->appendChild(makeNumber("1"));
-                r->appendChild(makeVariable('='));
+                r->appendChild(makeRelation(OpKind::Eq));
 
                 // Real part
                 appendExactNodes(r, re);
@@ -2432,7 +2428,7 @@ void EquationsApp::buildResultDisplay() {
                 auto* r = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(_omniResult.variable));
                 r->appendChild(makeNumber("2"));
-                r->appendChild(makeVariable('='));
+                r->appendChild(makeRelation(OpKind::Eq));
 
                 // Real part
                 appendExactNodes(r, re);
@@ -2492,7 +2488,7 @@ void EquationsApp::buildResultDisplay() {
                 if (numSols > 1) {
                     r->appendChild(makeNumber(std::to_string(i + 1)));
                 }
-                r->appendChild(makeVariable('='));
+                r->appendChild(makeRelation(OpKind::Eq));
 
                 if (sol.symbolic) {
                     NodePtr valNode = cas::SymExprToAST::convert(sol.symbolic);
@@ -2578,7 +2574,7 @@ void EquationsApp::buildResultDisplay() {
                 auto* r = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(_nlResult.var1));
                 if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
-                r->appendChild(makeVariable('='));
+                r->appendChild(makeRelation(OpKind::Eq));
                 appendSolNode(r, sol.exprX, sol.numX);
 
                 int idx = _resultCount;
@@ -2601,7 +2597,7 @@ void EquationsApp::buildResultDisplay() {
                 auto* r = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(_nlResult.var2));
                 if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
-                r->appendChild(makeVariable('='));
+                r->appendChild(makeRelation(OpKind::Eq));
                 appendSolNode(r, sol.exprY, sol.numY);
 
                 int idx = _resultCount;
@@ -2624,7 +2620,7 @@ void EquationsApp::buildResultDisplay() {
                 auto* r = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(_nlResult.var3));
                 if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
-                r->appendChild(makeVariable('='));
+                r->appendChild(makeRelation(OpKind::Eq));
                 appendSolNode(r, sol.exprZ, sol.numZ);
 
                 int idx = _resultCount;
@@ -2656,7 +2652,7 @@ void EquationsApp::buildResultDisplay() {
             auto row = makeRow();
             auto* r = static_cast<NodeRow*>(row.get());
             r->appendChild(makeVariable(_systemResult.vars[i]));
-            r->appendChild(makeVariable('='));
+            r->appendChild(makeRelation(OpKind::Eq));
 
             NodePtr valNode = cas::SymToAST::fromExactVal(
                 _systemResult.solutions[i]);
@@ -2741,7 +2737,7 @@ void EquationsApp::buildStepsDisplay() {
         row->calculateLayout(srd->canvas.normalMetrics());
 
         int16_t w = row->layout().width + 24;
-        int16_t h = row->layout().ascent + row->layout().descent + 8;
+        int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
         if (w > CANVAS_W) w = CANVAS_W;
         if (h < 22) h = 22;
         lv_obj_set_size(srd->canvas.obj(), w, h);
@@ -2853,7 +2849,7 @@ void EquationsApp::buildStepsDisplay() {
                 auto* r  = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(var));
                 r->appendChild(makeNumber("1"));
-                r->appendChild(makeVariable('='));
+                r->appendChild(makeRelation(OpKind::Eq));
                 appendExactVPAM(r, re);
                 r->appendChild(makeOperator(OpKind::Add));
                 appendExactVPAM(r, im);
@@ -2870,7 +2866,7 @@ void EquationsApp::buildStepsDisplay() {
                 auto* r  = static_cast<NodeRow*>(row.get());
                 r->appendChild(makeVariable(var));
                 r->appendChild(makeNumber("2"));
-                r->appendChild(makeVariable('='));
+                r->appendChild(makeRelation(OpKind::Eq));
                 appendExactVPAM(r, re);
                 r->appendChild(makeOperator(OpKind::Sub));
                 appendExactVPAM(r, im);
@@ -3025,8 +3021,7 @@ void EquationsApp::buildCASStepsDisplay() {
         row->calculateLayout(srd->canvas.normalMetrics());
 
         int16_t w = static_cast<int16_t>(row->layout().width + 24);
-        int16_t h = static_cast<int16_t>(
-            row->layout().ascent + row->layout().descent + 8);
+        int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
         if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
         if (h < 20) h = 20;
         lv_obj_set_size(srd->canvas.obj(), w, h);
@@ -3228,8 +3223,7 @@ void EquationsApp::buildSystemCASStepsDisplay() {
         row->calculateLayout(srd->canvas.normalMetrics());
 
         int16_t w = static_cast<int16_t>(row->layout().width + 24);
-        int16_t h = static_cast<int16_t>(
-            row->layout().ascent + row->layout().descent + 8);
+        int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
         if (w > CANVAS_MAX_W) w = CANVAS_MAX_W;
         if (h < 20) h = 20;
         lv_obj_set_size(srd->canvas.obj(), w, h);

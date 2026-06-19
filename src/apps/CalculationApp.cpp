@@ -54,7 +54,9 @@ static constexpr int CONTENT_TOP   = BAR_H;                     // y = 25: top o
 static constexpr int CONTENT_BOT   = SCREEN_H - PAD;            // y = 234: bottom of content area
 static constexpr int CONTENT_FULL_H = CONTENT_BOT - CONTENT_TOP; // 209 px: full edit-mode height
 static constexpr int CONTENT_W     = SCREEN_W - 2 * PAD;        // 308 px: usable content width
-static constexpr int SEP_GAP       = 2;   // Gap between expression bottom → separator → result top
+static constexpr int SEP_THICK     = 1;   // Separator line height (px)
+static constexpr int SEP_GAP       = 4;   // Gap on each side of the separator (band→sep and sep→band)
+static constexpr int BAND_MIN_H    = 8;   // Absolute minimum height for each result-mode band
 
 // ════════════════════════════════════════════════════════════════════════════
 // Constructor / Destructor
@@ -152,6 +154,11 @@ void CalculationApp::createUI() {
 
     // ── MathCanvas — Expression (full-area, vertically centered in edit mode) ──
     _mathCanvas.create(_screen);
+    _mathCanvas.setAutoHeightEnabled(false);
+    _mathCanvas.setTraceLabel("calc_input_edit");
+    // LaTeX inline look: top-level atoms use TEXT style so fractions step their
+    // numerator/denominator down to SCRIPT style (compact inline rendering).
+    _mathCanvas.setMathStyle(vpam::MathStyle::TEXT);
     lv_obj_set_pos(_mathCanvas.obj(), PAD, CONTENT_TOP);
     lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, CONTENT_FULL_H);
     lv_obj_add_style(_mathCanvas.obj(), &ui::style_math_primary, LV_PART_MAIN);
@@ -169,6 +176,9 @@ void CalculationApp::createUI() {
 
     // ── MathCanvas — Result (fills remaining area when visible) ──
     _resultCanvas.create(_screen);
+    _resultCanvas.setAutoHeightEnabled(false);
+    _resultCanvas.setTraceLabel("calc_result");
+    _resultCanvas.setMathStyle(vpam::MathStyle::TEXT);
     lv_obj_set_pos(_resultCanvas.obj(), PAD, CONTENT_TOP);
     lv_obj_set_size(_resultCanvas.obj(), CONTENT_W, CONTENT_FULL_H);
     lv_obj_add_style(_resultCanvas.obj(), &ui::style_math_primary, LV_PART_MAIN);
@@ -539,6 +549,7 @@ void CalculationApp::evaluateExpression() {
 
     // Ocultar cursor de la expresión
     _mathCanvas.stopCursorBlink();
+    _mathCanvas.setExpression(_rootRow, nullptr);
 
     // Generate educational steps if enabled
     _eduStepLogger.clear();
@@ -560,26 +571,113 @@ void CalculationApp::evaluateExpression() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculationApp::applyResultLayout() {
-    // 1. Trim expression canvas to actual content height + tight padding
-    const auto& exprL = _rootRow->layout();
-    int16_t exprContentH = static_cast<int16_t>(
-        exprL.ascent + exprL.descent + vpam::MathCanvas::VPAM_VERT_PAD);
-    lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, exprContentH);
+    // ── Content-proportional result-mode split ──────────────────────────────
+    //
+    // Available space for the two bands (separating overhead excluded):
+    //   avail = CONTENT_FULL_H - SEP_THICK - 2*SEP_GAP
+    //         = 209 - 1 - 8 = 200 px
+    //
+    // Invariants (always satisfied before any LVGL call):
+    //   inH  >= BAND_MIN_H
+    //   resH >= BAND_MIN_H
+    //   inH + resH == avail  (so total == CONTENT_FULL_H)
+    //
+    // Centering is handled by the renderer: each MathCanvas centers its content
+    // vertically using:  baseline = y1 + (widgetH + ascent - descent) / 2
 
-    // Expression stays at CONTENT_TOP (its position from createUI)
-    int16_t exprBottom = CONTENT_TOP + exprContentH;
+    // Bare content heights (0 pad — centering is done by the renderer, not by padding).
+    const int16_t cIn  = vpam::mathObjectHeightPx(
+        _rootRow->layout(),   _mathCanvas.normalMetrics(),  0);
+    const int16_t cRes = vpam::mathObjectHeightPx(
+        _resultRow->layout(), _resultCanvas.normalMetrics(), 0);
 
-    // 2. Separator: position directly below trimmed expression
-    lv_obj_set_pos(_resultSep, PAD, exprBottom);
+    // Fixed overhead = separator + gaps on both sides.
+    const int16_t overhead = static_cast<int16_t>(SEP_THICK + 2 * SEP_GAP);
+    const int16_t avail    = static_cast<int16_t>(CONTENT_FULL_H - overhead);
+
+    // Proportional split; handle every degenerate case with no branching surprise.
+    int16_t inH, resH;
+    bool overflowed = false;
+
+    const int16_t combined = static_cast<int16_t>(cIn + cRes);
+    if (combined <= 0) {
+        // Both layouts are empty/invalid: give each band half.
+        inH  = static_cast<int16_t>(avail / 2);
+        resH = static_cast<int16_t>(avail - inH);
+    } else {
+        // Proportional assignment (integer multiply first to avoid precision loss).
+        inH  = static_cast<int16_t>(static_cast<int32_t>(avail) * cIn / combined);
+        resH = static_cast<int16_t>(avail - inH);
+
+        if (combined > avail) {
+            // Overflow: both bands are already shrunk proportionally — accept it.
+            overflowed = true;
+        } else {
+            // Ensure each band is at least as tall as its content.
+            // Adjustments are self-canceling: the sum stays == avail.
+            if (inH < cIn) {
+                inH  = cIn;
+                resH = static_cast<int16_t>(avail - inH);
+            } else if (resH < cRes) {
+                resH = cRes;
+                inH  = static_cast<int16_t>(avail - resH);
+            }
+        }
+    }
+
+    // Apply absolute minimums last.  Shrink the other band by the same amount
+    // to preserve the invariant  inH + resH == avail.
+    if (inH < BAND_MIN_H) {
+        inH  = BAND_MIN_H;
+        resH = static_cast<int16_t>(avail - inH);
+    }
+    if (resH < BAND_MIN_H) {
+        resH = BAND_MIN_H;
+        inH  = static_cast<int16_t>(avail - resH);
+    }
+    // Final safety: if avail itself is too small (extreme screen/content edge case)
+    // force each to BAND_MIN_H and let LVGL clip; total may exceed avail but screen
+    // hardware bounds remain valid.
+    if (inH < BAND_MIN_H)  inH  = BAND_MIN_H;
+    if (resH < BAND_MIN_H) resH = BAND_MIN_H;
+
+    // ── Derive absolute y-coordinates ──────────────────────────────────────
+    // Layout (top-to-bottom):
+    //   [inY .. inY+inH)   : input  canvas
+    //   [inY+inH .. sepY)  : SEP_GAP
+    //   [sepY .. sepY+SEP_THICK) : separator
+    //   [sepY+SEP_THICK .. resY) : SEP_GAP
+    //   [resY .. resY+resH)      : result canvas
+    //
+    const int16_t inY  = static_cast<int16_t>(CONTENT_TOP);
+    const int16_t sepY = static_cast<int16_t>(inY  + inH  + SEP_GAP);
+    const int16_t resY = static_cast<int16_t>(sepY + SEP_THICK + SEP_GAP);
+
+#if defined(NUMOS_MATH_RENDER_TRACE_ONCE)
+    Serial.printf(
+        "[CALC-SPLIT] cIn=%d cRes=%d avail=%d inH=%d resH=%d "
+        "inY=%d inBot=%d sepY=%d resY=%d resBot=%d overflow=%s\n",
+        (int)cIn, (int)cRes, (int)avail, (int)inH, (int)resH,
+        (int)inY,  (int)(inY  + inH),
+        (int)sepY,
+        (int)resY, (int)(resY + resH),
+        overflowed ? "yes" : "no");
+#else
+    (void)overflowed;
+#endif
+
+    // ── Apply to LVGL objects ───────────────────────────────────────────────
+    lv_obj_set_pos(_mathCanvas.obj(), PAD, inY);
+    lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, inH);
+
+    lv_obj_set_pos(_resultSep, PAD, sepY);
     lv_obj_remove_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
 
-    // 3. Result canvas: fill remaining space below separator
-    int16_t resultTop = static_cast<int16_t>(exprBottom + 1 + SEP_GAP);
-    int16_t resultH   = static_cast<int16_t>(SCREEN_H - resultTop - PAD);
-    if (resultH < 20) resultH = 20;  // safety minimum
-    lv_obj_set_pos(_resultCanvas.obj(), PAD, resultTop);
-    lv_obj_set_size(_resultCanvas.obj(), CONTENT_W, resultH);
+    lv_obj_set_pos(_resultCanvas.obj(), PAD, resY);
+    lv_obj_set_size(_resultCanvas.obj(), CONTENT_W, resH);
     lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+
+    _mathCanvas.setTraceLabel("calc_input_result_compact");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -587,6 +685,11 @@ void CalculationApp::applyResultLayout() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculationApp::showResult() {
+    if (_rootRow) {
+        _mathCanvas.setExpression(_rootRow, nullptr);
+        _mathCanvas.stopCursorBlink();
+    }
+
     // Generar el AST del resultado según el estado
     switch (_resultMode) {
         case vpam::ResultMode::Symbolic:
@@ -640,8 +743,12 @@ void CalculationApp::clearResult() {
     if (_resultSep) lv_obj_add_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
     if (_resultCanvas.obj()) lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
 
-    // Restore expression canvas to full-area vertically-centered Edit Mode
+    // Restore expression canvas to full-area vertically-centered Edit Mode.
+    // Re-set position too: applyResultLayout() moves the canvas, clearResult() must undo it.
+    lv_obj_set_pos(_mathCanvas.obj(), PAD, CONTENT_TOP);
     lv_obj_set_height(_mathCanvas.obj(), CONTENT_FULL_H);
+    _mathCanvas.setTraceLabel("calc_input_edit");
+    _mathCanvas.setExpression(_rootRow, &_cursor);
     _mathCanvas.invalidate();
 
     // Restore title
@@ -723,10 +830,10 @@ void CalculationApp::loadHistoryEntry(int index) {
     _cursor.init(_rootRow);
 
     // Mostrar en el canvas de expresión
-    _mathCanvas.setExpression(_rootRow, &_cursor);
+    _mathCanvas.setExpression(_rootRow, nullptr);
     _mathCanvas.resetScroll();
     refreshExpression();
-    _mathCanvas.startCursorBlink();
+    _mathCanvas.stopCursorBlink();
 
     // Mostrar el resultado almacenado
     _lastResult  = entry.result;
@@ -939,13 +1046,14 @@ void CalculationApp::buildStepsDisplay() {
         auto srd = std::make_unique<StepRenderData>();
         srd->nodeData = std::move(node);
         srd->canvas.create(_stepsContainer);
+        srd->canvas.setAutoHeightEnabled(false);
 
         auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
         srd->canvas.setExpression(row, nullptr);
         row->calculateLayout(srd->canvas.normalMetrics());
 
         int16_t w = row->layout().width + 24;
-        int16_t h = row->layout().ascent + row->layout().descent + 8;
+        int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
         if (w > CANVAS_W) w = CANVAS_W;
         if (h < 22) h = 22;
         lv_obj_set_size(srd->canvas.obj(), w, h);

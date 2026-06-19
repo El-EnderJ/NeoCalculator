@@ -37,13 +37,9 @@ DisplayDriver::~DisplayDriver() {
     if (_dmaStagingAlloc) {
         heap_caps_free(_dmaStagingAlloc);
         _dmaStagingAlloc = nullptr;
-        _dmaStagingBuf = nullptr;
-        _dmaStagingBufBytes = 0;
-    } else if (_dmaStagingBuf) {
-        heap_caps_free(_dmaStagingBuf);
-        _dmaStagingBuf = nullptr;
-        _dmaStagingBufBytes = 0;
     }
+    _dmaStagingBuf = nullptr;
+    _dmaStagingBufBytes = 0;
 }
 
 void DisplayDriver::begin() {

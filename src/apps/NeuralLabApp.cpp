@@ -168,7 +168,7 @@ void NeuralLabApp::end() {
         _trainTimer = nullptr;
     }
 
-    _statusBar.resetPointers();
+    _statusBar.destroy();
     lv_obj_delete(_screen);
     _screen    = nullptr;
     _drawObj   = nullptr;

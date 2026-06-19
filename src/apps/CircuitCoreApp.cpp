@@ -226,7 +226,7 @@ void CircuitCoreApp::end() {
     _compCount = 0;
 
     // ── Destroy LVGL objects ──
-    _statusBar.resetPointers();
+    _statusBar.destroy();
     _drawObj = nullptr;
     _toolbarObj = nullptr;
     _infoLabel = nullptr;

@@ -137,13 +137,13 @@ void OpticsLabApp::end() {
         _simTimer = nullptr;
     }
 
+    _statusBar.destroy();
+
     lv_obj_delete(_screen);
     _screen     = nullptr;
     _drawObj    = nullptr;
     _teleLabel  = nullptr;
     _infoLabel  = nullptr;
-
-    _statusBar.resetPointers();
 
     if (_renderBuf) {
         optFreeBuf(_renderBuf);

@@ -13,6 +13,8 @@ node_modules/
 fluid2d_plan.md
 .claude
 .agents
+.codex-tmp
+.venv-cad
 
 # Next.js / Web build artifacts
 .next/
@@ -36,3 +38,16 @@ yarn-error.log*
 Giac Integration Roadmap for NumOS.md
 CLAUDE.md
 skills-lock.json
+NeoCalculator_Case_v0_1
+NeoCalculator_Case_v0_3
+.aider*
+mimo_config.yaml
+venv
+
+# Ignorar todos los archivos y carpetas que empiezan por punto
+.*
+
+# Pero NO ignores estos archivos específicos
+!.gitignore
+!.vscode
+!.github

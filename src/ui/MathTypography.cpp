@@ -23,6 +23,10 @@ lv_style_t style_math_primary;
 
 static bool g_mathTypographyInited = false;
 
+static constexpr int16_t kStixPrimaryMathEmPx = 18;
+static constexpr int16_t kStixScriptMathEmPx = 12;
+static constexpr int16_t kStixScriptScriptMathEmPx = 8;
+
 void initMathTypography() {
     if (g_mathTypographyInited) {
         return;
@@ -36,12 +40,35 @@ void initMathTypography() {
     g_mathTypographyInited = true;
 }
 
+MathFontFace mathPrimaryFontFace() {
+    return { &stix_math_18, kStixPrimaryMathEmPx };
+}
+
+MathFontFace mathScriptFontFace() {
+    return { &stix_math_12, kStixScriptMathEmPx };
+}
+
+MathFontFace mathScriptScriptFontFace() {
+    return { &stix_math_8, kStixScriptScriptMathEmPx };
+}
+
 const lv_font_t* mathPrimaryFont() {
-    return &stix_math_18;
+    return mathPrimaryFontFace().font;
 }
 
 const lv_font_t* mathScriptFont() {
-    return &stix_math_12;
+    return mathScriptFontFace().font;
+}
+
+const lv_font_t* mathScriptScriptFont() {
+    return mathScriptScriptFontFace().font;
+}
+
+int16_t nominalMathEmSizeForFont(const lv_font_t* font) {
+    if (font == &stix_math_18) return kStixPrimaryMathEmPx;
+    if (font == &stix_math_12) return kStixScriptMathEmPx;
+    if (font == &stix_math_8) return kStixScriptScriptMathEmPx;
+    return font ? static_cast<int16_t>(font->line_height) : kStixPrimaryMathEmPx;
 }
 
 } // namespace ui

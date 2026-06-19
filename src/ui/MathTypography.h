@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <lvgl.h>
 
 namespace ui {
@@ -22,13 +23,31 @@ namespace ui {
 // Global math style used by equation-oriented widgets only.
 extern lv_style_t style_math_primary;
 
+struct MathFontFace {
+    const lv_font_t* font;
+    int16_t mathEmSizePx;
+};
+
 // Initialize math typography styles once (call after lv_init).
 void initMathTypography();
+
+// Canonical math font profiles. mathEmSizePx is the OpenType MATH design size,
+// not the LVGL line_height.
+MathFontFace mathPrimaryFontFace();
+MathFontFace mathScriptFontFace();
+MathFontFace mathScriptScriptFontFace();
 
 // Canonical font for VPAM/MathRenderer equation drawing.
 const lv_font_t* mathPrimaryFont();
 
 // Script-level font (e.g., superscripts/subscripts).
 const lv_font_t* mathScriptFont();
+
+// ScriptScript-level font (nested superscripts/subscripts).
+const lv_font_t* mathScriptScriptFont();
+
+// Returns the nominal MATH em for a generated STIX font, falling back to the
+// LVGL line height only for unknown external fonts.
+int16_t nominalMathEmSizeForFont(const lv_font_t* font);
 
 } // namespace ui

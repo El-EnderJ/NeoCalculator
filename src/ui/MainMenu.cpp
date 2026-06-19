@@ -99,6 +99,9 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     { 17, "OpticsLab",  0x00BCD4,   0x80DEEA },   // Cyan/Teal (Optics)
     { 18, "NeoLang",    0x4CAF50,   0xA5D6A7 },   // Terminal Green (Language/IDE)
     { 19, "Fractals",   0x3F51B5,   0x7986CB },   // Indigo (Math)
+#if defined(NUMOS_MATH_VISUAL_VERIFY)
+    { 20, "Math Visual", 0x1565C0,   0x5E9CE0 },   // Renderer hardware verification
+#endif
 };
 const int MainMenu::APP_COUNT =
     sizeof(MainMenu::APPS) / sizeof(MainMenu::APPS[0]);

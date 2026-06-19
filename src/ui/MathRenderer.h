@@ -78,6 +78,10 @@ public:
      */
     void setExpression(NodeRow* root, const CursorController* ctrl);
 
+    void setMathStyle(MathStyle style);
+    void setAutoHeightEnabled(bool enabled);
+    void setTraceLabel(const char* label);
+
     /**
      * Fuerza el redibujado completo del widget.
      * Llamar después de modificar el AST o mover el cursor.
@@ -154,11 +158,14 @@ private:
     // Fuentes LVGL
     const lv_font_t*  _fontNormal;     // STIX Two Math 18
     const lv_font_t*  _fontSmall;      // STIX Two Math 12 (super/subscript)
+    const lv_font_t*  _fontScriptScript; // STIX Two Math 8 (nested scripts)
     FontMetrics        _fmNormal;
     FontMetrics        _fmSmall;
+    FontMetrics        _fmScriptScript;
 
     // ── Cursor visual ────────────────────────────────────────────────────
     lv_timer_t* _cursorTimer = nullptr;  ///< Reliable 500ms toggle timer
+    bool        _cursorEditable = false; ///< Explicit edit-mode ownership gate
     bool        _cursorVisible = true;
     int16_t    _cursorX;        // Posición X absoluta (px)
     int16_t    _cursorY;        // Posición Y absoluta (px, tope)
@@ -166,8 +173,56 @@ private:
 
     // ── Scroll horizontal ────────────────────────────────────────────────
     int16_t    _scrollX;        // Desplazamiento horizontal (≤0)
+    bool       _autoHeightEnabled;
 
     // ── Smart Highlighter ────────────────────────────────────────────────
+#if defined(NUMOS_MATH_RENDER_TRACE_ONCE)
+    // Fixed scalar state for one-shot hardware coordinate traces.
+    const char* _traceLabel;
+    const MathNode* _traceLastRoot;
+    int16_t _traceLastObjX1;
+    int16_t _traceLastObjY1;
+    int16_t _traceLastObjX2;
+    int16_t _traceLastObjY2;
+    int16_t _traceLastWidgetW;
+    int16_t _traceLastWidgetH;
+    int16_t _traceLastRootW;
+    int16_t _traceLastRootH;
+    int16_t _traceLastRootAscent;
+    int16_t _traceLastRootDescent;
+    int16_t _traceLastBaseline;
+    int16_t _traceLastYTop;
+    int16_t _traceLastDrawX;
+    int16_t _traceLastScrollX;
+    uint16_t _traceClipSamples;
+    bool _traceSeen;
+    bool _traceCursorSeen;
+    bool _traceCursorEditable;
+    bool _traceCursorBlinkVisible;
+    bool _traceCursorClamped;
+    const NodeRow* _traceCursorRow;
+    int16_t _traceCursorIndex;
+    int16_t _traceCursorRootAscent;
+    int16_t _traceCursorRootDescent;
+    int16_t _traceCursorRowAscent;
+    int16_t _traceCursorRowDescent;
+    int16_t _traceCursorRowBaseline;
+    int16_t _traceCursorRowYTop;
+    int16_t _traceCursorFmAscent;
+    int16_t _traceCursorFmDescent;
+    int16_t _traceCursorFmLineAscent;
+    int16_t _traceCursorFmLineDescent;
+    uint8_t _traceCursorScriptLevel;
+    uint8_t _traceCursorStyle;
+    int16_t _traceCursorX;
+    int16_t _traceCursorY;
+    int16_t _traceCursorH;
+    int16_t _traceCursorCanvasX1;
+    int16_t _traceCursorCanvasY1;
+    int16_t _traceCursorCanvasX2;
+    int16_t _traceCursorCanvasY2;
+#endif
+
     const MathNode* _highlightNode;   ///< Node whose sub-tree to highlight (nullptr = off)
     lv_color_t      _highlightColor;  ///< Highlight colour (blue for steps, orange for result)
     bool            _highlightActive; ///< True while drawing inside the highlighted sub-tree
@@ -189,6 +244,7 @@ private:
 
     // ── Animación de cursor ──────────────────────────────────────────────
     static void cursorTimerCb(lv_timer_t* t);  ///< 500ms toggle — replaces erratic lv_anim_t
+    bool isCursorEditable() const;
 
     // ── Motor de dibujo recursivo ────────────────────────────────────────
 
@@ -197,146 +253,134 @@ private:
      * @param layer      Capa de dibujo LVGL.
      * @param node       Nodo a dibujar.
      * @param x          Posición X del borde izquierdo.
-     * @param yBaseline  Posición Y del baseline (y crece hacia abajo).
+     * @param yTop       Top exacto de la bounding box del nodo (y crece hacia abajo).
      * @param fm         Métricas tipográficas del contexto actual.
      * @param font       Fuente LVGL del contexto actual.
      */
     void drawNode(lv_layer_t* layer, const MathNode* node,
-                  int16_t x, int16_t yBaseline,
+                  int16_t x, int16_t yTop,
                   const FontMetrics& fm, const lv_font_t* font,
                   int depth = 0);
 
-    // Dibujo especializado por tipo de nodo
+    // Top-based internal path that consumes an already-computed LayoutResult.
+    // It must not call calculateLayout() inside the render recursion.
+    void drawNodeWithLayout(lv_layer_t* layer, const MathNode* node,
+                            int16_t x, int16_t yTop,
+                            const FontMetrics& fm, const lv_font_t* font,
+                            int depth = 0);
+
+    // Top-based row drawing. Children are positioned by child bounding-box top.
     void drawRow(lv_layer_t* layer, const NodeRow* row,
-                 int16_t x, int16_t yBaseline,
+                 int16_t x, int16_t rowYTop,
                  const FontMetrics& fm, const lv_font_t* font,
                  int depth = 0);
 
-    void drawNumber(lv_layer_t* layer, const NodeNumber* node,
-                    int16_t x, int16_t yBaseline,
-                    const FontMetrics& fm, const lv_font_t* font);
+    // Internal baseline-oriented drawing path. yBaseline is always a baseline.
+    void drawNodeBaseline(lv_layer_t* layer, const MathNode* node,
+                          int16_t x, int16_t yBaseline,
+                          const FontMetrics& fm, const lv_font_t* font,
+                          int depth = 0);
 
-    void drawOperator(lv_layer_t* layer, const NodeOperator* node,
-                      int16_t x, int16_t yBaseline,
-                      const FontMetrics& fm, const lv_font_t* font);
-
-    void drawEmpty(lv_layer_t* layer, const NodeEmpty* node,
-                   int16_t x, int16_t yBaseline,
-                   const FontMetrics& fm);
-
-    void drawFraction(lv_layer_t* layer, const NodeFraction* node,
-                      int16_t x, int16_t yBaseline,
-                      const FontMetrics& fm, const lv_font_t* font,
-                      int depth = 0);
-
-    void drawPower(lv_layer_t* layer, const NodePower* node,
-                   int16_t x, int16_t yBaseline,
-                   const FontMetrics& fm, const lv_font_t* font,
-                   int depth = 0);
-
-    void drawRoot(lv_layer_t* layer, const NodeRoot* node,
-                  int16_t x, int16_t yBaseline,
-                  const FontMetrics& fm, const lv_font_t* font,
-                  int depth = 0);
-
-    void drawParen(lv_layer_t* layer, const NodeParen* node,
-                   int16_t x, int16_t yBaseline,
-                   const FontMetrics& fm, const lv_font_t* font,
-                   int depth = 0);
-
-    void drawFunction(lv_layer_t* layer, const NodeFunction* node,
-                      int16_t x, int16_t yBaseline,
-                      const FontMetrics& fm, const lv_font_t* font,
-                      int depth = 0);
-
-    void drawLogBase(lv_layer_t* layer, const NodeLogBase* node,
-                     int16_t x, int16_t yBaseline,
-                     const FontMetrics& fm, const lv_font_t* font,
-                     int depth = 0);
-
-    void drawConstant(lv_layer_t* layer, const NodeConstant* node,
-                      int16_t x, int16_t yBaseline,
-                      const FontMetrics& fm, const lv_font_t* font);
-
-    void drawVariable(lv_layer_t* layer, const NodeVariable* node,
-                      int16_t x, int16_t yBaseline,
-                      const FontMetrics& fm, const lv_font_t* font);
-
-    void drawPeriodicDecimal(lv_layer_t* layer, const NodePeriodicDecimal* node,
-                             int16_t x, int16_t yBaseline,
-                             const FontMetrics& fm, const lv_font_t* font);
-
-    void drawDefIntegral(lv_layer_t* layer, const NodeDefIntegral* node,
+    void drawRowBaseline(lv_layer_t* layer, const NodeRow* row,
                          int16_t x, int16_t yBaseline,
                          const FontMetrics& fm, const lv_font_t* font,
                          int depth = 0);
 
-    void drawSummation(lv_layer_t* layer, const NodeSummation* node,
-                       int16_t x, int16_t yBaseline,
-                       const FontMetrics& fm, const lv_font_t* font,
-                       int depth = 0);
+    // Dibujo especializado por tipo de nodo (baseline-internal)
 
-    void drawSubscript(lv_layer_t* layer, const NodeSubscript* node,
-                       int16_t x, int16_t yBaseline,
-                       const FontMetrics& fm, const lv_font_t* font,
-                       int depth = 0);
+    void drawNumberBaseline(lv_layer_t* layer, const NodeNumber* node,
+                            int16_t x, int16_t yBaseline,
+                            const FontMetrics& fm, const lv_font_t* font);
 
-    void drawBigOp(lv_layer_t* layer, const NodeBigOp* node,
-                   int16_t x, int16_t yBaseline,
-                   const FontMetrics& fm, const lv_font_t* font,
-                   int depth = 0);
+    void drawOperatorBaseline(lv_layer_t* layer, const NodeOperator* node,
+                              int16_t x, int16_t yBaseline,
+                              const FontMetrics& fm, const lv_font_t* font);
 
-    // ── Vectorial symbol primitives ──────────────────────────────────────
+    void drawEmptyBaseline(lv_layer_t* layer, const NodeEmpty* node,
+                           int16_t x, int16_t yBaseline,
+                           const FontMetrics& fm);
 
-    /**
-     * Draws a stylized ∫ symbol as a smooth S-curve with serifs.
-     * @param cx      Horizontal centre of the symbol stroke.
-     * @param symTop  Y-coordinate of the top of the symbol.
-     * @param symBot  Y-coordinate of the bottom of the symbol.
-     * @param halfW   Half-width used to offset the top/bottom serifs.
-     * @param color   Stroke colour.
-     */
-    void drawIntegralSymbol(lv_layer_t* layer,
-                            int16_t cx, int16_t symTop, int16_t symBot,
-                            int16_t halfW, lv_color_t color);
+    void drawFractionBaseline(lv_layer_t* layer, const NodeFraction* node,
+                              int16_t x, int16_t yBaseline,
+                              const FontMetrics& fm, const lv_font_t* font,
+                              int depth = 0);
 
-    /**
-     * Draws a professional Σ symbol as a filled zigzag shape with a
-     * right-hand vertical bar for the closed polygon look.
-     * @param symLeft   Left edge of the symbol bounding box.
-     * @param symRight  Right edge of the symbol bounding box.
-     * @param symTop    Y-coordinate of the top horizontal bar.
-     * @param symBot    Y-coordinate of the bottom horizontal bar.
-     * @param color     Stroke colour.
-     */
-    void drawSummationSymbol(lv_layer_t* layer,
-                             int16_t symLeft, int16_t symRight,
-                             int16_t symTop, int16_t symBot,
-                             lv_color_t color);
+    void drawPowerBaseline(lv_layer_t* layer, const NodePower* node,
+                           int16_t x, int16_t yBaseline,
+                           const FontMetrics& fm, const lv_font_t* font,
+                           int depth = 0);
 
-    /**
-     * Draw a scalable delimiter using OpenType Math Glyph Assembly.
-     *
-     * Renders top hook + repeated extensions + bottom hook from the
-     * STIX Two Math font. Falls back to a single standard parenthesis
-     * glyph when the total height is too short for assembly.
-     *
-     * @param layer      LVGL draw layer.
-     * @param x          Left edge X of the paren bounding box.
-     * @param yTop       Y coordinate of the top of the delimiter.
-     * @param yBottom    Y coordinate of the bottom of the delimiter.
-     * @param left       true for '(', false for ')'.
-     * @param color      Glyph colour.
-     * @param font       Font containing the assembly glyphs.
-     */
-    void drawAssembledDelimiter(lv_layer_t* layer,
-                                int16_t x, int16_t yTop, int16_t yBottom,
-                                bool left, lv_color_t color,
-                                const lv_font_t* font);
+    void drawRootBaseline(lv_layer_t* layer, const NodeRoot* node,
+                          int16_t x, int16_t yBaseline,
+                          const FontMetrics& fm, const lv_font_t* font,
+                          int depth = 0);
+
+    void drawParenBaseline(lv_layer_t* layer, const NodeParen* node,
+                           int16_t x, int16_t yBaseline,
+                           const FontMetrics& fm, const lv_font_t* font,
+                           int depth = 0);
+
+    void drawFunctionBaseline(lv_layer_t* layer, const NodeFunction* node,
+                              int16_t x, int16_t yBaseline,
+                              const FontMetrics& fm, const lv_font_t* font,
+                              int depth = 0);
+
+    void drawLogBaseBaseline(lv_layer_t* layer, const NodeLogBase* node,
+                             int16_t x, int16_t yBaseline,
+                             const FontMetrics& fm, const lv_font_t* font,
+                             int depth = 0);
+
+    void drawConstantBaseline(lv_layer_t* layer, const NodeConstant* node,
+                              int16_t x, int16_t yBaseline,
+                              const FontMetrics& fm, const lv_font_t* font);
+
+    void drawVariableBaseline(lv_layer_t* layer, const NodeVariable* node,
+                              int16_t x, int16_t yBaseline,
+                              const FontMetrics& fm, const lv_font_t* font);
+
+    void drawPeriodicDecimalBaseline(lv_layer_t* layer, const NodePeriodicDecimal* node,
+                                     int16_t x, int16_t yBaseline,
+                                     const FontMetrics& fm, const lv_font_t* font);
+
+    void drawDefIntegralBaseline(lv_layer_t* layer, const NodeDefIntegral* node,
+                                 int16_t x, int16_t yBaseline,
+                                 const FontMetrics& fm, const lv_font_t* font,
+                                 int depth = 0);
+
+    void drawSummationBaseline(lv_layer_t* layer, const NodeSummation* node,
+                               int16_t x, int16_t yBaseline,
+                               const FontMetrics& fm, const lv_font_t* font,
+                               int depth = 0);
+
+    void drawSubscriptBaseline(lv_layer_t* layer, const NodeSubscript* node,
+                               int16_t x, int16_t yBaseline,
+                               const FontMetrics& fm, const lv_font_t* font,
+                               int depth = 0);
+
+    void drawBigOpBaseline(lv_layer_t* layer, const NodeBigOp* node,
+                           int16_t x, int16_t yBaseline,
+                           const FontMetrics& fm, const lv_font_t* font,
+                           int depth = 0);
+
+    // ── N-ary operator glyph rendering (native STIX Two Math glyphs) ─────
 
     // ── Cursor ───────────────────────────────────────────────────────────
     void drawCursor(lv_layer_t* layer);
-    void computeCursorPosition(int16_t baseX, int16_t baseY);
+    void computeCursorPosition(int16_t baseX, int16_t rootBaseline,
+                               const lv_area_t& objArea,
+                               const LayoutResult& rootLayout,
+                               int16_t rootYTop);
+#if defined(NUMOS_MATH_RENDER_TRACE_ONCE)
+    void traceCursorState(const LayoutResult& rootLayout,
+                          const NodeRow* targetRow,
+                          int16_t targetIndex,
+                          const LayoutResult* targetLayout,
+                          int16_t rowBaseline,
+                          int16_t rowYTop,
+                          const FontMetrics& cursorFm,
+                          const lv_area_t& objArea,
+                          bool clamped);
+#endif
 
     /**
      * Calcula la X acumulada para un índice dentro de un NodeRow.
@@ -348,8 +392,8 @@ private:
     int16_t childXOffset(const NodeRow* row, int index, const FontMetrics& fm) const;
 
     // ── Helpers de dibujo ────────────────────────────────────────────────
-    void drawText(lv_layer_t* layer, int16_t x, int16_t yBaseline,
-                  const char* text, uint8_t scriptLevel, lv_color_t color);
+    void drawTextBaseline(lv_layer_t* layer, int16_t x, int16_t yBaseline,
+                          const char* text, uint8_t scriptLevel, lv_color_t color);
 
     void drawLine(lv_layer_t* layer,
                   int16_t x1, int16_t y1, int16_t x2, int16_t y2,

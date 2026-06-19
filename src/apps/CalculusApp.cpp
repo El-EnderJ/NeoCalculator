@@ -708,7 +708,7 @@ void CalculusApp::adjustInputHeight() {
     if (!_inputRow) return;
 
     _inputRow->calculateLayout(_inputCanvas.normalMetrics());
-    int contentH = _inputRow->layout().ascent + _inputRow->layout().descent;
+    int contentH = mathObjectHeightPx(_inputRow->layout(), _inputCanvas.normalMetrics(), 0);
 
     int newH = contentH + 16;
     if (newH < 50) newH = 50;
@@ -1056,7 +1056,7 @@ void CalculusApp::buildStepsDisplay() {
         row->calculateLayout(srd->canvas.normalMetrics());
 
         int16_t w = row->layout().width + 24;
-        int16_t h = row->layout().ascent + row->layout().descent + 8;
+        int16_t h = mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
         if (w > CANVAS_W) w = CANVAS_W;
         if (h < 22) h = 22;
         lv_obj_set_size(srd->canvas.obj(), w, h);

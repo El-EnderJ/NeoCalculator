@@ -1013,7 +1013,7 @@ void GrapherApp::refreshVPAMExpr(int idx) {
     _exprASTRow[idx]->calculateLayout(_exprCanvas[idx].normalMetrics());
     // Resize canvas to fit AST content so the pill stretches
     const auto& rootL = _exprASTRow[idx]->layout();
-    int16_t astH = static_cast<int16_t>(rootL.ascent + rootL.descent + 2 * PILL_PAD); // padding top+bottom
+    int16_t astH = vpam::mathObjectHeightPx(rootL, _exprCanvas[idx].normalMetrics(), 2 * PILL_PAD);
     int16_t minH = ROW_H - 2 * PILL_PAD;
     if (astH < minH) astH = minH;
     lv_obj_set_height(_exprCanvas[idx].obj(), astH);
@@ -1215,8 +1215,8 @@ vpam::NodePtr GrapherApp::buildTemplateAST(const char* text) {
             r->appendChild(vpam::makeVariable('y'));
         } else if (c == '=') {
             // VPAM has no dedicated equality-operator node; '=' is rendered
-            // via NodeVariable('=') — the same pattern used in SymToAST.cpp.
-            r->appendChild(vpam::makeVariable('='));
+            // via NodeOperator with OpKind::Eq (MathClass::REL for TeX spacing).
+            r->appendChild(vpam::makeRelation(OpKind::Eq));
         } else if (c == '^') {
             // Simple power: take next char(s) as exponent
             auto expRow = vpam::makeRow();
@@ -2301,7 +2301,7 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
         case KeyCode::VAR_Y: cur.insertVariable('y'); break;
 
         // ── Equation sign (FREE_EQ = '=' key) ──
-        // VPAM renders '=' via NodeVariable('=') — the same pattern as SymToAST.cpp.
+        // VPAM renders '=' via NodeOperator with OpKind::Eq (MathClass::REL for TeX spacing).
         case KeyCode::FREE_EQ: cur.insertVariable('='); break;
 
         // ── Constants ──

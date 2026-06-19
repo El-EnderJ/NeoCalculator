@@ -64,6 +64,9 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _opticsLabApp(nullptr),
       _neoLangApp(nullptr),
       _fractalApp(nullptr),
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+      _mathVisualApp(nullptr),
+#endif
       _tokenizer(),
       _parser(),
       _evaluator(),
@@ -118,6 +121,9 @@ void SystemApp::begin() {
     _opticsLabApp = new OpticsLabApp();
     _neoLangApp   = new NeoLanguageApp();
     _fractalApp   = new FractalApp();
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+    _mathVisualApp = new MathRenderVisualTestApp();
+#endif
 
     // ── LVGL Launcher (show menu before LittleFS I/O) ──
     initApps();
@@ -167,6 +173,9 @@ void SystemApp::initApps() {
     _apps.emplace_back(10, "Settings",     icon_Settings);
     // 11-18 are hidden/experimental LVGL apps 
     _apps.emplace_back(19, "Fractals",     icon_Grapher);
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+    _apps.emplace_back(20, "Math Visual",  icon_Calculation);
+#endif
 }
 
 void SystemApp::teardownModeNow(Mode mode) {
@@ -191,6 +200,9 @@ void SystemApp::teardownModeNow(Mode mode) {
         case Mode::APP_OPTICS_LAB:     if (_opticsLabApp)    _opticsLabApp->end();    break;
         case Mode::APP_NEO_LANGUAGE:   if (_neoLangApp)      _neoLangApp->end();      break;
         case Mode::APP_FRACTAL:        if (_fractalApp)      _fractalApp->end();      break;
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+        case Mode::APP_MATH_VISUAL:     if (_mathVisualApp)   _mathVisualApp->end();   break;
+#endif
         default: break;
     }
 }
@@ -268,6 +280,10 @@ void SystemApp::update() {
     } else if (_mode == Mode::APP_FRACTAL) {
         // FractalApp has a small update state machine (safe transitions + render polling).
         if (_fractalApp) _fractalApp->update();
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+    } else if (_mode == Mode::APP_MATH_VISUAL) {
+        // LVGL handles MathRenderVisualTestApp rendering.
+#endif
     } else if (_mode == Mode::MENU) {
         // LVGL maneja el renderizado del menú via lv_timer_handler() en main.cpp
         _redraw = false;
@@ -308,6 +324,9 @@ void SystemApp::render() {
         case Mode::APP_OPTICS_LAB:   break;    // LVGL-native — no-op
         case Mode::APP_NEO_LANGUAGE: break;    // LVGL-native — no-op
         case Mode::APP_FRACTAL:      break;    // LVGL-native — no-op
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+        case Mode::APP_MATH_VISUAL:  break;    // LVGL-native — no-op
+#endif
         case Mode::APP_GRAPHER:     renderGraphMode();  break;
         case Mode::STEP_VIEW:       renderSteps();      break;
         // APP_TABLE placeholder
@@ -627,6 +646,15 @@ void SystemApp::handleKey(const KeyEvent &ev) {
                 }
             }
             break;
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+        case Mode::APP_MATH_VISUAL:
+            if (ev.code == KeyCode::MODE || ev.code == KeyCode::AC) {
+                returnToMenu();
+            } else if (_mathVisualApp) {
+                _mathVisualApp->handleKey(ev);
+            }
+            break;
+#endif
         case Mode::APP_TABLE:
             handleKeyApp(ev);
             break;
@@ -796,6 +824,13 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_fractalApp) _fractalApp->load();
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+    } else if (id == 20) {
+        // Math renderer visual verification is LVGL-native and debug-only.
+        g_lvglActive = true;
+        switchApp(id);
+        if (_mathVisualApp) _mathVisualApp->load();
+#endif
     } else {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
@@ -852,6 +887,9 @@ void SystemApp::switchApp(int id) {
         case 17: _mode = Mode::APP_OPTICS_LAB; break;
         case 18: _mode = Mode::APP_NEO_LANGUAGE; break;
         case 19: _mode = Mode::APP_FRACTAL;    break;
+#if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
+        case 20: _mode = Mode::APP_MATH_VISUAL; break;
+#endif
         default: _mode = Mode::MENU;            break;
     }
     _redraw = true;
@@ -920,12 +958,14 @@ void SystemApp::handleKeyApp(const KeyEvent &ev) {
 void SystemApp::handleKeySteps(const KeyEvent &ev) {
     if (ev.code == KeyCode::AC || ev.code == KeyCode::ENTER || ev.code == KeyCode::MODE) {
         _mode = Mode::APP_CALCULATION;
+        _redraw = false;
+        g_lvglActive = true;
+        if (_calcApp) _calcApp->load();
     } else if (ev.code == KeyCode::DOWN) {
         _stepScroll++;
     } else if (ev.code == KeyCode::UP) {
         if (_stepScroll > 0) _stepScroll--;
     }
-    _redraw = true;
 }
 
 // ═════════════════════════════════════════════════

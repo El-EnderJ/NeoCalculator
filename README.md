@@ -18,7 +18,7 @@
 [![Language](https://img.shields.io/badge/Language-C%2B%2B17-blue?logo=cplusplus&logoColor=white)](https://en.cppreference.com/)
 [![Software License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Hardware License](https://img.shields.io/badge/Hardware-CERN--OHL--S-orange.svg)](https://cern.ch/cern-ohl)
-[![Status](https://img.shields.io/badge/Status-Pro--CAS%20Production-brightgreen)](#project-status)
+[![Status](https://img.shields.io/badge/Status-CAS%20Prototype-orange)](#project-status)
 [![RAM](https://img.shields.io/badge/RAM-29.7%25%20%E2%80%94%2097.2%20KB-informational)](#build-stats)
 [![Flash](https://img.shields.io/badge/Flash-23.2%25%20%E2%80%94%201.52%20MB-informational)](#build-stats)
 [![GitHub Stars](https://img.shields.io/github/stars/El-EnderJ/NeoCalculator?style=social)](https://github.com/El-EnderJ/NeoCalculator)
@@ -58,13 +58,13 @@
 
 ## What is NumOS?
 
-**NumOS** is an open-source scientific and graphing calculator operating system built on the **ESP32-S3 N16R8** microcontroller (16 MB Flash QIO + 8 MB PSRAM OPI). The project aims to become the best open-source calculator in the world, rivalling the Casio fx-991EX ClassWiz, the NumWorks, the TI-84 Plus CE, and the HP Prime G2.
+**NumOS** is an open-source scientific and graphing calculator operating system built on the **ESP32-S3 N16R8** microcontroller (16 MB Flash QIO + 8 MB PSRAM OPI). The project aims to provide advanced features comparable to established scientific calculators, including symbolic mathematics, graphing, and natural display formatting.
 
-*Delivering a high-end CAS experience for a ~€20 BOM, disrupting the educational hardware monopoly.*
+*Working toward delivering a capable CAS experience for a ~€20 BOM as an open-source alternative in the educational calculator space.*
 
 **NumOS delivers:**
 
-- **Giac-backed CAS Engine** — Symbolic math now runs through Giac C++ via `src/math/giac/GiacBridge.cpp` (The Big Switch). Legacy CAS-S3 modules remain documented as historical milestones and optional local tooling.
+- **Giac-backed CAS Engine** — Symbolic math implementation using Giac C++ via `src/math/giac/GiacBridge.cpp` for evaluation. Legacy CAS-S3 modules remain documented as historical milestones and optional local tooling.
 - **Natural Display V.P.A.M.** — Formulae rendered as they appear on paper: real stacked fractions, radical symbols (√), genuine superscripts, 2D navigation with a structural smart cursor.
  - **Modern LVGL 9.x Interface** — Smooth transitions, animated splash screen, NumWorks-style launcher.
     Recent launcher refactor: the launcher now uses LVGL Flex `ROW_WRAP` (dynamic rows) with fixed card sizing
@@ -527,17 +527,17 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 
 | Phase | Description | Status |
 |:------|:------------|:------:|
-| **Phase 1** | Math Engine — Tokenizer, Shunting-Yard Parser, RPN Evaluator, ExprNode, VariableContext | ✅ Complete |
-| **Phase 2** | Natural Display V.P.A.M. — fractions, radicals, exponents, smart 2D cursor | ✅ Complete |
-| **Phase 3** | Launcher 3.0, SerialBridge, CalculationApp history, GrapherApp zoom/pan | ✅ Complete |
-| **Phase 4** | LVGL 9.x — ESP32-S3 HW bring-up, DMA, animated splash screen, icon launcher | ✅ Complete |
-| **Phase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI (legacy milestone) | ✅ Complete |
-| **CAS** | CAS-S3 internal milestones: BigNum, hash-consed DAG, SymDiff 17 rules, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver | ✅ **Complete** |
-| **Giac Migration** | Big Switch to Giac: GiacBridge integration, UART parser/eval flow, `-DDOUBLEVAL`, 64 KB loop stack, real-mode defaults with `i` preserved | ✅ **Complete** |
-| **Phase 6** | Statistics, Regression, Sequences, Probability, Matrices, Bridge Designer | ✅ **Complete** |
-| **Simulations** | ParticleLab (30+ materials, electronics), CircuitCore (SPICE), Fluid2D (Navier-Stokes) | ✅ **Complete** |
+| **Phase 1** | Math Engine — Tokenizer, Shunting-Yard Parser, RPN Evaluator, ExprNode, VariableContext | ✅ Implemented |
+| **Phase 2** | Natural Display V.P.A.M. — fractions, radicals, exponents, smart 2D cursor | ✅ Implemented |
+| **Phase 3** | Launcher 3.0, SerialBridge, CalculationApp history, GrapherApp zoom/pan | ✅ Implemented |
+| **Phase 4** | LVGL 9.x — ESP32-S3 HW bring-up, DMA, animated splash screen, icon launcher | ✅ Implemented |
+| **Phase 5** | CAS-Lite Engine (SymPoly, SingleSolver, SystemSolver, 53 tests) + EquationsApp UI (legacy milestone) | ✅ Implemented |
+| **CAS** | CAS-S3 internal milestones: BigNum, hash-consed DAG, SymDiff 17 rules, SymIntegrate Slagle, SymSimplify 8-pass, OmniSolver | ✅ **Implemented** |
+| **Giac Migration** | Giac integration: GiacBridge, UART parser/eval flow, `-DDOUBLEVAL`, 64 KB loop stack, real-mode defaults with `i` preserved | ✅ **Implemented** |
+| **Phase 6** | Statistics, Regression, Sequences, Probability, Matrices, Bridge Designer (Prototype) | 🟡 **In Development** |
+| **Simulations** | ParticleLab (30+ materials, electronics), CircuitCore (SPICE), Fluid2D (Navier-Stokes) (Experimental) | 🟡 **In Development** |
 | **Phase 7** | Complex numbers, base conversions | 🔲 Planned |
-| **Phase 8** | Physical keyboard, custom PCB, rechargeable battery, 3D enclosure, WiFi OTA | 🔲 Planned |
+| **Phase 8** | Physical keyboard (prototype stage), custom PCB, rechargeable battery, 3D enclosure, WiFi OTA | 🔲 Planned |
 
 ---
 
@@ -577,7 +577,7 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | Estimated HW cost | **~€15-25** | €79 | €149 | €179 |
 | Platform | ESP32-S3 | STM32F730 | Zilog eZ80 | ARM Cortex-A7 |
 
-> 🏆 NumOS already surpasses the TI-84 in CAS capability and cost, and is on track to match the NumWorks.
+> 📐 NumOS is developing CAS capabilities and cost-effectiveness as an open-source alternative, working toward feature parity with established commercial calculators.
 
 ---
 
@@ -614,7 +614,7 @@ Every contribution keeps me focused on the mission and ensures NumOS stays indep
 
 ## Contributing
 
-NumOS is an open-source project that aspires to grow with a community. Contributions are welcome!
+NumOS is an open-source project in active development that welcomes community contributions. The software is currently in prototype/alpha stage and validates features on the current ESP32-S3 N16R8 hardware platform.
 
 1. **Fork** the repository.
 2. Create a branch: `git checkout -b feature/descriptive-name`
@@ -664,9 +664,9 @@ We believe that hardware accessibility is crucial for education. Under this lice
 
 *Built with ❤️ and a lot of C++17*
 
-**NumOS, The best open-source graphing calculator for ESP32-S3**
+**NumOS, An open-source graphing calculator for ESP32-S3**
 
-*Last updated: May 2026*
+*Last updated: June 2026*
 
 <div align="center">
 

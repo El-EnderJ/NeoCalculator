@@ -31,8 +31,7 @@ namespace vpam {
 // structs with fixed-size arrays. No STL containers, no dynamic memory.
 //
 // Usage:
-//   auto result = DelimiterAssembler::assemble(targetHeightPx, 0x0028,
-//                                              kLeftParenVariantTable, emSize);
+//   auto result = DelimiterAssembler::assemble(targetHeightPx, *table, emSize);
 //   // result.parts[] now holds top-to-bottom ordered glyphs
 //   // result.widthPx is the horizontal advance for layout
 // ════════════════════════════════════════════════════════════════════════════
@@ -43,9 +42,12 @@ public:
 
     /// A single piece in the assembled output (top-to-bottom order).
     struct Piece {
-        uint32_t glyphCp;        ///< Unicode codepoint to render
-        bool     isExtender;     ///< true ⇒ repeat this piece to fill the gap
-        int16_t  heightPx;       ///< Glyph height in pixels
+        uint32_t glyphCp;           ///< Unicode codepoint to render
+        bool     isExtender;        ///< true ⇒ repeat this piece to fill the gap
+        int16_t  heightPx;          ///< Glyph full advance height in pixels (raw, before overlap)
+        int16_t  startConnectorPx;  ///< Connector length at glyph top (DU→px, for overlap calc)
+        int16_t  endConnectorPx;    ///< Connector length at glyph bottom (DU→px, for overlap calc)
+        int16_t  overlapAfterPx;    ///< Chosen connector overlap to next piece.
     };
 
     /// Complete assembly result — stack-allocated, no heap.
@@ -62,6 +64,16 @@ public:
               isAssembly(false), valid(false) {}
     };
 
+    /// Selected glyph metrics for a target height.
+    /// For assembled glyphs, glyphCp is 0 because multiple pieces are used.
+    struct GlyphMetrics {
+        uint32_t glyphCp;       ///< Selected single glyph, or 0 for assembly.
+        int16_t  widthPx;       ///< Horizontal advance in pixels.
+        int16_t  heightPx;      ///< Selected/assembled height in pixels.
+        bool     isAssembly;    ///< true when multiple pieces are required.
+        bool     valid;         ///< false when no table exists.
+    };
+
     /// Assemble (or select a size variant for) a delimiter/operator glyph.
     ///
     /// Algorithm (OpenType 1.9.1 §4.2, §4.4):
@@ -71,15 +83,14 @@ public:
     ///      a. Parse assembly parts bottom-to-top (OpenType storage order).
     ///      b. Validate: ≤3 non-extender pieces, exactly 1 extender.
     ///      c. Reorder to top-to-bottom for renderer execution.
-    ///      d. Compute total height as sum of part heights (extender once).
+    ///   3. Reduce connector overlap between adjacent pieces (Step 2).
+    ///   4. Inject additional extenders until target height is met (Step 3).
     ///
     /// @param targetHeightPx  Required height in pixels.
-    /// @param baseCp          Base Unicode codepoint (e.g. 0x0028 for '(').
     /// @param table           Variant/assembly data for this glyph.
     /// @param emSizePx        Font em-size in pixels (for DU→px conversion).
     /// @return AssemblyResult with top-to-bottom ordered pieces.
     static AssemblyResult assemble(int16_t targetHeightPx,
-                                   uint32_t baseCp,
                                    const MathVariantTable& table,
                                    int16_t emSizePx);
 
@@ -87,16 +98,22 @@ public:
     /// Returns 0 if no table is found for the given codepoint.
     static int16_t glyphWidthPx(uint32_t baseCp, int16_t emSizePx);
 
+    /// Compute selected glyph metrics for the requested target height.
+    /// This mirrors assemble() so layout, cursor, and drawing agree.
+    static GlyphMetrics glyphMetricsForHeightPx(uint32_t baseCp,
+                                                int16_t targetHeightPx,
+                                                int16_t emSizePx);
+
 private:
     DelimiterAssembler() = delete;  // Pure static
 
-    /// 6-state FSM: validate assembly parts and split into bottom/extender/top.
+    /// 6-state Gecko-style FSM: validate and split assembly parts.
     enum class FsmState : uint8_t {
         START = 0,
         BOTTOM_PIECES,    // Reading non-extender pieces at start (OpenType bottom)
         EXTENDER_SEEN,     // Extender piece found (the repeatable one)
         TOP_PIECES,        // Reading non-extender pieces after extender (OpenType top)
-        DONE,
+        DONE,              // Terminal valid state after all pieces are consumed
         ERROR
     };
 

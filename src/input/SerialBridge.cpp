@@ -20,10 +20,13 @@
  */
 
 #include "SerialBridge.h"
+#include "NumosSerialBackend.h"
 #include "math/giac/GiacBridge.h"
 #include <ctype.h>
 #include <string>
 #include <algorithm>
+
+#define Serial NUMOS_SERIAL
 
 SerialBridge::SerialBridge()
     : _head(0), _tail(0)
@@ -77,8 +80,7 @@ void SerialBridge::push(KeyCode code, const char* label) {
     // Debug feedback
     Serial.print("[Key] PC Input: '");
     Serial.print(label);
-    Serial.print("' -> Action: ");
-    Serial.println(label);
+    Serial.println("'");
 }
 
 bool SerialBridge::pop(KeyEvent &out) {

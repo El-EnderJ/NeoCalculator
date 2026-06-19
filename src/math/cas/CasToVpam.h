@@ -29,7 +29,7 @@
  *   cas::SumNode       → NodeRow with NodeOperator(Add/Sub) between terms
  *   cas::ProductNode   → NodeRow with implicit multiplication (no operator)
  *   cas::PowerNode     → NodePower
- *   cas::EquationNode  → NodeRow:  lhs  NodeVariable('=')  rhs
+ *   cas::EquationNode  → NodeRow:  lhs  NodeOperator(Eq)  rhs (MathClass::REL for TeX spacing)
  *
  * Highlight tracking
  * ──────────────────

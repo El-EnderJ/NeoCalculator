@@ -564,7 +564,7 @@ void IntegralApp::adjustInputHeight() {
     if (!_inputRow) return;
 
     _inputRow->calculateLayout(_inputCanvas.normalMetrics());
-    int contentH = _inputRow->layout().ascent + _inputRow->layout().descent;
+    int contentH = mathObjectHeightPx(_inputRow->layout(), _inputCanvas.normalMetrics(), 0);
 
     int newH = contentH + 16;
     if (newH < 50) newH = 50;
@@ -842,7 +842,7 @@ void IntegralApp::buildStepsDisplay() {
                 srd->canvas.setExpression(row, nullptr);
                 row->calculateLayout(srd->canvas.normalMetrics());
 
-                int contentH = row->layout().ascent + row->layout().descent;
+                int contentH = mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 0);
                 int canvasH = contentH + 8;
                 if (canvasH < 22) canvasH = 22;
                 if (canvasH > 80) canvasH = 80;

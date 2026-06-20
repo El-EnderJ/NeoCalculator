@@ -1,14 +1,28 @@
 # Ignore-rect mask for calc_fraction_sum (NumOS SDL2 emulator visual test).
 #
-# Reason: identical cursor-blink nondeterminism to calc_1_plus_2 — the input
-# cursor's lv_timer blink phase differs across separate launches, flipping the
-# ~3px cursor bar and the antialiased glyphs it overlaps on the entry line. The
-# differing pixels occupy the same band (x[10..34] y[8..16]); nothing differs
-# outside it. Expected UI blink nondeterminism, masked in the comparator rather
-# than by touching frozen renderer/cursor code.
+# Reason: identical StatusBar-clock nondeterminism to calc_1_plus_2 — the only
+# region that differs across separate launches is the live HH:MM clock. The label
+# is drawn by StatusBar::updateClock() from the real wall clock (time() ->
+# localtime -> "%02d:%02d", src/ui/StatusBar.cpp), so a golden blessed at one time
+# vs a candidate generated at another differ inside the clock glyphs only. (The
+# CalculationApp input cursor does NOT contribute: in --deterministic mode the
+# blink phase is a function of the frame index and is byte-identical run-to-run; the
+# earlier "cursor band" framing was a misdiagnosis. The empirical cross-launch diff
+# is the clock.) Expected per-minute UI nondeterminism, masked in the comparator
+# rather than by touching frozen renderer/cursor code.
 #
-# Rect = observed jitter union (25x9) padded 2px on each side (exact y-band,
-# margin on the state-dependent x-extent).
+# Region: the clock label is LV_ALIGN_LEFT_MID,6 in lv_font_montserrat_12
+# (StatusBar.cpp:61-65), always 5 glyphs ("HH:MM"), box ~x[6..38] y[8..16]. A
+# golden-vs-fresh-candidate diff put the changed pixels at x[6..37] y[8..16] (32x9).
+# The previous rect 8,6,30,13 (x[8..37]) missed the clock's left edge x[6..7], which
+# leaked outside the mask and FAILED CI; this rect is the shared StatusBar clock
+# band used by settings_smoke / math_showcase_smoke.
+#
+# Rect = full HH:MM label box (~x[6..38] y[8..16]) padded ~2px on each side ->
+# x[4..40] y[6..18]. Superset of the old 8,6,30,13 (no coverage regression); it
+# masks only the clock — the centered title, the right-aligned battery/angle/
+# modifier, and the expression/result (1/2 + 1/3 = 5/6, below the y=24 separator)
+# are all outside it.
 #
 # x,y,w,h
-8,6,30,13
+4,6,37,13

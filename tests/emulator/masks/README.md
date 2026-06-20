@@ -2,43 +2,50 @@
 
 This directory holds **ignore-rect mask files** for the NumOS SDL2 emulator visual
 tests. A mask lets [`scripts/compare-ppm.py`](../../../scripts/compare-ppm.py)
-tolerate *known, justified* non-deterministic pixels — today two classes: the
-CalculationApp blinking text cursor (calc screens) and the StatusBar `HH:MM` clock
-(Settings / Math Showcase) — without weakening byte-comparison anywhere else.
+tolerate *one known, justified* class of non-deterministic pixels — the StatusBar
+`HH:MM` clock on app screens (`calc_1_plus_2`, `calc_fraction_sum`,
+`settings_smoke`, `math_showcase_smoke`) — without weakening byte-comparison
+anywhere else.
 
 Masking is the **narrow exception** to byte-exact comparison — not the rule. It
-exists only because the cursor blink is genuinely nondeterministic across separate
-launches; it is **not** a way to paper over a rendering bug. The renderer and
-cursor code are frozen (see [`docs/math-renderer-acceptance.md`](../../../docs/math-renderer-acceptance.md)),
-so the cursor jitter is fixed in the *comparator*, never in `src/`.
+exists only because the clock is genuinely nondeterministic across separate
+launches; it is **not** a way to paper over a rendering bug. The renderer is frozen
+(see [`docs/math-renderer-acceptance.md`](../../../docs/math-renderer-acceptance.md)),
+so the clock jitter is fixed in the *comparator*, never in `src/`.
 
-## Why this exists (the cursor-blink finding)
+## Why this exists (the StatusBar clock finding)
 
-`launcher_smoke.ppm` is byte-stable across launches. The two calc screenshots are
-**not**: re-launching `calc_1_plus_2` / `calc_fraction_sum` produces images that
-differ only inside a tiny band around the input cursor. The blink is an `lv_timer`
-that toggles cursor visibility every 500 ms and the deterministic tick pins the
-phase *within* a run, so same-session runs match but spaced-apart launches differ.
-Every observed differing pixel falls inside `x[10..34] y[8..16]` (≈ a 25×9 px band);
-zero pixels differ outside it. The committed masks below cover that band with a
-small safety margin.
-
-## The StatusBar clock finding (Phase 5B)
-
-`settings_smoke.ppm` and `math_showcase_smoke.ppm` have **no** blinking cursor, but
-they are still not byte-stable across launches: the StatusBar draws a live `HH:MM`
+`launcher_smoke.ppm` is byte-stable across launches (the launcher has no StatusBar,
+hence no clock — so it carries **no** mask and is gated byte-for-byte). Every screen
+that hosts a `ui::StatusBar` is **not** byte-stable: the bar draws a live `HH:MM`
 clock from the real wall clock (`StatusBar::updateClock()` →
 `time()`/`localtime`/`"%02d:%02d"`, [`src/ui/StatusBar.cpp`](../../../src/ui/StatusBar.cpp)),
-so two runs on different minutes (or hours) differ inside the clock glyphs only.
-The label is `LV_ALIGN_LEFT_MID,6` in `lv_font_montserrat_12` and always 5 glyphs,
-so its box is ≈ `x[6..38] y[8..16]`. A back-to-back jitter diff across a minute
-rollover put the changed pixels at `x[31..37] y[8..16]` (the minute-units digit);
-because the **hour** digits can change between arbitrary launches too, the committed
-`settings_smoke` / `math_showcase_smoke` masks cover the *whole* label (`4,6,37,13`
-→ `x[4..40] y[6..18]`), not just the minutes. That band touches only the clock —
-the app title is centered, the battery/angle/modifier are right-aligned, and the app
-body is below the `y=24` StatusBar separator. As with the cursor, this is masked in
-the comparator, never patched in the (frozen) `src/`.
+so a golden blessed at one time vs a candidate generated at another differ inside
+the clock glyphs — and only there.
+
+The clock label is aligned `LV_ALIGN_LEFT_MID,6` in `lv_font_montserrat_12`
+([`StatusBar.cpp:61-65`](../../../src/ui/StatusBar.cpp#L61)) and is always exactly 5
+glyphs (`"HH:MM"`), so its box spans ≈ `x[6..38] y[8..16]`. Because **both** the
+hour and the minute digits vary across arbitrary launches, the mask must cover the
+*whole* label, not just the minutes. All four app masks therefore share one rect:
+
+```
+4,6,37,13      → x[4..40] y[6..18]  (full HH:MM label + ~2px margin)
+```
+
+That band touches only the clock — the app title is centered (`x~160`), the
+battery/angle/modifier are right-aligned (`x>240`), and the expression/result and
+app body render below the `y=24` StatusBar separator.
+
+> **Note — the calc masks are clock masks, not cursor masks.** Earlier revisions
+> described `calc_1_plus_2` / `calc_fraction_sum` as masking the CalculationApp
+> *blink cursor*. That was a misdiagnosis: in `--deterministic` mode the blink phase
+> is a function of the frame index, so the cursor is byte-identical run-to-run; the
+> only cross-launch variation is the wall-clock-driven clock. The original calc rect
+> `8,6,30,13` (`x[8..37]`) missed the clock's left edge `x[6..7]`, which leaked
+> outside the mask and **failed CI** once a candidate was generated at a different
+> hour than the golden was blessed. Widening both calc masks to the shared
+> `4,6,37,13` (a superset of the old rect) fixed it.
 
 ## Naming
 
@@ -87,7 +94,7 @@ Rules enforced by `compare-ppm.py`:
 ## Reviewer checklist (so a bad image is not blessed)
 
 - Confirm the candidate is **semantically correct** *before* masking (a human still
-  asserts "1+2 really renders 3" — masking the cursor does not relax this).
+  asserts "1+2 really renders 3" — masking the clock does not relax this).
 - Confirm the masked region is genuinely nondeterministic, not a bug being hidden.
 - Confirm the mask does not cover the expression/result area.
 - Reject any mask covering a large fraction of the frame.

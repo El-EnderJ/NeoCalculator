@@ -1,15 +1,29 @@
 # Ignore-rect mask for calc_1_plus_2 (NumOS SDL2 emulator visual test).
 #
-# Reason: the CalculationApp input cursor blinks via an lv_timer (toggles every
-# 500 ms). The deterministic tick pins the blink phase within a single run, but
-# spaced-apart launches land on different phases, so the cursor's ~3px bar and the
-# antialiased entry-line glyphs it overlaps flip between visible/hidden. Every
-# observed differing pixel across launches falls inside x[10..34] y[8..16]; nothing
-# differs outside it. This is expected UI nondeterminism, NOT a renderer bug — the
-# renderer/cursor code is frozen, so it is masked here instead of edited.
+# Reason: the ONLY region that differs across separate launches on this screen is
+# the StatusBar clock. The clock label is drawn by StatusBar::updateClock() from
+# the real wall clock (time() -> localtime -> "%02d:%02d", src/ui/StatusBar.cpp),
+# so HH:MM reflects the minute/hour each scripted run executes on; a golden blessed
+# at one time vs a candidate generated at another differ inside the clock glyphs.
+# (The CalculationApp input cursor does NOT contribute: in --deterministic mode the
+# blink phase is a function of the frame index, so it is byte-identical run-to-run —
+# only the wall-clock-driven clock varies. The earlier "cursor band" framing of
+# this mask was a misdiagnosis; the empirical cross-launch diff is the clock.)
+# This is expected per-minute UI nondeterminism, NOT a renderer bug — the renderer
+# is frozen, so it is masked in the comparator instead of edited in src/.
 #
-# Rect = observed jitter union (25x9) padded 2px on each side. The y-band is exact;
-# the x-extent is state-dependent (cursor resting column), hence the margin.
+# Region: the clock label is aligned LV_ALIGN_LEFT_MID,6 in lv_font_montserrat_12
+# (StatusBar.cpp:61-65) and is always exactly 5 glyphs ("HH:MM"), so its box spans
+# ~x[6..38] y[8..16]. A golden-vs-fresh-candidate diff put the changed pixels at
+# x[6..37] y[8..16] (32x9). The previous rect 8,6,30,13 (x[8..37]) missed the
+# clock's left edge x[6..7], which leaked outside the mask and FAILED CI; this rect
+# is the shared StatusBar clock band used by settings_smoke / math_showcase_smoke.
+#
+# Rect = full HH:MM label box (~x[6..38] y[8..16]) padded ~2px on each side ->
+# x[4..40] y[6..18]. It is a superset of the old 8,6,30,13, so it cannot regress
+# coverage; it masks only the clock — the app title is centered (x~160), the
+# battery/angle/modifier are right-aligned (x>240), and the typed expression /
+# computed result are rendered below the y=24 StatusBar separator.
 #
 # x,y,w,h
-8,6,30,13
+4,6,37,13

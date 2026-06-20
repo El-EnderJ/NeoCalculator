@@ -1,0 +1,21 @@
+# launcher_smoke.numos — Phase 4A scripted-replay smoke.
+#
+# Goal: boot the emulator, let the splash animation finish, and screenshot the
+# MainMenu launcher. Proves the script reader runs and can capture a frame.
+#
+# Timing note: with --deterministic --step-ms 16 the ~2 s splash finishes by
+# ~frame 125. We wait 200 frames for a safe margin before capturing, so the
+# screenshot is taken with the launcher fully settled. This wait is deliberate
+# and explained — it is NOT tuned to a fragile exact frame.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/launcher_smoke.numos \
+#           --frames 800 --screenshot out/launcher.ppm --quiet
+
+log "launcher_smoke: waiting for splash -> launcher"
+wait 200
+
+# Capture the launcher. The trailing --screenshot on the CLI also captures the
+# final frame; this in-script shot proves the `screenshot` command itself works.
+screenshot out/launcher.ppm
+log "launcher_smoke: screenshot captured"

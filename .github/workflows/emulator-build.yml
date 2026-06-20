@@ -1,0 +1,334 @@
+name: Build Emulator (native)
+
+# Additive, non-release CI for the SDL2 desktop emulator.
+#
+# This is SEPARATE from compile-and-release.yml (firmware) on purpose:
+#   * it never creates a release / artifact spam;
+#   * it cannot affect the firmware build or release job;
+#   * a failure here is portability SIGNAL, not a firmware regression.
+#
+# It is also the mechanism that actually PROVES the Linux native build, which has
+# not yet been run on the author's (Windows-only) machine. See
+# docs/emulator-sdl2-quickstart.md.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/emulator/**'
+      - 'platformio.ini'
+      - 'scripts/sdl2_env.py'
+      # The visual gate's own logic: changing the comparator or candidate
+      # generator must re-run the gate. (Promoting a golden already triggers via
+      # 'tests/emulator/**'. The human-run promote-emulator-golden.py is
+      # deliberately NOT listed — CI never invokes it.)
+      - 'scripts/compare-ppm.py'
+      - 'scripts/generate-emulator-candidates.py'
+      - '.github/workflows/emulator-build.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/emulator/**'
+      - 'platformio.ini'
+      - 'scripts/sdl2_env.py'
+      # Keep in sync with push.paths above: the gate must re-run when its own
+      # comparator / candidate generator changes.
+      - 'scripts/compare-ppm.py'
+      - 'scripts/generate-emulator-candidates.py'
+      - '.github/workflows/emulator-build.yml'
+  workflow_dispatch:
+
+jobs:
+  emulator-linux:
+    name: Linux emulator (Ubuntu + system SDL2)
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[no build]') }}
+    runs-on: ubuntu-latest
+
+    # Use the portable default build dir instead of the repo's Windows-only
+    # build_dir = C:/.piobuild/numOS. No sed hack required.
+    env:
+      PLATFORMIO_BUILD_DIR: .pio/build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system SDL2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev
+          pkg-config --modversion sdl2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install -U platformio
+
+      - name: Diagnose dependencies
+        run: python scripts/check-emulator-deps.py
+
+      - name: Build emulator (emulator_pc)
+        run: pio run -e emulator_pc
+
+      - name: Upload Linux emulator binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: numos-emulator-linux
+          path: .pio/build/emulator_pc/program
+          if-no-files-found: error
+
+      # ---------------------------------------------------------------------
+      # Headless launch smoke (Phase 3A).
+      #
+      # Proves the binary actually BOOTS — not just that it links. The emulator
+      # has an in-process auto-exit (--run-for-ms) so it terminates on its own;
+      # `timeout` is a belt-and-suspenders guard so a regression that hangs can
+      # never stall CI. SDL_VIDEODRIVER=dummy lets SDL open a window with no
+      # display (libSDL2 ships the dummy driver); the --headless flag also sets
+      # it in-process. We assert the boot reached the MainMenu, so an early
+      # crash or a frozen splash fails the job.
+      #
+      # Verified equivalent locally on Windows: `--headless --run-for-ms` prints
+      # `[MENU] Launcher cargado` then `[SIM] Bye!` and exits 0 under the
+      # software renderer. If the GitHub runner's dummy driver ever proves
+      # flaky, downgrade this step to `continue-on-error: true` (portability
+      # signal only) rather than removing it.
+      - name: Smoke-test emulator (headless, auto-exit)
+        run: |
+          set -euo pipefail
+          BIN=.pio/build/emulator_pc/program
+          echo "Launch: $BIN --headless --run-for-ms 5000 --quiet"
+          SDL_VIDEODRIVER=dummy timeout 30s "$BIN" \
+            --headless --run-for-ms 5000 --quiet | tee emu-smoke.log
+          echo "--- asserting boot reached the launcher ---"
+          grep -q "Launcher cargado" emu-smoke.log
+          echo "OK: emulator booted to MainMenu and exited cleanly."
+
+      - name: Upload smoke log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numos-emulator-smoke-log
+          path: emu-smoke.log
+          if-no-files-found: ignore
+
+      # ---------------------------------------------------------------------
+      # Deterministic headless smoke + screenshot (Phase 3B).
+      #
+      # Additive to the Phase 3A wall-clock smoke above (kept as-is). Here we run
+      # a FIXED number of frames with the synthetic tick (--deterministic), so the
+      # visual state is a function of the frame index, not host timing. The run
+      # dumps the final 320x240 logical framebuffer to a PPM (P6) — a no-dependency
+      # format written straight from the CPU buffer, so it works under the dummy
+      # video driver. We assert: boot reached the launcher, the PPM exists and is
+      # non-empty, and its header declares 320x240. This is artifact GENERATION +
+      # stable launch only — no pixel-level correctness claim yet.
+      - name: Deterministic smoke + screenshot (headless)
+        run: |
+          set -euo pipefail
+          BIN=.pio/build/emulator_pc/program
+          echo "Launch: $BIN --headless --frames 600 --deterministic --screenshot smoke.ppm --quiet"
+          SDL_VIDEODRIVER=dummy timeout 30s "$BIN" \
+            --headless --frames 600 --deterministic --screenshot smoke.ppm --quiet \
+            2>&1 | tee emu-det-smoke.log
+          echo "--- asserting boot reached the launcher ---"
+          grep -q "Launcher cargado" emu-det-smoke.log
+          echo "--- asserting deterministic tick was used ---"
+          grep -q "tick = determinista" emu-det-smoke.log
+          echo "--- asserting screenshot exists, is non-empty and 320x240 ---"
+          test -s smoke.ppm
+          head -c 32 smoke.ppm | tr '\n' ' ' | grep -q "P6 320 240"
+          echo "OK: deterministic boot + 320x240 PPM screenshot generated."
+
+      - name: Upload deterministic smoke log + screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numos-emulator-smoke
+          path: |
+            emu-det-smoke.log
+            smoke.ppm
+          if-no-files-found: ignore
+
+      # ---------------------------------------------------------------------
+      # Scripted deterministic replay smoke + screenshot (Phase 4A).
+      #
+      # Additive to the Phase 3A/3B smokes above (kept as-is). This drives the
+      # emulator with a .numos script via the new --script flag: key events are
+      # injected through the SAME dispatch path as live SDL input, one command
+      # per deterministic frame. We run two fixtures (launcher + 1+2), assert the
+      # script flag was honored (not silently ignored), the launcher was reached,
+      # and the PPMs are 320x240. We also run calc_1_plus_2 TWICE and compare
+      # SHA-256 to prove the headline Phase 4A claim: scripted replay is
+      # byte-reproducible. This is artifact GENERATION + deterministic input —
+      # NO pixel-level "1+2=3" correctness claim yet (that is Phase 4B).
+      - name: Scripted deterministic replay smoke (headless, Phase 4A)
+        run: |
+          set -euo pipefail
+          BIN=.pio/build/emulator_pc/program
+          mkdir -p out
+          test -f tests/emulator/scripts/launcher_smoke.numos
+          test -f tests/emulator/scripts/calc_1_plus_2.numos
+
+          echo "=== launcher_smoke ==="
+          SDL_VIDEODRIVER=dummy timeout 60s "$BIN" \
+            --headless --deterministic --script tests/emulator/scripts/launcher_smoke.numos \
+            --frames 800 --screenshot out/launcher.ppm --quiet 2>&1 | tee out/launcher.log
+          # The --script flag must be HONORED, not dropped as an unknown option.
+          ! grep -q "opcion desconocida: --script" out/launcher.log
+          grep -q "Launcher cargado" out/launcher.log
+          grep -q "cargado 'tests/emulator/scripts/launcher_smoke.numos'" out/launcher.log
+          test -s out/launcher.ppm
+          head -c 32 out/launcher.ppm | tr '\n' ' ' | grep -q "P6 320 240"
+
+          echo "=== calc_1_plus_2 (run 1) ==="
+          SDL_VIDEODRIVER=dummy timeout 60s "$BIN" \
+            --headless --deterministic --script tests/emulator/scripts/calc_1_plus_2.numos \
+            --frames 1400 --screenshot out/calc_1_plus_2.ppm --quiet 2>&1 | tee out/calc_1_plus_2.log
+          grep -q "CalculationApp activa" out/calc_1_plus_2.log
+          test -s out/calc_1_plus_2.ppm
+          head -c 32 out/calc_1_plus_2.ppm | tr '\n' ' ' | grep -q "P6 320 240"
+
+          echo "=== calc_1_plus_2 (run 2, determinism) ==="
+          SDL_VIDEODRIVER=dummy timeout 60s "$BIN" \
+            --headless --deterministic --script tests/emulator/scripts/calc_1_plus_2.numos \
+            --frames 1400 --screenshot out/calc_1_plus_2_b.ppm --quiet >/dev/null 2>&1
+          A=$(sha256sum out/calc_1_plus_2.ppm   | cut -d' ' -f1)
+          B=$(sha256sum out/calc_1_plus_2_b.ppm | cut -d' ' -f1)
+          echo "run1=$A"
+          echo "run2=$B"
+          test "$A" = "$B"
+          echo "OK: scripted deterministic replay is byte-reproducible (320x240 PPM)."
+
+      - name: Upload Phase 4A scripted replay artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numos-emulator-scripted-smoke
+          path: |
+            out/launcher.log
+            out/launcher.ppm
+            out/calc_1_plus_2.log
+            out/calc_1_plus_2.ppm
+          if-no-files-found: ignore
+
+      # ---------------------------------------------------------------------
+      # Semantic assertions (Phase 4B-C) — additive, and SEPARATE from the
+      # visual candidate/golden flow below (which is kept intact). This runs the
+      # scripted fixtures headless+deterministic and lets the .numos `assert_*`
+      # commands check the value CalculationApp actually COMPUTED — no OCR, no
+      # pixels: 1+2 == 3 and 1/2+1/3 == 5/6. The emulator exits 0 on success and
+      # 4 on any assertion failure; we assert exit 0 EXPLICITLY (redirect to a
+      # file so the status is not masked by a pipe) and grep the PASS markers.
+      # This proves correctness WITHOUT a hand-reviewed golden image.
+      - name: Semantic assertion smoke (headless deterministic, Phase 4B-C)
+        run: |
+          set -euo pipefail
+          BIN=.pio/build/emulator_pc/program
+          mkdir -p out
+
+          run_assert() {
+            script="$1"; log="$2"
+            echo "=== $script ==="
+            rc=0
+            SDL_VIDEODRIVER=dummy timeout 60s "$BIN" \
+              --headless --deterministic --script "$script" \
+              --frames 1400 --quiet > "$log" 2>&1 || rc=$?
+            cat "$log"
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::semantic assertions FAILED for $script (exit $rc)"
+              return 1
+            fi
+            grep -q "PASS - assert_result" "$log"
+            ! grep -q "FAIL -" "$log"
+          }
+
+          run_assert tests/emulator/scripts/calc_1_plus_2.numos     out/semantic_calc_1_plus_2.log
+          grep -q "assert_result == '3'" out/semantic_calc_1_plus_2.log
+          run_assert tests/emulator/scripts/calc_fraction_sum.numos out/semantic_calc_fraction_sum.log
+          grep -q "assert_result == '5/6'" out/semantic_calc_fraction_sum.log
+          echo "OK: semantic assertions passed (1+2==3, 1/2+1/3==5/6) with NO golden image."
+
+      - name: Upload Phase 4B-C semantic smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numos-emulator-semantic-smoke
+          path: |
+            out/semantic_calc_1_plus_2.log
+            out/semantic_calc_fraction_sum.log
+          if-no-files-found: ignore
+
+      # ---------------------------------------------------------------------
+      # Candidate screenshot generation + golden comparison (Phase 4B-A).
+      #
+      # Additive to the Phase 3A/3B/4A smokes above (kept as-is). This generates
+      # CANDIDATE screenshots (launcher + 1+2 + fraction sum) into
+      # out/emulator-candidates/ via the same deterministic headless path, then:
+      #   * uploads them as an artifact for HUMAN review, and
+      #   * compares each candidate to its accepted golden under
+      #     tests/emulator/golden/ IFF that golden exists. (Phase 4B-B) If a
+      #     matching ignore-rect mask exists under tests/emulator/masks/, the
+      #     compare ignores those volatile regions (the blinking cursor); with no
+      #     mask the compare is byte-exact, exactly as before.
+      # A missing golden is a WARNING, not a failure — so an unreviewed image can
+      # never silently become a passing gate. A present golden that mismatches
+      # (outside any mask) FAILS the job. See tests/emulator/golden/README.md and
+      # tests/emulator/masks/README.md. This still makes NO semantic "1+2=3"
+      # claim; that requires a human-reviewed golden.
+      - name: Generate candidate screenshots (Phase 4B-A)
+        run: |
+          set -euo pipefail
+          python scripts/generate-emulator-candidates.py \
+            --bin .pio/build/emulator_pc/program \
+            --out-dir out/emulator-candidates
+          echo "--- candidate inventory ---"
+          ls -l out/emulator-candidates/
+
+      - name: Upload candidate screenshots (Phase 4B-A)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numos-emulator-candidates
+          path: out/emulator-candidates/
+          if-no-files-found: warn
+
+      - name: Compare candidates against accepted goldens (Phase 4B-A)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          status=0
+          compared=0
+          for cand in out/emulator-candidates/*.ppm; do
+            name="$(basename "$cand")"
+            golden="tests/emulator/golden/$name"
+            mask="tests/emulator/masks/${name%.ppm}.mask"
+            if [ -f "$golden" ]; then
+              if [ -f "$mask" ]; then
+                echo "=== comparing $name against accepted golden (masked: $mask) ==="
+                cmp_ok=0
+                python scripts/compare-ppm.py "$golden" "$cand" --mask-file "$mask" || cmp_ok=$?
+              else
+                echo "=== comparing $name against accepted golden (exact) ==="
+                cmp_ok=0
+                python scripts/compare-ppm.py "$golden" "$cand" || cmp_ok=$?
+              fi
+              if [ "$cmp_ok" -eq 0 ]; then
+                echo "OK: $name matches accepted golden."
+              else
+                echo "::error::PPM mismatch — $name differs from accepted golden $golden (outside any mask)"
+                status=1
+              fi
+              compared=$((compared+1))
+            else
+              echo "::warning::No accepted golden for $name ($golden missing) — candidate uploaded for human review, not gating CI."
+            fi
+          done
+          echo "Compared $compared candidate(s) against accepted goldens."
+          exit $status

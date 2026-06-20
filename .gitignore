@@ -43,6 +43,12 @@ NeoCalculator_Case_v0_3
 .aider*
 mimo_config.yaml
 venv
+graphify-out
+
+# IA
+emulator-sdl2-audit-evidence.md
+emulator-sdl2-implementation-spec.md
+emulator-sdl2-risk-register.md
 
 # Ignorar todos los archivos y carpetas que empiezan por punto
 .*

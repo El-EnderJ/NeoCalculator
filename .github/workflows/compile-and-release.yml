@@ -12,6 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # Force a deterministic build tree on Linux. This overrides the Windows-only
+      # `build_dir = C:/.piobuild/numOS` in platformio.ini, so both the build and the
+      # rename step agree on where firmware.bin lands.
+      PLATFORMIO_BUILD_DIR: .pio/build
 
     steps:
       - name: Checkout Repository
@@ -22,8 +27,16 @@ jobs:
         run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
 
       - name: Patch platformio.ini for Ubuntu
-        # Borra la línea de build_dir de Windows para evitar errores de ruta en Linux
-        run: sed -i '/build_dir = C:\\/d' platformio.ini
+        # Remove the Windows-only build_dir (e.g. `build_dir = C:/.piobuild/numOS`) so it
+        # can't leak into the Linux build. The previous pattern looked for a backslash
+        # (`C:\`) while the file uses a forward slash (`C:/`), so it never matched and the
+        # firmware was written under ./C:/.piobuild/... instead of .pio/build/...
+        # PLATFORMIO_BUILD_DIR (job env) already overrides this; stripping the line keeps
+        # the effective config clean in CI logs.
+        run: |
+          sed -i -E '/^[[:space:]]*build_dir[[:space:]]*=[[:space:]]*[A-Za-z]:/d' platformio.ini
+          echo "[platformio] section after patch:"
+          sed -n '/^\[platformio\]/,/^\[/p' platformio.ini
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,8 +52,44 @@ jobs:
         # Compila específicamente el entorno del ESP32-S3
         run: pio run -e esp32s3_n16r8
 
-      - name: Rename Firmware File
-        run: cp .pio/build/esp32s3_n16r8/firmware.bin NumOS_v1.0-alpha_ESP32S3.bin
+      - name: Locate and Rename Firmware
+        run: |
+          set -euo pipefail
+
+          echo "::group::Firmware discovery debug"
+          echo "pwd                 : $(pwd)"
+          echo "pio env             : esp32s3_n16r8"
+          echo "PLATFORMIO_BUILD_DIR: ${PLATFORMIO_BUILD_DIR:-<unset>}"
+          echo "--- listing of expected build dir ---"
+          ls -la "${PLATFORMIO_BUILD_DIR:-.pio/build}/esp32s3_n16r8" 2>/dev/null \
+            || echo "  (expected build dir not present)"
+          echo "--- find firmware.bin (project tree) ---"
+          find . -path '*esp32s3_n16r8/firmware.bin' -type f 2>/dev/null || true
+          echo "::endgroup::"
+
+          # Check the most likely locations first, then fall back to a narrow find.
+          FW=""
+          for cand in \
+            "${PLATFORMIO_BUILD_DIR:-}/esp32s3_n16r8/firmware.bin" \
+            ".pio/build/esp32s3_n16r8/firmware.bin"; do
+            if [ -n "$cand" ] && [ -f "$cand" ]; then
+              FW="$cand"
+              break
+            fi
+          done
+
+          if [ -z "$FW" ]; then
+            FW="$(find . -path '*esp32s3_n16r8/firmware.bin' -type f 2>/dev/null | head -n 1 || true)"
+          fi
+
+          if [ -z "$FW" ] || [ ! -f "$FW" ]; then
+            echo "::error::Could not locate firmware.bin for env esp32s3_n16r8 after a successful build."
+            exit 1
+          fi
+
+          echo "Resolved firmware: $FW"
+          cp "$FW" NumOS_v1.0-alpha_ESP32S3.bin
+          echo "Created release artifact: NumOS_v1.0-alpha_ESP32S3.bin"
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1

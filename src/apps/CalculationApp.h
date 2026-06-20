@@ -92,6 +92,20 @@ public:
      */
     bool isActive() const { return _screen != nullptr; }
 
+#ifdef NATIVE_SIM
+    // ── Sonda de prueba (SOLO emulador, read-only) ────────────────────────
+    // Expone el último resultado evaluado para las aserciones semánticas del
+    // runner de scripts .numos (NativeHal::scriptStepBegin). Son accesores
+    // const sin asignación de memoria que devuelven miembros ya existentes;
+    // NO alteran el comportamiento ni la geometría del render.
+    //
+    // Firmware-neutro: NATIVE_SIM solo está definido en [env:emulator_pc]
+    // (platformio.ini), nunca en [env:esp32s3_n16r8], así que todo este bloque
+    // queda fuera del preprocesador en firmware → firmware.bin no cambia.
+    bool                  debugHasResult() const { return _hasResult; }
+    const vpam::ExactVal& debugLastResult() const { return _lastResult; }
+#endif // NATIVE_SIM
+
 private:
     // ── LVGL UI ──────────────────────────────────────────────────────────
     lv_obj_t*          _screen;        ///< Pantalla LVGL propia

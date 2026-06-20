@@ -32,8 +32,16 @@ namespace cas {
 
 // Fold 64-bit mixer constants down to the native word size so the logger keeps
 // good entropy on 32-bit ESP targets without compile-time overflow warnings.
+//
+// On 32-bit size_t (ESP32 firmware) this folds the high half into the low half:
+// value ^ (value >> 32) — the original, unchanged behaviour. On 64-bit size_t
+// (native PC emulator) size_t already holds the whole 64-bit value, and shifting
+// a 64-bit value by 64 is undefined behaviour, so we return it unfolded. The
+// `& 63U` keeps the shift count in range on both targets (no -Wshift-count-overflow).
 static constexpr size_t foldHashConstant(uint64_t value) {
-    return static_cast<size_t>(value ^ (value >> (sizeof(size_t) * 8U)));
+    return (sizeof(size_t) < sizeof(uint64_t))
+        ? static_cast<size_t>(value ^ (value >> ((sizeof(size_t) * 8U) & 63U)))
+        : static_cast<size_t>(value);
 }
 
 // Hash mixing constants (SplitMix64 / FNV-derived)

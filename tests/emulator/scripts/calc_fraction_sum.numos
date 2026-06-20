@@ -1,0 +1,54 @@
+# calc_fraction_sum.numos — type 1/2 + 1/3, evaluate, screenshot, ASSERT 5/6.
+#
+# Exercises VPAM fraction templates and cursor navigation. In NumOS the division
+# key IS the fraction key (KeyCode::DIV -> insertFraction, CalculationApp.cpp:344),
+# so `FRAC` is a script alias for `/`. insertFraction() captures the digit on the
+# left as the numerator and drops the cursor into the denominator
+# (CursorController.cpp:361-391); RIGHT then exits the fraction back to baseline.
+#
+# Phase 4B-C semantic proof: the exact value NumOS computes for 1/2 + 1/3 is the
+# reduced fraction 5/6. The probe's canonical text form of CalculationApp's
+# ExactVal (num/den) is "5/6" — confirmed empirically by running this fixture
+# (assert_result prints actual='5/6'). We assert that COMPUTED value here; no OCR,
+# no pixel matching. Visual correctness of the rendered 2D fraction remains the
+# separate human-gated golden flow (Phase 4B-A/B).
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/calc_fraction_sum.numos \
+#           --frames 1400 --screenshot out/calc_fraction_sum.ppm --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "calc_fraction_sum: waiting for launcher"
+wait 200
+
+key ENTER
+wait 60
+
+# 1/2  : type 1, FRAC captures it as numerator, type 2 into the denominator,
+#        RIGHT exits the fraction.
+key 1
+key FRAC
+key 2
+key RIGHT
+
+key +
+
+# 1/3
+key 1
+key FRAC
+key 3
+key RIGHT
+
+key ENTER
+wait 120
+
+# Screenshot first so the artifact exists even if an assertion later fails.
+screenshot out/calc_fraction_sum.ppm
+log "calc_fraction_sum: screenshot captured"
+
+# Semantic assertions (Phase 4B-C): Calculation active, no eval error, and the
+# computed value is the reduced fraction 5/6.
+assert_app Calculation
+assert_no_error
+assert_result 5/6
+log "calc_fraction_sum: assertions passed (result == 5/6)"

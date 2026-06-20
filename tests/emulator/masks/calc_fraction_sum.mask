@@ -1,0 +1,14 @@
+# Ignore-rect mask for calc_fraction_sum (NumOS SDL2 emulator visual test).
+#
+# Reason: identical cursor-blink nondeterminism to calc_1_plus_2 — the input
+# cursor's lv_timer blink phase differs across separate launches, flipping the
+# ~3px cursor bar and the antialiased glyphs it overlaps on the entry line. The
+# differing pixels occupy the same band (x[10..34] y[8..16]); nothing differs
+# outside it. Expected UI blink nondeterminism, masked in the comparator rather
+# than by touching frozen renderer/cursor code.
+#
+# Rect = observed jitter union (25x9) padded 2px on each side (exact y-band,
+# margin on the state-dependent x-extent).
+#
+# x,y,w,h
+8,6,30,13

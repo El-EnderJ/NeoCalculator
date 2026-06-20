@@ -1,0 +1,15 @@
+# Ignore-rect mask for calc_1_plus_2 (NumOS SDL2 emulator visual test).
+#
+# Reason: the CalculationApp input cursor blinks via an lv_timer (toggles every
+# 500 ms). The deterministic tick pins the blink phase within a single run, but
+# spaced-apart launches land on different phases, so the cursor's ~3px bar and the
+# antialiased entry-line glyphs it overlaps flip between visible/hidden. Every
+# observed differing pixel across launches falls inside x[10..34] y[8..16]; nothing
+# differs outside it. This is expected UI nondeterminism, NOT a renderer bug — the
+# renderer/cursor code is frozen, so it is masked here instead of edited.
+#
+# Rect = observed jitter union (25x9) padded 2px on each side. The y-band is exact;
+# the x-extent is state-dependent (cursor resting column), hence the margin.
+#
+# x,y,w,h
+8,6,30,13

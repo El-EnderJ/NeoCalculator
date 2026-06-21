@@ -60,6 +60,13 @@ CANDIDATES = [
     # golden is blessed here — the compare step warns (not fails) when a golden is absent.
     ("statistics_data_smoke", "tests/emulator/scripts/statistics_data_smoke.numos", 800),
     ("probability_edit_smoke", "tests/emulator/scripts/probability_edit_smoke.numos", 800),
+    # Phase 7A: SequencesApp (LVGL-only 2-tab Define/Table). sequences_smoke opens the
+    # app on its default Define tab; sequences_edit_smoke edits u(n) -> "2*n+5" and views
+    # the recomputed Table tab. Each script also asserts the active app name (exit 4 ->
+    # FAIL here). No golden is blessed here — the compare step warns (not fails) when a
+    # golden is absent.
+    ("sequences_smoke", "tests/emulator/scripts/sequences_smoke.numos", 800),
+    ("sequences_edit_smoke", "tests/emulator/scripts/sequences_edit_smoke.numos", 800),
 ]
 
 

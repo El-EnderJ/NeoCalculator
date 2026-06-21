@@ -91,6 +91,7 @@
 #include "../apps/SettingsApp.h"          // Phase 5A: emulator-safe LVGL-native app
 #include "../apps/StatisticsApp.h"        // Phase 6A: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/ProbabilityApp.h"       // Phase 6A: LVGL-only, pure-math (no CAS/HW)
+#include "../apps/SequencesApp.h"         // Phase 7A: LVGL-only, pure-math (no CAS/HW)
 #include "../display/DisplayDriver.h"
 #include "../ui/SplashScreen.h"
 #include "../ui/MainMenu.h"
@@ -184,7 +185,8 @@ enum class AppMode : uint8_t {
     SETTINGS,       // Ajustes (LVGL-native; Phase 5A, emulador)
     MATH_SHOWCASE,  // Vitrina de render matemático (Phase 5A, solo emulador)
     STATISTICS,     // Estadística (LVGL-native; Phase 6A, emulador)
-    PROBABILITY     // Probabilidad (LVGL-native; Phase 6A, emulador)
+    PROBABILITY,    // Probabilidad (LVGL-native; Phase 6A, emulador)
+    SEQUENCES       // Secuencias (LVGL-native; Phase 7A, emulador)
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -205,6 +207,7 @@ static CalculationApp*  g_calcApp = nullptr;
 static SettingsApp*     g_settingsApp = nullptr;   // Phase 5A (emulador)
 static StatisticsApp*   g_statsApp = nullptr;      // Phase 6A (emulador)
 static ProbabilityApp*  g_probApp  = nullptr;      // Phase 6A (emulador)
+static SequencesApp*    g_seqApp   = nullptr;      // Phase 7A (emulador)
 
 // ── Math Showcase (Phase 5A, solo emulador) ─────────────────────────────────
 // Identificador de app fuera del rango de tarjetas del launcher (0..21) para que
@@ -550,6 +553,23 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
+        case AppMode::SEQUENCES:
+            // Phase 7A: mismo contrato que SETTINGS — MODE vuelve al launcher; el
+            // resto (incluido RELEASE) se reenvia a SequencesApp::handleKey.
+            if (isDown && kc == KeyCode::MODE) {
+                returnToMenu();
+                break;
+            }
+            if (g_seqApp) {
+                KeyEvent ke;
+                ke.code   = kc;
+                ke.action = action;
+                ke.row    = -1;
+                ke.col    = -1;
+                g_seqApp->handleKey(ke);
+            }
+            break;
+
         case AppMode::MATH_SHOWCASE:
             // MODE vuelve al launcher; IZQ/ARRIBA y DCHA/ABAJO recorren los casos
             // curados. Solo en el down-edge (una pulsacion = un paso), sin cursor
@@ -668,6 +688,10 @@ static void transitionToMenu()
     g_statsApp = new StatisticsApp();
     g_probApp  = new ProbabilityApp();
 
+    // Phase 7A: SequencesApp (LVGL-native). Mismo patron perezoso: solo se construye
+    // el objeto; su pantalla se crea en el primer load() (load() llama a begin()).
+    g_seqApp   = new SequencesApp();
+
     // Crear y mostrar el MainMenu
     g_menu = new MainMenu(g_displayStub);
     g_menu->create();
@@ -708,6 +732,14 @@ static void launchApp(int appId)
                 g_probApp->load();
                 g_mode = AppMode::PROBABILITY;
                 std::printf("[APP] ProbabilityApp activa\n");
+            }
+            break;
+
+        case 7: // Sequences (LVGL-native; Phase 7A, mismo id que la tarjeta del launcher)
+            if (g_seqApp) {
+                g_seqApp->load();
+                g_mode = AppMode::SEQUENCES;
+                std::printf("[APP] SequencesApp activa\n");
             }
             break;
 
@@ -760,6 +792,10 @@ static void returnToMenu()
         case AppMode::PROBABILITY:
             // Phase 6A: ProbabilityApp::load() vuelve a llamar begin() perezosamente.
             if (g_probApp) g_probApp->end();
+            break;
+        case AppMode::SEQUENCES:
+            // Phase 7A: SequencesApp::load() vuelve a llamar begin() perezosamente.
+            if (g_seqApp) g_seqApp->end();
             break;
         case AppMode::MATH_SHOWCASE:
             showcaseEnd();
@@ -1082,6 +1118,7 @@ static const char* canonicalAppName(const std::string& name)
         lc == "showcase")                         return "MathShowcase";    // Phase 5A
     if (lc == "statistics" || lc == "stats")      return "Statistics";      // Phase 6A
     if (lc == "probability" || lc == "prob")      return "Probability";     // Phase 6A
+    if (lc == "sequences" || lc == "seq")         return "Sequences";       // Phase 7A
     return nullptr;
 }
 
@@ -1096,6 +1133,7 @@ static int scriptAppNameToId(const std::string& name)
     if (lc == "calculation" || lc == "calc")                          return 0;
     if (lc == "statistics" || lc == "stats")                          return 4;   // Phase 6A
     if (lc == "probability" || lc == "prob")                          return 5;   // Phase 6A
+    if (lc == "sequences" || lc == "seq")                             return 7;   // Phase 7A
     if (lc == "settings")                                             return 10;
     if (lc == "mathshowcase" || lc == "math_showcase" || lc == "showcase")
                                                                       return APPID_MATH_SHOWCASE;
@@ -1174,7 +1212,7 @@ static bool loadScript(const char* path)
             if (iss >> extra)   return scriptErr(path, lineNo, "open_app: demasiados argumentos");
             int id = scriptAppNameToId(name);
             if (id < 0) return scriptErr(path, lineNo,
-                                         "open_app: app no lanzable (Calculation|Statistics|Probability|Settings|MathShowcase)");
+                                         "open_app: app no lanzable (Calculation|Statistics|Probability|Sequences|Settings|MathShowcase)");
             sc.type   = ScriptCmdType::OpenApp;
             sc.waitN  = id;
             const char* canon = canonicalAppName(name);
@@ -1186,7 +1224,7 @@ static bool loadScript(const char* path)
             if (iss >> extra)   return scriptErr(path, lineNo, "assert_app: demasiados argumentos");
             const char* canon = canonicalAppName(name);
             if (!canon) return scriptErr(path, lineNo,
-                                         "assert_app: app desconocida (Calculation|Menu|Splash|Statistics|Probability|Settings|MathShowcase)");
+                                         "assert_app: app desconocida (Calculation|Menu|Splash|Statistics|Probability|Sequences|Settings|MathShowcase)");
             sc.type   = ScriptCmdType::AssertApp;
             sc.strArg = canon;
         }
@@ -1272,6 +1310,7 @@ static const char* activeAppName()
          : (g_mode == AppMode::MATH_SHOWCASE) ? "MathShowcase"
          : (g_mode == AppMode::STATISTICS)    ? "Statistics"
          : (g_mode == AppMode::PROBABILITY)   ? "Probability"
+         : (g_mode == AppMode::SEQUENCES)     ? "Sequences"
                                               : "Calculation";
 }
 
@@ -1640,6 +1679,7 @@ int main(int argc, char** argv)
     if (g_settingsApp) { g_settingsApp->end(); delete g_settingsApp; }  // Phase 5A
     if (g_statsApp) { g_statsApp->end(); delete g_statsApp; }           // Phase 6A
     if (g_probApp)  { g_probApp->end();  delete g_probApp;  }           // Phase 6A
+    if (g_seqApp)   { g_seqApp->end();   delete g_seqApp;   }           // Phase 7A
     showcaseEnd();                                                      // Phase 5A (no-op si inactiva)
     delete g_menu;
     delete g_splash;

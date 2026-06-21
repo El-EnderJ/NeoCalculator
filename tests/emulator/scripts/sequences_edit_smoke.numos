@@ -1,0 +1,65 @@
+# sequences_edit_smoke.numos — Phase 7A: edit a sequence expression and view the table.
+#
+# Unlike sequences_smoke.numos (which only opens the app on its default "Define" tab),
+# this script proves SequencesApp is INTERACTABLE *through the numeric editor*: it edits
+# u(n) from "2*n+1" to "2*n+5", commits it, switches to the "Table" tab, and lets the
+# app recompute() the values so the rendered table visibly differs from default.
+#
+# Edit flow (focus starts on u(n), the Define tab, SequencesApp.cpp:55-56,68,100):
+#   * ENTER (nav mode) opens the editor; startEdit() pre-fills the buffer with the
+#     current expression "2*n+1" and shows it (SequencesApp.cpp:301-305,458-462).
+#   * DEL removes the trailing "1" -> buffer "2*n+" (SequencesApp.cpp:409-415).
+#   * Digit 5 appends -> buffer "2*n+5" (SequencesApp.cpp:419-435 via keyCodeDigitValue;
+#     SequencesApp has NO digit-range bug — it uses the order-independent helper, not the
+#     broken `code >= NUM_0 && code <= NUM_9` test, KeyCodes.h).
+#   * ENTER commits via finishEdit(): _seqExprText[0]="2*n+5", then recompute()
+#     (SequencesApp.cpp:307-312). recompute() matches the linear branch
+#     sscanf("2*n+5","%lf*n+%lf") -> a=2, b=5 (SequencesApp.cpp:345-353).
+#   * RIGHT switches Define -> Table; switchTab(TABLE) re-runs recompute()+updateTable()
+#     (SequencesApp.cpp:454-457,261-269). u(n) column now reads 5,7,9,11,... and v(n)=n^2
+#     reads 0,1,4,9,... Pure <cmath>/sscanf: no Giac/CAS, no PSRAM, no LittleFS. Fully
+#     deterministic. (We deliberately edit only the numeric coefficient and never type the
+#     variable 'n' — no key maps to it — nor touch the n^2 exponent, which recompute()
+#     hardcodes; this keeps the edit inside a supported, deterministic branch.)
+#
+# SequencesApp has NO update() method and no cursor/caret blink, so the only volatile
+# region is the StatusBar clock (HH:MM). This phase makes NO golden claim; the screenshot
+# is a CANDIDATE for human review only (a clock mask is added by the human at promotion
+# time, rect 4,6,37,13).
+#
+# Timing notes (deterministic, step-ms 16):
+#   * 200 frames -> splash done, in launcher.
+#   * 60 frames  -> Sequences screen load + fade settles after open_app.
+#   * one frame per key command (1 command/frame).
+#   * 120 frames -> Define->Table tab switch + recompute()/updateTable() settles.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/sequences_edit_smoke.numos \
+#           --frames 800 --screenshot out/sequences_edit_smoke.ppm --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "sequences_edit_smoke: waiting for launcher"
+wait 200
+
+# Open Sequences (emulator launchApp id 7 — same id as the launcher's Sequences card).
+open_app Sequences
+wait 60
+assert_app Sequences
+
+# Edit u(n) from "2*n+1" to "2*n+5": open the editor, drop the trailing "1", type 5, commit.
+key enter
+key del
+key 5
+key enter
+
+# Switch Define -> Table; switchTab(TABLE) recompute()s over the edited u(n)=2*n+5.
+key right
+wait 120
+
+# Screenshot FIRST so the artifact exists even if a later assertion fails.
+screenshot out/sequences_edit_smoke.ppm
+log "sequences_edit_smoke: screenshot captured (Table tab, u(n)=2*n+5 recomputed)"
+
+# Still the Sequences app after the in-app tab switch (tab switch does not change g_mode).
+assert_app Sequences
+log "sequences_edit_smoke: assertion passed (Sequences active)"

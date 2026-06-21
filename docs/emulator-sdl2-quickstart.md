@@ -257,8 +257,8 @@ contain spaces.
 | `keydown NAME` / `keyup NAME` | Inject only the press / only the release. |
 | `screenshot PATH` | Dump a 320×240 PPM at `PATH`, captured *after* this frame's render. |
 | `log "message"` | Print `message` to stdout (handy for CI log markers). |
-| `open_app NAME` | (Phase 5A) Launch an app directly by name through the same `launchApp()` the launcher uses — deterministic, no fragile grid navigation. `NAME` ∈ `Calculation`/`Settings`/`MathShowcase` (aliases `Calc`, `Showcase`/`Math_Showcase`). Use it from the launcher (MENU) state. |
-| `assert_app NAME` | (Phase 4B-C / 5A) Assert the active app is `NAME` ∈ `Calculation`/`Menu`/`Splash`/`Settings`/`MathShowcase` (aliases `Calc`/`Launcher`/`Showcase`). |
+| `open_app NAME` | (Phase 5A) Launch an app directly by name through the same `launchApp()` the launcher uses — deterministic, no fragile grid navigation. `NAME` ∈ `Calculation`/`Statistics`/`Probability`/`Sequences`/`Settings`/`MathShowcase` (aliases `Calc`, `Stats`, `Prob`, `Seq`, `Showcase`/`Math_Showcase`). Use it from the launcher (MENU) state. |
+| `assert_app NAME` | (Phase 4B-C / 5A) Assert the active app is `NAME` ∈ `Calculation`/`Menu`/`Splash`/`Statistics`/`Probability`/`Sequences`/`Settings`/`MathShowcase` (aliases `Calc`/`Launcher`/`Stats`/`Prob`/`Seq`/`Showcase`). |
 | `assert_result TEXT` | (Phase 4B-C) Assert CalculationApp's *computed* result equals `TEXT` exactly (e.g. `3`, `5/6`). |
 | `assert_result_contains TEXT` | (Phase 4B-C) Like `assert_result` but a substring match. |
 | `assert_no_error` | (Phase 4B-C) Assert the last evaluated result has no error flag. |
@@ -391,7 +391,9 @@ python scripts/generate-emulator-candidates.py
 #    out/emulator-candidates/statistics_smoke.ppm      (Phase 6A)
 #    out/emulator-candidates/probability_smoke.ppm     (Phase 6A)
 #    out/emulator-candidates/statistics_data_smoke.ppm (Phase 6C; Phase 6D types {1,2,3})
-#    out/emulator-candidates/probability_edit_smoke.ppm(Phase 6C; Phase 6D types mu=2.5; each 320x240, 230415 bytes)
+#    out/emulator-candidates/probability_edit_smoke.ppm(Phase 6C; Phase 6D types mu=2.5)
+#    out/emulator-candidates/sequences_smoke.ppm       (Phase 7A)
+#    out/emulator-candidates/sequences_edit_smoke.ppm  (Phase 7A edits u(n)=2*n+5; each 320x240, 230415 bytes)
 ```
 
 **Deeper interaction smokes (Phase 6C, upgraded in Phase 6D).** Beyond the Phase 6A
@@ -666,6 +668,59 @@ entry in this phase. As with every emulator screen the only across-run volatile
 region is the StatusBar clock (`HH:MM`); a future golden would mask it, exactly as
 `calc_1_plus_2` masks the blinking cursor.
 
+### Additional emulator app: Sequences (Phase 7A)
+
+Phase 7A enables **one** more **safe**, LVGL-only app. As before this is
+**emulator-only** wiring in [`NativeHal.cpp`](../src/hal/NativeHal.cpp); the firmware,
+the renderer geometry, the STIX assets, and the CAS/Giac engine are **untouched**.
+Open it with the [`open_app`](#scripted-input-replay-phase-4a) script command (`open_app
+Sequences`, alias `Seq`) or by navigating the launcher to its **Sequences** card and
+pressing ENTER.
+
+**Sequences.** The real, unmodified [`SequencesApp`](../src/apps/SequencesApp.cpp) — a
+2-tab panel (**Define** sequence expressions `u(n)`, `v(n)` / **Table** of computed
+values). It is even leaner than Statistics/Probability: it has **no engine companion
+file**, evaluating sequences with a self-contained `sscanf`-based `recompute()`
+([SequencesApp.cpp:323-367](../src/apps/SequencesApp.cpp#L323)) over `double`. It needs
+**no HAL work**: it touches only LVGL + `ui::StatusBar` + `KeyboardManager`, with no
+Giac, no filesystem, no `heap_caps`/PSRAM, and no sensors. It opens on the **Define**
+tab showing the static defaults `u(n)=2*n+1` and `v(n)=n^2`. It has **no `update()`
+method and no cursor/caret blink**, so screenshots are byte-stable apart from the clock.
+
+> SequencesApp is the **same code the firmware ships** (already compiled there via
+> `+<*>`); Phase 7A only adds its `.cpp` to the native
+> [`build_src_filter`](../platformio.ini#L188) and routes `open_app`/`assert_app`/
+> launcher id 7 in `NativeHal.cpp`. No app logic is modified. SequencesApp already uses
+> the order-independent `keyCodeDigitValue()` helper for digit entry, so it never had
+> the Phase 6D `NUM_0..NUM_9` range bug.
+
+**Smoke scripts.** Two scripts, both wired into
+[`generate-emulator-candidates.py`](../scripts/generate-emulator-candidates.py) (CI
+generates/uploads their candidate PPMs and **warns — does not fail — on a missing
+golden**; **no golden is blessed by this phase**):
+
+- `tests/emulator/scripts/sequences_smoke.numos` — `open_app Sequences`, screenshot the
+  default Define tab, `assert_app Sequences`.
+- `tests/emulator/scripts/sequences_edit_smoke.numos` — edits `u(n)` from `2*n+1` to
+  `2*n+5` (`ENTER`, `DEL`, `5`, `ENTER`), switches to the Table tab (`RIGHT`) so
+  `recompute()` reruns over the edit, screenshots, and `assert_app Sequences`. The edit
+  stays inside `recompute()`'s linear `%lf*n+%lf` branch and never types the variable
+  `n` (no key maps to it), keeping it deterministic.
+
+```bash
+SDL_VIDEODRIVER=dummy ./scripts/run-emulator-linux.sh \
+  --headless --deterministic --script tests/emulator/scripts/sequences_smoke.numos \
+  --frames 800 --screenshot out/sequences_smoke.ppm --quiet             # Linux
+```
+
+**Limitations.** Sequences is **smoke-only** (open/edit + `assert_app` + screenshot); it
+has **no `assert_result`-style semantic assertions** (that path is CalculationApp-only).
+`recompute()` only recognizes the patterns `a*n^2+b`, `a*n+b`, bare `n`, and constants —
+other expressions silently evaluate to 0 ([SequencesApp.cpp:333](../src/apps/SequencesApp.cpp#L333));
+this is a pre-existing app limitation, not introduced here. As with every emulator screen
+the only across-run volatile region is the StatusBar clock (`HH:MM`); a future golden
+would mask it (rect `4,6,37,13`). **No Sequences golden has been accepted yet.**
+
 ## Keyboard map (Phase 3A)
 
 PC keys map directly to calculator `KeyCode`s in
@@ -736,13 +791,14 @@ PlatformIO paths can hit the Windows path-length limit). Consequences:
   [Keyboard map](#keyboard-map-phase-3a)); full matrix / serial-text input is
   still future. SHIFT/ALPHA/STO are only meaningful inside CalculationApp, not
   in the launcher.
-- **CalculationApp, Settings, Math Showcase, Statistics, and Probability are wired**
-  in the emulator (Settings + Math Showcase in Phase 5A; Statistics + Probability in
-  Phase 6A); the remaining apps still print "no implementada"
-  ([NativeHal.cpp](../src/hal/NativeHal.cpp)). Settings, Statistics, and Probability
-  are real firmware apps; Math Showcase is emulator-only. See
-  [Additional emulator apps (Phase 5A)](#additional-emulator-apps-settings--math-showcase-phase-5a)
-  and [Statistics & Probability (Phase 6A)](#additional-emulator-apps-statistics--probability-phase-6a).
+- **CalculationApp, Settings, Math Showcase, Statistics, Probability, and Sequences are
+  wired** in the emulator (Settings + Math Showcase in Phase 5A; Statistics + Probability
+  in Phase 6A; Sequences in Phase 7A); the remaining apps still print "no implementada"
+  ([NativeHal.cpp](../src/hal/NativeHal.cpp)). Settings, Statistics, Probability, and
+  Sequences are real firmware apps; Math Showcase is emulator-only. See
+  [Additional emulator apps (Phase 5A)](#additional-emulator-apps-settings--math-showcase-phase-5a),
+  [Statistics & Probability (Phase 6A)](#additional-emulator-apps-statistics--probability-phase-6a),
+  and [Sequences (Phase 7A)](#additional-emulator-app-sequences-phase-7a).
 - **Scripted input replay, golden tooling, AND semantic value assertions exist;
   rendered-pixel assertion does not.** Phase 3A adds `--frames` / `--run-for-ms` /
   `--headless` for unattended boot smokes, Phase 3B adds `--deterministic` +

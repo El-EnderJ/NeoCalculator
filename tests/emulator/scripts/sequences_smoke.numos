@@ -1,0 +1,41 @@
+# sequences_smoke.numos — open the Sequences app, screenshot, and ASSERT it is active.
+#
+# Phase 7A smoke test. SequencesApp is LVGL-native and emulator-safe: it pulls only
+# lvgl + ui::StatusBar + input/KeyCodes + KeyboardManager + a self-contained
+# sscanf-based recompute() (no Giac/CAS, no LittleFS/Preferences, no heap_caps/PSRAM,
+# no sensors/WiFi; SequencesApp.cpp:25-28,323-367). This script opens it through the
+# emulator-only `open_app` command (added in Phase 5A: it calls the SAME NativeHal
+# launchApp() the launcher uses — id 7, the Sequences card id — so it is deterministic
+# and does not depend on fragile grid navigation), captures a screenshot, and asserts
+# the active app is "Sequences".
+#
+# The app opens on its "Define" tab showing the static default expressions
+# u(n)=2*n+1 and v(n)=n^2 (SequencesApp.cpp:68-69,100). SequencesApp has NO update()
+# method and no cursor/caret blink, so as with every emulator screen the only volatile
+# region across runs is the StatusBar clock (HH:MM). This phase makes NO golden claim;
+# the screenshot is a CANDIDATE for human review only (a clock mask is added by the
+# human at promotion time, rect 4,6,37,13).
+#
+# Timing notes (deterministic, step-ms 16):
+#   * 200 frames -> splash (~frame 125) is done; we are in the launcher.
+#   * 60 frames  -> Sequences screen load + 200ms fade settles after open_app.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/sequences_smoke.numos \
+#           --frames 800 --screenshot out/sequences_smoke.ppm --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "sequences_smoke: waiting for launcher"
+wait 200
+
+# Open Sequences (emulator launchApp id 7 — same id as the launcher's Sequences card).
+open_app Sequences
+wait 60
+
+# Screenshot FIRST: the deferred capture happens on this frame, before the assert
+# runs on a later frame, so the artifact is produced even if the assertion fails.
+screenshot out/sequences_smoke.ppm
+log "sequences_smoke: screenshot captured"
+
+assert_app Sequences
+log "sequences_smoke: assertion passed (Sequences active)"

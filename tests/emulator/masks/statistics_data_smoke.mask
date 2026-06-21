@@ -1,0 +1,30 @@
+# Ignore-rect mask for statistics_data_smoke (NumOS SDL2 emulator visual test).
+#
+# Reason: the ONLY volatile region on this StatisticsApp screen across separate
+# launches is the StatusBar clock. This script types the dataset {1,2,3} and
+# switches to the computed "Stats" tab, which renders the 1-Var StatsEngine
+# readout (n=3, Mean=2, Median=2, Sum=6, Min=1, Max=3) over a static lv_table —
+# no blinking input cursor and no animation once the 200 ms fade-in settles, so
+# the body (tab bar, stats table, hint) is byte-stable. The clock label is drawn
+# by StatusBar::updateClock() from the real wall clock (time() -> localtime ->
+# "%02d:%02d", src/ui/StatusBar.cpp), so HH:MM reflects the minute each scripted
+# run happens to execute on. Two launches in different minutes (or hours)
+# therefore differ only inside the clock glyphs. This is expected per-minute UI
+# nondeterminism, NOT a renderer bug — the renderer is frozen, so it is masked in
+# the comparator instead of edited in src/.
+#
+# Region: the SAME shared StatusBar clock as statistics_smoke / probability_smoke
+# / settings_smoke / math_showcase_smoke. The label is aligned LV_ALIGN_LEFT_MID,6
+# in lv_font_montserrat_12 (StatusBar.cpp:61-65) and is always exactly 5 glyphs
+# ("HH:MM"), so its box spans ~x[6..38] y[8..16]. Because both the HOUR and the
+# MINUTE digits can vary across arbitrary launches, the mask covers the WHOLE
+# label, not just the minutes.
+#
+# Rect = full HH:MM label box (~x[6..38] y[8..16]) padded ~2px on each side ->
+# x[4..40] y[6..18]. This is tight to the clock: the app title is centered
+# (x~160), the battery/angle/modifier are right-aligned (x>240), and the
+# Statistics body (tab bar + computed stats table over {1,2,3}) renders below the
+# y=24 StatusBar separator — none are masked.
+#
+# x,y,w,h
+4,6,37,13

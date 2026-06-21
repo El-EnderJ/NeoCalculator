@@ -828,10 +828,10 @@ void MatricesApp::handleKeyEditor(const KeyEvent& ev) {
     auto& mat = _matrices[_editingMat];
 
     if (_editing) {
-        // Numeric input
-        bool isDigit = (ev.code >= KeyCode::NUM_0 && ev.code <= KeyCode::NUM_9);
-        if (isDigit && _editLen < 14) {
-            _editBuf[_editLen++] = '0' + (static_cast<int>(ev.code) - static_cast<int>(KeyCode::NUM_0));
+        // Numeric input (explicit digit map — the KeyCode enum is not ordered 0-9)
+        int digit = keyCodeDigitValue(ev.code);
+        if (digit >= 0 && _editLen < 14) {
+            _editBuf[_editLen++] = static_cast<char>('0' + digit);
             _editBuf[_editLen] = '\0';
             char display[20];
             snprintf(display, sizeof(display), ">%s_", _editBuf);
@@ -907,7 +907,7 @@ void MatricesApp::handleKeyEditor(const KeyEvent& ev) {
             break;
         default:
             // Direct digit input starts editing
-            if (ev.code >= KeyCode::NUM_0 && ev.code <= KeyCode::NUM_9) {
+            if (keyCodeDigitValue(ev.code) >= 0) {
                 startCellEdit();
                 handleKeyEditor(ev);
             }

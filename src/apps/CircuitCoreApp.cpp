@@ -2054,10 +2054,12 @@ void CircuitCoreApp::handleKeyIDE(const KeyEvent& ev) {
             break;
         default:
             // For letter/number keys, the char gets mapped from keycode
-            if (ev.code >= KeyCode::NUM_0 && ev.code <= KeyCode::NUM_9) {
-                char ch = '0' + (static_cast<int>(ev.code) - static_cast<int>(KeyCode::NUM_0));
-                lv_textarea_add_char(_ideTextArea, ch);
-                updateAutoComplete();
+            {
+                int digit = keyCodeDigitValue(ev.code);
+                if (digit >= 0) {
+                    lv_textarea_add_char(_ideTextArea, static_cast<char>('0' + digit));
+                    updateAutoComplete();
+                }
             }
             break;
     }

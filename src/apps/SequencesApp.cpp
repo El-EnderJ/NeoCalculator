@@ -414,10 +414,12 @@ void SequencesApp::handleKeyDefine(const KeyEvent& ev) {
                 }
                 break;
             default: {
-                // Map number keys to characters
+                // Map number keys to characters (explicit digit map — the KeyCode
+                // enum is not ordered 0-9, so a range test is always false)
                 char c = '\0';
-                if (ev.code >= KeyCode::NUM_0 && ev.code <= KeyCode::NUM_9) {
-                    c = '0' + (static_cast<int>(ev.code) - static_cast<int>(KeyCode::NUM_0));
+                int digit = keyCodeDigitValue(ev.code);
+                if (digit >= 0) {
+                    c = static_cast<char>('0' + digit);
                 } else if (ev.code == KeyCode::ADD)  c = '+';
                 else if (ev.code == KeyCode::SUB)    c = '-';
                 else if (ev.code == KeyCode::MUL)    c = '*';

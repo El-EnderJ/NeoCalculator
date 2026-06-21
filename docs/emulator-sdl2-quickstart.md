@@ -390,41 +390,49 @@ python scripts/generate-emulator-candidates.py
 #    out/emulator-candidates/math_showcase_smoke.ppm   (Phase 5A)
 #    out/emulator-candidates/statistics_smoke.ppm      (Phase 6A)
 #    out/emulator-candidates/probability_smoke.ppm     (Phase 6A)
-#    out/emulator-candidates/statistics_data_smoke.ppm (Phase 6C)
-#    out/emulator-candidates/probability_edit_smoke.ppm(Phase 6C; each 320x240, 230415 bytes)
+#    out/emulator-candidates/statistics_data_smoke.ppm (Phase 6C; Phase 6D types {1,2,3})
+#    out/emulator-candidates/probability_edit_smoke.ppm(Phase 6C; Phase 6D types mu=2.5; each 320x240, 230415 bytes)
 ```
 
-**Deeper interaction smokes (Phase 6C).** Beyond the Phase 6A default-open smokes,
-Statistics and Probability now have scripts that drive the apps past their default
-state, proving they are *interactable*, not merely launchable:
+**Deeper interaction smokes (Phase 6C, upgraded in Phase 6D).** Beyond the Phase 6A
+default-open smokes, Statistics and Probability have scripts that drive the apps past
+their default state with *real numeric entry*, proving they are *interactable*, not
+merely launchable:
 
-- `probability_edit_smoke.numos` raises the focused `mu` parameter from `0` to `2`
-  with four `RIGHT` presses (nav-mode quick-adjust, `mu += 0.5` + `recompute()` per
-  press, `ProbabilityApp.cpp:483-491`); the bell curve shifts right and the PDF/CDF
-  labels change.
-- `statistics_data_smoke.numos` appends rows with `AC` and switches to the computed
-  **Stats** tab with `GRAPH`. Reaching a computed tab from the Data tab requires the
-  `GRAPH` key — on the Data tab `LEFT`/`RIGHT` are column navigation — so the emulator
+- `statistics_data_smoke.numos` types the dataset `{1, 2, 3}` into the value column —
+  `1 ENTER`, then `AC DOWN 2 ENTER`, then `AC DOWN 3 ENTER` (the table starts with one
+  row, `_numRows=1`; `AC` appends a row and `DOWN` moves to it) — and switches to the
+  computed **Stats** tab with `GRAPH`. Reaching a computed tab from the Data tab requires
+  the `GRAPH` key — on the Data tab `LEFT`/`RIGHT` are column navigation — so the emulator
   script-key table maps a `graph` token (`scriptNameToKeyCode`, `src/hal/NativeHal.cpp`,
-  emulator-only, guarded by `#ifdef NATIVE_SIM` so it is firmware-neutral). The Stats
-  tab then renders the 1-Var statistics via `switchTab` → `recompute()` →
-  `updateStatsDisplay()` (`StatisticsApp.cpp:318`).
+  emulator-only, guarded by `#ifdef NATIVE_SIM` so it is firmware-neutral). The Stats tab
+  then renders the 1-Var statistics via `switchTab` → `recompute()` →
+  `updateStatsDisplay()`: over `{1,2,3}` that is `n=3, Mean=2, Median=2, Sum=6, Min=1,
+  Max=3`.
+- `probability_edit_smoke.numos` edits the focused `mu` field through the numeric
+  editor: `ENTER` opens the editor (which pre-fills the buffer with the current value
+  `0`), `DEL` clears it, `2 . 5` types the value, and `ENTER` commits via `finishEdit()`
+  (`atof("2.5")` → `mu=2.5`) and `recompute()`s the PDF/CDF and bell curve, which centers
+  at `2.5`.
 
-> **Known limitation — numeric entry into these apps is firmware-bugged.** Neither
-> script types digits into a field/cell, because digit entry into StatisticsApp and
-> ProbabilityApp is silently broken. Both detect digits with the range test
-> `code >= KeyCode::NUM_0 && code <= KeyCode::NUM_9` (`StatisticsApp.cpp:553,642`,
-> `ProbabilityApp.cpp:405,495`), but `KeyCodes.h:68-77` declares the digits
-> non-contiguously and out of order (NUM_7..NUM_9, then NUM_4..NUM_6, then NUM_1..NUM_3
-> and finally NUM_0 near `ENTER`), so `NUM_0 > NUM_9` and the range is always empty —
-> every digit key is ignored. CalculationApp is immune because it uses explicit
-> per-digit `case` labels (`CalculationApp.cpp:326-335`). This is a **pre-existing
-> firmware app-logic bug**, not an emulator artifact, and fixing it is out of scope
-> for an emulator-only phase. As a result the Probability smoke changes `mu` via the
-> quick-adjust key (not the numeric editor), and the Statistics smoke computes over the
-> default (zero) rows rather than a typed dataset. **Recommended Phase 6D:** fix the
-> digit range test in both apps (e.g. an explicit digit predicate), then extend these
-> scripts to type a real dataset (`{1,2,3}`) and edit `mu` numerically.
+> **Phase 6D fixed the numeric-entry firmware bug.** Both apps previously dropped every
+> digit key: digit entry into StatisticsApp and ProbabilityApp used the range test
+> `code >= KeyCode::NUM_0 && code <= KeyCode::NUM_9`, but `KeyCodes.h:68-77` declares the
+> digits non-contiguously and out of order (NUM_7..NUM_9, then NUM_4..NUM_6, then
+> NUM_1..NUM_3 and finally NUM_0 near `ENTER`), so `NUM_0 > NUM_9` and the range was
+> always empty. The ordering-dependent companion arithmetic `'0' + (code - NUM_0)` was
+> likewise unsafe. CalculationApp was immune only because it uses explicit per-digit
+> `case` labels (`CalculationApp.cpp:326-335`). **Phase 6D** added an explicit,
+> order-independent helper `keyCodeDigitValue(KeyCode)` to `src/input/KeyCodes.h` (a
+> `switch` returning `0`–`9` or `-1`; no heap, no tables, host/firmware safe) and routed
+> both apps' digit detection through it (`StatisticsApp.cpp`, `ProbabilityApp.cpp`).
+> Digit keys now register, so the two scripts above type real values instead of working
+> around the bug. The same broken range test still exists in four other firmware apps
+> not built into the emulator — `CircuitCoreApp`, `MatricesApp`, `RegressionApp`,
+> `SequencesApp` — and is left for a follow-up **Phase 6E** sweep (each would take the
+> identical one-line `keyCodeDigitValue` substitution). Because these scripts now reach
+> data-driven states, their candidate screenshots changed and **need fresh human-reviewed
+> goldens** before any byte-exact comparison is meaningful.
 
 Both new screens are **human-gated**: this phase makes **no golden claim** — the
 candidates are for human review only, and no golden/mask is promoted automatically.

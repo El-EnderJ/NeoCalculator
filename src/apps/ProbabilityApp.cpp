@@ -402,9 +402,11 @@ void ProbabilityApp::handleKey(const KeyEvent& ev) {
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
     if (_editing) {
-        bool isDigit = (ev.code >= KeyCode::NUM_0 && ev.code <= KeyCode::NUM_9);
-        if (isDigit && _editLen < 14) {
-            _editBuf[_editLen++] = '0' + (static_cast<int>(ev.code) - static_cast<int>(KeyCode::NUM_0));
+        // Explicit digit map — the KeyCode enum is not ordered 0-9, so a range
+        // test (`code >= NUM_0 && code <= NUM_9`) is always false (KeyCodes.h).
+        int digit = keyCodeDigitValue(ev.code);
+        if (digit >= 0 && _editLen < 14) {
+            _editBuf[_editLen++] = static_cast<char>('0' + digit);
             _editBuf[_editLen] = '\0';
             char display[20];
             snprintf(display, sizeof(display), ">%s_", _editBuf);
@@ -492,7 +494,7 @@ void ProbabilityApp::handleKey(const KeyEvent& ev) {
             break;
         default:
             // Direct digit input starts editing
-            if (ev.code >= KeyCode::NUM_0 && ev.code <= KeyCode::NUM_9) {
+            if (keyCodeDigitValue(ev.code) >= 0) {
                 startEdit();
                 handleKey(ev);  // Re-process the digit
             }

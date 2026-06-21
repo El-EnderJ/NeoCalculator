@@ -108,6 +108,30 @@ enum class KeyCode : uint8_t {
     FACT,        // Factorización en primos (SHIFT + botón asignado)
 };
 
+// ── Mapeo de tecla numérica → valor de dígito ────────────────────────────
+// El enum KeyCode coloca NUM_0..NUM_9 en el orden FÍSICO del teclado
+// (NUM_7,8,9 → NUM_4,5,6 → NUM_1,2,3 → NUM_0 al final, junto a ENTER), de modo
+// que los dígitos NO son contiguos y NUM_0 > NUM_9 numéricamente. Un test de
+// rango como `code >= NUM_0 && code <= NUM_9` es por tanto SIEMPRE falso, y la
+// aritmética `code - NUM_0` también depende del orden. Esta función explícita no
+// depende de la ordenación del enum, no asigna memoria y es segura tanto en
+// firmware como en el emulador host. Devuelve 0–9 para un dígito, o -1 si no.
+inline int keyCodeDigitValue(KeyCode code) {
+    switch (code) {
+        case KeyCode::NUM_0: return 0;
+        case KeyCode::NUM_1: return 1;
+        case KeyCode::NUM_2: return 2;
+        case KeyCode::NUM_3: return 3;
+        case KeyCode::NUM_4: return 4;
+        case KeyCode::NUM_5: return 5;
+        case KeyCode::NUM_6: return 6;
+        case KeyCode::NUM_7: return 7;
+        case KeyCode::NUM_8: return 8;
+        case KeyCode::NUM_9: return 9;
+        default:             return -1;
+    }
+}
+
 // ── Estructura completa de KeyEvent (usa KeyCode definido arriba) ────────
 struct KeyEvent {
     KeyCode   code   = KeyCode::NONE;

@@ -1,35 +1,35 @@
-# statistics_data_smoke.numos — Phase 6C: drive StatisticsApp past its default tab.
+# statistics_data_smoke.numos — Phase 6D: type a real dataset into StatisticsApp.
 #
 # Unlike statistics_smoke.numos (which only opens the app on its default empty "Data"
-# tab), this script proves StatisticsApp is INTERACTABLE: it grows the data table and
-# switches to the computed "Stats" tab, which runs the 1-Var StatsEngine and renders
-# its results — a code path the open-only smoke never reaches.
+# tab), this script proves StatisticsApp is INTERACTABLE *with real numeric entry*: it
+# types the dataset {1, 2, 3} into the value column and switches to the computed "Stats"
+# tab, which runs the 1-Var StatsEngine and renders mean/median/.../n over actual data —
+# a code path the open-only smoke never reaches.
 #
-# IMPORTANT LIMITATION (honest scope note): this smoke does NOT type numeric values,
-# because digit entry into the table is broken by a pre-existing firmware app-logic
-# bug. StatisticsApp detects digits with the range test `code >= NUM_0 && code <= NUM_9`
-# (StatisticsApp.cpp:553,642), but the KeyCode enum declares the digits NON-contiguously
-# and out of order — NUM_7..NUM_9 (row 3), NUM_4..NUM_6 (row 4), NUM_1..NUM_3 then NUM_0
-# last near ENTER (row 5) — so NUM_0 > NUM_9 and that range is always empty
-# (KeyCodes.h:68-77). Digit keys are silently ignored, so a value cell cannot be set to
-# a nonzero number from a script. (CalculationApp is immune: it uses explicit per-digit
-# case labels, CalculationApp.cpp:326-335.) Fixing the range test is a firmware app-logic
-# change, out of scope for an emulator-only phase — see the Phase 6D recommendation in
-# docs/emulator-sdl2-quickstart.md.
+# Phase 6D fixed the digit-entry bug. Previously StatisticsApp detected digits with the
+# range test `code >= NUM_0 && code <= NUM_9` (StatisticsApp.cpp), but the KeyCode enum
+# declares the digits NON-contiguously and out of order — NUM_7..NUM_9 (row 3),
+# NUM_4..NUM_6 (row 4), NUM_1..NUM_3 then NUM_0 last near ENTER (row 5) — so NUM_0 > NUM_9
+# and that range was always empty (KeyCodes.h:68-77); every digit key was silently
+# ignored. The fix replaces the range test (and the ordering-dependent `code - NUM_0`
+# arithmetic) with the explicit, order-independent helper keyCodeDigitValue(KeyCode)
+# (KeyCodes.h). Digit keys now register, so a script can set value cells to real numbers.
 #
-# So this smoke exercises the parts that DO work deterministically with mapped keys:
-#   * AC (nav mode) appends a fresh row: value 0, freq 1, ++_numRows (StatisticsApp.cpp:631-638).
+# Data-entry flow (the table starts with exactly ONE row, _numRows=1, StatisticsApp.cpp):
+#   * On the Data tab, pressing a digit in nav mode starts an edit and appends the digit
+#     (StatisticsApp.cpp default case -> startEdit() + re-process). ENTER commits the
+#     value via finishEdit() (atof of the buffer) and returns to nav mode.
+#   * AC (nav mode) appends a fresh row (value 0, freq 1, ++_numRows); DOWN moves the
+#     focus to it. So the row pattern is: type row 0, then {AC, DOWN, type} per new row.
 #   * GRAPH cycles Data -> Stats -> Graph; it is the ONLY key that leaves the Data tab
 #     (on Data, LEFT/RIGHT are column nav — the tab-switch guard requires
 #     _activeTab != Tab::DATA, StatisticsApp.cpp:521,526). switchTab(STATS) calls
-#     recompute() + updateStatsDisplay() (StatisticsApp.cpp:318). The emulator `key graph`
+#     recompute() + updateStatsDisplay() over the typed rows. The emulator `key graph`
 #     token is mapped in scriptNameToKeyCode (NativeHal.cpp, #ifdef NATIVE_SIM,
 #     firmware-neutral).
-#   * The Stats tab then shows the 1-Var statistics over the default rows (all value 0:
-#     Mean/Median/.../Sum = 0, Count n = 2 — recompute() includes rows with value != 0
-#     OR index < numRows-1, StatisticsApp.cpp:439). Pure <cmath>/STL StatsEngine: no
-#     Giac/CAS, no PSRAM, no LittleFS. Fully deterministic (constructor zero-fills the
-#     data: _values[i]=0.0, _freqs[i]=1.0, StatisticsApp.cpp:70-71).
+#   * Over {1,2,3} (each freq 1) recompute() yields n=3, Mean=2, Median=2, Sum=6,
+#     Min=1, Max=3. Pure <cmath>/STL StatsEngine: no Giac/CAS, no PSRAM, no LittleFS.
+#     Fully deterministic.
 #
 # As with every emulator screen the only volatile region is the StatusBar clock
 # (HH:MM). This phase makes NO golden claim; the screenshot is a CANDIDATE for human
@@ -54,18 +54,30 @@ open_app Statistics
 wait 60
 assert_app Statistics
 
-# Grow the table by two rows (nav-mode AC appends a row each).
+# Row 0: type value 1 and commit.
+key 1
+key enter
+
+# Row 1: append a row, move down to it, type value 2 and commit.
 key ac
+key down
+key 2
+key enter
+
+# Row 2: append a row, move down to it, type value 3 and commit.
 key ac
+key down
+key 3
+key enter
 
 # Switch Data -> Stats: GRAPH is the only key that leaves the Data tab, and it triggers
-# recompute() + updateStatsDisplay() over the rows.
+# recompute() + updateStatsDisplay() over the typed dataset {1,2,3}.
 key graph
 wait 120
 
 # Screenshot FIRST so the artifact exists even if a later assertion fails.
 screenshot out/statistics_data_smoke.ppm
-log "statistics_data_smoke: screenshot captured (Stats tab, 1-Var stats rendered)"
+log "statistics_data_smoke: screenshot captured (Stats tab, 1-Var stats over {1,2,3})"
 
 # Still the Statistics app after the in-app tab switch (tab switch does not change g_mode).
 assert_app Statistics

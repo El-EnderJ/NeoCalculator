@@ -1,0 +1,31 @@
+# Ignore-rect mask for sequences_edit_smoke (NumOS SDL2 emulator visual test).
+#
+# Reason: the ONLY volatile region on this SequencesApp screen across separate
+# launches is the StatusBar clock. This script edits u(n) from "2*n+1" to "2*n+5"
+# (ENTER, DEL, 5, ENTER) and switches to the "Table" tab, which re-runs recompute()
+# and renders the values over a static lv_table (n=0..2 -> u(n)=5,7,9 and
+# v(n)=n^2=0,1,4). After the commit the editor is closed, so there is no blinking
+# input cursor; SequencesApp has no update() method and no animation once the 200 ms
+# fade-in settles, so the body (tab bar, value table) is byte-stable. The clock
+# label is drawn by StatusBar::updateClock() from the real wall clock (time() ->
+# localtime -> "%02d:%02d", src/ui/StatusBar.cpp), so HH:MM reflects the minute each
+# scripted run happens to execute on. Two launches in different minutes (or hours)
+# therefore differ only inside the clock glyphs. This is expected per-minute UI
+# nondeterminism, NOT a renderer bug — the renderer is frozen, so it is masked in
+# the comparator instead of edited in src/.
+#
+# Region: the SAME shared StatusBar clock as statistics_data_smoke /
+# probability_edit_smoke / statistics_smoke / settings_smoke. The label is aligned
+# LV_ALIGN_LEFT_MID,6 in lv_font_montserrat_12 (StatusBar.cpp:61-65) and is always
+# exactly 5 glyphs ("HH:MM"), so its box spans ~x[6..38] y[8..16]. Because both the
+# HOUR and the MINUTE digits can vary across arbitrary launches, the mask covers the
+# WHOLE label, not just the minutes.
+#
+# Rect = full HH:MM label box (~x[6..38] y[8..16]) padded ~2px on each side ->
+# x[4..40] y[6..18]. This is tight to the clock: the app title is centered (x~160),
+# the battery/angle/modifier are right-aligned (x>240), and the Sequences body (tab
+# bar + the recomputed value table for u(n)=2*n+5) renders below the y=24 StatusBar
+# separator — none are masked. In particular the Table tab content is NOT covered.
+#
+# x,y,w,h
+4,6,37,13

@@ -5,7 +5,8 @@ tests. A mask lets [`scripts/compare-ppm.py`](../../../scripts/compare-ppm.py)
 tolerate *one known, justified* class of non-deterministic pixels — the StatusBar
 `HH:MM` clock on app screens (`calc_1_plus_2`, `calc_fraction_sum`,
 `settings_smoke`, `math_showcase_smoke`, `statistics_smoke`, `probability_smoke`,
-`statistics_data_smoke`, `probability_edit_smoke`)
+`statistics_data_smoke`, `probability_edit_smoke`, `sequences_smoke`,
+`sequences_edit_smoke`)
 — without weakening byte-comparison anywhere else. **Any future StatusBar app screen
 reuses this same shared clock rect**; a screen with no StatusBar (e.g.
 `launcher_smoke`) carries no mask and is gated byte-for-byte.

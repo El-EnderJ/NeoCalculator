@@ -4,8 +4,10 @@ This directory holds **ignore-rect mask files** for the NumOS SDL2 emulator visu
 tests. A mask lets [`scripts/compare-ppm.py`](../../../scripts/compare-ppm.py)
 tolerate *one known, justified* class of non-deterministic pixels — the StatusBar
 `HH:MM` clock on app screens (`calc_1_plus_2`, `calc_fraction_sum`,
-`settings_smoke`, `math_showcase_smoke`) — without weakening byte-comparison
-anywhere else.
+`settings_smoke`, `math_showcase_smoke`, `statistics_smoke`, `probability_smoke`)
+— without weakening byte-comparison anywhere else. **Any future StatusBar app screen
+reuses this same shared clock rect**; a screen with no StatusBar (e.g.
+`launcher_smoke`) carries no mask and is gated byte-for-byte.
 
 Masking is the **narrow exception** to byte-exact comparison — not the rule. It
 exists only because the clock is genuinely nondeterministic across separate
@@ -27,7 +29,7 @@ The clock label is aligned `LV_ALIGN_LEFT_MID,6` in `lv_font_montserrat_12`
 ([`StatusBar.cpp:61-65`](../../../src/ui/StatusBar.cpp#L61)) and is always exactly 5
 glyphs (`"HH:MM"`), so its box spans ≈ `x[6..38] y[8..16]`. Because **both** the
 hour and the minute digits vary across arbitrary launches, the mask must cover the
-*whole* label, not just the minutes. All four app masks therefore share one rect:
+*whole* label, not just the minutes. Every StatusBar app mask therefore shares one rect:
 
 ```
 4,6,37,13      → x[4..40] y[6..18]  (full HH:MM label + ~2px margin)

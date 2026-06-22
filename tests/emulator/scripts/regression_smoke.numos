@@ -1,0 +1,41 @@
+# regression_smoke.numos — open the Regression app, screenshot, and ASSERT it is active.
+#
+# Phase 7C smoke test. RegressionApp is LVGL-native and emulator-safe: it pulls only
+# lvgl + ui::StatusBar + input/KeyCodes + KeyboardManager + a pure <cmath>
+# RegressionEngine (least-squares; no Giac/CAS, no LittleFS/Preferences, no
+# heap_caps/PSRAM, no sensors/WiFi; RegressionApp.cpp:25-28, RegressionEngine.cpp:26-27).
+# This script opens it through the emulator-only `open_app` command (Phase 5A: it calls
+# the SAME NativeHal launchApp() the launcher uses — id 6, the Regression card id, so it
+# is deterministic and does not depend on fragile grid navigation), captures a screenshot,
+# and asserts the active app is "Regression".
+#
+# The app opens on its "Data" tab showing a 2-column X/Y table with exactly one empty row
+# (_numRows=1; RegressionApp.cpp:218-219). RegressionApp has NO update() method
+# (RegressionApp.cpp:707-735) and no timer-driven cursor blink, so as with every emulator
+# screen the only volatile region across runs is the StatusBar clock (HH:MM). This phase
+# makes NO golden claim; the screenshot is a CANDIDATE for human review only (a clock mask
+# is added by the human at promotion time, rect 4,6,37,13).
+#
+# Timing notes (deterministic, step-ms 16):
+#   * 200 frames -> splash (~frame 125) is done; we are in the launcher.
+#   * 60 frames  -> Regression screen load + 200ms fade settles after open_app.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/regression_smoke.numos \
+#           --frames 800 --screenshot out/regression_smoke.ppm --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "regression_smoke: waiting for launcher"
+wait 200
+
+# Open Regression (emulator launchApp id 6 — same id as the launcher's Regression card).
+open_app Regression
+wait 60
+
+# Screenshot FIRST: the deferred capture happens on this frame, before the assert
+# runs on a later frame, so the artifact is produced even if the assertion fails.
+screenshot out/regression_smoke.ppm
+log "regression_smoke: screenshot captured"
+
+assert_app Regression
+log "regression_smoke: assertion passed (Regression active)"

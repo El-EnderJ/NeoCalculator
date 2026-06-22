@@ -257,8 +257,8 @@ contain spaces.
 | `keydown NAME` / `keyup NAME` | Inject only the press / only the release. |
 | `screenshot PATH` | Dump a 320×240 PPM at `PATH`, captured *after* this frame's render. |
 | `log "message"` | Print `message` to stdout (handy for CI log markers). |
-| `open_app NAME` | (Phase 5A) Launch an app directly by name through the same `launchApp()` the launcher uses — deterministic, no fragile grid navigation. `NAME` ∈ `Calculation`/`Statistics`/`Probability`/`Sequences`/`Settings`/`MathShowcase` (aliases `Calc`, `Stats`, `Prob`, `Seq`, `Showcase`/`Math_Showcase`). Use it from the launcher (MENU) state. |
-| `assert_app NAME` | (Phase 4B-C / 5A) Assert the active app is `NAME` ∈ `Calculation`/`Menu`/`Splash`/`Statistics`/`Probability`/`Sequences`/`Settings`/`MathShowcase` (aliases `Calc`/`Launcher`/`Stats`/`Prob`/`Seq`/`Showcase`). |
+| `open_app NAME` | (Phase 5A) Launch an app directly by name through the same `launchApp()` the launcher uses — deterministic, no fragile grid navigation. `NAME` ∈ `Calculation`/`Statistics`/`Probability`/`Sequences`/`Regression`/`Settings`/`MathShowcase` (aliases `Calc`, `Stats`, `Prob`, `Seq`, `Reg`, `Showcase`/`Math_Showcase`). Use it from the launcher (MENU) state. |
+| `assert_app NAME` | (Phase 4B-C / 5A) Assert the active app is `NAME` ∈ `Calculation`/`Menu`/`Splash`/`Statistics`/`Probability`/`Sequences`/`Regression`/`Settings`/`MathShowcase` (aliases `Calc`/`Launcher`/`Stats`/`Prob`/`Seq`/`Reg`/`Showcase`). |
 | `assert_result TEXT` | (Phase 4B-C) Assert CalculationApp's *computed* result equals `TEXT` exactly (e.g. `3`, `5/6`). |
 | `assert_result_contains TEXT` | (Phase 4B-C) Like `assert_result` but a substring match. |
 | `assert_no_error` | (Phase 4B-C) Assert the last evaluated result has no error flag. |
@@ -393,7 +393,9 @@ python scripts/generate-emulator-candidates.py
 #    out/emulator-candidates/statistics_data_smoke.ppm (Phase 6C; Phase 6D types {1,2,3})
 #    out/emulator-candidates/probability_edit_smoke.ppm(Phase 6C; Phase 6D types mu=2.5)
 #    out/emulator-candidates/sequences_smoke.ppm       (Phase 7A)
-#    out/emulator-candidates/sequences_edit_smoke.ppm  (Phase 7A edits u(n)=2*n+5; each 320x240, 230415 bytes)
+#    out/emulator-candidates/sequences_edit_smoke.ppm  (Phase 7A edits u(n)=2*n+5)
+#    out/emulator-candidates/regression_smoke.ppm      (Phase 7C)
+#    out/emulator-candidates/regression_data_smoke.ppm (Phase 7C fits y=2x; each 320x240, 230415 bytes)
 ```
 
 **Deeper interaction smokes (Phase 6C, upgraded in Phase 6D).** Beyond the Phase 6A
@@ -721,6 +723,60 @@ this is a pre-existing app limitation, not introduced here. As with every emulat
 the only across-run volatile region is the StatusBar clock (`HH:MM`); a future golden
 would mask it (rect `4,6,37,13`). **No Sequences golden has been accepted yet.**
 
+### Additional emulator app: Regression (Phase 7C)
+
+Phase 7C enables **one** more **safe**, LVGL-only app. As before this is
+**emulator-only** wiring in [`NativeHal.cpp`](../src/hal/NativeHal.cpp); the firmware,
+the renderer geometry, the STIX assets, and the CAS/Giac engine are **untouched**.
+Open it with the [`open_app`](#scripted-input-replay-phase-4a) script command (`open_app
+Regression`, alias `Reg`) or by navigating the launcher to its **Regression** card and
+pressing ENTER.
+
+**Regression.** The real, unmodified [`RegressionApp`](../src/apps/RegressionApp.cpp) — a
+3-tab panel (**Data** X/Y table editor / **Equation** fitted model / **Graph** scatter +
+curve) backed by a pure `<cmath>` [`RegressionEngine`](../src/apps/RegressionEngine.cpp)
+(least-squares linear/quadratic via Cramer's rule, plus R²). It needs **no HAL work**: it
+touches only LVGL + `ui::StatusBar` + `KeyboardManager`, with no Giac, no filesystem, no
+`heap_caps`/PSRAM, and no sensors. It opens on the **Data** tab with one empty row, so no
+regression is computed on open (no empty-dataset edge case). It has **no `update()` method
+and no timer-driven cursor blink** ([RegressionApp.cpp:707-735](../src/apps/RegressionApp.cpp#L707)),
+so screenshots are byte-stable apart from the clock.
+
+> RegressionApp is the **same code the firmware ships** (already compiled there via
+> `+<*>`); Phase 7C only adds its `.cpp` + `RegressionEngine.cpp` to the native
+> [`build_src_filter`](../platformio.ini#L188) and routes `open_app`/`assert_app`/
+> launcher id 6 in `NativeHal.cpp`. No app logic is modified. RegressionApp already uses
+> the order-independent `keyCodeDigitValue()` helper for digit entry (fixed repo-wide in
+> Phase 6E), so it never had the Phase 6D `NUM_0..NUM_9` range bug.
+
+**Smoke scripts.** Two scripts, both wired into
+[`generate-emulator-candidates.py`](../scripts/generate-emulator-candidates.py) (CI
+generates/uploads their candidate PPMs and **warns — does not fail — on a missing
+golden**; **no golden is blessed by this phase**):
+
+- `tests/emulator/scripts/regression_smoke.numos` — `open_app Regression`, screenshot the
+  default Data tab, `assert_app Regression`.
+- `tests/emulator/scripts/regression_data_smoke.numos` — types the three points
+  `{(1,2),(2,4),(3,6)}` into the X/Y table (`1 ENTER RIGHT 2 ENTER`, then `LEFT AC DOWN …`
+  per row), switches to the **Equation** tab with `GRAPH` so `recompute()` runs the
+  least-squares fit (`y = 2x`, `R²=1`), screenshots, and `assert_app Regression`. Entry
+  uses only existing script keys; the Y-column editor briefly shows a leading `0` that
+  `atof` absorbs, so the committed points are exact.
+
+```bash
+SDL_VIDEODRIVER=dummy ./scripts/run-emulator-linux.sh \
+  --headless --deterministic --script tests/emulator/scripts/regression_smoke.numos \
+  --frames 800 --screenshot out/regression_smoke.ppm --quiet             # Linux
+```
+
+**Limitations.** Regression is **smoke-only** (open/enter data + `assert_app` + screenshot);
+it has **no `assert_result`-style semantic assertions** (that path is CalculationApp-only).
+The Equation/Graph model can be toggled linear↔quadratic with `SHIFT`
+([RegressionApp.cpp:846-867](../src/apps/RegressionApp.cpp#L846)); the bundled scripts use
+the default linear fit. As with every emulator screen the only across-run volatile region is
+the StatusBar clock (`HH:MM`); a future golden would mask it (rect `4,6,37,13`). **No
+Regression golden has been accepted yet.**
+
 ## Keyboard map (Phase 3A)
 
 PC keys map directly to calculator `KeyCode`s in
@@ -791,14 +847,16 @@ PlatformIO paths can hit the Windows path-length limit). Consequences:
   [Keyboard map](#keyboard-map-phase-3a)); full matrix / serial-text input is
   still future. SHIFT/ALPHA/STO are only meaningful inside CalculationApp, not
   in the launcher.
-- **CalculationApp, Settings, Math Showcase, Statistics, Probability, and Sequences are
-  wired** in the emulator (Settings + Math Showcase in Phase 5A; Statistics + Probability
-  in Phase 6A; Sequences in Phase 7A); the remaining apps still print "no implementada"
-  ([NativeHal.cpp](../src/hal/NativeHal.cpp)). Settings, Statistics, Probability, and
-  Sequences are real firmware apps; Math Showcase is emulator-only. See
+- **CalculationApp, Settings, Math Showcase, Statistics, Probability, Sequences, and
+  Regression are wired** in the emulator (Settings + Math Showcase in Phase 5A; Statistics +
+  Probability in Phase 6A; Sequences in Phase 7A; Regression in Phase 7C); the remaining apps
+  still print "no implementada" ([NativeHal.cpp](../src/hal/NativeHal.cpp)). Settings,
+  Statistics, Probability, Sequences, and Regression are real firmware apps; Math Showcase is
+  emulator-only. See
   [Additional emulator apps (Phase 5A)](#additional-emulator-apps-settings--math-showcase-phase-5a),
   [Statistics & Probability (Phase 6A)](#additional-emulator-apps-statistics--probability-phase-6a),
-  and [Sequences (Phase 7A)](#additional-emulator-app-sequences-phase-7a).
+  [Sequences (Phase 7A)](#additional-emulator-app-sequences-phase-7a),
+  and [Regression (Phase 7C)](#additional-emulator-app-regression-phase-7c).
 - **Scripted input replay, golden tooling, AND semantic value assertions exist;
   rendered-pixel assertion does not.** Phase 3A adds `--frames` / `--run-for-ms` /
   `--headless` for unattended boot smokes, Phase 3B adds `--deterministic` +

@@ -1,0 +1,96 @@
+# regression_data_smoke.numos — Phase 7C: type a small dataset into RegressionApp.
+#
+# Unlike regression_smoke.numos (which only opens the app on its default empty "Data"
+# tab), this script proves RegressionApp is INTERACTABLE *with real numeric entry*: it
+# types the three points {(1,2),(2,4),(3,6)} into the X/Y table and switches to the
+# computed "Equation" tab, which runs the least-squares RegressionEngine over actual
+# data — a code path the open-only smoke never reaches. The points lie exactly on
+# y = 2x, so the linear fit is slope 2, intercept 0, R^2 = 1.
+#
+# Data-entry flow (the table starts with exactly ONE row, _numRows=1, two columns X|Y;
+# RegressionApp.cpp:218-219, 707-839):
+#   * On the Data tab, pressing a digit in nav mode starts an edit and re-processes the
+#     digit (RegressionApp.cpp:831-836 -> startEdit() + handleKeyData). ENTER commits the
+#     value via finishEdit() (atof of the buffer) and returns to nav mode
+#     (RegressionApp.cpp:776-779, 422-438).
+#   * RIGHT/LEFT move between the X (col 0) and Y (col 1) columns; on the Data tab they are
+#     column nav, NOT a tab switch (RegressionApp.cpp:801-812).
+#   * AC (nav mode) appends a fresh row (x=0, y=0, ++_numRows); DOWN moves the focus to it
+#     (RegressionApp.cpp:822-830, 795-800). So the per-row pattern is: LEFT (back to X col),
+#     AC (new row), DOWN (move to it), type X, RIGHT, type Y.
+#   * Digits use the order-independent keyCodeDigitValue() helper (RegressionApp.cpp:744,833;
+#     KeyCodes.h) — RegressionApp has NO digit-range bug (it was fixed repo-wide in Phase 6E).
+#   * Note on display: startEdit() pre-fills the editor with the cell's current value when the
+#     row already holds data (RegressionApp.cpp:409-414), so a Y-column edit briefly shows a
+#     leading "0" (e.g. ">02_"); atof absorbs it harmlessly (atof("02")==2), so the COMMITTED
+#     values are exactly {(1,2),(2,4),(3,6)}. After finishEdit()->refreshTable() each cell is
+#     reformatted normally.
+#   * GRAPH cycles Data -> Equation -> Graph; on the Data tab it is the ONLY key that leaves
+#     the Data tab (LEFT/RIGHT are column nav). switchTab(EQUATION) calls recompute() +
+#     updateEquationDisplay() over the typed points (RegressionApp.cpp:723-727, 330-339,
+#     462-463). Pure <cmath> RegressionEngine: no Giac/CAS, no PSRAM, no LittleFS. Fully
+#     deterministic.
+#
+# RegressionApp has NO update() method and no timer-driven cursor blink, so the only volatile
+# region is the StatusBar clock (HH:MM). This phase makes NO golden claim; the screenshot is a
+# CANDIDATE for human review only (a clock mask is added by the human at promotion time,
+# rect 4,6,37,13).
+#
+# Timing notes (deterministic, step-ms 16):
+#   * 200 frames -> splash done, in launcher.
+#   * 60 frames  -> Regression screen load + fade settles after open_app.
+#   * one frame per key command (1 command/frame).
+#   * 120 frames -> Data->Equation tab switch + recompute() settles.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/regression_data_smoke.numos \
+#           --frames 800 --screenshot out/regression_data_smoke.ppm --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "regression_data_smoke: waiting for launcher"
+wait 200
+
+# Open Regression (emulator launchApp id 6 — same id as the launcher's Regression card).
+open_app Regression
+wait 60
+assert_app Regression
+
+# Row 0: X=1 (col 0), move to Y col, Y=2.
+key 1
+key enter
+key right
+key 2
+key enter
+
+# Row 1: back to X col, append a row, move down to it, X=2, Y=4.
+key left
+key ac
+key down
+key 2
+key enter
+key right
+key 4
+key enter
+
+# Row 2: back to X col, append a row, move down to it, X=3, Y=6.
+key left
+key ac
+key down
+key 3
+key enter
+key right
+key 6
+key enter
+
+# Switch Data -> Equation: GRAPH is the only key that leaves the Data tab, and it triggers
+# recompute() + updateEquationDisplay() over the typed points {(1,2),(2,4),(3,6)} -> y = 2x.
+key graph
+wait 120
+
+# Screenshot FIRST so the artifact exists even if a later assertion fails.
+screenshot out/regression_data_smoke.ppm
+log "regression_data_smoke: screenshot captured (Equation tab, linear fit y=2x over {(1,2),(2,4),(3,6)})"
+
+# Still the Regression app after the in-app tab switch (tab switch does not change g_mode).
+assert_app Regression
+log "regression_data_smoke: assertion passed (Regression active)"

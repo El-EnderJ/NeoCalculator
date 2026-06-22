@@ -92,6 +92,7 @@
 #include "../apps/StatisticsApp.h"        // Phase 6A: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/ProbabilityApp.h"       // Phase 6A: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/SequencesApp.h"         // Phase 7A: LVGL-only, pure-math (no CAS/HW)
+#include "../apps/RegressionApp.h"        // Phase 7C: LVGL-only, pure-math (no CAS/HW)
 #include "../display/DisplayDriver.h"
 #include "../ui/SplashScreen.h"
 #include "../ui/MainMenu.h"
@@ -186,7 +187,8 @@ enum class AppMode : uint8_t {
     MATH_SHOWCASE,  // Vitrina de render matemático (Phase 5A, solo emulador)
     STATISTICS,     // Estadística (LVGL-native; Phase 6A, emulador)
     PROBABILITY,    // Probabilidad (LVGL-native; Phase 6A, emulador)
-    SEQUENCES       // Secuencias (LVGL-native; Phase 7A, emulador)
+    SEQUENCES,      // Secuencias (LVGL-native; Phase 7A, emulador)
+    REGRESSION      // Regresion (LVGL-native; Phase 7C, emulador)
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -208,6 +210,7 @@ static SettingsApp*     g_settingsApp = nullptr;   // Phase 5A (emulador)
 static StatisticsApp*   g_statsApp = nullptr;      // Phase 6A (emulador)
 static ProbabilityApp*  g_probApp  = nullptr;      // Phase 6A (emulador)
 static SequencesApp*    g_seqApp   = nullptr;      // Phase 7A (emulador)
+static RegressionApp*   g_regApp   = nullptr;      // Phase 7C (emulador)
 
 // ── Math Showcase (Phase 5A, solo emulador) ─────────────────────────────────
 // Identificador de app fuera del rango de tarjetas del launcher (0..21) para que
@@ -570,6 +573,23 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
+        case AppMode::REGRESSION:
+            // Phase 7C: mismo contrato que SETTINGS — MODE vuelve al launcher; el
+            // resto (incluido RELEASE) se reenvia a RegressionApp::handleKey.
+            if (isDown && kc == KeyCode::MODE) {
+                returnToMenu();
+                break;
+            }
+            if (g_regApp) {
+                KeyEvent ke;
+                ke.code   = kc;
+                ke.action = action;
+                ke.row    = -1;
+                ke.col    = -1;
+                g_regApp->handleKey(ke);
+            }
+            break;
+
         case AppMode::MATH_SHOWCASE:
             // MODE vuelve al launcher; IZQ/ARRIBA y DCHA/ABAJO recorren los casos
             // curados. Solo en el down-edge (una pulsacion = un paso), sin cursor
@@ -692,6 +712,10 @@ static void transitionToMenu()
     // el objeto; su pantalla se crea en el primer load() (load() llama a begin()).
     g_seqApp   = new SequencesApp();
 
+    // Phase 7C: RegressionApp (LVGL-native). Mismo patron perezoso: solo se construye
+    // el objeto; su pantalla se crea en el primer load() (load() llama a begin()).
+    g_regApp   = new RegressionApp();
+
     // Crear y mostrar el MainMenu
     g_menu = new MainMenu(g_displayStub);
     g_menu->create();
@@ -732,6 +756,14 @@ static void launchApp(int appId)
                 g_probApp->load();
                 g_mode = AppMode::PROBABILITY;
                 std::printf("[APP] ProbabilityApp activa\n");
+            }
+            break;
+
+        case 6: // Regression (LVGL-native; Phase 7C, mismo id que la tarjeta del launcher)
+            if (g_regApp) {
+                g_regApp->load();
+                g_mode = AppMode::REGRESSION;
+                std::printf("[APP] RegressionApp activa\n");
             }
             break;
 
@@ -796,6 +828,10 @@ static void returnToMenu()
         case AppMode::SEQUENCES:
             // Phase 7A: SequencesApp::load() vuelve a llamar begin() perezosamente.
             if (g_seqApp) g_seqApp->end();
+            break;
+        case AppMode::REGRESSION:
+            // Phase 7C: RegressionApp::load() vuelve a llamar begin() perezosamente.
+            if (g_regApp) g_regApp->end();
             break;
         case AppMode::MATH_SHOWCASE:
             showcaseEnd();
@@ -1119,6 +1155,7 @@ static const char* canonicalAppName(const std::string& name)
     if (lc == "statistics" || lc == "stats")      return "Statistics";      // Phase 6A
     if (lc == "probability" || lc == "prob")      return "Probability";     // Phase 6A
     if (lc == "sequences" || lc == "seq")         return "Sequences";       // Phase 7A
+    if (lc == "regression" || lc == "reg")        return "Regression";      // Phase 7C
     return nullptr;
 }
 
@@ -1134,6 +1171,7 @@ static int scriptAppNameToId(const std::string& name)
     if (lc == "statistics" || lc == "stats")                          return 4;   // Phase 6A
     if (lc == "probability" || lc == "prob")                          return 5;   // Phase 6A
     if (lc == "sequences" || lc == "seq")                             return 7;   // Phase 7A
+    if (lc == "regression" || lc == "reg")                            return 6;   // Phase 7C
     if (lc == "settings")                                             return 10;
     if (lc == "mathshowcase" || lc == "math_showcase" || lc == "showcase")
                                                                       return APPID_MATH_SHOWCASE;
@@ -1212,7 +1250,7 @@ static bool loadScript(const char* path)
             if (iss >> extra)   return scriptErr(path, lineNo, "open_app: demasiados argumentos");
             int id = scriptAppNameToId(name);
             if (id < 0) return scriptErr(path, lineNo,
-                                         "open_app: app no lanzable (Calculation|Statistics|Probability|Sequences|Settings|MathShowcase)");
+                                         "open_app: app no lanzable (Calculation|Statistics|Probability|Sequences|Regression|Settings|MathShowcase)");
             sc.type   = ScriptCmdType::OpenApp;
             sc.waitN  = id;
             const char* canon = canonicalAppName(name);
@@ -1224,7 +1262,7 @@ static bool loadScript(const char* path)
             if (iss >> extra)   return scriptErr(path, lineNo, "assert_app: demasiados argumentos");
             const char* canon = canonicalAppName(name);
             if (!canon) return scriptErr(path, lineNo,
-                                         "assert_app: app desconocida (Calculation|Menu|Splash|Statistics|Probability|Sequences|Settings|MathShowcase)");
+                                         "assert_app: app desconocida (Calculation|Menu|Splash|Statistics|Probability|Sequences|Regression|Settings|MathShowcase)");
             sc.type   = ScriptCmdType::AssertApp;
             sc.strArg = canon;
         }
@@ -1311,6 +1349,7 @@ static const char* activeAppName()
          : (g_mode == AppMode::STATISTICS)    ? "Statistics"
          : (g_mode == AppMode::PROBABILITY)   ? "Probability"
          : (g_mode == AppMode::SEQUENCES)     ? "Sequences"
+         : (g_mode == AppMode::REGRESSION)    ? "Regression"
                                               : "Calculation";
 }
 
@@ -1680,6 +1719,7 @@ int main(int argc, char** argv)
     if (g_statsApp) { g_statsApp->end(); delete g_statsApp; }           // Phase 6A
     if (g_probApp)  { g_probApp->end();  delete g_probApp;  }           // Phase 6A
     if (g_seqApp)   { g_seqApp->end();   delete g_seqApp;   }           // Phase 7A
+    if (g_regApp)   { g_regApp->end();   delete g_regApp;   }           // Phase 7C
     showcaseEnd();                                                      // Phase 5A (no-op si inactiva)
     delete g_menu;
     delete g_splash;

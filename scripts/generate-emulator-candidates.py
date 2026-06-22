@@ -67,6 +67,13 @@ CANDIDATES = [
     # golden is absent.
     ("sequences_smoke", "tests/emulator/scripts/sequences_smoke.numos", 800),
     ("sequences_edit_smoke", "tests/emulator/scripts/sequences_edit_smoke.numos", 800),
+    # Phase 7C: RegressionApp (LVGL-only 3-tab Data/Equation/Graph). regression_smoke opens
+    # the app on its default empty Data tab; regression_data_smoke types the three points
+    # {(1,2),(2,4),(3,6)} and switches to the computed Equation tab (linear fit y=2x). Each
+    # script also asserts the active app name (exit 4 -> FAIL here). No golden is blessed
+    # here — the compare step warns (not fails) when a golden is absent.
+    ("regression_smoke", "tests/emulator/scripts/regression_smoke.numos", 800),
+    ("regression_data_smoke", "tests/emulator/scripts/regression_data_smoke.numos", 800),
 ]
 
 

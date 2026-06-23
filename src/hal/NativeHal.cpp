@@ -943,8 +943,12 @@ static void showcaseBuild()
     lv_obj_set_style_border_width(g_showcaseCanvas->obj(), 0, LV_PART_MAIN);
 
     // Pie de pagina limpio (texto, no overlay) con el caso actual.
+    // Phase 7I: leyenda de texto plano → lv_font_montserrat_14. El nombre del caso
+    // (vc->label, p.ej. "1 + 2/3 + x^2") lleva espacios, y stix_math_18 no tiene
+    // glifo U+0020; con LV_USE_FONT_PLACEHOLDER se pintaba un tofu por cada espacio.
+    // La expresion matematica sigue dibujandose con MathCanvas (sin cambios).
     g_showcaseCaption = lv_label_create(g_showcaseScreen);
-    lv_obj_set_style_text_font(g_showcaseCaption, &stix_math_18, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_showcaseCaption, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(g_showcaseCaption, lv_color_hex(0x808080), LV_PART_MAIN);
     lv_obj_set_width(g_showcaseCaption, SCREEN_W - 24);
     lv_label_set_long_mode(g_showcaseCaption, LV_LABEL_LONG_CLIP);

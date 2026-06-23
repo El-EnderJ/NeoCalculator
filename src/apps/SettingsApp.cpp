@@ -153,21 +153,31 @@ void SettingsApp::createUI() {
         // Label (left side)
         _labels[i] = lv_label_create(_rows[i]);
         lv_label_set_text(_labels[i], labels[i]);
-        lv_obj_set_style_text_font(_labels[i], &stix_math_18, LV_PART_MAIN);
+        // Phase 7I: plain UI text → lv_font_montserrat_14. stix_math_18's cmap
+        // starts at U+0021, so it has no U+0020 (space) glyph; with
+        // LV_USE_FONT_PLACEHOLDER the spaced names ("Complex numbers", etc.)
+        // painted a tofu box at every space.
+        lv_obj_set_style_text_font(_labels[i], &lv_font_montserrat_14, LV_PART_MAIN);
         lv_obj_set_style_text_color(_labels[i], lv_color_hex(COL_TEXT), LV_PART_MAIN);
         lv_obj_align(_labels[i], LV_ALIGN_LEFT_MID, 12, 0);
 
         // Value (right side)
+        // Phase 7I: plain UI text → lv_font_montserrat_14 (the value "%d digits"
+        // contains a space that stix_math_18 cannot render — see _labels above).
         _values[i] = lv_label_create(_rows[i]);
-        lv_obj_set_style_text_font(_values[i], &stix_math_18, LV_PART_MAIN);
+        lv_obj_set_style_text_font(_values[i], &lv_font_montserrat_14, LV_PART_MAIN);
         lv_obj_align(_values[i], LV_ALIGN_RIGHT_MID, -12, 0);
     }
 
     // Hint at bottom
+    // Phase 7I: plain UI hint → lv_font_montserrat_14 (stix_math_18 has no U+0020
+    // space glyph → tofu at every space). The LV_SYMBOL_UP/DOWN arrows
+    // (U+F077/U+F078) are absent from BOTH stix_math_18 and lv_font_montserrat_14
+    // in this build, so they already rendered as tofu — dropped here (the words
+    // convey navigation just as the re-blessed RegressionApp hint does).
     _hintLabel = lv_label_create(_container);
-    lv_label_set_text(_hintLabel,
-        LV_SYMBOL_UP LV_SYMBOL_DOWN " Navigate   ENTER Toggle   MODE Back");
-    lv_obj_set_style_text_font(_hintLabel, &stix_math_18, LV_PART_MAIN);
+    lv_label_set_text(_hintLabel, "Navigate   ENTER Toggle   MODE Back");
+    lv_obj_set_style_text_font(_hintLabel, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(_hintLabel, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_hintLabel, PAD, SCREEN_H - barH - 22);
 

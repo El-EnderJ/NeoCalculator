@@ -83,13 +83,18 @@ void MathRenderVisualTestApp::load() {
 }
 
 void MathRenderVisualTestApp::createUI() {
+    // Phase 7I: index ("%d/%d") and case-name labels are plain UI text, separate
+    // from the math expression (which is drawn by _canvas / MathCanvas below).
+    // Use lv_font_montserrat_14: stix_math_18 has no U+0020 glyph, so case names
+    // like "2 + 2/2" tofu'd at every space under LV_USE_FONT_PLACEHOLDER. The
+    // MathCanvas rendering is unchanged.
     _indexLabel = lv_label_create(_screen);
-    lv_obj_set_style_text_font(_indexLabel, &stix_math_18, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_indexLabel, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(_indexLabel, lv_color_hex(COL_ACCENT), LV_PART_MAIN);
     lv_obj_set_pos(_indexLabel, PAD, 28);
 
     _caseLabel = lv_label_create(_screen);
-    lv_obj_set_style_text_font(_caseLabel, &stix_math_18, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_caseLabel, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(_caseLabel, lv_color_hex(COL_TEXT), LV_PART_MAIN);
     lv_obj_set_width(_caseLabel, SCREEN_W - 90);
     lv_label_set_long_mode(_caseLabel, LV_LABEL_LONG_CLIP);

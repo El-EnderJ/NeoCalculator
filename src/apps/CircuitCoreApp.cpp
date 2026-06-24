@@ -352,7 +352,7 @@ void CircuitCoreApp::createInfoBar() {
     lv_obj_set_size(_infoLabel, SCREEN_W - 8, INFOBAR_H);
     lv_obj_set_style_bg_color(_infoLabel, lv_color_hex(COL_INFO_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_infoLabel, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_text_font(_infoLabel, &stix_math_18, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_infoLabel, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(_infoLabel, lv_color_hex(COL_INFO_TEXT), LV_PART_MAIN);
     lv_label_set_text(_infoLabel, "Ready");
 }

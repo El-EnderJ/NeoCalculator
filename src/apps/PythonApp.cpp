@@ -395,7 +395,7 @@ void PythonApp::refreshScriptList() {
 
     if (_scriptCount == 0) {
         makeLabel(_panelScripts, SCREEN_W / 2 - 50, CONTENT_H / 2 - 20,
-                  "No scripts found", 0x999999, &stix_math_18);
+                  "No scripts found", 0x999999, &lv_font_montserrat_14);
     }
 
     refreshScriptFocus();

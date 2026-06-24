@@ -766,7 +766,7 @@ void NeoLanguageApp::showPlot(const NeoPlotRequest& req) {
     lv_obj_set_size(_plotHintLabel, PLOT_W, PLOT_HINT_H);
     lv_label_set_text(_plotHintLabel, "Press any key to return");
     lv_obj_set_style_text_color(_plotHintLabel, lv_color_hex(COL_TAB_TXT_I), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_plotHintLabel, &stix_math_18, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_plotHintLabel, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(_plotHintLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     // ── Render the plot ──────────────────────────────────────────

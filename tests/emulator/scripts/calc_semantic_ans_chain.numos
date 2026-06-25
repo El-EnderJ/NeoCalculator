@@ -1,0 +1,42 @@
+# calc_semantic_ans_chain.numos — Ans recall across evaluations: (2+2) then Ans+1 == 5.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden.
+#
+# ENTER rotates the result into Ans (updateAns, CalculationApp.cpp:533). IMPORTANT:
+# clearResult() does NOT reset the expression — it keeps the previous AST and just
+# hides the result (CalculationApp.cpp:730-751). So a fresh second expression needs
+# an explicit AC (resetExpression, CalculationApp.cpp:468-470) before typing; without
+# it, `ans + 1` is appended to "2+2" and the math is wrong (empirically -> 11).
+#
+#   2 + 2 ENTER  -> Ans = 4
+#   AC           -> fresh empty expression
+#   ans + 1 ENTER-> 4 + 1 = 5
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_ans_chain: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+# First result -> Ans = 4.
+key 2
+key +
+key 2
+key ENTER
+wait 120
+
+# Clear to a fresh expression, then recall Ans.
+key ac
+wait 30
+key ans
+key +
+key 1
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result 5
+log "calc_semantic_ans_chain: PASS (Ans(4) + 1 == 5)"

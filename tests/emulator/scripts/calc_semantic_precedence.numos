@@ -1,0 +1,28 @@
+# calc_semantic_precedence.numos — operator precedence: 2 + 3 * 4 == 14.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden: pure value assertion via
+# the emulator's exact ExactVal probe (small-integer domain only).
+#
+# Proves multiplication binds tighter than addition: 2 + (3*4) = 14, NOT (2+3)*4.
+# MUL is a flat operator (insertOperator, CalculationApp.cpp:341); ADD likewise.
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_precedence: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 2
+key +
+key 3
+key *
+key 4
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result 14
+log "calc_semantic_precedence: PASS (2 + 3 * 4 == 14)"

@@ -1,0 +1,28 @@
+# calc_semantic_power.numos — integer exponentiation: 2^10 == 1024.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden.
+#
+# POW builds a superscript group (insertPower, CalculationApp.cpp:345) with the
+# left operand as base; the two digits 1 then 0 go into the exponent slot. A
+# trailing power needs no RIGHT before ENTER — the whole expression evaluates as
+# 2^10 = 1024 (stays well inside int64, exact).
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_power: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 2
+key ^
+key 1
+key 0
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result 1024
+log "calc_semantic_power: PASS (2^10 == 1024)"

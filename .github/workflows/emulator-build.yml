@@ -296,6 +296,74 @@ jobs:
           if-no-files-found: ignore
 
       # ---------------------------------------------------------------------
+      # Calculation semantic suite (Phase 8C) — broader golden-free coverage.
+      #
+      # Additive to the Phase 4B-C step above and still SEPARATE from the visual
+      # candidate/golden flow below. Runs the calc_semantic_*.numos group plus the
+      # Phase 8B error/variable fixtures (which the 4B-C step does not run), all
+      # headless + deterministic and bounded by --frames. Each script must exit 0,
+      # print at least one "PASS -" marker, and print NO "FAIL -" marker. NO
+      # screenshots, NO goldens: these prove COMPUTED values only, restricted to the
+      # small-integer / exact-pure-fraction domain (no radicals/pi/e/decimals/Giac).
+      - name: Calculation semantic suite (headless deterministic, Phase 8C)
+        run: |
+          set -euo pipefail
+          BIN=.pio/build/emulator_pc/program
+          mkdir -p out/semantic_8c
+
+          run_semantic() {
+            script="$1"
+            name="$(basename "$script" .numos)"
+            log="out/semantic_8c/${name}.log"
+            echo "=== ${name} ==="
+            rc=0
+            SDL_VIDEODRIVER=dummy timeout 60s "$BIN" \
+              --headless --deterministic --script "$script" \
+              --frames 1400 --quiet > "$log" 2>&1 || rc=$?
+            cat "$log"
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::semantic suite FAILED for ${name} (exit $rc)"
+              return 1
+            fi
+            if ! grep -q "PASS - " "$log"; then
+              echo "::error::semantic suite: no PASS marker for ${name}"
+              return 1
+            fi
+            if grep -q "FAIL - " "$log"; then
+              echo "::error::semantic suite: FAIL marker present for ${name}"
+              return 1
+            fi
+          }
+
+          shopt -s nullglob
+          # Phase 8C group (discovered) + the Phase 8B fixtures (explicit, so the
+          # error/variable assertions also gate CI).
+          scripts=( tests/emulator/scripts/calc_semantic_*.numos )
+          scripts+=( tests/emulator/scripts/calc_error_div_by_zero.numos )
+          scripts+=( tests/emulator/scripts/calc_store_variable.numos )
+
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "::error::no semantic scripts discovered (calc_semantic_*.numos)"
+            exit 1
+          fi
+
+          echo "--- discovered ${#scripts[@]} semantic script(s) ---"
+          printf '%s\n' "${scripts[@]}"
+
+          for s in "${scripts[@]}"; do
+            run_semantic "$s"
+          done
+          echo "OK: ${#scripts[@]} Calculation semantic scripts passed (exact int/fraction, NO golden image)."
+
+      - name: Upload Phase 8C semantic suite logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numos-emulator-semantic-8c
+          path: out/semantic_8c/
+          if-no-files-found: ignore
+
+      # ---------------------------------------------------------------------
       # Candidate screenshot generation + golden comparison (Phase 4B-A).
       #
       # Additive to the Phase 3A/3B/4A smokes above (kept as-is). This generates

@@ -1,0 +1,36 @@
+# calc_semantic_ac_clear.numos — AC discards the prior expression: 9+9, AC, 7 == 7.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden.
+#
+# Proves AC fully resets the expression (resetExpression, CalculationApp.cpp:468-470):
+# evaluate 9 + 9 (=18), press AC, then type 7 and evaluate. If AC did NOT clear, the
+# 7 would append to the old "9+9" AST and the result would not be 7. A clean 7
+# confirms the reset.
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_ac_clear: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+# First expression (discarded by AC).
+key 9
+key +
+key 9
+key ENTER
+wait 120
+
+key ac
+wait 30
+
+# Fresh expression after AC.
+key 7
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result 7
+log "calc_semantic_ac_clear: PASS (AC clears; 7 == 7)"

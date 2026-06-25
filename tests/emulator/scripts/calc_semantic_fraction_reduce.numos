@@ -1,0 +1,28 @@
+# calc_semantic_fraction_reduce.numos — exact fraction reduction: 6/4 == 3/2.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden.
+#
+# Uses the same fraction mechanism proven by calc_fraction_sum.numos: the DIV key
+# IS the fraction key (insertFraction, CalculationApp.cpp:344). Type 6 (numerator),
+# FRAC, 4 (denominator), RIGHT to exit the fraction, ENTER to evaluate. The exact
+# rational engine reduces 6/4 by gcd to 3/2 (formatExactVal -> "3/2").
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_fraction_reduce: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 6
+key FRAC
+key 4
+key RIGHT
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result 3/2
+log "calc_semantic_fraction_reduce: PASS (6/4 == 3/2)"

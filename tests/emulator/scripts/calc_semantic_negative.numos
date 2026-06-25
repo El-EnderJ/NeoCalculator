@@ -1,0 +1,26 @@
+# calc_semantic_negative.numos — negative result via subtraction: 3 - 5 == -2.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden.
+#
+# Deliberately uses the binary SUB operator (insertOperator Sub, CalculationApp.cpp:340),
+# NOT the unary NEGATE key — NEGATE is a known no-op in CalculationApp (falls to the
+# switch default). 3 - 5 = -2; formatExactVal renders the signed integer "-2".
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_negative: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 3
+key -
+key 5
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result -2
+log "calc_semantic_negative: PASS (3 - 5 == -2)"

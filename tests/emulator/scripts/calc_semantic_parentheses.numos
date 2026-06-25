@@ -1,0 +1,32 @@
+# calc_semantic_parentheses.numos — grouping overrides precedence: (2 + 3) * 4 == 20.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden.
+#
+# NumOS note: the close-paren key is a no-op (RPAREN has no handler); a paren is a
+# VPAM container you exit with RIGHT, exactly like a fraction. So the sequence is
+# `(` 2 + 3 RIGHT * 4 — RIGHT leaves the parenthesised group before the `* 4`.
+# (Empirically: using a literal `)` instead of RIGHT keeps the cursor inside the
+# group and yields 2+3*4=14, so RIGHT is required to get 20.)
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_parentheses: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key (
+key 2
+key +
+key 3
+key RIGHT
+key *
+key 4
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result 20
+log "calc_semantic_parentheses: PASS ((2 + 3) * 4 == 20)"

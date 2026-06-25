@@ -1,0 +1,43 @@
+# calc_semantic_preans.numos — PreAns is the penultimate result: PreAns == 2.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden.
+#
+# updateAns rotates on every ENTER: PreAns <- old Ans, Ans <- new result
+# (VariableManager::updateAns). So after evaluating 2 then 3:
+#   2 ENTER -> Ans=2, PreAns=0(initial)
+#   3 ENTER -> Ans=3, PreAns=2
+# Recalling `preans` then evaluating yields 2. AC is used between/around each
+# evaluation because clearResult() keeps the previous expression (see
+# calc_semantic_ans_chain.numos for the rationale).
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_preans: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+# First evaluation: Ans=2.
+key 2
+key ENTER
+wait 120
+key ac
+wait 20
+
+# Second evaluation: Ans=3, PreAns=2.
+key 3
+key ENTER
+wait 120
+key ac
+wait 20
+
+# Recall PreAns and evaluate -> 2.
+key preans
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result 2
+log "calc_semantic_preans: PASS (PreAns == 2)"

@@ -1,0 +1,32 @@
+# calc_semantic_cancellation.numos — exact fraction cancellation: 1/2 + 1/2 == 1.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden.
+#
+# Two fractions summed to an exact integer. Each 1/2 is built with the fraction
+# key (FRAC) and exited with RIGHT; the exact rational engine adds them to 2/2 and
+# reduces to the integer 1 (formatExactVal renders "1", not "1/1").
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_cancellation: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 1
+key FRAC
+key 2
+key RIGHT
+key +
+key 1
+key FRAC
+key 2
+key RIGHT
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result 1
+log "calc_semantic_cancellation: PASS (1/2 + 1/2 == 1)"

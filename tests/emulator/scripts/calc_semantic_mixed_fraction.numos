@@ -1,0 +1,29 @@
+# calc_semantic_mixed_fraction.numos — integer plus fraction: 1 + 1/2 == 3/2.
+#
+# Phase 8C semantic smoke. NO screenshot, NO golden.
+#
+# Mixes a bare integer with a fraction operand: 1 + 1/2. The 1/2 is built with the
+# fraction key (FRAC) and exited with RIGHT; the exact engine yields the improper
+# fraction 3/2 (formatExactVal -> "3/2").
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_mixed_fraction: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 1
+key +
+key 1
+key FRAC
+key 2
+key RIGHT
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_result 3/2
+log "calc_semantic_mixed_fraction: PASS (1 + 1/2 == 3/2)"

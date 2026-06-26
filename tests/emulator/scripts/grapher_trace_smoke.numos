@@ -1,0 +1,86 @@
+# grapher_trace_smoke.numos — open Grapher, commit y=x, plot it, enter Trace mode,
+# reveal the crosshair + value pill, screenshot, and ASSERT Grapher is active.
+#
+# Phase 8N smoke (warning-only candidate; NO golden, NO mask in this phase).
+# Exercises Grapher Trace mode on a plotted y=x.
+#
+# Flow (all verified in src/apps/GrapherApp.cpp):
+#   * The Graph tab opens already in TRACE mode (switchTab GRAPH first entry sets
+#     _grMode=TRACE, GrapherApp.cpp:781), but the first replot is deferred and no
+#     trace overlay is drawn until a trace key runs.
+#   * `right` (handleGraphTrace, GrapherApp.cpp:2491-2508) advances the trace cursor
+#     and calls syncViewportToCursor (GrapherApp.cpp:1981-1999) -> replot() rasterizes
+#     grid+axes+curve into the native buffer, and the handler ends with
+#     drawTraceCursor (GrapherApp.cpp:1667) which shows the crosshair + floating value
+#     pill ("x: .. y: ..") + info-bar readout ("Trace: x=.. y=..").
+#   * computePOIs runs an async 10ms POI timer (GrapherApp.cpp:2695-2716); in
+#     --deterministic mode it fires by frame index and settles within ~2 ticks, so the
+#     captured frame is stable and byte-identical run-to-run after a generous wait.
+#
+# y=x is required because GraphModel only treats an expression as a valid function if
+# it contains "=" (getExprRHS, GraphModel.cpp:28-36); bare "x" would not plot.
+#
+# Tofu: the trace value pill (_tracePillLabel) previously used stix_math_18, which has
+# no U+0020 glyph, so its "x: .. y: .." text tofu'd at the spaces. Phase 8N switches
+# only that one plain-prose pill label to lv_font_montserrat_14 (GrapherApp.cpp:647);
+# the info-bar readout was already montserrat (Phase 8J). Curve, grid, axes, tick
+# labels, and graph math are unchanged.
+#
+# Determinism: run1-vs-run2 from fresh launches is byte-identical (the trace body —
+# curve, crosshair, pill, and info-bar readout — is fully deterministic on the same
+# binary). The only wall-clock-volatile region is the StatusBar clock (HH:MM).
+#
+# All key tokens are already scriptable (down, enter, y, =, x, graph, right) — no
+# NativeHal change is required.
+#
+# Timing notes (deterministic, step-ms 16):
+#   * 200 frames -> splash done; launcher.
+#   *  60 frames -> Grapher load + fade settles.
+#   *   6 keys   -> commit y=x (down, enter, y, =, x, enter).
+#   *  80 frames -> expression committed/settled.
+#   *   1 key    -> graph (createGraphPanel; TRACE mode; replot deferred).
+#   * 120 frames -> Graph panel created + LVGL layout pass computed.
+#   *   1 key    -> right (replot + drawTraceCursor reveals crosshair + value pill).
+#   * 180 frames -> replot + async POI timer settle + screen settles.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/grapher_trace_smoke.numos \
+#           --frames 800 --screenshot out/grapher_trace_smoke.ppm --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "grapher_trace_smoke: waiting for launcher"
+wait 200
+
+# Open Grapher (emulator launchApp id 1 — same id as the launcher's Grapher card).
+open_app Grapher
+wait 60
+
+# Commit the plottable function y=x into the first slot. Sequence:
+#   down  : TAB_BAR -> CONTENT (Add row, _numFuncs=0)
+#   enter : addFunction() -> startEditing() slot 0
+#   y = x : insertVariable('y'), insertVariable('='), insertVariable('x')
+#   enter : commit -> stopEditing(); function parsed and marked valid
+key down
+key enter
+key y
+key =
+key x
+key enter
+wait 80
+
+# Switch to the Graph tab (TRACE mode by default; first replot is deferred).
+key graph
+wait 120
+
+# Advance the trace cursor once: triggers the first replot (curve) AND reveals the
+# crosshair + floating value pill via drawTraceCursor.
+key right
+wait 180
+
+# Screenshot FIRST: the deferred capture happens on this frame, before the assert
+# runs on a later frame, so the artifact is produced even if the assertion fails.
+screenshot out/grapher_trace_smoke.ppm
+log "grapher_trace_smoke: screenshot captured"
+
+assert_app Grapher
+log "grapher_trace_smoke: assertion passed (Grapher active, Trace mode)"

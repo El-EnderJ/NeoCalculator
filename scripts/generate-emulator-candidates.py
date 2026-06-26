@@ -102,6 +102,14 @@ CANDIDATES = [
     # No golden is blessed here — the compare step warns (not fails) when a golden is
     # absent.
     ("grapher_table_smoke", "tests/emulator/scripts/grapher_table_smoke.numos", 800),
+    # Phase 8N: Trace mode — grapher_trace_smoke commits y=x, switches to the Graph tab,
+    # and advances the trace cursor once (`right`) to reveal the crosshair + floating
+    # value pill (drawTraceCursor) over the plotted curve. It asserts the active app
+    # name (exit 4 -> FAIL here). The trace pill plain-prose readout was switched to
+    # lv_font_montserrat_14 in this phase (no tofu). Run1-vs-run2 is byte-identical (the
+    # async POI timer is frame-deterministic). No golden is blessed here — the compare
+    # step warns (not fails) when a golden is absent.
+    ("grapher_trace_smoke", "tests/emulator/scripts/grapher_trace_smoke.numos", 800),
 ]
 
 

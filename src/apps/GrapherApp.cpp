@@ -644,7 +644,9 @@ void GrapherApp::createGraphPanel() {
     lv_obj_set_pos(_tracePillLabel, 14, 5);
     lv_label_set_text(_tracePillLabel, "");
     lv_obj_set_style_text_color(_tracePillLabel, lv_color_hex(0x000000), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_tracePillLabel, &stix_math_18, LV_PART_MAIN);
+    // Plain-prose trace readout ("x: .. y: .." / POI labels, drawTraceCursor) uses
+    // lv_font_montserrat_14: stix_math_18 has no U+0020 glyph, so the spaces tofu.
+    lv_obj_set_style_text_font(_tracePillLabel, &lv_font_montserrat_14, LV_PART_MAIN);
 
     // ── Info bar at bottom ──
     _infoBar = makeContainer(_panelGraph, 0, panelH - INFO_BAR_H, SCREEN_W, INFO_BAR_H, COL_TB_BG);

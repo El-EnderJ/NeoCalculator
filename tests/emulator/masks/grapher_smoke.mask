@@ -1,0 +1,2 @@
+# Masks the live StatusBar HH:MM clock only. Body/content remains byte-gated.
+4,6,37,13

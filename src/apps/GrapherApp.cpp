@@ -410,23 +410,27 @@ void GrapherApp::createExpressionsPanel() {
     lv_obj_set_style_radius(_addRow, 10, LV_PART_MAIN);
     lv_obj_set_style_border_width(_addRow, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(_addRow, lv_color_hex(COL_ROW_BRD), LV_PART_MAIN);
+    // Plain UI/prose labels with spaces use lv_font_montserrat_14: stix_math_18 (the
+    // makeLabel default, used for VPAM-adjacent math) has no U+0020 glyph, so spaced
+    // prose renders a tofu box at every space. Real math (VPAM MathCanvas) and the
+    // axis/tick labels stay on their STIX/graph path.
     _addLabel = makeLabel(_addRow, (SCREEN_W - 2 * PAD) / 2 - 50, (ROW_H - 14) / 2,
-                           "Add an element", COL_ADD_TXT);
+                           "Add an element", COL_ADD_TXT, &lv_font_montserrat_14);
 
     // "Plot graph" button — blue rounded pill
     _plotBtn = makeContainer(_panelExpr, PAD, 0, (SCREEN_W - 3 * PAD) / 2, ROW_H, COL_BTN_BG);
     lv_obj_set_style_radius(_plotBtn, 10, LV_PART_MAIN);
-    makeLabel(_plotBtn, 20, (ROW_H - 14) / 2, "Plot graph", COL_BTN_TXT);
+    makeLabel(_plotBtn, 20, (ROW_H - 14) / 2, "Plot graph", COL_BTN_TXT, &lv_font_montserrat_14);
 
     // "Display values" button — blue rounded pill
     _tableBtn = makeContainer(_panelExpr, PAD + (SCREEN_W - 3 * PAD) / 2 + PAD, 0,
                               (SCREEN_W - 3 * PAD) / 2, ROW_H, COL_BTN_BG);
     lv_obj_set_style_radius(_tableBtn, 10, LV_PART_MAIN);
-    makeLabel(_tableBtn, 10, (ROW_H - 14) / 2, "Display values", COL_BTN_TXT);
+    makeLabel(_tableBtn, 10, (ROW_H - 14) / 2, "Display values", COL_BTN_TXT, &lv_font_montserrat_14);
 
     // Bottom hint
     _exprHint = makeLabel(_panelExpr, PAD, SCREEN_H - BAR_H - TAB_H - 20,
-                           "ENTER=edit  AC=back", COL_HINT, &stix_math_18);
+                           "ENTER=edit  AC=back", COL_HINT, &lv_font_montserrat_14);
 
     refreshExprList();
 }
@@ -644,7 +648,7 @@ void GrapherApp::createGraphPanel() {
 
     // ── Info bar at bottom ──
     _infoBar = makeContainer(_panelGraph, 0, panelH - INFO_BAR_H, SCREEN_W, INFO_BAR_H, COL_TB_BG);
-    _infoLabel = makeLabel(_infoBar, PAD, 2, "", 0x333333, &stix_math_18);
+    _infoLabel = makeLabel(_infoBar, PAD, 2, "", 0x333333, &lv_font_montserrat_14);
     // Mode badge on the right side of info bar: "[Trace]" or "[Pan]"
     _modeBadge = makeLabel(_infoBar, SCREEN_W - 50, 2, "[Trace]", 0x4A90E2, &stix_math_18);
 }

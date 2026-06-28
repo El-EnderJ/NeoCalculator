@@ -118,6 +118,28 @@ CANDIDATES = [
     # lazy template-AST load timer is frame-deterministic). No golden is blessed here —
     # the compare step warns (not fails) when a golden is absent.
     ("grapher_templates_smoke", "tests/emulator/scripts/grapher_templates_smoke.numos", 800),
+    # Phase 9C: Main Menu focused-card visual candidate. menu_focus_grapher_smoke
+    # stays in the launcher (MENU), moves focus RIGHT once (Calculation id0 ->
+    # Grapher id1), waits for the focus overshoot to settle, and screenshots the
+    # launcher with Grapher highlighted. It presses NO ENTER and launches NO app
+    # (two assert_app Menu bookends); a failed assert exits 4 -> FAIL here. The
+    # focus animation is deterministic-tick driven, so run1-vs-run2 differs only in
+    # the StatusBar clock. No golden is blessed here — the compare step warns (not
+    # fails) when a golden is absent; no mask is added in this phase.
+    ("menu_focus_grapher_smoke", "tests/emulator/scripts/menu_focus_grapher_smoke.numos", 800),
+    # Phase 9E: Grapher functional-UX candidates. implicit_x / implicit_2x commit a
+    # BARE expression (no "y=") and graph it — GraphModel now treats a missing '='
+    # as the implicit y=<expr>, so "x"/"2x" plot y=x/y=2x. multifn_graph / multifn_table
+    # exercise two functions (x and 2x) on the Graph and Table tabs (multi-column
+    # header fix). expr_scroll fills the list to MAX_FUNCS and scrolls (scroll-to-
+    # selected + fixed footer hint). Each asserts the active app (exit 4 -> FAIL here);
+    # the typing-heavy scripts need ~1400 frames. No golden is blessed here — the
+    # compare step warns (not fails) when a golden is absent; no mask is added.
+    ("grapher_implicit_x_smoke", "tests/emulator/scripts/grapher_implicit_x_smoke.numos", 1400),
+    ("grapher_implicit_2x_smoke", "tests/emulator/scripts/grapher_implicit_2x_smoke.numos", 1400),
+    ("grapher_multifn_graph_smoke", "tests/emulator/scripts/grapher_multifn_graph_smoke.numos", 1400),
+    ("grapher_multifn_table_smoke", "tests/emulator/scripts/grapher_multifn_table_smoke.numos", 1400),
+    ("grapher_expr_scroll_smoke", "tests/emulator/scripts/grapher_expr_scroll_smoke.numos", 1400),
 ]
 
 

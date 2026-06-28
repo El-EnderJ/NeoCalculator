@@ -1,0 +1,31 @@
+# grapher_template_insert_smoke.numos — Phase 9F. Open Templates, select x^3 (tpl4),
+# insert -> a REAL power expression appears in the slot (not broken text), then plot
+# and tabulate. Screenshot. Before 9F the '=' serialized as '+' so it never plotted.
+log "tpl_insert: start"
+wait 180
+open_app Grapher
+wait 40
+key down
+key enter
+key right
+wait 24
+key down
+key down
+key down
+key down
+key enter
+wait 40
+screenshot out/grapher_template_insert_smoke.ppm
+key graph
+wait 100
+key ac
+key 0
+wait 150
+screenshot out/grapher_template_insert_graph.ppm
+key table
+wait 120
+screenshot out/grapher_template_insert_table.ppm
+key home
+wait 50
+assert_app Menu
+log "tpl_insert: PASS - x^3 template inserted, graphed, tabulated"

@@ -1,0 +1,53 @@
+# grapher_logbase_smoke.numos — Phase 9F logbase guard (assert-only, warning-only).
+#
+# Proves log with an explicit base now works end to end in the Grapher:
+#   * INSERT — KeyCode::LOG_BASE (script `logbase`, live SDL key `b`) is handled by
+#     GrapherApp::handleExprEdit (was a no-op before 9F): inserts a NodeLogBase with
+#     the cursor in the subscript, so `logbase 2 right x` builds log_2(x).
+#   * RENDER — draws as "log" with a subscript base (proper natural display).
+#   * GRAPH/TABLE — GrapherApp::serializeNode emits the change-of-base identity
+#     log_b(a) = log(a)/log(b) (the numeric Evaluator has no 2-arg log), so it
+#     compiles and plots as log_2(x): passes (1,0), (2,1), (4,2), (8,3); negatives
+#     and 0 are domain errors (table shows "--"). Before 9F serializeNode dropped
+#     the base entirely ("log(arg)") → it graphed log10, the wrong curve.
+#   * NO HANG / EXIT — returns to the launcher cleanly (Phase 9F deferred teardown).
+#
+# Assert-only: NO golden, NO screenshot, NOT in CANDIDATES (does not gate CI).
+# Run manually:
+#   program --headless --deterministic \
+#           --script tests/emulator/scripts/grapher_logbase_smoke.numos \
+#           --frames 800 --quiet
+# Exit codes: 0 ok · 2 parse error · 4 assertion failure.
+
+log "grapher_logbase_smoke: start"
+wait 180
+open_app Grapher
+wait 40
+assert_app Grapher
+
+# Build y = log_2(x): edit slot0, then logbase -> base 2 -> right -> arg x.
+key down
+key enter
+key y
+key =
+key logbase
+key 2
+key right
+key x
+key enter
+wait 40
+
+# Plot and tabulate (must not hang on the change-of-base expression).
+key graph
+wait 80
+key ac
+key 0
+wait 80
+key table
+wait 80
+
+# Exit back to the launcher.
+key home
+wait 60
+assert_app Menu
+log "grapher_logbase_smoke: PASS - log_2(x) inserted, graphed, tabulated, exited"

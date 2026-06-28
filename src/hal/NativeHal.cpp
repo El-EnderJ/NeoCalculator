@@ -45,19 +45,23 @@
  *   Tab            → ALPHA
  *   LShift/RShift  → SHIFT
  *   Insert         → STO  (Store)
- *   Home / m       → MODE (volver al launcher)
+ *   Home / h       → MODE (volver al launcher)   [Phase 9F: 'h', ya no 'm']
  *   s              → SIN
  *   c              → COS
  *   t              → TAN
  *   l              → LN
- *   g              → LOG
+ *   g              → GRAPH (abre/conmuta a Graph; abre Grapher desde el launcher)
+ *   m              → LOG   [Phase 9F: LOG se movio de 'g' a 'm']
+ *   b              → LOG_BASE (log con base, log_n)  [Phase 9F]
  *   r              → SQRT
- *   p              → CONST_PI
+ *   p              → POW       [Phase 9E: potencia sin SHIFT; '^' sigue siendo POW]
+ *   o              → CONST_PI  [Phase 9E: π reubicado de 'p' a 'o']
  *   e              → CONST_E
  *   x              → VAR_X
  *   y              → VAR_Y
  *   a              → ANS  (Phase 9A: recuperar ultimo resultado)
- *   f / F5 / =     → FREE_EQ  (S⇔D)
+ *   f              → DIV (fracción)  [Phase 9E: '/' sigue siendo equivalente]
+ *   F5 / =         → FREE_EQ  (S⇔D)
  *   n              → NEGATE
  *
  * Notas Phase 9A (solo emulador, sin impacto en firmware):
@@ -211,6 +215,23 @@ static bool          g_quit       = false;
 static AppMode       g_mode       = AppMode::SPLASH;
 static bool          g_splashDone = false;   // Flag para transición diferida
 
+// ── Teardown diferido al volver al launcher (Phase 9F) ───────────────────────
+// El firmware NO destruye la app inmediatamente al volver al menu: arranca la
+// animacion de fade-in del launcher y aplaza el end() ~250 ms (CLAUDE.md "Deferred
+// teardown"). El emulador hacia lo contrario —end() SINCRONO y DESPUES
+// g_menu->load()— y eso colgaba: lv_obj_delete() borra la pantalla de la app que
+// AUN es la pantalla activa, dejando disp->act_scr colgando; el FADE_IN siguiente
+// anima "desde" esa pantalla liberada y lv_timer_handler entra en bucle sobre
+// memoria liberada (se reproduce al salir de CUALQUIER app LVGL-native). Replicamos
+// el teardown diferido: cargamos el menu (la pantalla de la app sigue viva como
+// origen del fade) y borramos la app cuando el fade ya termino. El retardo se mide
+// con el MISMO reloj que la animacion (lv_tick, determinista o de pared) para ser
+// correcto en ambos modos.
+static bool          g_teardownPending   = false;
+static AppMode       g_teardownMode      = AppMode::MENU;
+static uint32_t      g_teardownStartTick = 0;
+static constexpr uint32_t TEARDOWN_DELAY_MS = 260;  // > 200 ms del fade del launcher
+
 // Instancias de aplicación
 static DisplayDriver    g_displayStub;        // Stub para MainMenu
 static SplashScreen*    g_splash  = nullptr;
@@ -242,6 +263,7 @@ static uint8_t g_lvBuf[SCREEN_W * SCREEN_H * sizeof(uint16_t)];
 // Forward declarations
 static void launchApp(int appId);
 static void returnToMenu();
+static void flushPendingTeardown();   // Phase 9F: teardown diferido del launcher
 static void onSplashDone();
 // Phase 5A: Math Showcase (definidas tras returnToMenu).
 static void showcaseLoad();
@@ -298,6 +320,9 @@ static KeyCode mapSdlToKeyCode(SDL_Keycode sym)
         case SDLK_ESCAPE:       return KeyCode::AC;
         case SDLK_BACKSPACE:
         case SDLK_DELETE:       return KeyCode::DEL;
+        // Phase 9F: HOME (volver al launcher) = 'h' o la tecla fisica Home. 'm' ya
+        // NO es HOME (paso a ser LOG); QA de Grapher pidio 'h' explicitamente.
+        case SDLK_h:
         case SDLK_HOME:         return KeyCode::MODE;
 
         // Modificadores
@@ -347,9 +372,22 @@ static KeyCode mapSdlToKeyCode(SDL_Keycode sym)
         case SDLK_c:            return KeyCode::COS;
         case SDLK_t:            return KeyCode::TAN;
         case SDLK_l:            return KeyCode::LN;
-        case SDLK_g:            return KeyCode::LOG;
+        // Phase 9F: 'g' = GRAPH (abre/conmuta a la pestana Graph del Grapher, y
+        // abre el Grapher desde el launcher; ver dispatchKey MENU). LOG se reubica
+        // a 'm' (la tecla que 'h' libera al pasar a ser HOME). Antes 'g'=LOG
+        // contaminaba la navegacion del grafico.
+        case SDLK_g:            return KeyCode::GRAPH;
+        case SDLK_m:            return KeyCode::LOG;
+        // Phase 9F: 'b' = LOG con base explicita (log_n / LOG_BASE). 'b' por "base";
+        // era una tecla libre. Lo consume GrapherApp::handleExprEdit (insertLogBase)
+        // y CalculationApp::insertLogBase, asi que logbase es alcanzable en vivo.
+        case SDLK_b:            return KeyCode::LOG_BASE;
         case SDLK_r:            return KeyCode::SQRT;
-        case SDLK_p:            return KeyCode::CONST_PI;
+        // 'p' = POW (Phase 9E). El circunflejo '^' exige SHIFT en teclados US, asi
+        // que la potencia tambien se alcanza con 'p' (^ sigue mapeado a POW). Pi se
+        // reubica de 'p' a 'o' para liberar la tecla de potencia.
+        case SDLK_p:            return KeyCode::POW;
+        case SDLK_o:            return KeyCode::CONST_PI;
         case SDLK_e:            return KeyCode::CONST_E;
 
         // Variables
@@ -363,8 +401,12 @@ static KeyCode mapSdlToKeyCode(SDL_Keycode sym)
         // anaden valores al enum. PreAns sigue siendo solo-script (ver doc).
         case SDLK_a:            return KeyCode::ANS;
 
-        // S⇔D y especiales
-        case SDLK_f:
+        // 'f' = fraccion (Phase 9E). En NumOS la tecla de division ES la de
+        // fraccion (KeyCode::DIV -> insertFraction); antes 'f' no tenia tecla en
+        // vivo dedicada (iba a FREE_EQ). '/' sigue siendo equivalente.
+        case SDLK_f:            return KeyCode::DIV;
+
+        // S⇔D y especiales (F5 y '=' siguen en FREE_EQ; 'f' ya no).
         case SDLK_F5:
         case SDLK_EQUALS:       return KeyCode::FREE_EQ;
 
@@ -374,9 +416,6 @@ static KeyCode mapSdlToKeyCode(SDL_Keycode sym)
         // +/- en fila principal
         case SDLK_PLUS:         return KeyCode::ADD;
         case SDLK_MINUS:        return KeyCode::SUB;
-
-        // m = MODE (alternativo a Home)
-        case SDLK_m:            return KeyCode::MODE;
 
         // n = NEGATE
         case SDLK_n:            return KeyCode::NEGATE;
@@ -537,6 +576,13 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                         case KeyCode::DOWN:  g_menu->moveFocusByDelta( 0, +1); break;
                         default: break;   // inalcanzable (filtrado arriba)
                     }
+                    break;
+                }
+                // Phase 9F: 'g' (GRAPH) abre el Grapher directamente desde el
+                // launcher (atajo "g = Graph/Grapher"). Sin esto, GRAPH no tiene
+                // efecto en el menu (el indev LVGL lo ignora).
+                if (kc == KeyCode::GRAPH) {
+                    launchApp(1);   // id 1 = Grapher
                     break;
                 }
                 // El resto de teclas (ENTER/AC/DEL/...) mantienen el camino LVGL:
@@ -825,6 +871,10 @@ static void launchApp(int appId)
 {
     std::printf("[APP] Lanzando app %d\n", appId);
 
+    // Si volvimos al menu hace poco y aun queda un teardown diferido, resuelvelo
+    // antes de lanzar otra app (no dejar la pantalla anterior a medias).
+    flushPendingTeardown();
+
     switch (appId) {
         case 0: // Calculation
             g_calcApp->load();
@@ -893,17 +943,16 @@ static void launchApp(int appId)
 }
 
 /**
- * Vuelve al launcher desde cualquier app.
- * Destruye y re-crea la pantalla de la app (listo para el próximo lanzamiento).
+ * Destruye (y, para Calculation, re-crea) la pantalla de la app `m`.
+ *
+ * Es el "end()" diferido del teardown: se ejecuta FUERA de lv_timer_handler y
+ * SOLO cuando la pantalla de la app ya NO es la activa (el fade-in del launcher
+ * ya termino), de modo que lv_obj_delete() nunca borra la pantalla activa ni deja
+ * disp->act_scr colgando. Idempotente: cada *App::end() guarda con `if (_screen)`.
  */
-static void returnToMenu()
+static void performAppTeardown(AppMode m)
 {
-    std::printf("[APP] Volviendo al launcher\n");
-
-    // Teardown segun la app activa ANTES de cambiar g_mode. Llamado fuera del
-    // contexto de lv_timer_handler (desde dispatchKey/scriptStepBegin), por lo
-    // que el destruir/re-crear sincrono es seguro.
-    switch (g_mode) {
+    switch (m) {
         case AppMode::CALCULATION:
             if (g_calcApp) {
                 g_calcApp->end();
@@ -940,11 +989,44 @@ static void returnToMenu()
         default:
             break;
     }
+}
+
+// Si hay un teardown diferido pendiente, ejecutalo YA (la pantalla de la app ya
+// no es la activa). Se llama antes de lanzar otra app o al cerrar.
+static void flushPendingTeardown()
+{
+    if (!g_teardownPending) return;
+    g_teardownPending = false;
+    performAppTeardown(g_teardownMode);
+}
+
+/**
+ * Vuelve al launcher desde cualquier app.
+ *
+ * Teardown DIFERIDO (Phase 9F): NO destruye la pantalla de la app aqui. Arranca el
+ * fade-in del launcher con la pantalla de la app AUN viva (origen valido del fade)
+ * y agenda su end() para cuando el fade termine (ver bucle principal). Asi nunca se
+ * borra la pantalla activa bajo la animacion → no hay use-after-free ni cuelgue.
+ */
+static void returnToMenu()
+{
+    std::printf("[APP] Volviendo al launcher\n");
+
+    // Salvaguarda: si quedara un teardown pendiente de una vuelta anterior,
+    // resuelvelo antes de agendar el nuevo (no deberia ocurrir en uso normal).
+    flushPendingTeardown();
+
+    // Agenda el teardown de la app activa para despues del fade del launcher.
+    if (g_mode != AppMode::MENU && g_mode != AppMode::SPLASH) {
+        g_teardownMode      = g_mode;
+        g_teardownPending   = true;
+        g_teardownStartTick = lv_tick_get();
+    }
 
     // Resetear modificadores de teclado (SHIFT/ALPHA/STO)
     vpam::KeyboardManager::instance().reset();
 
-    g_menu->load();
+    g_menu->load();   // fade-in; la pantalla de la app sigue viva como origen
     lv_indev_set_group(LvglKeypad::indev(), g_menu->group());
     g_mode = AppMode::MENU;
     std::printf("[MENU] Launcher restaurado\n");
@@ -1888,9 +1970,9 @@ int main(int argc, char** argv)
 
     std::printf("\n[SIM] Simulador corriendo. Cierra la ventana o Ctrl+C para salir.\n");
     std::printf("[SIM] Teclado: 0-9, +-*/, Enter, ESC=AC, Backspace=DEL, Flechas\n");
-    std::printf("[SIM]          s=SIN c=COS t=TAN l=LN g=LOG r=SQRT p=PI e=E\n");
-    std::printf("[SIM]          Tab=ALPHA  Shift=SHIFT  Insert=STO\n");
-    std::printf("[SIM]          m/Home = volver al launcher  ·  --help para flags\n\n");
+    std::printf("[SIM]          s=SIN c=COS t=TAN l=LN m=LOG r=SQRT o=PI e=E\n");
+    std::printf("[SIM]          g=GRAPH (abre Grapher)  Tab=ALPHA  Shift=SHIFT  Insert=STO\n");
+    std::printf("[SIM]          h/Home = volver al launcher  ·  --help para flags\n\n");
 
     // ── 6. Bucle principal ──────────────────────────────────────────────
     // Politica de temporizacion: UNA sola fuente de tick (SDL_GetTicks via
@@ -1933,6 +2015,16 @@ int main(int argc, char** argv)
         // Phase 4A: captura diferida pedida por el script, DESPUES del render
         // (g_lvBuf ya contiene el frame compuesto por lv_timer_handler).
         scriptCaptureIfPending();
+
+        // Phase 9F: teardown diferido de la app que dejamos al volver al launcher.
+        // Se hace FUERA de lv_timer_handler y solo cuando el fade-in del menu ya
+        // termino (medido con lv_tick, igual que la animacion), de modo que la
+        // pantalla de la app ya no es la activa cuando se borra.
+        if (g_teardownPending &&
+            lv_tick_elaps(g_teardownStartTick) >= TEARDOWN_DELAY_MS) {
+            g_teardownPending = false;
+            performAppTeardown(g_teardownMode);
+        }
 
         // En modo determinista NO dormimos: el tick es sintetico, así que el
         // ritmo de pared es irrelevante y conviene terminar rapido (CI). En uso

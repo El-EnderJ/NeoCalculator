@@ -1,0 +1,32 @@
+# grapher_multifn_graph_smoke.numos — Phase 9E. Two implicit functions in one
+# graph: slot0 "x" (y=x), slot1 "2x" (y=2x). Switch to the Graph tab, flush the
+# deferred replot, screenshot, assert. Proves multi-function plotting: replot()
+# samples every valid+visible slot (GrapherApp.cpp), so both curves render in
+# their distinct slot colours (f0 red, f1 blue) from the shared origin.
+#
+# Warning-only candidate (no golden blessed; the compare step warns when absent).
+log "grapher_multifn_graph_smoke: waiting for launcher"
+wait 200
+open_app Grapher
+wait 60
+# Slot 0 = x
+key down
+key enter
+key x
+key enter
+wait 40
+# Slot 1 = 2x  (after commit, focus is the last row -> 1 down reaches Add)
+key down
+key enter
+key 2
+key x
+key enter
+wait 60
+key graph
+wait 120
+key ac
+key 0
+wait 180
+screenshot out/grapher_multifn_graph_smoke.ppm
+assert_app Grapher
+log "grapher_multifn_graph_smoke: y=x and y=2x both plotted"

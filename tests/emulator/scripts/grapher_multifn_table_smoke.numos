@@ -1,0 +1,29 @@
+# grapher_multifn_table_smoke.numos — Phase 9E. Two implicit functions ("x" and
+# "2x"), then the Table tab. Screenshot, assert. Proves the Phase 9E multi-column
+# table header fix: rebuildTable() now emits one centered header label per active
+# column ("x", "f1(x)", "f2(x)") aligned to the data columns with a separator
+# between each (GrapherApp.cpp), instead of labelling only x+f1 and slicing the
+# f1 text with a fixed mid-screen separator. Expected data over the default range
+# (start -5, step 1): f1(x)=x, f2(x)=2x  (e.g. x=-5 -> -5, -10).
+#
+# Warning-only candidate (no golden blessed; the compare step warns when absent).
+log "grapher_multifn_table_smoke: waiting for launcher"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key x
+key enter
+wait 40
+key down
+key enter
+key 2
+key x
+key enter
+wait 60
+key table
+wait 160
+screenshot out/grapher_multifn_table_smoke.ppm
+assert_app Grapher
+log "grapher_multifn_table_smoke: x | f1(x) | f2(x) columns rendered"

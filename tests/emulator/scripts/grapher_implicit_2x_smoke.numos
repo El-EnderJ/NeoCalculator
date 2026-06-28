@@ -1,0 +1,25 @@
+# grapher_implicit_2x_smoke.numos — Phase 9E. Commit the BARE expression "2x"
+# (no "y="), graph it, screenshot, and assert. Proves implicit-RHS + implicit
+# multiplication together: the Tokenizer turns "2x" into "2*x"
+# (Tokenizer::appendImplicitMulIfNeeded) and GraphModel::getExprRHS treats the
+# missing '=' as y=<expr>, so "2x" plots y=2x (slope 2). Before 9E: no curve.
+#
+# Warning-only candidate (no golden blessed; the compare step warns when absent).
+log "grapher_implicit_2x_smoke: waiting for launcher"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key 2
+key x
+key enter
+wait 80
+key graph
+wait 120
+key ac
+key 0
+wait 180
+screenshot out/grapher_implicit_2x_smoke.ppm
+assert_app Grapher
+log "grapher_implicit_2x_smoke: bare 2x plotted as y=2x"

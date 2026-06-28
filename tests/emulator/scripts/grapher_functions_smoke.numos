@@ -1,0 +1,58 @@
+# grapher_functions_smoke.numos — Phase 9F. Insert sin/cos/tan/ln/log in 5 slots,
+# plot them all on one Graph, screenshot, exit. Proves transcendental functions
+# insert + serialize + graph without hanging (tan asymptotes, ln/log domain).
+# Warning-only (screenshot, no golden); NOT CI-gated.
+log "functions: start"
+wait 180
+open_app Grapher
+wait 40
+key down
+key enter
+key y
+key =
+key sin
+key x
+key enter
+wait 16
+key down
+key enter
+key y
+key =
+key cos
+key x
+key enter
+wait 16
+key down
+key enter
+key y
+key =
+key tan
+key x
+key enter
+wait 16
+key down
+key enter
+key y
+key =
+key ln
+key x
+key enter
+wait 16
+key down
+key enter
+key y
+key =
+key log
+key x
+key enter
+wait 40
+key graph
+wait 100
+key ac
+key 0
+wait 150
+screenshot out/grapher_functions_smoke.ppm
+key home
+wait 50
+assert_app Menu
+log "functions: PASS - sin/cos/tan/ln/log plotted, exited clean"

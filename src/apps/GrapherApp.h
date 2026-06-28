@@ -198,11 +198,12 @@ private:
     float           _tangentX;          // Point of tangency (world x)
 
     // ── Table panel widgets ──────────────────────────────────────────
-    lv_obj_t*       _tblTable;          // native lv_table widget
-    lv_obj_t*       _tblHeaderBar;      // Sticky header bar (above scrollable table)
-    lv_obj_t*       _tblHdrLabels[2];   // Header label widgets: "x" and "f(x)"
     static constexpr int TBL_ROWS = 21; // data rows in table
     static constexpr int TBL_COLS = 1 + MAX_FUNCS;  // x + one column per function
+    lv_obj_t*       _tblTable;          // native lv_table widget
+    lv_obj_t*       _tblHeaderBar;      // Sticky header bar (above scrollable table)
+    lv_obj_t*       _tblHdrLabels[TBL_COLS];     // Header labels: "x", "f1(x)", "f2(x)", …
+    lv_obj_t*       _tblHdrSeps[TBL_COLS - 1];   // Vertical separators between header columns
 
     // ── Points of interest (roots, extrema, intersections) ───────────
     POI  _pois[MAX_POIS];

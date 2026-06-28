@@ -1,0 +1,28 @@
+# grapher_tan_exit_smoke.numos — Phase 9F. y=tan(x) (asymptotes) must plot, allow
+# interaction (pan + trace), and return to the launcher WITHOUT hanging. Assert-only.
+log "tan_exit: start"
+wait 180
+open_app Grapher
+wait 40
+key down
+key enter
+key y
+key =
+key tan
+key x
+key enter
+wait 40
+key graph
+wait 100
+key ac
+key 0
+wait 80
+key right
+key right
+wait 30
+key enter
+wait 40
+key home
+wait 50
+assert_app Menu
+log "tan_exit: PASS - tan graphed, panned, traced, exited (no hang)"

@@ -20,16 +20,44 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <string>
 
 namespace grapher {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// The numeric Parser (Parser.cpp) is binary-only — it has no unary-minus rule,
+// so a function whose rhs starts with a sign ("-x", "-2x", "sin(-x)") fails to
+// compile and never plots. Rewrite such a leading/parenthesised unary +/- into
+// a parser-safe binary form by inserting a '0' operand ("-2x" -> "0-2x"). Only
+// positions where "0<sign>" provably preserves both value AND precedence are
+// rewritten: expression start, right after '(' , or right after '=' (after '='
+// the rhs sign is effectively leading). Signs following a value or a *, /, ^ or
+// another sign are left untouched, so this can never change the value of an
+// already well-formed expression — it only rescues ones that were invalid.
+static std::string normalizeLeadingUnary(const char* rhs) {
+    std::string out;
+    char prevSig = '\0';
+    for (const char* p = rhs; *p; ++p) {
+        char c = *p;
+        if (c == ' ' || c == '\t') { out += c; continue; }
+        if ((c == '-' || c == '+') &&
+            (prevSig == '\0' || prevSig == '(' || prevSig == '=')) {
+            out += '0';
+        }
+        out += c;
+        prevSig = c;
+    }
+    return out;
+}
+
 const char* GraphModel::getExprRHS(const char* text) {
     if (!text) return nullptr;
+    // An explicit "lhs = rhs" plots the rhs; a bare expression (no '=') is
+    // treated as the implicit function y = <expr>, so "x" plots as y=x and
+    // "2x" as y=2x. The whole (leading-trimmed) string becomes the rhs.
     const char* eq = strchr(text, '=');
-    if (!eq) return nullptr;
-    const char* rhs = eq + 1;
+    const char* rhs = eq ? eq + 1 : text;
     while (*rhs == ' ' || *rhs == '\t') ++rhs;
     if (!*rhs) return nullptr;
     return rhs;
@@ -47,7 +75,8 @@ void GraphModel::preCacheRPN(CartesianFunction& fn) {
     const char* rhs = getExprRHS(fn.text);
     if (!rhs) return;
 
-    TokenizeResult tr = _tok.tokenize(rhs);
+    std::string expr = normalizeLeadingUnary(rhs);
+    TokenizeResult tr = _tok.tokenize(expr.c_str());
     if (!tr.ok) return;
 
     ParseResult pr = _par.toRPN(tr.tokens);
@@ -75,7 +104,8 @@ float GraphModel::evalAt(CartesianFunction& fn, float x) {
     const char* rhs = getExprRHS(fn.text);
     if (!rhs) return NAN;
 
-    TokenizeResult tr = _tok.tokenize(rhs);
+    std::string expr = normalizeLeadingUnary(rhs);
+    TokenizeResult tr = _tok.tokenize(expr.c_str());
     if (!tr.ok) return NAN;
     ParseResult pr = _par.toRPN(tr.tokens);
     if (!pr.ok) return NAN;

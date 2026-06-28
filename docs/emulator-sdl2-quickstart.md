@@ -791,13 +791,15 @@ CalculationApp every mapped key is forwarded.
 | `Enter` / KP Enter | ENTER | `0`–`9` (top row + keypad) | NUM_0..NUM_9 |
 | Arrow keys | UP / DOWN / LEFT / RIGHT | `+ - * /` | ADD / SUB / MUL / DIV |
 | `Esc` | AC | `( )` | LPAREN / RPAREN |
-| `Backspace` / `Delete` | DEL | `^` | POW |
-| `Home` / `m` | MODE (back to launcher) | `.` | DOT |
+| `Backspace` / `Delete` | DEL | `^` `p` | POW |
+| `Home` / `h` | MODE (back to launcher) *(Phase 9F: `h`, not `m`)* | `.` | DOT |
 | `LShift` / `RShift` | SHIFT | `s` `c` `t` | SIN / COS / TAN |
-| `Tab` | ALPHA | `l` `g` `r` | LN / LOG / SQRT |
-| `Insert` | STO (Store) | `p` `e` | π / e |
-| `f` / `F5` / `=` | FREE_EQ (S⇔D) | `x` `y` | VAR_X / VAR_Y |
-| `n` | NEGATE | `a` | ANS *(Phase 9A)* |
+| `Tab` | ALPHA | `l` `m` `r` | LN / LOG / SQRT *(Phase 9F: LOG=`m`)* |
+| `Insert` | STO (Store) | `o` `e` | π / e |
+| `f` | Fraction (DIV ÷) *(Phase 9E)* | `x` `y` | VAR_X / VAR_Y |
+| `g` | GRAPH — opens/switches to Grapher *(Phase 9F)* | `b` | LOG_BASE (log_n) *(Phase 9F)* |
+| `F5` / `=` | FREE_EQ (S⇔D) | `n` | NEGATE |
+| `a` | ANS *(Phase 9A)* | | |
 
 Notes:
 - **SHIFT / ALPHA / STO** are resolved by `KeyboardManager` inside
@@ -809,6 +811,12 @@ Notes:
 - This is **not** the full hardware 5×10 matrix; it is a direct desktop keymap.
 - `=` toggles the **S⇔D** display form (FREE_EQ); it does **not** evaluate. Use
   `Enter` / KP Enter to evaluate. (Both maps agree: `=`→FREE_EQ.)
+- **Phase 9E live-key ergonomics.** `f`→**Fraction** (the `KeyCode::DIV` fraction
+  template — there was no dedicated live fraction key before; `/` still works),
+  `p`→**POW** (so power needs no SHIFT, unlike `^`, which also still maps to POW),
+  and **π moved from `p` to `o`**. These are live-SDL only (`mapSdlToKeyCode`);
+  the `.numos` script vocabulary (`frac`/`pow`/`pi`, `/`, `^`) is unchanged, so
+  tests and goldens are unaffected.
 
 ### Input parity: live SDL vs `.numos` script vs SerialBridge (Phase 9A)
 
@@ -818,14 +826,15 @@ shaped by its medium:
 
 | Surface | Where | Style | Notes |
 |:--|:--|:--|:--|
-| **Live SDL** | `mapSdlToKeyCode` ([NativeHal.cpp:279](../src/hal/NativeHal.cpp#L279)) | real-keyboard keysyms; letters for functions (`s`=SIN, `c`=COS, `g`=LOG…) | interactive window only |
+| **Live SDL** | `mapSdlToKeyCode` ([NativeHal.cpp:279](../src/hal/NativeHal.cpp#L279)) | real-keyboard keysyms; letters for functions (`s`=SIN, `c`=COS, `m`=LOG, `b`=LOG_BASE; `g`=GRAPH, `h`=Home — Phase 9F) | interactive window only |
 | **`.numos` script** | `scriptNameToKeyCode` ([NativeHal.cpp:384](../src/hal/NativeHal.cpp#L384)) | spelled names (`sin`, `cos`, `graph`, `ans`…) + symbols | the **test** vocabulary; widest coverage |
 | **SerialBridge** | `processChar` ([SerialBridge.cpp:108](../src/input/SerialBridge.cpp#L108)) | firmware serial-monitor REPL: `w/a/s/d` nav, `c`=AC, `g`=GRAPH, line-buffered | device bring-up only; **not** emulator input |
 
 Because SerialBridge has no arrow keys it overloads letters very differently from
-the SDL map (e.g. `c`=AC vs SDL `c`=COS, `s`=DOWN vs SDL `s`=SIN, `g`=GRAPH vs SDL
-`g`=LOG, `t`=SIN vs SDL `t`=TAN). **This divergence is by design** — do not assume a
-shared mnemonic across surfaces.
+the SDL map (e.g. `c`=AC vs SDL `c`=COS, `s`=DOWN vs SDL `s`=SIN, `t`=SIN vs SDL
+`t`=TAN). **This divergence is by design** — do not assume a shared mnemonic across
+surfaces. (Phase 9F aligned one pair: SerialBridge `g`=GRAPH now matches SDL
+`g`=GRAPH.)
 
 **Phase 9A additions** (new names → existing `KeyCode`s; no enum changes):
 
@@ -838,9 +847,11 @@ shared mnemonic across surfaces.
 
 **Known input limitations (deferred):**
 
-- **`GRAPH`, `TABLE`, `PREANS`, `EXE`, `F1`–`F4` have no live-SDL key** — they are
-  reachable only via `.numos` script names. Interactively, switch Grapher tabs with
-  the tab-bar arrows; recall Ans with `a`. (PreAns is script-only.)
+- **`TABLE`, `PREANS`, `EXE`, `F1`–`F4` have no live-SDL key** — they are reachable
+  only via `.numos` script names. Interactively, switch to the Grapher Table tab with
+  the tab-bar arrows; recall Ans with `a`. (PreAns is script-only.) *(Phase 9F:
+  `GRAPH` now has live key `g` — opens/switches to the Grapher — and `LOG_BASE` has
+  live key `b`, so both left this list.)*
 - **`SDLK_F5` → `FREE_EQ`**, but script `f5` → `KeyCode::F5` — the physical F5 key
   and `key f5` differ; a known, intentional asymmetry.
 - ~~**Menu arrow navigation differs from hardware.**~~ **Resolved in Phase 9B.**
@@ -912,6 +923,19 @@ candidate list):
   linear-nav regression would land on different cards and fail.
 - `menu_enter_launch.numos` — focus the Grapher card by arrow, press ENTER, and
   `assert_app Grapher`: proves grid navigation and card activation stay in sync.
+
+**Focused-card visual candidate (Phase 9C).** Phase 9B asserted the *logical*
+focus; Phase 9C adds a screenshot so a human can confirm the focus **highlight
+renders** on the right card. `menu_focus_grapher_smoke.numos` stays in the
+launcher, moves focus RIGHT once (Calculation → Grapher), asserts
+`assert_menu_focus Grapher`, waits for the focus overshoot to settle, and
+screenshots the launcher with Grapher highlighted (it presses **no** ENTER and
+launches **no** app — bookended by `assert_app Menu`). It is wired into
+[`generate-emulator-candidates.py`](../scripts/generate-emulator-candidates.py),
+so CI uploads its candidate PPM and **warns (does not fail)** on the missing
+golden. Run1-vs-run2 is **byte-identical** (the focus animation is driven by the
+deterministic tick; the launcher has no blinking cursor). **No golden is blessed
+and no mask is added in this phase** — promotion remains a later, human-gated step.
 
 ---
 

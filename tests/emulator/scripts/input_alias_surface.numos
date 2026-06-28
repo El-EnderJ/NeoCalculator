@@ -42,7 +42,6 @@ key ans
 key preans
 key exe
 key table
-key graph
 key f1
 key f2
 key f3
@@ -67,6 +66,19 @@ key sd
 key freeeq
 wait 20
 
-# Still at the launcher: no token above is an LVGL nav key, so nothing launched.
+# Still at the launcher: none of the tokens above is an LVGL nav key, so nothing
+# launched. (Phase 9F: `graph` is tested separately below — it now LAUNCHES the
+# Grapher from the launcher, so it can't sit in the no-op batch.)
 assert_app Menu
-log "input_alias_surface: PASS - all alias tokens parsed and dispatched (still at Menu)"
+log "input_alias_surface: PASS - alias tokens parsed and dispatched (still at Menu)"
+
+# Phase 9F: `graph` (GRAPH) is no longer a launcher no-op — it opens the Grapher
+# (NativeHal dispatchKey MENU -> launchApp(1)). Validate its parse + new dispatch
+# semantics, then return home so the canary ends back at the launcher.
+key graph
+wait 20
+assert_app Grapher
+key home
+wait 20
+assert_app Menu
+log "input_alias_surface: PASS - graph opens Grapher, home returns to launcher"

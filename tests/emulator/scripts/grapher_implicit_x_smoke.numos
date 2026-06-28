@@ -1,0 +1,30 @@
+# grapher_implicit_x_smoke.numos — Phase 9E. Commit the BARE expression "x" (no
+# "y="), switch to the Graph tab, flush the deferred first replot, screenshot,
+# and assert. Proves Phase 9E implicit-RHS: GraphModel::getExprRHS now treats an
+# expression with no '=' as the implicit function y=<expr> (GraphModel.cpp), so a
+# bare "x" plots y=x. Before 9E this committed INVALID and drew no curve.
+#
+# Warning-only candidate (no golden blessed; the compare step warns when absent).
+# Run: program --headless --deterministic --script <this> --frames 1400 \
+#              --screenshot out/grapher_implicit_x_smoke.ppm --quiet
+log "grapher_implicit_x_smoke: waiting for launcher"
+wait 200
+open_app Grapher
+wait 60
+# down: TAB_BAR -> CONTENT (Add row); enter: addFunction()+startEditing(slot0)
+key down
+key enter
+# Bare "x" — no "y=".
+key x
+key enter
+wait 80
+key graph
+wait 120
+# Flush the deliberately-deferred first replot without panning/zooming/tracing:
+# ac: TRACE->NAVIGATE (no viewport change); 0: neutral key -> handleGraphNav replot.
+key ac
+key 0
+wait 180
+screenshot out/grapher_implicit_x_smoke.ppm
+assert_app Grapher
+log "grapher_implicit_x_smoke: bare x plotted as y=x"

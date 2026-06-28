@@ -1,0 +1,55 @@
+# grapher_curve_stress.numos — WARNING-ONLY visual-stress capture (Phase 9D).
+#
+# Commits the curved function y=x^2 and renders it on the Graph tab so the curve
+# rasterizer (GraphView sampleFuncAdaptive + fastDrawLine) can be inspected for
+# visual quality: smoothness of the parabola, sample density near the vertex,
+# line weight, and clipping at the viewport edges. y=x (the existing graph smoke)
+# is a straight line and does not exercise curvature.
+#
+# This script is DELIBERATELY NOT wired into CI: it is NOT in
+# generate-emulator-candidates.py's CANDIDATES list and is NOT named
+# calc_semantic_* — so per the emulator test-script gating it neither gates CI nor
+# blesses a golden. It exists purely for human visual review of curve quality and
+# makes NO golden/mask claim.
+#
+# Key sequence mirrors grapher_graph_smoke, but commits y=x^2:
+#   down  : TAB_BAR -> CONTENT (Add row)
+#   enter : addFunction() -> startEditing() slot 0
+#   y = x ^ 2 : insert y=x^2  (^ = KeyCode::POW, 2 = KeyCode::NUM_2)
+#   enter : commit -> parsed valid (contains '=' so it is a plottable function)
+#   graph : switchTab(Tab::GRAPH) -> createGraphPanel + native Kandinsky buffer
+#   ac 0  : flush the app's deferred first replot at the default [-10,10]x[-7,7]
+#           viewport WITHOUT pan/zoom/trace (same neutral flush as graph smoke)
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/grapher_curve_stress.numos \
+#           --frames 800 --screenshot out/grapher_curve_stress.ppm --quiet
+
+log "grapher_curve_stress: waiting for launcher"
+wait 200
+
+open_app Grapher
+wait 60
+
+key down
+key enter
+key y
+key =
+key x
+key ^
+key 2
+key enter
+wait 80
+
+key graph
+wait 120
+
+key ac
+key 0
+wait 180
+
+screenshot out/grapher_curve_stress.ppm
+log "grapher_curve_stress: screenshot captured"
+
+assert_app Grapher
+log "grapher_curve_stress: assertion passed (Grapher active, y=x^2 plotted)"

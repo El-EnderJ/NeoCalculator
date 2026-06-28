@@ -132,7 +132,8 @@ GrapherApp::GrapherApp()
     for (int i = 0; i < CALC_MENU_ITEMS; ++i) _calcMenuRows[i] = nullptr;
     _tblTable = nullptr;
     _tblHeaderBar = nullptr;
-    for (int i = 0; i < 2; ++i) _tblHdrLabels[i] = nullptr;
+    for (int i = 0; i < TBL_COLS; ++i)     _tblHdrLabels[i] = nullptr;
+    for (int i = 0; i < TBL_COLS - 1; ++i) _tblHdrSeps[i]   = nullptr;
     _tplModal = nullptr;
     _tplCount = 0; _tplIdx = 0; _tplOpen = false;
     _tplLoadTimer = nullptr; _tplLoadNext = 0;
@@ -207,7 +208,8 @@ void GrapherApp::end() {
         _shadingActive = false;
         _tangentActive = false;
         _tblTable = nullptr; _tblHeaderBar = nullptr;
-        for (int i = 0; i < 2; ++i) _tblHdrLabels[i] = nullptr;
+        for (int i = 0; i < TBL_COLS; ++i)     _tblHdrLabels[i] = nullptr;
+        for (int i = 0; i < TBL_COLS - 1; ++i) _tblHdrSeps[i]   = nullptr;
         _modeBadge = nullptr;
         for (int i = 0; i < 3; ++i) { _tabLabels[i] = nullptr; _tabPills[i] = nullptr; }
         for (int i = 0; i < MAX_FUNCS; ++i) {
@@ -305,9 +307,16 @@ void GrapherApp::createTabBar() {
         lv_obj_remove_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
         _tabPills[i] = pill;
 
-        _tabLabels[i] = makeLabel(pill, (tw - 4) / 2 - 30, (TAB_H - 6 - 12) / 2,
-                                   titles[i], COL_TAB_TXT_I, &stix_math_18);
+        // Plain UI word per tab. montserrat_14 (line_height 16) fits the pill
+        // (TAB_H-6 = 22px) cleanly; the serif stix_math_18 (line_height 31)
+        // overflowed and clipped the descenders ("Expression" lost its bottom
+        // half). Fill the pill width + center on both axes so the label is
+        // correctly centred regardless of font metrics.
+        _tabLabels[i] = makeLabel(pill, 0, 0, titles[i], COL_TAB_TXT_I,
+                                   &lv_font_montserrat_14);
+        lv_obj_set_width(_tabLabels[i], tw - 4);
         lv_obj_set_style_text_align(_tabLabels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_center(_tabLabels[i]);
     }
 }
 
@@ -343,11 +352,18 @@ void GrapherApp::createExpressionsPanel() {
     lv_obj_remove_flag(_bgExpr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(_bgExpr, notebookLinesCb, LV_EVENT_DRAW_MAIN_BEGIN, nullptr);
 
-    // Scrollable expression panel on top — transparent background
-    _panelExpr = makeContainer(_screen, 0, topY, SCREEN_W, panelH);
+    // Scrollable expression panel on top — transparent background. Its height is
+    // reduced by HINT_H so the bottom strip stays clear for the fixed footer hint
+    // (otherwise the scrolled list would slide under/over it).
+    static constexpr int HINT_H = 20;
+    _panelExpr = makeContainer(_screen, 0, topY, SCREEN_W, panelH - HINT_H);
     lv_obj_set_style_bg_opa(_panelExpr, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_add_flag(_panelExpr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(_panelExpr, LV_DIR_VER);
+    // Keypad-driven scrolling only: drop momentum/elastic so scroll_to_view snaps
+    // cleanly (no overscroll bounce or drift between key presses).
+    lv_obj_remove_flag(_panelExpr, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    lv_obj_remove_flag(_panelExpr, LV_OBJ_FLAG_SCROLL_ELASTIC);
 
     // Function rows — white pills with thin gray border (NumWorks style)
     for (int i = 0; i < MAX_FUNCS; ++i) {
@@ -388,7 +404,7 @@ void GrapherApp::createExpressionsPanel() {
         lv_obj_set_flex_grow(_exprCanvas[i].obj(), 1);
 
         // Templates button — shown only when expression is empty
-        int btnW = 70;
+        int btnW = 80;
         _tplBtns[i] = lv_obj_create(_exprRows[i]);
         lv_obj_set_size(_tplBtns[i], btnW, ROW_H - 6);
         lv_obj_set_style_bg_color(_tplBtns[i], lv_color_hex(0xF2F2F2), LV_PART_MAIN);
@@ -398,7 +414,13 @@ void GrapherApp::createExpressionsPanel() {
         lv_obj_set_style_border_color(_tplBtns[i], lv_color_hex(COL_ROW_BRD), LV_PART_MAIN);
         lv_obj_set_style_pad_all(_tplBtns[i], 0, LV_PART_MAIN);
         lv_obj_remove_flag(_tplBtns[i], LV_OBJ_FLAG_SCROLLABLE);
-        makeLabel(_tplBtns[i], 6, (ROW_H - 6 - 12) / 2, "Templates", 0x666666, &stix_math_18);
+        // montserrat_14 (lh 16) fits this 80x26 button; stix_math_18 (lh 31, and
+        // ~90px wide for "Templates") clipped both vertically and horizontally
+        // ("Templat"). Fill the button width + center on both axes.
+        lv_obj_t* tplBtnLbl = makeLabel(_tplBtns[i], 0, (ROW_H - 6 - 16) / 2,
+                                         "Templates", 0x666666, &lv_font_montserrat_14);
+        lv_obj_set_width(tplBtnLbl, btnW);
+        lv_obj_set_style_text_align(tplBtnLbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_add_flag(_tplBtns[i], LV_OBJ_FLAG_HIDDEN);
 
         lv_obj_add_flag(_exprRows[i], LV_OBJ_FLAG_HIDDEN);
@@ -428,8 +450,12 @@ void GrapherApp::createExpressionsPanel() {
     lv_obj_set_style_radius(_tableBtn, 10, LV_PART_MAIN);
     makeLabel(_tableBtn, 10, (ROW_H - 14) / 2, "Display values", COL_BTN_TXT, &lv_font_montserrat_14);
 
-    // Bottom hint
-    _exprHint = makeLabel(_panelExpr, PAD, SCREEN_H - BAR_H - TAB_H - 20,
+    // Bottom hint — fixed footer on the non-scrollable background strip below the
+    // (shortened) list, so it never scrolls with the expressions nor overlaps a
+    // row. As a child of _bgExpr it is shown/hidden with the Expressions tab.
+    // y derived from HINT_H (not a bare literal) so the reserved strip and the
+    // hint position can never drift apart if HINT_H is retuned.
+    _exprHint = makeLabel(_bgExpr, PAD, panelH - HINT_H + 2,
                            "ENTER=edit  AC=back", COL_HINT, &lv_font_montserrat_14);
 
     refreshExprList();
@@ -531,8 +557,12 @@ void GrapherApp::createGraphPanel() {
     const char* tools[] = { "Auto", "Axes", "Pan", "Trace" };
     int tw = SCREEN_W / 4;
     for (int i = 0; i < 4; ++i) {
-        _toolLabels[i] = makeLabel(_graphToolbar, i * tw + 4, (TOOLBAR_H - 12) / 2,
-                                    tools[i], COL_TB_TXT, &stix_math_18);
+        // montserrat_14 (lh 16) fits the 24px toolbar; stix_math_18 (lh 31) clipped
+        // here too. Center each tool word in its quarter-width column.
+        _toolLabels[i] = makeLabel(_graphToolbar, i * tw, (TOOLBAR_H - 16) / 2,
+                                    tools[i], COL_TB_TXT, &lv_font_montserrat_14);
+        lv_obj_set_width(_toolLabels[i], tw);
+        lv_obj_set_style_text_align(_toolLabels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     }
 
     // ── Graph area (below toolbar, above info bar) ──
@@ -651,8 +681,14 @@ void GrapherApp::createGraphPanel() {
     // ── Info bar at bottom ──
     _infoBar = makeContainer(_panelGraph, 0, panelH - INFO_BAR_H, SCREEN_W, INFO_BAR_H, COL_TB_BG);
     _infoLabel = makeLabel(_infoBar, PAD, 2, "", 0x333333, &lv_font_montserrat_14);
-    // Mode badge on the right side of info bar: "[Trace]" or "[Pan]"
-    _modeBadge = makeLabel(_infoBar, SCREEN_W - 50, 2, "[Trace]", 0x4A90E2, &stix_math_18);
+    // Mode badge on the right side of info bar: "[Trace]" or "[Pan]".
+    // montserrat_14 fits the 20px info bar and matches _infoLabel; stix_math_18
+    // (lh 31) clipped vertically AND ran "[Trace]" off the right screen edge.
+    // Right-align inside a fixed box so both "[Trace]" and "[Pan]" stay on-screen.
+    _modeBadge = makeLabel(_infoBar, SCREEN_W - 72, 2, "[Trace]", 0x4A90E2,
+                            &lv_font_montserrat_14);
+    lv_obj_set_width(_modeBadge, 72 - PAD);
+    lv_obj_set_style_text_align(_modeBadge, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
 }
 
 // ── Table zebra-stripe draw event (LVGL 9) ──────────────────────────────
@@ -695,19 +731,31 @@ void GrapherApp::createTablePanel() {
     lv_obj_remove_flag(_tblHeaderBar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(_tblHeaderBar, LV_OBJ_FLAG_HIDDEN);
 
-    // Header labels: "x" and "f(x)"
-    _tblHdrLabels[0] = makeLabel(_tblHeaderBar, SCREEN_W / 4 - 4, (TBL_HDR_H - 12) / 2,
-                                  "x", 0x000000, &stix_math_18);
-    _tblHdrLabels[1] = makeLabel(_tblHeaderBar, SCREEN_W * 3 / 4 - 4, (TBL_HDR_H - 12) / 2,
-                                  "f(x)", 0x000000, &stix_math_18);
-    // Separator between header columns
-    lv_obj_t* sep = lv_obj_create(_tblHeaderBar);
-    lv_obj_set_pos(sep, SCREEN_W / 2, 0);
-    lv_obj_set_size(sep, 1, TBL_HDR_H);
-    lv_obj_set_style_bg_color(sep, lv_color_hex(0xD0A020), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(sep, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(sep, LV_OBJ_FLAG_SCROLLABLE);
+    // Header labels: one per column ("x", "f1(x)", "f2(x)", …). montserrat_14
+    // (lh 16) fits the 22px TBL_HDR_H bar; stix_math_18 (lh 31) overflowed and
+    // clipped the header text bottoms. rebuildTable() sets each label's text,
+    // width (= column width) and x per the active function count, and centers
+    // the text within its column; separators are repositioned to match. Only
+    // columns 0..cols-1 are shown; the rest stay hidden.
+    for (int c = 0; c < TBL_COLS; ++c) {
+        _tblHdrLabels[c] = makeLabel(_tblHeaderBar, 0, (TBL_HDR_H - 16) / 2,
+                                     "", 0x000000, &lv_font_montserrat_14);
+        lv_obj_set_style_text_align(_tblHdrLabels[c], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_add_flag(_tblHdrLabels[c], LV_OBJ_FLAG_HIDDEN);
+    }
+    // Separators between header columns (up to TBL_COLS-1); shown per column count.
+    for (int s = 0; s < TBL_COLS - 1; ++s) {
+        _tblHdrSeps[s] = lv_obj_create(_tblHeaderBar);
+        lv_obj_set_pos(_tblHdrSeps[s], SCREEN_W / 2, 0);
+        lv_obj_set_size(_tblHdrSeps[s], 1, TBL_HDR_H);
+        lv_obj_set_style_bg_color(_tblHdrSeps[s], lv_color_hex(0xD0A020), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_tblHdrSeps[s], LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(_tblHdrSeps[s], 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(_tblHdrSeps[s], 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(_tblHdrSeps[s], 0, LV_PART_MAIN);
+        lv_obj_remove_flag(_tblHdrSeps[s], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(_tblHdrSeps[s], LV_OBJ_FLAG_HIDDEN);
+    }
 
     // ── Scrollable data panel (below sticky header) ──
     _panelTable = lv_obj_create(_screen);
@@ -935,6 +983,16 @@ void GrapherApp::refreshExprFocus() {
     } else if (_exprIdx == _numFuncs + 2) {
         lv_obj_set_style_bg_color(_tableBtn, lv_color_hex(0x3A7BD5), LV_PART_MAIN);
     }
+
+    // Keep the focused item on-screen. Snap with no animation so the list never
+    // lags behind the cursor or jitters with momentum/elastic overscroll — the
+    // selection used to disappear below the fold once >3 functions were added.
+    lv_obj_t* sel = nullptr;
+    if (_exprIdx < _numFuncs)            sel = _exprRows[_exprIdx];
+    else if (_exprIdx == _numFuncs)      sel = _addRow;
+    else if (_exprIdx == _numFuncs + 1)  sel = _plotBtn;
+    else if (_exprIdx == _numFuncs + 2)  sel = _tableBtn;
+    if (sel) lv_obj_scroll_to_view(sel, LV_ANIM_OFF);
 }
 
 void GrapherApp::addFunction() {
@@ -1073,6 +1131,13 @@ static void serializeNode(const vpam::MathNode* node, char* buf, int& pos, int m
                 case OpKind::Add: c = '+'; break;
                 case OpKind::Sub: c = '-'; break;
                 case OpKind::Mul: c = '*'; break;
+                // Phase 9F: the '=' of a template is a NodeRelation (OpKind::Eq),
+                // NOT a NodeVariable like manual FREE_EQ entry. Without this case it
+                // fell through to '+', so "y=2*x+3" serialized as "y+2*x+3": no '='
+                // → getExprRHS kept the whole string → unknown var 'y' → never
+                // plotted (templates inserted but drew nothing). Emit a real '='.
+                case OpKind::Eq:  c = '='; break;
+                default:          c = '+'; break;
             }
             if (pos < maxLen - 1) buf[pos++] = c;
             break;
@@ -1170,15 +1235,27 @@ static void serializeNode(const vpam::MathNode* node, char* buf, int& pos, int m
             break;
         }
         case NodeType::LogBase: {
+            // Phase 9F: the numeric Evaluator has no 2-arg log, so emit the
+            // change-of-base identity   log_b(a) = log(a)/log(b)   (both log10;
+            // the ratio is base-independent). Wrapped in outer parens so a
+            // surrounding ^/×/÷ binds to the whole quotient, not just log(b).
+            // Previously this dropped the base entirely (serialized as plain
+            // "log(arg)" → graphed log10 instead of log_b → wrong curve).
             auto* lb = static_cast<const NodeLogBase*>(node);
-            const char* s = "log(";
-            for (int j = 0; s[j] && pos < maxLen - 1; ++j) buf[pos++] = s[j];
-            if (lb->argument()) {
-                if (lb->argument()->type() == NodeType::Row)
-                    serializeRow(static_cast<const NodeRow*>(lb->argument()), buf, pos, maxLen);
-                else serializeNode(lb->argument(), buf, pos, maxLen);
-            }
-            if (pos < maxLen - 1) buf[pos++] = ')';
+            auto emitStr = [&](const char* s) {
+                for (int j = 0; s[j] && pos < maxLen - 1; ++j) buf[pos++] = s[j];
+            };
+            auto emitChild = [&](const vpam::MathNode* c) {
+                if (!c) return;
+                if (c->type() == NodeType::Row)
+                    serializeRow(static_cast<const NodeRow*>(c), buf, pos, maxLen);
+                else serializeNode(c, buf, pos, maxLen);
+            };
+            emitStr("(log(");
+            emitChild(lb->argument());
+            emitStr(")/log(");
+            emitChild(lb->base());
+            emitStr("))");
             break;
         }
         case NodeType::Row: {
@@ -1453,32 +1530,17 @@ void GrapherApp::loadNextTemplate() {
 
     int i = _tplLoadNext;
 
-    // Build AST for template preview
-    _tplAST[i] = buildTemplateAST(TEMPLATES[i].text);
-    auto* tplRow = static_cast<NodeRow*>(_tplAST[i].get());
-
-    // Create VPAM canvas for live preview (read-only, no cursor)
-    _tplCanvas[i].create(_tplRows[i]);
-    lv_obj_set_size(_tplCanvas[i].obj(), _tplCardW - 32, _tplRowH - 2);
-    lv_obj_set_pos(_tplCanvas[i].obj(), 4, 1);
-    _tplCanvas[i].setExpression(tplRow, nullptr);
-    tplRow->calculateLayout(_tplCanvas[i].normalMetrics());
-
-    // Preview-only height guard: a function-call template (sin(x)/cos(x)) lays out
-    // ~46px tall — its delimiters far exceed this ~20px preview row — and MathCanvas
-    // renders at natural size, vertically centered, so the VPAM canvas would clip it
-    // to an unreadable sliver/dot. When the rendered math is more than ~2x the preview
-    // row height, fall back to a clean lv_font_montserrat_14 text label of the template
-    // instead (modal preview only). Polynomial/fraction rows that fit (h <= ~33px) keep
-    // their VPAM math preview unchanged. This touches no renderer/MathAST code.
-    if (tplRow->layout().height() > 2 * (_tplRowH - 2)) {
-        _tplCanvas[i].destroy();
-        _tplAST[i].reset();
-        makeLabel(_tplRows[i], 6, (_tplRowH - 14) / 2,
-                  TEMPLATES[i].text, 0x000000, &lv_font_montserrat_14);
-    } else {
-        _tplCanvas[i].invalidate();
-    }
+    // Inline VPAM math previews are unusable in these compact (~20px) rows:
+    // MathCanvas vertically centers using a metric that excludes the descender,
+    // so every "y = ..." template lost its 'y' tail (it read as "v") and the
+    // fraction/trig forms overflowed the row entirely. Render each template as a
+    // clean lv_font_montserrat_14 text label of the EXACT string that ENTER
+    // inserts (TEMPLATES[i].text): no canvas, no clipping, and the preview now
+    // matches what gets inserted. Touches no renderer/MathAST code. (The unused
+    // _tplCanvas[i]/_tplAST[i] members stay null-constructed; closeTemplates'
+    // destroy()/reset() over all six slots is null-safe.)
+    makeLabel(_tplRows[i], 10, (_tplRowH - 14) / 2,
+              TEMPLATES[i].text, 0x000000, &lv_font_montserrat_14);
 
     _tplLoadNext++;
 }
@@ -1552,23 +1614,10 @@ void GrapherApp::handleTemplates(const KeyEvent& ev) {
 // Graph plotting
 // ═══════════════════════════════════════════════════════════════════════
 
-// Return a pointer to the RHS of a serialized expression (after first '='),
-// or nullptr if no '=' found or RHS contains only whitespace.
-static const char* getExprRHS(const char* text) {
-    if (!text) return nullptr;
-    const char* eqPtr = strchr(text, '=');
-    if (!eqPtr) return nullptr;
-    const char* rhs = eqPtr + 1;
-    // Skip leading whitespace
-    while (*rhs == ' ' || *rhs == '\t') ++rhs;
-    // Reject empty/whitespace-only RHS
-    if (!*rhs) return nullptr;
-    return rhs;
-}
-
 // Pre-parse and cache the RPN for function idx to avoid repeated tokenize+parse.
-// Strict validation: expression MUST contain '=' (e.g. y=2*x+3).
-// Only the RHS (after the first '=') is compiled for evaluation.
+// A bare expression (no '=') is accepted as the implicit function y=<expr>
+// (see GraphModel::getExprRHS), so "x"/"2x" compile and plot like y=x/y=2x.
+// Only the RHS (after the first '=', or the whole string) is compiled.
 void GrapherApp::preCacheFuncRPN(int idx) {
     if (idx < 0 || idx >= _numFuncs) return;
     _funcs[idx].valid = false;
@@ -2059,20 +2108,37 @@ void GrapherApp::rebuildTable() {
         lv_table_set_column_width(_tblTable, c, colW);
     }
 
-    // Update sticky header labels
+    // Update sticky header: one centered label per column, aligned to the data
+    // columns, with a separator between each adjacent pair. Columns past `cols`
+    // (and their separators) stay hidden, so 1..MAX_FUNCS functions all read
+    // correctly instead of leaving f2(x)+ unlabeled.
     if (_tblHeaderBar) {
-        // Update header label positions based on column count
-        if (_tblHdrLabels[0]) {
-            lv_obj_set_x(_tblHdrLabels[0], colW / 2 - 4);
-            lv_label_set_text(_tblHdrLabels[0], "x");
+        for (int c = 0; c < TBL_COLS; ++c) {
+            if (!_tblHdrLabels[c]) continue;
+            if (c < cols) {
+                char hdrText[20];
+                if (c == 0)
+                    snprintf(hdrText, sizeof(hdrText), "x");
+                else if (numActive > 0)
+                    snprintf(hdrText, sizeof(hdrText), "f%d(x)", activeFuncs[c - 1] + 1);
+                else
+                    snprintf(hdrText, sizeof(hdrText), "f(x)");
+                lv_label_set_text(_tblHdrLabels[c], hdrText);
+                lv_obj_set_width(_tblHdrLabels[c], colW);
+                lv_obj_set_pos(_tblHdrLabels[c], c * colW, (TBL_HDR_H - 16) / 2);
+                lv_obj_remove_flag(_tblHdrLabels[c], LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(_tblHdrLabels[c], LV_OBJ_FLAG_HIDDEN);
+            }
         }
-        if (_tblHdrLabels[1] && numActive > 0) {
-            char hdrText[20];
-            snprintf(hdrText, sizeof(hdrText), "f%d(x)", activeFuncs[0] + 1);
-            lv_label_set_text(_tblHdrLabels[1], hdrText);
-            lv_obj_set_x(_tblHdrLabels[1], colW + colW / 2 - 8);
-        } else if (_tblHdrLabels[1]) {
-            lv_label_set_text(_tblHdrLabels[1], "f(x)");
+        for (int s = 0; s < TBL_COLS - 1; ++s) {
+            if (!_tblHdrSeps[s]) continue;
+            if (s < cols - 1) {
+                lv_obj_set_pos(_tblHdrSeps[s], (s + 1) * colW, 0);
+                lv_obj_remove_flag(_tblHdrSeps[s], LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(_tblHdrSeps[s], LV_OBJ_FLAG_HIDDEN);
+            }
         }
     }
 
@@ -2320,7 +2386,11 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
         case KeyCode::ADD: cur.insertOperator(OpKind::Add); break;
         case KeyCode::SUB: cur.insertOperator(OpKind::Sub); break;
         case KeyCode::MUL: cur.insertOperator(OpKind::Mul); break;
-        case KeyCode::NEG: cur.insertOperator(OpKind::Sub); break;
+        // Both the keypad minus (NEG) and the dedicated (−) sign key (NEGATE)
+        // insert a minus; at expression start the parser reads it as unary, so
+        // "−x" plots y=−x. NEGATE was previously unhandled here (a no-op).
+        case KeyCode::NEG:
+        case KeyCode::NEGATE: cur.insertOperator(OpKind::Sub); break;
 
         // ── VPAM structures (depth-limited) ──
         case KeyCode::DIV:    if (cursorDepth() < MAX_NEST) cur.insertFraction(); else changed = false; break;
@@ -2334,6 +2404,9 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
         case KeyCode::TAN: if (cursorDepth() < MAX_NEST) cur.insertFunction(FuncKind::Tan); else changed = false; break;
         case KeyCode::LN:  if (cursorDepth() < MAX_NEST) cur.insertFunction(FuncKind::Ln);  else changed = false; break;
         case KeyCode::LOG: if (cursorDepth() < MAX_NEST) cur.insertFunction(FuncKind::Log); else changed = false; break;
+        // Phase 9F: log with explicit base (log_n). Inserts a NodeLogBase (cursor
+        // lands in the subscript). Serializes via change-of-base so it graphs.
+        case KeyCode::LOG_BASE: if (cursorDepth() < MAX_NEST) cur.insertLogBase(); else changed = false; break;
 
         // ── Variables ──
         case KeyCode::VAR_X: cur.insertVariable('x'); break;
@@ -2652,8 +2725,12 @@ void GrapherApp::openCalcMenu() {
     _calcMenu = lv_obj_create(_graphArea);
     if (!_calcMenu) { _calcMenuOpen = false; return; }
 
+    // The graph area is only ~143px tall (SCREEN_H - BAR_H - TAB_H - TOOLBAR_H -
+    // INFO_BAR_H). The old 28px/row + 16 padding made a 184px menu that overflowed
+    // into the toolbar and info bar and hid the 6th item. 20px rows + 12 padding
+    // keep all CALC_MENU_ITEMS on-screen inside the graph area.
     int menuW = 180;
-    int menuH = CALC_MENU_ITEMS * 28 + 16;  // 28px per row + padding
+    int menuH = CALC_MENU_ITEMS * 20 + 12;
     int areaW = lv_obj_get_width(_graphArea);
     int areaH = lv_obj_get_height(_graphArea);
 
@@ -2664,7 +2741,8 @@ void GrapherApp::openCalcMenu() {
     lv_obj_set_style_border_color(_calcMenu, lv_color_hex(0x4A90E2), LV_PART_MAIN);
     lv_obj_set_style_border_width(_calcMenu, 2, LV_PART_MAIN);
     lv_obj_set_style_radius(_calcMenu, 8, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_calcMenu, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_calcMenu, 6, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(_calcMenu, 0, LV_PART_MAIN);
     lv_obj_remove_flag(_calcMenu, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_layout(_calcMenu, LV_LAYOUT_FLEX, LV_PART_MAIN);
     lv_obj_set_flex_flow(_calcMenu, LV_FLEX_FLOW_COLUMN);
@@ -2673,7 +2751,7 @@ void GrapherApp::openCalcMenu() {
         lv_obj_t* row = lv_obj_create(_calcMenu);
         _calcMenuRows[i] = row;
         lv_obj_set_width(row, lv_pct(100));
-        lv_obj_set_height(row, 24);
+        lv_obj_set_height(row, 20);
         lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
         lv_obj_set_style_radius(row, 4, LV_PART_MAIN);
         lv_obj_set_style_pad_left(row, 8, LV_PART_MAIN);
@@ -2688,7 +2766,10 @@ void GrapherApp::openCalcMenu() {
         lv_label_set_text(lbl, CALC_MENU_LABELS[i]);
         lv_obj_center(lbl);
         lv_obj_set_style_text_color(lbl, lv_color_hex(i == 0 ? 0xFFFFFF : 0x333333), LV_PART_MAIN);
-        lv_obj_set_style_text_font(lbl, &stix_math_18, LV_PART_MAIN);
+        // montserrat_14: every CALC_MENU_LABELS entry contains a space ("Find
+        // Root", "Draw Tangent", ...) and stix_math_18 has no U+0020 glyph, so it
+        // tofu'd at each space AND clipped vertically in the 24px rows.
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
     }
 }
 

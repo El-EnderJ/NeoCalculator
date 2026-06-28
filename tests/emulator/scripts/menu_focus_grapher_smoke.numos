@@ -1,0 +1,48 @@
+# menu_focus_grapher_smoke.numos — Phase 9C Main Menu focused-card visual candidate.
+#
+# Phase 9B proved the launcher arrows move the LOGICAL focus to the firmware 2D
+# grid (assert_menu_focus). This script adds the VISUAL half: it navigates the
+# focus off the default card and captures the launcher so a human can confirm the
+# focus HIGHLIGHT actually renders on the intended card. It is a candidate only —
+# NO golden is promoted and NO mask is added in this phase.
+#
+# Target: Grapher (id 1). It is one RIGHT from the default Calculation (id 0) and
+# sits in row 0, so it is fully on-screen with no scroll — the focus highlight
+# (blue border + 1.05x overshoot, MainMenu.cpp initStyles/_styleCardFocused) lands
+# on a clearly visible card. Being non-default, the screenshot proves the highlight
+# moved away from Calculation.
+#
+# This script does NOT press ENTER and does NOT launch Grapher: it stays in the
+# launcher (MENU) the whole time. The two assert_app Menu bookends prove no app
+# opened. The focus animation is driven by the deterministic LVGL tick, so the
+# settled frame is a pure function of the frame index (reproducible run-to-run);
+# the only across-run volatile region is the StatusBar clock (HH:MM).
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/menu_focus_grapher_smoke.numos \
+#           --frames 800 --screenshot out/menu_focus_grapher_smoke.ppm --quiet
+# Exit codes: 0 ok · 2 script/parse error · 4 assertion failure.
+
+log "menu_focus_grapher_smoke: waiting for splash -> launcher"
+wait 200
+
+# Booted to the launcher with the default first card focused.
+assert_app Menu
+assert_menu_focus Calculation
+
+# Move focus RIGHT once: Calculation (id 0) -> Grapher (id 1).
+key right
+assert_menu_focus Grapher
+
+# Let the focus overshoot animation settle before capturing (250 ms ~ 16 frames
+# at step-ms 16; 120 is a generous, non-fragile margin).
+wait 120
+
+# Capture the launcher with Grapher focused. The candidate generator also dumps
+# the final frame via --screenshot; this in-script shot proves the command works.
+screenshot out/menu_focus_grapher_smoke.ppm
+log "menu_focus_grapher_smoke: screenshot captured (Grapher focused)"
+
+# Navigation never left the launcher — no card was activated.
+assert_app Menu
+log "menu_focus_grapher_smoke: PASS - Grapher focused in launcher, no app launched"

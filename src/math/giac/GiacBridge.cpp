@@ -33,6 +33,7 @@
 
 #include "math/giac/GiacBridge.h"
 #include "ui/MathSymbols.h"
+#include "utils/MemProbe.h"
 
 using namespace giac;
 
@@ -387,6 +388,10 @@ static giac::gen diagonalToVector(const giac::gen &g) {
 }
 
 String solveWithGiac(String expr) {
+  // MT-01: Giac is the largest uncapped allocator in the system (audit §5.6)
+  // and runs on the shared 64 KB loopTask stack. Probe the pre/post deltas
+  // (PSRAM footprint per query, stack high-water) at the single entry point.
+  NUMOS_MEM_PROBE("giac-pre");
   try {
     initGiac();
     std::string std_expr = expr.c_str();
@@ -431,10 +436,13 @@ String solveWithGiac(String expr) {
       result += "\n[STEP_OUTPUT]\n";
       result += steps;
     }
+    NUMOS_MEM_PROBE("giac-post");
     return String(result.c_str());
   } catch (const std::exception& e) {
+    NUMOS_MEM_PROBE("giac-post-ex");
     return String("Error: ") + e.what();
   } catch (...) {
+    NUMOS_MEM_PROBE("giac-post-ex");
     return String("Error: Math exception");
   }
 }

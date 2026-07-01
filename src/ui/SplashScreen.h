@@ -50,6 +50,21 @@ public:
      */
     void show(std::function<void()> onComplete);
 
+    /**
+     * Libera la pantalla del splash y sus labels (ticket MT-03).
+     *
+     * Orden de vida OBLIGATORIO (clase de bug: use-after-free de la pantalla
+     * activa, ver SystemApp.cpp deferred teardown):
+     *   1. lv_screen_load[_anim]() de la SIGUIENTE pantalla (el menú) ya fue
+     *      llamado, Y su animación FADE_IN (200 ms) ya terminó — es decir,
+     *      el splash ya no es la pantalla activa ni está siendo renderizado.
+     *   2. Solo entonces llamar destroy().
+     * Es seguro llamarla dos veces (no-op si ya se destruyó) y se rehúsa a
+     * borrar si el splash sigue siendo la pantalla activa.
+     * Recupera ~1 KB + 3 objetos del pool LVGL fijo de 64 KB.
+     */
+    void destroy();
+
     /** ¿Ha terminado la animación y se puede avanzar? */
     bool isFinished() const { return _finished; }
 

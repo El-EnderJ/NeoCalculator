@@ -21,11 +21,16 @@
  * Solo se habilitan los widgets y features que NumOS necesita para
  * minimizar el uso de Flash y RAM interna.
  *
- * Estrategia de memoria:
- *  - LVGL usa la PSRAM como heap a trav�s de heap_caps_malloc().
- *  - Los draw-buffers se asignan tambi�n en PSRAM desde main.cpp.
- *  - Los objetos y estilos LVGL vivir�n en PSRAM liberando la SRAM
- *    interna para el Math Engine (stacks, variables de c�lculo, etc.)
+ * Estrategia de memoria (ratificada por MT-02; ver
+ * docs/specs/NUMOS_MEMORY_AND_PSRAM_AUDIT.md §1.1):
+ *  - Firmware: LVGL 9 usa su allocator BUILTIN (TLSF) con un pool FIJO de
+ *    LV_MEM_SIZE = 64 KB en `.bss` de la DRAM interna. Todos los objetos,
+ *    estilos y textos LVGL compiten por esos 64 KB. NO hay PSRAM aqui.
+ *  - Emulador: platformio.ini inyecta -DLV_USE_STDLIB_MALLOC=LV_STDLIB_CLIB
+ *    (heap del sistema, sin pool fijo) — por eso las claves de abajo van
+ *    protegidas con #ifndef.
+ *  - Los draw-buffers NO salen de aqui: main.cpp los asigna con
+ *    heap_caps_malloc(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA). Nunca PSRAM.
  */
 
 #if 1  /* Set it to "1" to enable content */
@@ -49,42 +54,37 @@
 #define LV_BIG_ENDIAN_SYSTEM 0
 
 /*====================
-   MEMORY SETTINGS
+   MEMORY SETTINGS  (LVGL 9 — ratified by ticket MT-02)
  *====================*/
 
-/**
- * Allocator personalizado ? heap_caps_malloc en PSRAM.
- * Requiere que BOARD_HAS_PSRAM est� definido (ver platformio.ini).
+/*
+ * HISTORICAL NOTE (memory audit 2026-07, §1.1): this file used to configure
+ * memory through the LVGL-8 `LV_MEM_CUSTOM` macro family, routing LVGL
+ * allocations to heap_caps_malloc with a 512 B internal/PSRAM cutoff. LVGL 9
+ * NEVER READ those macros — that block was dead configuration on both
+ * targets. The real, shipped behavior has always been LVGL 9's default:
+ * the BUILTIN (TLSF) allocator over a fixed 64 KB static pool in internal
+ * `.bss` (`work_mem_int` in lv_mem_core_builtin.c), no expansion.
+ *
+ * The keys below make that behavior EXPLICIT instead of accidental.
+ * They are #ifndef-guarded so build flags keep working:
+ *   - emulator_pc passes -DLV_USE_STDLIB_MALLOC=LV_STDLIB_CLIB (system heap;
+ *     the 64-bit native pool exhaustion hang is documented in platformio.ini);
+ *   - a scratch build may pass -DLV_MEM_SIZE=16384 to exercise the OOM path.
+ *
+ * Sizing rule (policy §3.5): raising LV_MEM_SIZE is allowed up to 96 KB only
+ * if MT-01 probe data shows exhaustion; every +32 KB comes out of the
+ * ~212 KB post-static internal heap. Moving the pool to PSRAM requires
+ * hardware latency validation — do not do it casually.
  */
-#define LV_MEM_CUSTOM 1
-#if LV_MEM_CUSTOM
-  #ifdef NATIVE_SIM
-    /* PC nativo: usar malloc/realloc/free est�ndar */
-    #define LV_MEM_CUSTOM_INCLUDE <stdlib.h>
-    #define LV_MEM_CUSTOM_ALLOC(size)        malloc(size)
-    #define LV_MEM_CUSTOM_REALLOC(ptr, size) realloc((ptr), (size))
-    #define LV_MEM_CUSTOM_FREE(ptr)          free(ptr)
-  #else
-    /*
-     * ESP32 allocator policy:
-     * - Small LVGL metadata blocks (objects, child arrays, styles) in INTERNAL RAM.
-     * - Large blocks in PSRAM to preserve internal contiguous space.
-     */
-    #define LV_MEM_CUSTOM_INCLUDE <esp_heap_caps.h>
-    #define LV_MEM_INTERNAL_CUTOFF 512U
-    #define LV_MEM_CUSTOM_ALLOC(size) \
-      (((size) <= LV_MEM_INTERNAL_CUTOFF) \
-        ? heap_caps_malloc((size), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) \
-        : heap_caps_malloc((size), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))
-    #define LV_MEM_CUSTOM_REALLOC(ptr, size) \
-      (((size) <= LV_MEM_INTERNAL_CUTOFF) \
-        ? heap_caps_realloc((ptr), (size), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) \
-        : heap_caps_realloc((ptr), (size), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))
-    #define LV_MEM_CUSTOM_FREE(ptr) free(ptr)
-  #endif
-#else
-    /* Fallback: allocator interno de LVGL (no se usa cuando LV_MEM_CUSTOM=1) */
-    #define LV_MEM_SIZE (64U * 1024U)
+#ifndef LV_USE_STDLIB_MALLOC
+  #define LV_USE_STDLIB_MALLOC LV_STDLIB_BUILTIN
+#endif
+#ifndef LV_MEM_SIZE
+  #define LV_MEM_SIZE (64U * 1024U)   /* fixed internal-DRAM pool (firmware) */
+#endif
+#ifndef LV_MEM_POOL_EXPAND_SIZE
+  #define LV_MEM_POOL_EXPAND_SIZE 0   /* no growth: exhaustion must be visible */
 #endif
 
 /*====================
@@ -127,6 +127,41 @@
 #define LV_USE_ASSERT_MALLOC    1
 #define LV_USE_ASSERT_OBJ       0   /* Costoso en producci�n */
 #define LV_USE_ASSERT_STYLE     0
+
+/*
+ * MT-02: visible failure instead of a silent hang.
+ * LVGL's default LV_ASSERT_HANDLER is `while(1);` — when the fixed 64 KB
+ * builtin pool is exhausted, lv_malloc() returns NULL, LV_ASSERT_MALLOC
+ * fires, and the device freezes with NO serial output (risk MEMX-01; this
+ * is the documented hang class from platformio.ini:170-176 and the eager
+ * boot-begin() crash). The handler below:
+ *   1. prints the failing LVGL source location plus an OOM hint to stdout
+ *      (routed to UART0 on firmware; stderr-adjacent console natively) —
+ *      no heap use, the allocator may be exactly what just failed;
+ *   2. calls abort(): on the ESP32-S3 that raises a panic with a backtrace
+ *      that monitor_filters=esp32_exception_decoder can decode (far more
+ *      diagnostic than a spin-loop); on the emulator it fails CI fast
+ *      instead of hanging until timeout.
+ * NOTE: this fires for every LVGL assert (NULL-param asserts too), not just
+ * pool OOM — all of those previously hung silently as well.
+ * NOTE: LVGL 9.5 has no per-allocation high-water hook; pool high-water is
+ * only observable via lv_mem_monitor() (surfaced by utils/MemProbe.h, MT-01).
+ */
+#ifndef __ASSEMBLY__
+#include <stdio.h>
+#include <stdlib.h>
+static inline void numos_lv_assert_handler(const char *file, int line)
+{
+    printf("\n[LVGL] ASSERT FAILED at %s:%d — most likely lv_malloc OOM: "
+           "the fixed %u-byte LVGL pool is exhausted (see lv_conf.h MEMORY "
+           "SETTINGS / ticket MT-02; NULL-param asserts land here too). "
+           "Aborting for a decodable backtrace.\n",
+           file, line, (unsigned)LV_MEM_SIZE);
+    fflush(stdout);
+    abort();
+}
+#endif
+#define LV_ASSERT_HANDLER numos_lv_assert_handler(__FILE__, __LINE__);
 
 /*====================
    RENDIMIENTO

@@ -232,6 +232,16 @@ static AppMode       g_teardownMode      = AppMode::MENU;
 static uint32_t      g_teardownStartTick = 0;
 static constexpr uint32_t TEARDOWN_DELAY_MS = 260;  // > 200 ms del fade del launcher
 
+// ── Borrado diferido del splash (MT-03) ─────────────────────────────────────
+// Mismo patrón que el teardown Phase 9F de arriba: al pasar Splash→Menú el
+// menú carga con FADE_IN (200 ms) DESDE la pantalla del splash, así que el
+// splash debe seguir vivo hasta que el fade termine. Cuando expira el mismo
+// TEARDOWN_DELAY_MS (mismo reloj lv_tick, determinista en CI), se llama a
+// g_splash->destroy() y sus objetos vuelven al heap LVGL. En firmware el
+// equivalente está en main.cpp (bombeo de 250 ms tras g_app.begin()).
+static bool          g_splashTeardownPending   = false;
+static uint32_t      g_splashTeardownStartTick = 0;
+
 // Instancias de aplicación
 static DisplayDriver    g_displayStub;        // Stub para MainMenu
 static SplashScreen*    g_splash  = nullptr;
@@ -2044,6 +2054,10 @@ int main(int argc, char** argv)
         if (g_splashDone && g_mode == AppMode::SPLASH) {
             g_splashDone = false;
             transitionToMenu();
+            // MT-03: programar el borrado del splash para cuando el fade-in
+            // del menú (arrancado dentro de transitionToMenu) haya terminado.
+            g_splashTeardownPending   = true;
+            g_splashTeardownStartTick = lv_tick_get();
         }
 
         // Phase 3B: en modo determinista avanzamos el reloj sintetico un paso
@@ -2075,6 +2089,15 @@ int main(int argc, char** argv)
             lv_tick_elaps(g_teardownStartTick) >= TEARDOWN_DELAY_MS) {
             g_teardownPending = false;
             performAppTeardown(g_teardownMode);
+        }
+
+        // MT-03: borrado diferido del splash (ver comentario junto a
+        // g_splashTeardownPending). Fuera de lv_timer_handler y solo cuando
+        // el fade del menu ya termino — el splash ya no es la pantalla activa.
+        if (g_splashTeardownPending &&
+            lv_tick_elaps(g_splashTeardownStartTick) >= TEARDOWN_DELAY_MS) {
+            g_splashTeardownPending = false;
+            if (g_splash) g_splash->destroy();
         }
 
         // En modo determinista NO dormimos: el tick es sintetico, así que el

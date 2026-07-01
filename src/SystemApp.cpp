@@ -27,6 +27,7 @@
 #include "Config.h"
 #include "math/VariableManager.h"
 #include "input/KeyboardManager.h"
+#include "utils/MemProbe.h"
 
 #ifdef ARDUINO
 #include <esp_sleep.h>
@@ -205,6 +206,15 @@ void SystemApp::teardownModeNow(Mode mode) {
 #endif
         default: break;
     }
+
+    // MT-01: app-exit steady state (covers both the deferred-teardown path in
+    // update() and flushPendingTeardownNow). Two consecutive exits of the same
+    // app must report identical psram free — a growing delta is a leak canary.
+#if NUMOS_MEM_PROBE_ENABLE
+    char exitTag[24];
+    snprintf(exitTag, sizeof(exitTag), "exit mode=%d", (int)mode);
+    NUMOS_MEM_PROBE(exitTag);
+#endif
 }
 
 void SystemApp::flushPendingTeardownNow(const char* reason) {
@@ -723,6 +733,13 @@ void SystemApp::launchApp(int id) {
     // entering a new app lifecycle. This avoids stale delayed end() calls
     // invalidating a freshly relaunched app.
     flushPendingTeardownNow("launchApp");
+
+    // MT-01: app-entry marker, taken before the app's load()/begin() allocates.
+#if NUMOS_MEM_PROBE_ENABLE
+    char enterTag[24];
+    snprintf(enterTag, sizeof(enterTag), "enter id=%d", id);
+    NUMOS_MEM_PROBE(enterTag);
+#endif
 
     if (id == 0) {
         // CalculationApp es LVGL-native: LVGL sigue activo

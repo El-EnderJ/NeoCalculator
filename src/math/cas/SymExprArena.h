@@ -16,9 +16,13 @@
 /**
  * SymExprArena.h — Bump-pointer arena allocator for SymExpr nodes.
  *
- * Allocates a contiguous PSRAM block (default 64 KB) on construction
- * and hands out memory by bumping an offset pointer. No individual
- * deallocation — call reset() to reclaim all memory at once.
+ * Hands out memory from contiguous PSRAM blocks (default 64 KB) by bumping
+ * an offset pointer. The FIRST block is allocated lazily on the first
+ * allocRaw()/create() call (ticket MT-04): construction pins ZERO bytes, so
+ * the five arena-owning apps constructed at boot (CalculationApp,
+ * EquationsApp ×2, CalculusApp, NeoLanguageApp — ~288 KB combined) no longer
+ * commit PSRAM until actually used. No individual deallocation — call
+ * reset() to reclaim all memory at once.
  *
  * This eliminates PSRAM fragmentation from many small SymExpr node
  * allocations (~24–48 bytes each) during CAS operations.
@@ -62,12 +66,14 @@ public:
 
     // ── Construction / Destruction ──────────────────────────────────
 
+    // MT-04: no eager allocateBlock() here — block 0 is allocated on first
+    // use (see allocRaw). Allocation failure keeps surfacing through the
+    // existing contract: allocRaw()/create() return nullptr.
     explicit SymExprArena(size_t blockSize = DEFAULT_BLOCK_SIZE)
         : _blockSize(blockSize), _numBlocks(0), _offset(0)
     {
         for (size_t i = 0; i < MAX_BLOCKS; ++i)
             _blocks[i] = nullptr;
-        allocateBlock();
     }
 
     ~SymExprArena() {
@@ -83,7 +89,13 @@ public:
     // ── Allocation ──────────────────────────────────────────────────
 
     /// Allocate raw memory of `size` bytes, aligned to ALIGNMENT.
+    /// Returns nullptr on exhaustion (or if the lazy first block cannot be
+    /// allocated) — callers must null-check (policy §2.1).
     void* allocRaw(size_t size) {
+        // MT-04: lazy first block. A freshly constructed (or fully drained)
+        // arena owns no memory until someone actually allocates from it.
+        if (_numBlocks == 0 && !allocateBlock()) return nullptr;
+
         // Align the offset
         size_t aligned = (_offset + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
         if (aligned + size > _blockSize) {
@@ -125,6 +137,9 @@ public:
 
     /// Reset the arena — all previously allocated nodes become invalid.
     /// Clears the ConsTable, frees BigInt mpis, then reclaims arena blocks.
+    /// Keeps block 0 when blocks exist (warm re-use); on a never-used arena
+    /// (lazy, zero blocks — MT-04) this is a clean no-op that allocates
+    /// nothing.
     void reset() {
         // 1. Clear the hash-consing table
         _consTable.clear();

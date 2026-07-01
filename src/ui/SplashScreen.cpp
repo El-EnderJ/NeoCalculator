@@ -114,6 +114,33 @@ void SplashScreen::show(std::function<void()> onComplete) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// destroy() — Borra la pantalla del splash una vez reemplazada (MT-03)
+// ══════════════════════════════════════════════════════════════════════════
+void SplashScreen::destroy() {
+    if (!_screen) return;   // ya destruida (o create() nunca corrió) — no-op
+
+    // Guardia: NUNCA borrar la pantalla activa. El llamador debe haber
+    // cargado ya la siguiente pantalla (menú) y dejado terminar su fade-in
+    // de 200 ms (main.cpp bombea 250 ms; NativeHal difiere TEARDOWN_DELAY_MS,
+    // el mismo patrón que el deferred teardown de apps). Si aún somos la
+    // pantalla activa, rehusar es infinitamente mejor que el cuelgue por
+    // use-after-free documentado.
+    if (lv_screen_active() == _screen) return;
+
+    // Por si alguna animación siguiera viva sobre los labels (no debería:
+    // ambas terminaron antes de la transición), bórralas antes que los
+    // objetos que referencian.
+    if (_lblLogo)    lv_anim_delete(_lblLogo, nullptr);
+    if (_lblVersion) lv_anim_delete(_lblVersion, nullptr);
+
+    // Borra la pantalla; LVGL borra recursivamente los labels hijos.
+    lv_obj_delete(_screen);
+    _screen     = nullptr;
+    _lblLogo    = nullptr;
+    _lblVersion = nullptr;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // onAnimDone() — Callback estático: animación del logo completada
 // ══════════════════════════════════════════════════════════════════════════
 void SplashScreen::onAnimDone(lv_anim_t* a) {

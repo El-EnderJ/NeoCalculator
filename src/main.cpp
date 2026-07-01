@@ -39,6 +39,7 @@ bool setting_edu_steps = false;
 #include "input/LvglKeypad.h"
 #include "SystemApp.h"
 #include "ui/SplashScreen.h"
+#include "utils/MemProbe.h"
 
 #define Serial NUMOS_SERIAL
 
@@ -196,6 +197,23 @@ void setup() {
     // -- 7. SystemApp (carga launcher, LittleFS, etc.) --
     g_app.begin();
 
+    // -- 7b. Splash teardown (MT-03) --
+    // Lifetime order: g_app.begin() already called _mainMenu.load(), which
+    // starts a 200 ms FADE_IN screen animation (MainMenu.cpp). While that
+    // animation runs, the splash screen is still referenced by the render
+    // pipeline — deleting it now would reproduce the active-screen
+    // use-after-free hang that forced deferred app teardown (SystemApp.cpp).
+    // So: pump LVGL past the fade first, THEN delete. Reclaims the splash's
+    // ~1 KB (+3 objects) from the fixed 64 KB LVGL pool (audit §4.1).
+    {
+        const uint32_t fadeEnd = millis() + 250;   // > 200 ms menu fade
+        while (millis() < fadeEnd) {
+            lv_timer_handler();
+            delay(5);
+        }
+    }
+    g_splash.destroy();
+
     // -- 8. Serial bridge (teclado via monitor serial) --
     g_serial.begin();
 
@@ -208,6 +226,9 @@ void setup() {
 
     Serial.println("[BOOT] OK — Use w/a/s/d to navigate, Enter=EXE, c=AC");
     Serial.println("[BOOT] Deep sleep DISABLED (serial monitor mode)");
+
+    // MT-01: boot steady-state probe (menu loaded, splash freed, apps constructed).
+    NUMOS_MEM_PROBE("boot");
 }
 
 // ====================================================================
@@ -229,11 +250,19 @@ void loop() {
         g_app.injectKey(serialEv);
     }
 
-    // Heartbeat cada 5s (confirma que el loop corre y Serial TX funciona)
+    // Heartbeat cada 5s (confirma que el loop corre y Serial TX funciona).
+    // MT-01: the old internal-only "[HB] heap=" line is replaced by the full
+    // memory probe (internal + PSRAM + largest block + LVGL pool + stack HW).
     if (millis() - _lastHeartbeat > 5000) {
         _lastHeartbeat = millis();
+#if NUMOS_MEM_PROBE_ENABLE
+        char hbTag[24];
+        snprintf(hbTag, sizeof(hbTag), "hb %lus", millis() / 1000);
+        NUMOS_MEM_PROBE(hbTag);
+#else
         Serial.printf("[HB] %lus uptime | heap=%u\n",
                       millis() / 1000, (unsigned)ESP.getFreeHeap());
+#endif
     }
 
     delay(KEY_SCAN_INTERVAL_MS);

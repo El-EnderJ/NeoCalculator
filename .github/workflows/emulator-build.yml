@@ -545,7 +545,8 @@ jobs:
       # print at least one "[ASSERT] ... PASS" with no "[ASSERT] ... FAIL".
       # Covers the previously ORPHANED Phase-10 scripts (implicit/inequality/
       # aspect/mixed/trace-domain/stress), the Phase-10G calc-menu/tangent/
-      # intersection/trace smokes, and the grapher_classifier_* semantic suite
+      # intersection/trace smokes, the grapher_bug_* GRBUG-001..005 regression
+      # guards, and the grapher_classifier_* semantic suite
       # (one-sided => "one-sided relation", xy=1 => "unknown: xy", x=y^2 =>
       # explicitX, inequalities strict/non-strict — the silent-wrong-plot bugs).
       # grapher_negctl_assert_kind is an INVERTED control: it asserts a wrong
@@ -616,6 +617,19 @@ jobs:
             exit 1
           fi
           for s in "${classifier[@]}"; do
+            run_grapher10 "$s"
+          done
+
+          # GRBUG-001..005 regression guards (ad536a7: pole-at-x=0, no-step
+          # Find Intersection, implicit-mul digit/paren edges). Assert-only;
+          # any screenshots go to gitignored out/ as warning-only visuals,
+          # NEVER goldens (glob: future grapher_bug_* scripts auto-gate).
+          grbug=( tests/emulator/scripts/grapher_bug_*.numos )
+          if [ "${#grbug[@]}" -eq 0 ]; then
+            echo "::error::no grapher_bug_*.numos scripts found"
+            exit 1
+          fi
+          for s in "${grbug[@]}"; do
             run_grapher10 "$s"
           done
 

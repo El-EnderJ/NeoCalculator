@@ -351,7 +351,11 @@ static bool isExponentialForm(SymExpr* expr, char var, SymExpr*& scale,
 
     if (expr->type == SymExprType::Func) {
         auto* fn = static_cast<SymFunc*>(expr);
-        if (fn->kind == SymFuncKind::Exp) {
+        // The exponent must contain the variable (same rule as the Pow
+        // branch below): exp(const) is a plain number, and claiming it
+        // re-derives the original logarithmic equation (NB-1 cycle).
+        if (fn->kind == SymFuncKind::Exp &&
+            fn->argument && fn->argument->containsVar(var)) {
             base = nullptr;
             exponent = fn->argument;
             naturalBase = true;
@@ -876,7 +880,8 @@ static bool valuesMatch(SymExpr* lhs, SymExpr* rhs, double x) {
 }
 
 bool solveLogarithmicTutor(SymExpr* lhs, SymExpr* rhs, char var,
-                           SymExprArena& arena, OmniResult& result) {
+                           SymExprArena& arena, OmniResult& result,
+                           SolveDelegation& ctx) {
     result = OmniResult();
     result.variable = var;
 
@@ -927,8 +932,11 @@ bool solveLogarithmicTutor(SymExpr* lhs, SymExpr* rhs, char var,
             .expr(symAdd(arena, combinedArg, symNeg(arena, transformedRhs))),
         MethodId::General);
 
+    SolveDelegation nestedCtx = ctx;  // chain-scoped copy
+    nestedCtx.depth++;
     OmniSolver solver;
-    OmniResult nested = solver.solve(combinedArg, transformedRhs, var, arena);
+    OmniResult nested = solver.solve(combinedArg, transformedRhs, var, arena,
+                                     nestedCtx);
     if (!nested.ok) {
         return false;
     }
@@ -952,7 +960,8 @@ bool solveLogarithmicTutor(SymExpr* lhs, SymExpr* rhs, char var,
 }
 
 bool solveExponentialTutor(SymExpr* lhs, SymExpr* rhs, char var,
-                           SymExprArena& arena, OmniResult& result) {
+                           SymExprArena& arena, OmniResult& result,
+                           SolveDelegation& ctx) {
     result = OmniResult();
     result.variable = var;
 
@@ -1061,8 +1070,11 @@ bool solveExponentialTutor(SymExpr* lhs, SymExpr* rhs, char var,
             MethodId::General);
     }
 
+    SolveDelegation nestedCtx = ctx;  // chain-scoped copy
+    nestedCtx.depth++;
     OmniSolver solver;
-    OmniResult nested = solver.solve(exponent, targetRhs, var, arena);
+    OmniResult nested = solver.solve(exponent, targetRhs, var, arena,
+                                     nestedCtx);
     if (!nested.ok) {
         return false;
     }
@@ -1075,7 +1087,8 @@ bool solveExponentialTutor(SymExpr* lhs, SymExpr* rhs, char var,
 }
 
 bool solveRadicalTutor(SymExpr* lhs, SymExpr* rhs, char var,
-                       SymExprArena& arena, OmniResult& result) {
+                       SymExprArena& arena, OmniResult& result,
+                       SolveDelegation& ctx) {
     result = OmniResult();
     result.variable = var;
 
@@ -1114,8 +1127,11 @@ bool solveRadicalTutor(SymExpr* lhs, SymExpr* rhs, char var,
             .expr(symAdd(arena, radicalInner, symNeg(arena, squaredRhs))),
         MethodId::General);
 
+    SolveDelegation nestedCtx = ctx;  // chain-scoped copy
+    nestedCtx.depth++;
     OmniSolver solver;
-    OmniResult nested = solver.solve(radicalInner, squaredRhs, var, arena);
+    OmniResult nested = solver.solve(radicalInner, squaredRhs, var, arena,
+                                     nestedCtx);
     if (!nested.ok) {
         return false;
     }

@@ -36,6 +36,7 @@ namespace cas {
 class SymExprArena;
 class SymExpr;
 struct OmniResult;
+struct SolveDelegation;
 
 /// Pre-process an equation into standard polynomial form while logging
 /// pedagogical normalization steps when they are needed.
@@ -60,20 +61,22 @@ SolveResult solveCubicTutor(
 
 /// Logarithmic Tutor: combines compatible logs, converts to exponential form,
 /// and solves the resulting equation in tutor mode.
+/// `ctx` is the delegation context of the calling OmniSolver::solve chain
+/// (bounds the tutor ↔ solver mutual recursion — NB-1).
 bool solveLogarithmicTutor(
     SymExpr* lhs, SymExpr* rhs, char var,
-    SymExprArena& arena, OmniResult& result);
+    SymExprArena& arena, OmniResult& result, SolveDelegation& ctx);
 
 /// Exponential Tutor: isolates a^(f(x)) and solves by equal bases or logs.
 bool solveExponentialTutor(
     SymExpr* lhs, SymExpr* rhs, char var,
-    SymExprArena& arena, OmniResult& result);
+    SymExprArena& arena, OmniResult& result, SolveDelegation& ctx);
 
 /// Radical Tutor: isolates sqrt(f(x)), squares both sides, solves recursively,
 /// and checks candidates against the original equation.
 bool solveRadicalTutor(
     SymExpr* lhs, SymExpr* rhs, char var,
-    SymExprArena& arena, OmniResult& result);
+    SymExprArena& arena, OmniResult& result, SolveDelegation& ctx);
 
 /// System 2x2 Tutor: Cramer's rule step-by-step
 SystemResult solveSystem2x2Tutor(

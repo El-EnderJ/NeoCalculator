@@ -9,7 +9,6 @@
 SymExprTest	case	Arena: blockCount == 1 after init	NB-3 stale expectation vs lazy block 0 (SymExprArena.h:97); fix in PR-2
 SymExprTest	case	Arena: totalAllocated == 1024	NB-3 stale expectation vs lazy block 0 (SymExprArena.h:97); fix in PR-2
 OmniSolverTest	case	B2 two solutions	NB-2 x^2-2=0 misclassified Mixed transcendental, one root -> CAS-06b
-OmniSolverTest	crash	SIGSEGV	NB-1 OmniSolver<->TutorTemplates mutual recursion on ln(x)=1 -> CAS-06b
 TutorTemplateTest	case	QuadTutor keeps x² term before -5x term	NB-4 step-order phrasing triage -> PR-2
 TutorTemplateTest	case	QuadTutor keeps constant after variable terms	NB-4 step-order phrasing triage -> PR-2
-TutorTemplateTest	crash	SIGSEGV	NB-1 mutual recursion (log-tutor section) -> CAS-06b
+TutorTemplateTest	crash	SIGSEGV	NB-5 (pre-exists @99503e2, unmasked by the NB-1 fix) solveCubicTutor ExactVal assign SIGSEGV on x^3-6x^2+11x-6=0 Ruffini path (TutorTemplates.cpp:855@baseline); Tests 9-10 still dormant behind it

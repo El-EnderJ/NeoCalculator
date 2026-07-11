@@ -55,6 +55,23 @@ const char* equationClassName(EquationClass c) {
 OmniSolver::OmniSolver() {}
 
 // ════════════════════════════════════════════════════════════════════
+// SolveDelegation — visited-pair bookkeeping (NB-1 guard)
+// ════════════════════════════════════════════════════════════════════
+
+bool SolveDelegation::seenOrRecord(const SymExpr* lhs, const SymExpr* rhs) {
+    const SymExpr* a = (lhs < rhs) ? lhs : rhs;
+    const SymExpr* b = (lhs < rhs) ? rhs : lhs;
+    for (uint8_t i = 0; i < _count; ++i) {
+        if (_visited[i].a == a && _visited[i].b == b) return true;
+    }
+    if (_count >= kMaxVisited) return true;  // full → conservative "seen"
+    _visited[_count].a = a;
+    _visited[_count].b = b;
+    ++_count;
+    return false;
+}
+
+// ════════════════════════════════════════════════════════════════════
 // classify — Determine equation type
 // ════════════════════════════════════════════════════════════════════
 
@@ -209,12 +226,25 @@ SymExpr* OmniSolver::applyInverse(SymFuncKind kind, SymExpr* val,
 
 OmniResult OmniSolver::solve(SymExpr* lhs, SymExpr* rhs, char var,
                               SymExprArena& arena) {
-    OmniResult tutorResult;
-    if (solveLogarithmicTutor(lhs, rhs, var, arena, tutorResult) ||
-        solveExponentialTutor(lhs, rhs, var, arena, tutorResult) ||
-        solveRadicalTutor(lhs, rhs, var, arena, tutorResult))
+    SolveDelegation ctx;
+    return solve(lhs, rhs, var, arena, ctx);
+}
+
+OmniResult OmniSolver::solve(SymExpr* lhs, SymExpr* rhs, char var,
+                              SymExprArena& arena, SolveDelegation& ctx) {
+    // Tutor layer runs only while the delegation budget lasts and this
+    // (lhs, rhs) pair has not been delegated before on this chain — the
+    // NB-1 guard against OmniSolver ↔ TutorTemplates mutual recursion.
+    if (ctx.depth < SolveDelegation::kMaxDepth &&
+        !ctx.seenOrRecord(lhs, rhs))
     {
-        return tutorResult;
+        OmniResult tutorResult;
+        if (solveLogarithmicTutor(lhs, rhs, var, arena, tutorResult, ctx) ||
+            solveExponentialTutor(lhs, rhs, var, arena, tutorResult, ctx) ||
+            solveRadicalTutor(lhs, rhs, var, arena, tutorResult, ctx))
+        {
+            return tutorResult;
+        }
     }
 
     // Normalize to f(x) = 0: f(x) = lhs - rhs

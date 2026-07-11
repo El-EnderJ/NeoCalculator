@@ -22,8 +22,8 @@
  *   C) Inverse path — ln(x)=1 → x=e via algebraic inverse (2 tests)
  *   D) HybridNewton — e^x+x=5 → numeric root via exact Jacobian (3 tests)
  *   E) Integration — OmniSolver end-to-end (3 tests)
- *
- * Total: 13 tests
+ *   F) NB-1 regression — tutor ↔ solver delegation terminates (no
+ *      mutual-recursion stack overflow); honest results or typed refusal
  *
  * Convention:
  *   · Build SymExpr trees with arena factory helpers
@@ -281,6 +281,98 @@ void runOmniSolverTests() {
             check("E3 solution found", false);
         }
 
+        arena.reset();
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // F) NB-1 regression: tutor delegation is bounded and terminates
+    //    (OmniSolver ↔ TutorTemplates mutual recursion on ln(x)=1)
+    // ════════════════════════════════════════════════════════════════
+    OS_PRINTLN("\n── F) NB-1: recursion containment ──");
+
+    // F1: 1 = ln(x) — swapped sides of the original crasher; exercises the
+    //     collectLogArgs(rhs) entry that the old cycle re-derived forever.
+    {
+        auto* lhs = symInt(arena, 1);
+        auto* rhs = symFunc(arena, SymFuncKind::Ln, symVar(arena, 'x'));
+
+        OmniSolver solver;
+        OmniResult r = solver.solve(lhs, rhs, 'x', arena);
+
+        check("F1 1=ln(x) ok", r.ok);
+        check("F1 1=ln(x) root ≈ e",
+              !r.solutions.empty() &&
+              approx(r.solutions[0].numeric, std::exp(1.0), 1e-8));
+        arena.reset();
+    }
+
+    // F2: ln(2x) = 3 — equivalent logarithmic equation with a scaled
+    //     argument; the residual 2x = e³ must resolve analytically.
+    {
+        auto* lhs = symFunc(arena, SymFuncKind::Ln,
+            symMul(arena, symInt(arena, 2), symVar(arena, 'x')));
+        auto* rhs = symInt(arena, 3);
+
+        OmniSolver solver;
+        OmniResult r = solver.solve(lhs, rhs, 'x', arena);
+
+        check("F2 ln(2x)=3 ok", r.ok);
+        check("F2 ln(2x)=3 root ≈ e³/2",
+              !r.solutions.empty() &&
+              approx(r.solutions[0].numeric, std::exp(3.0) / 2.0, 1e-8));
+        arena.reset();
+    }
+
+    // F3: e² = x + 1 — a var-free exp() side; the exponential tutor used to
+    //     claim it and re-derive the logarithmic equation (the NB-1 cycle's
+    //     second half). Must now solve analytically: x = e² - 1.
+    {
+        auto* lhs = symFunc(arena, SymFuncKind::Exp, symInt(arena, 2));
+        auto* rhs = symAdd(arena, symVar(arena, 'x'), symInt(arena, 1));
+
+        OmniSolver solver;
+        OmniResult r = solver.solve(lhs, rhs, 'x', arena);
+
+        check("F3 e²=x+1 ok", r.ok);
+        check("F3 e²=x+1 root ≈ e²-1",
+              !r.solutions.empty() &&
+              approx(r.solutions[0].numeric, std::exp(2.0) - 1.0, 1e-8));
+        arena.reset();
+    }
+
+    // F4: 3x + 6 = 0 — plain linear equation still solves.
+    {
+        auto* lhs = symAdd(arena,
+            symMul(arena, symInt(arena, 3), symVar(arena, 'x')),
+            symInt(arena, 6));
+        auto* rhs = symInt(arena, 0);
+
+        OmniSolver solver;
+        OmniResult r = solver.solve(lhs, rhs, 'x', arena);
+
+        check("F4 3x+6=0 ok", r.ok);
+        check("F4 3x+6=0 root = -2",
+              !r.solutions.empty() && approx(r.solutions[0].numeric, -2.0));
+        arena.reset();
+    }
+
+    // F5: x = e^x — no real solution. The solver must terminate and refuse
+    //     honestly: no fabricated root (any returned root must satisfy the
+    //     equation, and none can, since e^x > x for all real x).
+    {
+        auto* lhs = symVar(arena, 'x');
+        auto* rhs = symFunc(arena, SymFuncKind::Exp, symVar(arena, 'x'));
+
+        OmniSolver solver;
+        OmniResult r = solver.solve(lhs, rhs, 'x', arena);
+
+        bool fabricated = false;
+        for (const auto& sol : r.solutions) {
+            if (std::fabs(sol.numeric - std::exp(sol.numeric)) > 1e-6)
+                fabricated = true;
+        }
+        check("F5 x=e^x terminates without fabricated roots",
+              !fabricated && r.solutions.empty());
         arena.reset();
     }
 

@@ -102,6 +102,46 @@ struct OmniResult {
 };
 
 // ════════════════════════════════════════════════════════════════════
+// SolveDelegation — recursion context for OmniSolver ↔ TutorTemplates
+//
+// The tutor templates (TutorTemplates.h) rewrite an equation and hand the
+// residual back to OmniSolver::solve(). Without a shared context that
+// mutual recursion is unbounded: ln(x) = 1 bounced forever between the
+// logarithmic and exponential tutors until the stack overflowed (NB-1).
+//
+// Termination invariants enforced through this context:
+//   · depth < kMaxDepth   — at most kMaxDepth tutor delegations per solve
+//                           chain; past the bound solve() skips the tutor
+//                           layer and runs only the terminating
+//                           classify/dispatch pipeline (isolateVar is
+//                           depth-capped, SingleSolver/Newton iterate on
+//                           fixed budgets).
+//   · no revisited pair   — an unordered (lhs, rhs) node pair already
+//                           delegated on this chain never re-enters the
+//                           tutor layer (hash-consed node identity), so a
+//                           rewrite cycle that reproduces an earlier
+//                           equation makes no tutor "progress" and falls
+//                           through to the core pipeline instead.
+// ════════════════════════════════════════════════════════════════════
+
+struct SolveDelegation {
+    static constexpr uint8_t kMaxDepth   = 4;  ///< tutor delegation budget
+    static constexpr uint8_t kMaxVisited = 8;  ///< (lhs,rhs) pairs tracked
+
+    uint8_t depth = 0;
+
+    /// True if the unordered pair was already delegated on this chain;
+    /// records it otherwise. A full table reports "seen" so the tutor
+    /// layer stays bounded no matter what.
+    bool seenOrRecord(const SymExpr* lhs, const SymExpr* rhs);
+
+private:
+    struct Pair { const SymExpr* a = nullptr; const SymExpr* b = nullptr; };
+    Pair    _visited[kMaxVisited];
+    uint8_t _count = 0;
+};
+
+// ════════════════════════════════════════════════════════════════════
 // OmniSolver — Universal equation solver
 // ════════════════════════════════════════════════════════════════════
 
@@ -119,6 +159,12 @@ public:
     /// @return OmniResult with solutions, classification, and steps.
     OmniResult solve(SymExpr* lhs, SymExpr* rhs, char var,
                      SymExprArena& arena);
+
+    /// Delegation-aware entry: used by the tutor templates when they hand a
+    /// rewritten equation back to the solver. `ctx` carries the delegation
+    /// depth and the visited (lhs,rhs) pairs of the current solve chain.
+    OmniResult solve(SymExpr* lhs, SymExpr* rhs, char var,
+                     SymExprArena& arena, SolveDelegation& ctx);
 
     /// Solve f(x) = 0 (single expression form).
     OmniResult solveExpr(SymExpr* f, char var, SymExprArena& arena);

@@ -35,22 +35,34 @@
     #define MKDIR_P(path) mkdir(path, 0755)
 #endif
 
-static constexpr const char* EMULATOR_DATA_DIR = "./emulator_data";
+// Raíz configurable (FIX-01): por defecto el comportamiento histórico
+// ./emulator_data (relativo al CWD); NativeHal puede redirigirla a un
+// sandbox por-ejecución ANTES de begin().
+static std::string s_rootDir = "./emulator_data";
 
 // ── Instancia global ────────────────────────────────────────────────────────
 LittleFSClass LittleFS;
 
+// ── setRoot / root — raíz configurable del filesystem emulado ───────────────
+void LittleFSClass::setRoot(const char* root) {
+    if (root && root[0]) s_rootDir = root;
+}
+
+const char* LittleFSClass::root() {
+    return s_rootDir.c_str();
+}
+
 // ── fullPath — Convierte ruta LittleFS a ruta local del PC ──────────────────
 std::string LittleFSClass::fullPath(const char* path) const {
-    std::string p = EMULATOR_DATA_DIR;
+    std::string p = s_rootDir;
     if (path && path[0] != '/' && path[0] != '\\') p += '/';
     if (path) p += path;
     return p;
 }
 
-// ── begin — Crea el directorio emulator_data si no existe ───────────────────
+// ── begin — Crea el directorio raíz si no existe ────────────────────────────
 bool LittleFSClass::begin(bool /*formatOnFail*/) {
-    MKDIR_P(EMULATOR_DATA_DIR);
+    MKDIR_P(s_rootDir.c_str());
     _initialized = true;
     return true;
 }

@@ -94,6 +94,16 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <filesystem>   // FIX-01: sandbox del filesystem emulado (C++17)
+#include "FileSystem.h" // FIX-01: LittleFSClass::setRoot (raíz configurable)
+
+#ifdef _WIN32
+    #include <process.h>
+    #define NUMOS_GETPID _getpid
+#else
+    #include <unistd.h>
+    #define NUMOS_GETPID getpid
+#endif
 
 #include "../input/KeyCodes.h"
 #include "../input/LvglKeypad.h"
@@ -174,6 +184,13 @@ struct EmuOptions {
     const char* screenshotPath = nullptr;     // volcar PPM al salir si != null
     // ── Phase 4A (solo emulador) ────────────────────────────────────────────
     const char* scriptPath     = nullptr;     // reproducir script .numos si != null
+    // ── FIX-01/FIX-02 (solo emulador): raíz del filesystem emulado ──────────
+    // Flags mutuamente excluyentes; sin flag, los runs con --script o
+    // --deterministic usan un sandbox temporal limpio (FIX-02) y el uso
+    // interactivo mantiene ./emulator_data (comportamiento histórico).
+    const char* fsRoot       = nullptr;       // --fs-root P: usar P tal cual
+    const char* fsSandboxDir = nullptr;       // --fs-sandbox-dir P: sandbox compartido
+    bool        fsSandbox    = false;         // --fs-sandbox: temp limpio por-ejecución
 };
 static EmuOptions g_opts;
 
@@ -1239,6 +1256,11 @@ static void printUsage(const char* prog)
         "  --screenshot P   vuelca el frame final 320x240 a un PPM (P6) en la ruta P\n"
         "  --dump-frame P   alias de --screenshot\n"
         "  --script P       reproduce un script de entrada determinista (.numos) desde P\n"
+        "  --fs-root P      usa P como raiz del filesystem emulado (sin copia)\n"
+        "  --fs-sandbox     raiz temporal limpia por ejecucion (borrada al salir con exit 0)\n"
+        "  --fs-sandbox-dir P  raiz compartida P (se crea si falta; nunca se borra)\n"
+        "                   Sin flag de fs: --script/--deterministic usan sandbox temporal;\n"
+        "                   el uso interactivo usa ./emulator_data (persistente local).\n"
         "  --help, -h       muestra esta ayuda y sale\n",
         prog, DEFAULT_WINDOW_SCALE, 16);
 }
@@ -1273,11 +1295,115 @@ static bool parseArgs(int argc, char** argv, EmuOptions& opt)
         else if (std::strcmp(a, "--screenshot") == 0 ||
                  std::strcmp(a, "--dump-frame") == 0) needStr(opt.screenshotPath);
         else if (std::strcmp(a, "--script") == 0)     needStr(opt.scriptPath);
+        else if (std::strcmp(a, "--fs-root") == 0)    needStr(opt.fsRoot);
+        else if (std::strcmp(a, "--fs-sandbox-dir") == 0) needStr(opt.fsSandboxDir);
+        else if (std::strcmp(a, "--fs-sandbox") == 0) opt.fsSandbox = true;
         else if (std::strcmp(a, "--help") == 0 ||
                  std::strcmp(a, "-h") == 0) { printUsage(argv[0]); return false; }
         else std::fprintf(stderr, "[ARGS] opcion desconocida: %s\n", a);
     }
     return true;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//   resolveFsRoot — raíz del filesystem emulado (FIX-01/FIX-02, SANDBOX §B.1)
+//
+// Precedencia: --fs-sandbox-dir (compartido, roundtrip) > --fs-root (directo)
+// > --fs-sandbox (temp limpio). Sin flag: los runs con --script o
+// --deterministic usan un sandbox temporal limpio por-ejecución (FIX-02:
+// ningún test puede leer/ensuciar el estado del repo); el uso interactivo
+// mantiene ./emulator_data para conservar variables locales durables.
+// El sandbox temporal se borra al salir con exit 0 y se RETIENE (ruta ya
+// impresa en el banner [FS]) en salidas con error, para inspección post-mortem.
+// Flags en conflicto → exit 2 antes de inicializar SDL (mismo contrato
+// fail-fast que la validación de scripts).
+// ════════════════════════════════════════════════════════════════════════════
+static std::string g_fsRootResolved;             // raíz efectiva del run
+static bool        g_fsSandboxEphemeral = false; // borrar al salir con exit 0
+
+static bool resolveFsRoot()
+{
+    namespace fs = std::filesystem;
+    const int nFlags = (g_opts.fsRoot ? 1 : 0) +
+                       (g_opts.fsSandboxDir ? 1 : 0) +
+                       (g_opts.fsSandbox ? 1 : 0);
+    if (nFlags > 1) {
+        std::fprintf(stderr,
+            "[FS] --fs-root, --fs-sandbox y --fs-sandbox-dir son mutuamente excluyentes\n");
+        return false;
+    }
+
+    const char* mode = "direct";
+    std::error_code ec;
+    if (g_opts.fsSandboxDir) {
+        // Sandbox compartido entre procesos (roundtrip): crea si falta, nunca borra.
+        mode = "shared";
+        g_fsRootResolved = g_opts.fsSandboxDir;
+        fs::create_directories(g_fsRootResolved, ec);
+        if (ec) {
+            std::fprintf(stderr, "[FS] no se pudo crear --fs-sandbox-dir '%s': %s\n",
+                         g_opts.fsSandboxDir, ec.message().c_str());
+            return false;
+        }
+    } else if (g_opts.fsRoot) {
+        g_fsRootResolved = g_opts.fsRoot;
+        fs::create_directories(g_fsRootResolved, ec);   // tolera padres ausentes
+    } else if (g_opts.fsSandbox || g_opts.scriptPath || g_opts.deterministic) {
+        mode = "sandbox";
+        const fs::path base = fs::temp_directory_path(ec);
+        if (ec) {
+            std::fprintf(stderr, "[FS] no hay directorio temporal del SO: %s\n",
+                         ec.message().c_str());
+            return false;
+        }
+        const long pid = static_cast<long>(NUMOS_GETPID());
+        for (int n = 0; n < 1000 && g_fsRootResolved.empty(); ++n) {
+            fs::path cand = base / ("numos-emu-" + std::to_string(pid) +
+                                    "-" + std::to_string(n));
+            std::error_code ec2;
+            // create_directory devuelve true solo si ESTE proceso lo creó:
+            // garantiza un sandbox fresco aunque queden restos de otros runs.
+            if (fs::create_directory(cand, ec2) && !ec2) {
+                g_fsRootResolved = cand.string();
+            }
+        }
+        if (g_fsRootResolved.empty()) {
+            std::fprintf(stderr, "[FS] no se pudo crear un sandbox temporal bajo %s\n",
+                         base.string().c_str());
+            return false;
+        }
+        g_fsSandboxEphemeral = true;
+    } else {
+        // Interactivo sin flags: comportamiento histórico (persistencia local).
+        g_fsRootResolved = "./emulator_data";
+    }
+
+    LittleFSClass::setRoot(g_fsRootResolved.c_str());
+
+    // Banner de fixtures (AT-DET-5, parte fs): una línea greppeable con el
+    // modo resuelto y la ruta absoluta de la raíz de persistencia.
+    std::error_code ecAbs;
+    const fs::path abs = fs::absolute(g_fsRootResolved, ecAbs);
+    std::printf("[FS] root=%s mode=%s\n",
+                ecAbs ? g_fsRootResolved.c_str() : abs.string().c_str(), mode);
+    return true;
+}
+
+// Sandbox temporal: borrado en salida limpia, retenido en error (SANDBOX §B.2).
+static void cleanupFsSandbox(int exitCode)
+{
+    if (!g_fsSandboxEphemeral) return;
+    if (exitCode == 0) {
+        std::error_code ec;
+        std::filesystem::remove_all(g_fsRootResolved, ec);
+        if (ec) {
+            std::fprintf(stderr, "[FS] aviso: no se pudo borrar el sandbox %s: %s\n",
+                         g_fsRootResolved.c_str(), ec.message().c_str());
+        }
+    } else {
+        std::fprintf(stderr, "[FS] sandbox retenido (exit %d): %s\n",
+                     exitCode, g_fsRootResolved.c_str());
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2168,6 +2294,11 @@ int main(int argc, char** argv)
         if (!loadScript(g_opts.scriptPath)) return 2;
     }
 
+    // FIX-01/FIX-02: resolver la raíz del filesystem emulado ANTES de SDL/LVGL
+    // (y después de validar el script, para no crear sandboxes en fallos de
+    // parseo). Flags en conflicto o fallo de creación → exit 2, fail-fast.
+    if (!resolveFsRoot()) return 2;
+
     // Headless: fijar el driver "dummy" ANTES de SDL_Init para que el video y
     // la ventana funcionen sin display (CI/Linux sin X/Wayland). El usuario
     // tambien puede exportar SDL_VIDEODRIVER=dummy; SDL lo respeta de serie.
@@ -2445,6 +2576,9 @@ int main(int argc, char** argv)
     SDL_DestroyWindow(g_window);
     SDL_Quit();
 
+    // FIX-01: sandbox temporal borrado en salida limpia, retenido si hubo error.
+    cleanupFsSandbox(g_exitCode);
+
     std::printf("[SIM] Bye!\n");
     return g_exitCode;
 }
@@ -2456,10 +2590,10 @@ int main(int argc, char** argv)
 bool nativeFS_init() {
     if (LittleFS.begin(true)) {
         vpam::VariableManager::instance().loadFromFlash();
-        std::printf("[FS] emulator_data/ OK, variables cargadas\n");
+        std::printf("[FS] %s OK, variables cargadas\n", LittleFSClass::root());
         return true;
     }
-    std::printf("[FS] emulator_data/ FAIL\n");
+    std::printf("[FS] %s FAIL\n", LittleFSClass::root());
     return false;
 }
 

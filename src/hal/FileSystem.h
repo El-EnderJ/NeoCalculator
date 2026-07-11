@@ -113,6 +113,17 @@ private:
 class LittleFSClass {
 public:
     /**
+     * Fija el directorio raíz del sistema de archivos emulado (FIX-01).
+     * Debe llamarse ANTES de begin(); por defecto "./emulator_data".
+     * Permite a NativeHal apuntar la persistencia a un sandbox por-ejecución
+     * (runs deterministas/CI) sin tocar el árbol del repositorio.
+     */
+    static void setRoot(const char* root);
+
+    /** Directorio raíz actualmente configurado. */
+    static const char* root();
+
+    /**
      * Inicializa el "sistema de archivos" (crea el directorio base).
      * @param formatOnFail  Ignorado en PC (siempre crea el directorio).
      */

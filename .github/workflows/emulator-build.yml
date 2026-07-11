@@ -730,3 +730,24 @@ jobs:
           done
           echo "Compared $compared candidate(s) against accepted goldens."
           exit $status
+
+      # ── CI-01: guard de árbol limpio (EMUDET §E.3 / CIART §H) ──────────────
+      # Ninguna suite puede modificar archivos rastreados ni crear archivos sin
+      # rastrear fuera de out/ (área de artefactos, git-ignorada). El sandbox
+      # FIX-01/FIX-02 mantiene la persistencia runtime fuera del checkout; este
+      # paso impide reintroducir la clase de fallo "test ensucia el repo".
+      # Corre siempre (if: always()) para que un rojo anterior no oculte la señal.
+      - name: Working tree must be clean after all suites (CI-01)
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "--- git diff (tracked modifications) ---"
+          git diff --exit-code
+          echo "--- untracked files outside out/ ---"
+          UNTRACKED=$(git status --porcelain | grep -v '^?? out/' || true)
+          if [ -n "$UNTRACKED" ]; then
+            echo "$UNTRACKED"
+            echo "::error::a suite modified tracked files or created untracked files outside out/"
+            exit 1
+          fi
+          echo "OK: working tree clean after all emulator suites."

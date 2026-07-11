@@ -11,6 +11,8 @@ node_modules/
 .piobuild/
 *piobuild*
 fluid2d_plan.md
+# FIX-03: estado runtime del emulador — scratch local, nunca fixture rastreado
+emulator_data/
 .claude
 .agents
 .codex-tmp

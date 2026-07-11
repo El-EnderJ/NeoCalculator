@@ -409,7 +409,26 @@ unaffected** — mainly so CI (or you) can launch it briefly without a human:
 | `--step-ms N` | **(Phase 3B)** Virtual milliseconds advanced per frame in `--deterministic` mode, 1..1000 (default 16 ≈ 60 fps). No effect without `--deterministic`. |
 | `--screenshot P` / `--dump-frame P` | **(Phase 3B)** After the final frame (before shutdown), dump the **320×240 logical** framebuffer to PPM (P6) at path `P`. Dependency-free; works under `--headless` and at any `--scale`. |
 | `--script P` | **(Phase 4A)** Replay a deterministic input script (`.numos`) from path `P`: inject key events through the same dispatch path as live SDL input and capture in-script screenshots. Pair with `--deterministic --frames N`. See [Scripted input replay](#scripted-input-replay-phase-4a). |
+| `--fs-root P` | **(FIX-01)** Use `P` directly as the emulated-LittleFS root (read-write, no copy). `--fs-root emulator_data` reproduces the historical interactive behavior explicitly. |
+| `--fs-sandbox` | **(FIX-01)** Fresh empty per-run sandbox under the OS temp dir (`numos-emu-<pid>-<n>`). Deleted on exit 0; **retained** (path printed) on any error exit so the failure state is inspectable. |
+| `--fs-sandbox-dir P` | **(FIX-01)** Shared sandbox at `P` (created if absent, never deleted by the emulator). This is the two-process persistence-roundtrip primitive. |
 | `--help` | Print usage and exit. |
+
+**Filesystem root resolution (FIX-01/FIX-02).** The three `--fs-*` flags are
+mutually exclusive (conflict → exit 2 before SDL init). With no `--fs-*` flag:
+
+- **`--script` and/or `--deterministic` runs default to a fresh temp sandbox**
+  (same as `--fs-sandbox`). Scripted/CI runs therefore start from a clean
+  variable state (all zeros — identical to the old committed `vars.dat`) and
+  can never read or dirty the repo's `emulator_data/`.
+- **Interactive runs (no script, wall clock) keep `./emulator_data`**, so local
+  durable variables behave exactly as before. `emulator_data/` is git-ignored
+  runtime scratch now — it is no longer tracked, and nothing committed depends
+  on its contents.
+
+Every run logs one greppable banner line with the resolved root, e.g.
+`[FS] root=/tmp/numos-emu-1234-0 mode=sandbox` (modes: `sandbox`, `shared`,
+`direct`).
 
 The run scripts forward all flags, e.g.:
 

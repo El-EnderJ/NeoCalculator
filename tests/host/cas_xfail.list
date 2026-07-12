@@ -6,7 +6,3 @@
 # An entry that stops failing turns XPASS and FAILS the run — prune it in the
 # same PR that fixes the underlying issue. Initial inventory:
 # docs/specs/NUMOS_CAS_CAS01_CAS02_EXECUTION_PLAN.md §H.
-SymExprTest	case	Arena: blockCount == 1 after init	NB-3 stale expectation vs lazy block 0 (SymExprArena.h:97); fix in PR-2
-SymExprTest	case	Arena: totalAllocated == 1024	NB-3 stale expectation vs lazy block 0 (SymExprArena.h:97); fix in PR-2
-TutorTemplateTest	case	QuadTutor keeps x² term before -5x term	NB-4 step-order phrasing triage -> PR-2
-TutorTemplateTest	case	QuadTutor keeps constant after variable terms	NB-4 step-order phrasing triage -> PR-2

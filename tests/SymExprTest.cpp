@@ -17,7 +17,8 @@
  * SymExprTest.cpp — Unit tests for SymExpr Phase 1.
  *
  * Tests:
- *   Arena  (4): allocation, reset, multi-block, stats
+ *   Arena  (15): MT-04 lazy lifecycle, first-alloc, reset warm-reuse,
+ *                growth to MAX_BLOCKS, exhaustion, construct/destroy cycles
  *   SymNum (3): integer, fraction, pi/e constants
  *   SymVar (2): containsVar, evaluate
  *   SymNeg (2): evaluate negation, isPolynomial propagation
@@ -29,7 +30,7 @@
  *   toSymPoly (4): constant, linear, quadratic, cubic via pow+mul
  *   Mixed  (2): polynomial + transcendental detection, evaluate complex expr
  *
- * Total: 31 tests
+ * Total: 42 tests
  *
  * Usage: Call cas::runSymExprTests() from main.cpp when CAS_RUN_TESTS defined.
  */
@@ -92,22 +93,78 @@ void runSymExprTests() {
     // ══════════════════════════════════════════════════════════════
     SE_PRINTLN("\n── Arena ──────────────────────────────────");
     {
+        // MT-04 lazy-allocation contract (SymExprArena.h): construction
+        // pins ZERO bytes; block 0 materializes on the first allocation.
         SymExprArena arena(1024);  // Small block for testing
-        seCheck("Arena: blockCount == 1 after init",
-                arena.blockCount() == 1);
-        seCheck("Arena: totalAllocated == 1024",
+        seCheck("Arena: fresh arena owns no blocks (MT-04 lazy)",
+                arena.blockCount() == 0);
+        seCheck("Arena: fresh arena totalAllocated == 0",
+                arena.totalAllocated() == 0);
+        seCheck("Arena: fresh arena currentUsed == 0",
+                arena.currentUsed() == 0);
+
+        // reset() on a never-used arena is a no-op that allocates nothing
+        arena.reset();
+        seCheck("Arena: reset on never-used arena stays empty",
+                arena.blockCount() == 0 && arena.totalAllocated() == 0);
+
+        // First allocation materializes block 0
+        auto* n1 = arena.create<SymNum>(vpam::ExactVal::fromInt(42));
+        seCheck("Arena: first allocation creates block 0",
+                n1 != nullptr && arena.blockCount() == 1);
+        seCheck("Arena: totalAllocated == 1024 after first alloc",
                 arena.totalAllocated() == 1024);
 
-        // Allocate several nodes
-        auto* n1 = arena.create<SymNum>(vpam::ExactVal::fromInt(42));
+        // Further small allocations reuse the same block
         auto* n2 = arena.create<SymVar>('x');
-        seCheck("Arena: nodes not null",
-                n1 != nullptr && n2 != nullptr);
+        seCheck("Arena: small allocations reuse block 0",
+                n2 != nullptr && arena.blockCount() == 1);
 
-        // Reset and verify
+        // reset() rewinds the offset but keeps block 0 for warm reuse
         arena.reset();
         seCheck("Arena: currentUsed == 0 after reset",
                 arena.currentUsed() == 0);
+        seCheck("Arena: reset keeps block 0 (warm reuse)",
+                arena.blockCount() == 1 && arena.totalAllocated() == 1024);
+
+        // Allocation after reset succeeds without growing the arena
+        auto* n3 = arena.create<SymNum>(vpam::ExactVal::fromInt(7));
+        seCheck("Arena: allocation after reset works",
+                n3 != nullptr && arena.blockCount() == 1);
+    }
+
+    {
+        // Growth, exhaustion, and reset-releases-extras. Exact-blockSize
+        // requests occupy one block each, so MAX_BLOCKS bounds the loop.
+        SymExprArena arena(64);
+        size_t grabbed = 0;
+        for (size_t i = 0; i < SymExprArena::MAX_BLOCKS; ++i) {
+            if (!arena.allocRaw(64)) break;
+            grabbed++;
+        }
+        seCheck("Arena: exact-blockSize allocs grow to MAX_BLOCKS",
+                grabbed == SymExprArena::MAX_BLOCKS &&
+                arena.blockCount() == SymExprArena::MAX_BLOCKS);
+        seCheck("Arena: returns nullptr once MAX_BLOCKS exhausted",
+                arena.allocRaw(64) == nullptr);
+
+        arena.reset();
+        seCheck("Arena: reset releases extra blocks, keeps one",
+                arena.blockCount() == 1);
+        seCheck("Arena: usable again after exhaustion + reset",
+                arena.allocRaw(64) != nullptr);
+    }
+
+    {
+        // Repeated construct/alloc/destroy cycles leave no observable state
+        bool cyclesOk = true;
+        for (int i = 0; i < 50 && cyclesOk; ++i) {
+            SymExprArena a(256);
+            cyclesOk = a.blockCount() == 0 &&
+                       a.create<SymVar>('y') != nullptr &&
+                       a.blockCount() == 1;
+        }
+        seCheck("Arena: 50 construct/alloc/destroy cycles stable", cyclesOk);
     }
 
     // ══════════════════════════════════════════════════════════════

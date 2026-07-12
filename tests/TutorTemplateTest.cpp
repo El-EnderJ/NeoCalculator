@@ -62,6 +62,33 @@ static const CASStep* findStepByDescription(const StepVec& steps, const char* de
     return nullptr;
 }
 
+/// NB-4 helper: solve lhs = 0 through SingleSolver and structurally verify
+/// the "Identifying coefficients:" CoeffAssign slots (value + sign each),
+/// plus the expected real-root count. Fails if the step is missing, the
+/// node type changed, a slot is empty, or a value landed in the wrong slot.
+static void checkQuadCoeffStep(const char* label, const SymPoly& lhs,
+                               double ea, double eb, double ec,
+                               int expectedRoots) {
+    SymEquation eq(lhs, SymPoly::fromConstant(vpam::ExactVal::fromInt(0)));
+    SymExprArena arena;
+    SingleSolver solver;
+    SolveResult res = solver.solve(eq, 'x', &arena);
+
+    bool ok = res.ok && res.count == expectedRoots;
+    const CASStep* step =
+        findStepByDescription(res.steps.steps(), "Identifying coefficients:");
+    ok = ok && step && step->mathExpr &&
+         step->mathExpr->type == SymExprType::CoeffAssign;
+    if (ok) {
+        const auto* ca = static_cast<const SymCoeffAssign*>(step->mathExpr);
+        ok = ca->aVal && ca->bVal && ca->cVal &&
+             std::abs(ca->aVal->evaluate(0.0) - ea) < 1e-9 &&
+             std::abs(ca->bVal->evaluate(0.0) - eb) < 1e-9 &&
+             std::abs(ca->cVal->evaluate(0.0) - ec) < 1e-9;
+    }
+    check(label, ok);
+}
+
 void runTutorTests() {
     _passed = 0;
     _failed = 0;
@@ -117,19 +144,21 @@ void runTutorTests() {
             }
         }
         check("QuadTutor identifies coefficients with math expression", coeffExpr != nullptr);
-        if (coeffExpr) {
-            std::string coeffText = coeffExpr->toString();
-            size_t x2Pos = coeffText.find("(1 * (x^2))");
-            size_t negBxPos = coeffText.find("(-(5 * x))");
-            size_t cPos = coeffText.rfind("6");
-            check("QuadTutor keeps x² term before -5x term",
-                  x2Pos != std::string::npos &&
-                  negBxPos != std::string::npos &&
-                  x2Pos < negBxPos);
-            check("QuadTutor keeps constant after variable terms",
-                  negBxPos != std::string::npos &&
-                  cPos != std::string::npos &&
-                  negBxPos < cPos);
+        // NB-4: the step's math payload is the structured SymCoeffAssign node
+        // (renders as "a = 1, b = -5, c = 6"; slot order is fixed by the node
+        // itself). Verify each named slot's value and sign structurally —
+        // the old substring-position checks asserted a polynomial rendering
+        // this step stopped producing when the CoeffAssign node landed.
+        check("QuadTutor coefficient step is a CoeffAssign node",
+              coeffExpr && coeffExpr->type == SymExprType::CoeffAssign);
+        if (coeffExpr && coeffExpr->type == SymExprType::CoeffAssign) {
+            const auto* ca = static_cast<const SymCoeffAssign*>(coeffExpr);
+            check("QuadTutor coefficient slot a == 1",
+                  ca->aVal && std::abs(ca->aVal->evaluate(0.0) - 1.0) < 1e-12);
+            check("QuadTutor coefficient slot b == -5",
+                  ca->bVal && std::abs(ca->bVal->evaluate(0.0) + 5.0) < 1e-12);
+            check("QuadTutor coefficient slot c == 6",
+                  ca->cVal && std::abs(ca->cVal->evaluate(0.0) - 6.0) < 1e-12);
         }
 
         const CASStep* substitutionStep =
@@ -161,6 +190,51 @@ void runTutorTests() {
         
         PRINTLN("  === Tutor Steps for x^2 - 5x + 6 = 0 ===");
         PRINT(res.steps.dump().c_str());
+    }
+
+    // ── Test 1b: coefficient-step slots across quadratic shapes (NB-4) ──
+    {
+        // 2x² + 3x - 4: non-unit leading coefficient
+        SymPoly p('x');
+        p.terms().push_back(SymTerm::variable('x', 2, 1, 2));
+        p.terms().push_back(SymTerm::variable('x', 3, 1, 1));
+        p.terms().push_back(SymTerm::constant(vpam::ExactVal::fromInt(-4)));
+        p.normalize();
+        checkQuadCoeffStep("CoeffStep 2x²+3x-4 → (2, 3, -4)", p, 2, 3, -4, 2);
+    }
+    {
+        // x² - 9: omitted linear term (b == 0)
+        SymPoly p('x');
+        p.terms().push_back(SymTerm::variable('x', 1, 1, 2));
+        p.terms().push_back(SymTerm::constant(vpam::ExactVal::fromInt(-9)));
+        p.normalize();
+        checkQuadCoeffStep("CoeffStep x²-9 → (1, 0, -9)", p, 1, 0, -9, 2);
+    }
+    {
+        // x² + 4x: omitted constant term (c == 0)
+        SymPoly p('x');
+        p.terms().push_back(SymTerm::variable('x', 1, 1, 2));
+        p.terms().push_back(SymTerm::variable('x', 4, 1, 1));
+        p.normalize();
+        checkQuadCoeffStep("CoeffStep x²+4x → (1, 4, 0)", p, 1, 4, 0, 2);
+    }
+    {
+        // 6 - 5x + x²: input terms in reverse order — extraction must be
+        // order-independent and land each value in the right slot.
+        SymPoly p('x');
+        p.terms().push_back(SymTerm::constant(vpam::ExactVal::fromInt(6)));
+        p.terms().push_back(SymTerm::variable('x', -5, 1, 1));
+        p.terms().push_back(SymTerm::variable('x', 1, 1, 2));
+        p.normalize();
+        checkQuadCoeffStep("CoeffStep 6-5x+x² → (1, -5, 6)", p, 1, -5, 6, 2);
+    }
+    {
+        // -x² + 4: negative leading coefficient
+        SymPoly p('x');
+        p.terms().push_back(SymTerm::variable('x', -1, 1, 2));
+        p.terms().push_back(SymTerm::constant(vpam::ExactVal::fromInt(4)));
+        p.normalize();
+        checkQuadCoeffStep("CoeffStep -x²+4 → (-1, 0, 4)", p, -1, 0, 4, 2);
     }
 
     // ── Test 2: x² - 6x + 9 = 0 (One real root: 3) ───────────────

@@ -644,7 +644,7 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | [CAS_UPGRADE_ROADMAP.md](docs/CAS_UPGRADE_ROADMAP.md) | Full roadmap for the 6-phase CAS upgrade |
 | [MATH_ENGINE.md](docs/MATH_ENGINE.md) | Math engine + CAS: design, algorithms, pipeline, and examples |
 | [HARDWARE.md](docs/HARDWARE.md) | ESP32-S3 pinout, complete wiring, critical bugs, and bring-up notes |
-| [CONSTRUCCION.md](docs/CONSTRUCCION.md) | Physical assembly guide, 3D printing, and hardware testing |
+| [CONSTRUCTION.md](docs/CONSTRUCTION.md) | Physical assembly guide, 3D printing, and hardware testing |
 | [DIMENSIONES_DISEÑO.md](docs/DIMENSIONES_DISEÑO.md) | Dimensional specifications for the 3D chassis |
 
 ---

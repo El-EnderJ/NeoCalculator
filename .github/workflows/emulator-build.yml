@@ -146,10 +146,13 @@ jobs:
       # docs/GIAC_FEASIBILITY_SPIKE.md) and runs the PRODUCTION GiacEngine
       # seam (src/math/giac/GiacEngine.cpp) through the 24-expression suite,
       # context/reset/DEG-RAD lifecycle checks, the compiled-expression
-      # Grapher sweeps, and the GIAC-B01 CalculationEngine adapter cases
-      # (VPAM serializer, structured result bridge, Ans/STO mirroring).
+      # Grapher sweeps, the GIAC-B01 CalculationEngine adapter cases
+      # (VPAM serializer, structured result bridge, Ans/STO mirroring), and
+      # the GIAC-C01 Grapher retained-expression contract (strict variable
+      # validation, no context capture, 2-D residual handles, eval-time
+      # DEG/RAD, reset orphaning, 1-D/2-D sweep benchmarks, RSS stability).
       # Artifacts stay in /tmp (dirty-tree guard safe).
-      # Expected green footer: FOOTER|pass=85|fail=0.
+      # Expected green footer: FOOTER|pass=112|fail=0.
       - name: Giac engine host harness (GIAC-A01)
         run: |
           mkdir -p /tmp/giac-host-harness
@@ -728,6 +731,65 @@ jobs:
         with:
           name: numos-emulator-grapher-10
           path: out/grapher_10/
+          if-no-files-found: ignore
+
+      # ---------------------------------------------------------------------
+      # GIAC-C01 Grapher engine guard — golden-free, assert-only.
+      #
+      # Same contract as the Phase-10 step above (exit 0, at least one
+      # "[ASSERT] ... PASS", no "[ASSERT] ... FAIL"). The grapher_giac_*.numos
+      # suite proves the Grapher's normal mathematical path is the GiacEngine
+      # retained compiled cache: engine identity, one compile per commit,
+      # pan/zoom/trace never recompiling, edit + giac_reset recompiling,
+      # DEG/RAD applied at evaluation time, domain holes/poles as gaps (never
+      # zeros), x=f(y)/implicit/inequality residuals, and honest refusals with
+      # no legacy fallback. Discovered by glob and FAIL-IF-EMPTY, so the suite
+      # can never silently vanish from CI.
+      - name: Grapher GIAC-C01 engine guard (headless deterministic)
+        run: |
+          set -euo pipefail
+          BIN=.pio/build/emulator_pc/program
+          mkdir -p out/grapher_giac
+          run_giac() {
+            script="$1"
+            name="$(basename "$script" .numos)"
+            log="out/grapher_giac/${name}.log"
+            echo "=== ${name} ==="
+            rc=0
+            SDL_VIDEODRIVER=dummy timeout 60s "$BIN" \
+              --headless --deterministic --script "$script" \
+              --frames 1400 --quiet > "$log" 2>&1 || rc=$?
+            cat "$log"
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::GIAC-C01 guard FAILED for ${name} (exit $rc)"
+              return 1
+            fi
+            if grep -qE '\[ASSERT\].*: FAIL -' "$log"; then
+              echo "::error::GIAC-C01 guard: [ASSERT] FAIL present for ${name}"
+              return 1
+            fi
+            if ! grep -qE '\[ASSERT\].*: PASS -' "$log"; then
+              echo "::error::GIAC-C01 guard: no [ASSERT] PASS marker for ${name}"
+              return 1
+            fi
+          }
+          shopt -s nullglob
+          giac_scripts=( tests/emulator/scripts/grapher_giac_*.numos )
+          if [ "${#giac_scripts[@]}" -eq 0 ]; then
+            echo "::error::no grapher_giac_*.numos scripts found (fail-if-empty)"
+            exit 1
+          fi
+          for s in "${giac_scripts[@]}"; do
+            run_giac "$s"
+          done
+          echo "OK: ${#giac_scripts[@]} GIAC-C01 Grapher engine guards passed (assert-only, NO gating golden)."
+
+      - name: Upload GIAC-C01 Grapher engine guard logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numos-emulator-grapher-giac
+          path: out/grapher_giac/
           if-no-files-found: ignore
 
       # ---------------------------------------------------------------------

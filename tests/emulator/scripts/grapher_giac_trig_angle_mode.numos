@@ -1,0 +1,38 @@
+# grapher_giac_trig_angle_mode — GIAC-C01: trig curves through the Giac cache,
+# and DEG/RAD truth (AngleModeRuntime) applied at EVALUATION time — an angle
+# mode flip changes the sampled values WITHOUT recompiling the retained handle
+# (strict compilation keeps the raw parse; the mode is synced per sample).
+#   RAD: sin(0)=0, sin(pi/2)≈1
+#   DEG: sin(30)=1/2
+#   RAD again: sin(30)≈-0.988031624
+#
+# Run:
+#   program --script tests/emulator/scripts/grapher_giac_trig_angle_mode.numos \
+#           --deterministic --frames 1400 --headless --quiet
+log "giac_trig_angle_mode: start"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key y
+key =
+key sin
+key x
+key right
+key enter
+wait 60
+assert_graph_engine giac
+assert_graph_slot_kind 0 explicitY
+assert_graph_compile_status 0 ok
+assert_graph_compile_count 0 1
+assert_angle_mode rad
+assert_graph_eval_near 0 0 0 1e-9
+assert_graph_eval_near 0 1.5707963267948966 1 1e-9
+set_angle_mode deg
+assert_graph_eval_near 0 30 0.5 1e-9
+set_angle_mode rad
+assert_graph_eval_near 0 30 -0.9880316240928618 1e-6
+# The two mode flips above must not have recompiled the handle.
+assert_graph_compile_count 0 1
+log "giac_trig_angle_mode: DEG/RAD differ correctly with zero recompiles"

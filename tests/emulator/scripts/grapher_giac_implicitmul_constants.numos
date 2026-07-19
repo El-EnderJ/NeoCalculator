@@ -1,0 +1,50 @@
+# grapher_giac_implicitmul_constants — GIAC-C01: the Grapher-local implicit
+# multiplication expansion and the pi/e constants keep their meaning through
+# the RPN→Giac serializer.
+#   slot 0: "2x"    → y=2*x        f(5)=10
+#   slot 1: "x+pi"  → y=x+pi      f(0)=π≈3.141592653589793
+#   slot 2: "e"     → y=e (const) f(7)=e≈2.718281828459045 (Giac exp(1))
+#   slot 3: "xx"    → y=x*x       f(4)=16 (juxtaposed variables, GRBUG-003)
+#
+# Run:
+#   program --script tests/emulator/scripts/grapher_giac_implicitmul_constants.numos \
+#           --deterministic --frames 1400 --headless --quiet
+log "giac_implicitmul_constants: start"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key 2
+key x
+key enter
+wait 40
+key down
+key enter
+key x
+key +
+key pi
+key enter
+wait 40
+key down
+key enter
+key e
+key enter
+wait 40
+key down
+key enter
+key x
+key x
+key enter
+wait 60
+assert_graph_engine giac
+assert_graph_relation_count 4
+assert_graph_compile_status 0 ok
+assert_graph_eval_near 0 5 10 1e-9
+assert_graph_compile_status 1 ok
+assert_graph_eval_near 1 0 3.141592653589793 1e-6
+assert_graph_compile_status 2 ok
+assert_graph_eval_near 2 7 2.718281828459045 1e-6
+assert_graph_compile_status 3 ok
+assert_graph_eval_near 3 4 16 1e-9
+log "giac_implicitmul_constants: implicit products and pi/e stay exact"

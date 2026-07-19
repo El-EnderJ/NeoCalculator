@@ -1,0 +1,50 @@
+# grapher_giac_invalid_honest — GIAC-C01: rejected commits stay VISIBLY invalid
+# under the Giac engine — no handle is compiled, nothing plots, and there is no
+# silent fallback to the legacy RPN evaluator.
+#   slot 0: "x="   → one-sided relation  → compile_status error, eval invalid
+#   slot 1: "y=+"  → syntax (dangling operator) → compile_status error
+#   slot 2: "y=x"  → control: valid, compiled, samples fine
+# (The unknown-identifier refusal "x2.5" → "unknown: x2" stays covered by the
+# classifier suite; the engine-level unknown-variable rejection is covered in
+# the GIAC-C01 host harness.)
+#
+# Run:
+#   program --script tests/emulator/scripts/grapher_giac_invalid_honest.numos \
+#           --deterministic --frames 1400 --headless --quiet
+log "giac_invalid_honest: start"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key x
+key =
+key enter
+wait 40
+key down
+key enter
+key y
+key =
+key +
+key enter
+wait 40
+key down
+key enter
+key y
+key =
+key x
+key enter
+wait 60
+assert_graph_engine giac
+assert_graph_relation_count 3
+assert_graph_slot_kind 0 invalid
+assert_graph_slot_invalid_reason 0 one-sided
+assert_graph_compile_status 0 error
+assert_graph_eval_invalid 0 1
+assert_graph_slot_kind 1 invalid
+assert_graph_slot_invalid_reason 1 syntax
+assert_graph_compile_status 1 error
+assert_graph_slot_kind 2 explicitY
+assert_graph_compile_status 2 ok
+assert_graph_eval_near 2 6 6 1e-9
+log "giac_invalid_honest: refusals stay refusals; no phantom curve, no fallback"

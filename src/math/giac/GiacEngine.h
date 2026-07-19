@@ -177,9 +177,29 @@ public:
     /**
      * Parse + evaluate once for repeated numeric sampling in `variable`
      * (default "x"). Check .valid() on the returned handle.
+     *
+     * GIAC-C01 `strictVariables`: when true, the handle is compiled for the
+     * Grapher contract — the parsed tree is retained WITHOUT the up-front
+     * context eval() (so context assignments like x:=5 or DEG-folded
+     * constants can never be captured into the handle), and any free
+     * identifier other than `variable` (pi is a constant, not a variable)
+     * fails compilation with the offending name in diagnostic(). The
+     * default (false) keeps the historical GIAC-A01 behavior: one context
+     * eval() up front, unbound symbols tolerated at compile time and
+     * rejected per-sample.
      */
     CompiledExpression compileNumeric(const char* expression,
-                                      const char* variable = "x");
+                                      const char* variable = "x",
+                                      bool strictVariables = false);
+
+    /**
+     * GIAC-C01: parse once for repeated 2-variable sampling (implicit
+     * relations / inequality residuals). Always strict: the parsed tree is
+     * retained un-eval'd and only `variableA`/`variableB` may appear free.
+     */
+    CompiledExpression compileNumeric2D(const char* expression,
+                                        const char* variableA,
+                                        const char* variableB);
 
     /**
      * Numeric value at x without any string parsing. Returns true and sets
@@ -189,6 +209,14 @@ public:
      */
     bool evaluateNumeric(const CompiledExpression& expr, double x,
                          double& out);
+
+    /**
+     * GIAC-C01: numeric value at (a, b) for a 2-variable handle. Both
+     * variables are substituted simultaneously (never assigned into the
+     * shared context). Same result contract as evaluateNumeric().
+     */
+    bool evaluateNumeric2D(const CompiledExpression& expr, double a, double b,
+                           double& out);
 
     GiacEngine(const GiacEngine&) = delete;
     GiacEngine& operator=(const GiacEngine&) = delete;

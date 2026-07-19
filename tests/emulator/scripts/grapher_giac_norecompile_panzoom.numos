@@ -1,0 +1,51 @@
+# grapher_giac_norecompile_panzoom — GIAC-C01: pan / zoom / trace movement and
+# frame redraws sample the retained Giac handle but must NEVER recompile it.
+# y=x^2 is committed (1 compile pass), plotted, traced (arrow moves), zoomed
+# twice and panned in navigate mode; the per-slot compile counter must still
+# read exactly 1 afterwards.
+#
+# Run:
+#   program --script tests/emulator/scripts/grapher_giac_norecompile_panzoom.numos \
+#           --deterministic --frames 1400 --headless --quiet
+log "giac_norecompile_panzoom: start"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key y
+key =
+key x
+key ^
+key 2
+key enter
+wait 60
+assert_graph_engine giac
+assert_graph_compile_status 0 ok
+assert_graph_compile_count 0 1
+key graph
+wait 100
+assert_graph_trace_state trace
+# Trace movement (samples the curve at every step).
+key right
+key right
+key right
+key left
+wait 20
+# Zoom twice (full replot + adaptive resampling each time).
+key zoom
+wait 40
+key zoom
+wait 60
+# TRACE -> NAVIGATE, then pan (viewport translation + replot).
+key ac
+wait 20
+key right
+key right
+key up
+wait 40
+assert_app Grapher
+# The whole session above sampled hundreds of points: still ONE compile pass.
+assert_graph_compile_count 0 1
+assert_graph_eval_near 0 3 9 1e-9
+log "giac_norecompile_panzoom: trace+zoom+pan never recompiled the handle"

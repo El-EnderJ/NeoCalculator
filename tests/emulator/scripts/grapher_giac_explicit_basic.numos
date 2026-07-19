@@ -1,0 +1,45 @@
+# grapher_giac_explicit_basic — GIAC-C01: normal builds sample y=f(x) through
+# the GiacEngine retained compiled cache (parse once, evaluate many).
+#   slot 0: "y=x^2" → explicitY, Giac-compiled OK in exactly ONE pass;
+#   eval probes go through GraphModel::evalAt (the same entry point drawing,
+#   trace, table and POIs use): f(2)=4, f(-3)=9, f(0)=0.
+# Re-committing the slot (edit + ENTER, no content change) is a recompile:
+# the cumulative per-slot pass counter must go 1 → 2.
+#
+# Run:
+#   program --script tests/emulator/scripts/grapher_giac_explicit_basic.numos \
+#           --deterministic --frames 1400 --headless --quiet
+log "giac_explicit_basic: start"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key y
+key =
+key x
+key ^
+key 2
+key enter
+wait 60
+assert_app Grapher
+assert_graph_engine giac
+assert_graph_relation_count 1
+assert_graph_slot_kind 0 explicitY
+assert_graph_slot_valid 0
+assert_graph_compile_status 0 ok
+assert_graph_compile_count 0 1
+assert_graph_eval_near 0 2 4 1e-9
+assert_graph_eval_near 0 -3 9 1e-9
+assert_graph_eval_near 0 0 0 1e-9
+assert_graph_eval_valid 0 1.5
+# Repeated sampling of the unchanged expression must NOT recompile.
+assert_graph_compile_count 0 1
+# Edit + commit (unchanged content) IS a recompile: one more pass.
+key enter
+key enter
+wait 40
+assert_graph_compile_status 0 ok
+assert_graph_compile_count 0 2
+assert_graph_eval_near 0 2 4 1e-9
+log "giac_explicit_basic: y=x^2 compiled once, edited recompiles, values exact"

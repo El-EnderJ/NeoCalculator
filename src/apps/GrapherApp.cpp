@@ -1064,9 +1064,10 @@ void GrapherApp::removeFunction(int idx) {
     // Destroy VPAM resources for this slot
     _exprCanvas[idx].stopCursorBlink();
 
-    // Shift down data (use assignment, NOT memcpy — FuncSlot has std::vector)
+    // Shift down data (move assignment, NOT memcpy — FuncSlot has
+    // std::vector members and, since GIAC-C01, move-only compiled handles)
     for (int i = idx; i < _numFuncs - 1; ++i) {
-        _funcs[i] = _funcs[i + 1];
+        _funcs[i] = std::move(_funcs[i + 1]);
         _exprAST[i] = std::move(_exprAST[i + 1]);
         _exprASTRow[i] = _exprAST[i] ? static_cast<NodeRow*>(_exprAST[i].get()) : nullptr;
         _exprCursor[i] = _exprCursor[i + 1];
@@ -4141,5 +4142,28 @@ int GrapherApp::debugIntersectionCount() const {
     for (int i = 0; i < _numPOIs; ++i)
         if (_pois[i].type == POIType::Intersection) ++n;
     return n;
+}
+
+// ── GIAC-C01 hooks (see GrapherApp.h) ─────────────────────────────────────
+
+bool GrapherApp::debugSlotCompileOk(int i) const {
+    if (i < 0 || i >= MAX_FUNCS || i >= _numFuncs) return false;
+    return grapher::GraphModel::debugSlotCompiledOk(_funcs[i]);
+}
+
+int GrapherApp::debugSlotCompileCount(int i) const {
+    if (i < 0 || i >= MAX_FUNCS || i >= _numFuncs) return 0;
+    return grapher::GraphModel::debugSlotCompileCount(_funcs[i]);
+}
+
+float GrapherApp::debugSlotEvalParam(int i, float t) {
+    if (i < 0 || i >= MAX_FUNCS || i >= _numFuncs) return NAN;
+    if (_funcs[i].explicitY) return _model.evalAtY(_funcs[i], t);
+    return _model.evalAt(_funcs[i], t);
+}
+
+float GrapherApp::debugSlotEvalResidual(int i, float x, float y) {
+    if (i < 0 || i >= MAX_FUNCS || i >= _numFuncs) return NAN;
+    return _model.evalImplicit(_funcs[i], x, y);
 }
 #endif  // NATIVE_SIM

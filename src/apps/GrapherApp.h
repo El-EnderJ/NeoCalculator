@@ -76,6 +76,18 @@ public:
     int         debugTraceFn() const { return _traceFn; }
     int         debugIntersectionCount() const;       // POIs of type Intersection
     const char* debugAngleMode() const { return _model.debugAngleMode(); }  // deg|rad (evaluator's last-synced mode)
+
+    // ── GIAC-C01 hooks: engine identity, per-slot compiled cache, probes ──
+    // debugSlotEvalParam evaluates the slot's single-parameter function
+    // (y=f(x): parameter x, result y; x=f(y): parameter y, result x) and
+    // debugSlotEvalResidual the implicit residual G(x,y) — both through the
+    // SAME GraphModel entry points drawing/trace/POIs use, so the hooks can
+    // never observe a different evaluator than the renderer.
+    const char* debugGraphEngine() const { return grapher::GraphModel::debugEngineName(); }
+    bool  debugSlotCompileOk(int i) const;
+    int   debugSlotCompileCount(int i) const;   // -1 in the legacy build
+    float debugSlotEvalParam(int i, float t);       // NAN = invalid sample
+    float debugSlotEvalResidual(int i, float x, float y);
 #endif
 
 private:

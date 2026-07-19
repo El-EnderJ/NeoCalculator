@@ -1,0 +1,60 @@
+# grapher_giac_domain_gaps — GIAC-C01: invalid/non-finite Giac outcomes become
+# GAPS (NAN samples), never fake zeros.
+#   slot 0: "y=1/x"    valid at ±2 (∓0.5), INVALID exactly at the x=0 pole
+#                      (no bridge across the pole: GRBUG-001 scripts guard the
+#                      pixels; this guards the sample-level contract)
+#   slot 1: "y=sqrt(x)" valid for x>=0 (sqrt(4)=2, sqrt(0)=0), invalid x<0
+#   slot 2: "y=ln(x)"   valid for x>0 (ln(1)=0), invalid at 0 and x<0
+#
+# Run:
+#   program --script tests/emulator/scripts/grapher_giac_domain_gaps.numos \
+#           --deterministic --frames 1400 --headless --quiet
+log "giac_domain_gaps: start"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key y
+key =
+key 1
+key /
+key x
+key enter
+wait 40
+key down
+key enter
+key y
+key =
+key sqrt
+key x
+key right
+key enter
+wait 40
+key down
+key enter
+key y
+key =
+key ln
+key x
+key right
+key enter
+wait 60
+assert_graph_engine giac
+assert_graph_relation_count 3
+assert_graph_compile_status 0 ok
+assert_graph_compile_status 1 ok
+assert_graph_compile_status 2 ok
+# 1/x: both branches valid, pole is a gap.
+assert_graph_eval_near 0 2 0.5 1e-9
+assert_graph_eval_near 0 -2 -0.5 1e-9
+assert_graph_eval_invalid 0 0
+# sqrt(x): domain edge at 0 valid, negatives are gaps.
+assert_graph_eval_near 1 4 2 1e-9
+assert_graph_eval_near 1 0 0 1e-9
+assert_graph_eval_invalid 1 -1
+# ln(x): positives valid, 0 and negatives are gaps.
+assert_graph_eval_near 2 1 0 1e-9
+assert_graph_eval_invalid 2 0
+assert_graph_eval_invalid 2 -1
+log "giac_domain_gaps: poles and domain holes are gaps, never zeros"

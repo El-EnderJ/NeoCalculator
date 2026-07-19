@@ -281,6 +281,48 @@ void genToNode(const giac::gen& g, giac::context* ctx,
     }
 }
 
+// ---------------------------------------------------------------------------
+// GIAC-C01: strict free-variable validation for Grapher-shaped handles.
+// Bounded recursive walk over a parsed gen looking for the FIRST identifier
+// that is neither an allowed sampling variable nor a mathematical constant
+// (pi and the infinity/undef sentinels are _IDNT-typed in Giac but are not
+// variables). Returns true and fills `name` when such an identifier exists.
+// ---------------------------------------------------------------------------
+
+bool findDisallowedIdent(const giac::gen& g, const giac::gen* allowed,
+                         int nAllowed, int depth, int& budget,
+                         std::string& name, giac::context* ctx) {
+    if (depth > 64 || --budget < 0) return false;
+    switch (g.type) {
+        case giac::_IDNT: {
+            if (g == giac::cst_pi || g == giac::cst_i) return false;
+            if (g == giac::unsigned_inf || g == giac::plus_inf ||
+                g == giac::minus_inf || giac::is_undef(g)) return false;
+            for (int i = 0; i < nAllowed; ++i)
+                if (g == allowed[i]) return false;
+            name = g.print(ctx);
+            return true;
+        }
+        case giac::_SYMB:
+            return findDisallowedIdent(g._SYMBptr->feuille, allowed, nAllowed,
+                                       depth + 1, budget, name, ctx);
+        case giac::_VECT: {
+            for (const giac::gen& child : *g._VECTptr)
+                if (findDisallowedIdent(child, allowed, nAllowed, depth + 1,
+                                        budget, name, ctx))
+                    return true;
+            return false;
+        }
+        case giac::_FRAC:
+            return findDisallowedIdent(g._FRACptr->num, allowed, nAllowed,
+                                       depth + 1, budget, name, ctx) ||
+                   findDisallowedIdent(g._FRACptr->den, allowed, nAllowed,
+                                       depth + 1, budget, name, ctx);
+        default:
+            return false;
+    }
+}
+
 // File-scope mirrors of the singleton's context/generation. The context
 // pointer feeds the giacinternal transition accessor; the generation lets
 // CompiledExpression::valid() detect handles orphaned by reset() without
@@ -297,8 +339,10 @@ uint32_t s_generationForHandles = 0;
 struct CompiledExpression::Impl {
     giac::gen expr;
     giac::gen var;
+    giac::gen var2;         // second sampling variable (2D handles only)
     uint32_t generation = 0;
     bool parsedOk = false;
+    bool twoVars = false;   // compiled via compileNumeric2D
     std::string diag;
 };
 
@@ -533,7 +577,8 @@ MathEngineResult GiacEngine::assign(const char* name,
 }
 
 CompiledExpression GiacEngine::compileNumeric(const char* expression,
-                                              const char* variable) {
+                                              const char* variable,
+                                              bool strictVariables) {
     CompiledExpression handle;
     handle._impl = new CompiledExpression::Impl();
     handle._impl->generation = _generation;
@@ -558,12 +603,28 @@ CompiledExpression GiacEngine::compileNumeric(const char* expression,
                 handle._impl->diag = parsed.print(_state->ctx);
             return handle;
         }
-        // One symbolic normalization up front; samples reuse the DAG.
-        handle._impl->expr =
-            giac::eval(parsed, giac::eval_level(_state->ctx), _state->ctx);
-        if (giac::is_undef(handle._impl->expr)) {
-            handle._impl->diag = capture.text();
-            return handle;
+        if (strictVariables) {
+            // Grapher contract: no free identifier beyond the sampling
+            // variable, and NO context eval() — retaining the raw parse means
+            // a context assignment (x:=5) or a DEG-folded constant can never
+            // be baked into the handle. Angle mode therefore only matters at
+            // evaluateNumeric() time.
+            std::string offender;
+            int budget = 4096;
+            if (findDisallowedIdent(parsed, &handle._impl->var, 1, 0, budget,
+                                    offender, _state->ctx)) {
+                handle._impl->diag = "unknown variable: " + offender;
+                return handle;
+            }
+            handle._impl->expr = parsed;
+        } else {
+            // One symbolic normalization up front; samples reuse the DAG.
+            handle._impl->expr =
+                giac::eval(parsed, giac::eval_level(_state->ctx), _state->ctx);
+            if (giac::is_undef(handle._impl->expr)) {
+                handle._impl->diag = capture.text();
+                return handle;
+            }
         }
         handle._impl->parsedOk = true;
     } catch (const std::exception& e) {
@@ -574,10 +635,81 @@ CompiledExpression GiacEngine::compileNumeric(const char* expression,
     return handle;
 }
 
+CompiledExpression GiacEngine::compileNumeric2D(const char* expression,
+                                                const char* variableA,
+                                                const char* variableB) {
+    CompiledExpression handle;
+    handle._impl = new CompiledExpression::Impl();
+    handle._impl->generation = _generation;
+
+    CallGuard guard(_inCall);
+    if (!guard.entered()) {
+        handle._impl->diag = "GiacEngine is non-reentrant: nested call rejected";
+        return handle;
+    }
+    if (!begin() || !expression || !*expression ||
+        !variableA || !*variableA || !variableB || !*variableB ||
+        std::strcmp(variableA, variableB) == 0) {
+        handle._impl->diag = "invalid input or Giac context unavailable";
+        return handle;
+    }
+    syncAngleMode(_state->ctx);
+    try {
+        DiagnosticCapture capture(_state->ctx);
+        handle._impl->var  = giac::gen(giac::identificateur(variableA));
+        handle._impl->var2 = giac::gen(giac::identificateur(variableB));
+        handle._impl->twoVars = true;
+        giac::gen parsed(std::string(expression), _state->ctx);
+        if (giac::is_undef(parsed)) {
+            handle._impl->diag = capture.text();
+            if (handle._impl->diag.empty())
+                handle._impl->diag = parsed.print(_state->ctx);
+            return handle;
+        }
+        // Always strict (see compileNumeric strictVariables): raw parse
+        // retained, only the two sampling variables may appear free.
+        const giac::gen allowed[2] = { handle._impl->var, handle._impl->var2 };
+        std::string offender;
+        int budget = 4096;
+        if (findDisallowedIdent(parsed, allowed, 2, 0, budget, offender,
+                                _state->ctx)) {
+            handle._impl->diag = "unknown variable: " + offender;
+            return handle;
+        }
+        handle._impl->expr = parsed;
+        handle._impl->parsedOk = true;
+    } catch (const std::exception& e) {
+        handle._impl->diag = e.what();
+    } catch (...) {
+        handle._impl->diag = "unknown Giac exception";
+    }
+    return handle;
+}
+
+// Shared result classification for the retained-sample evaluators: real
+// doubles and signed infinities are samples; anything else (undef, unsigned
+// infinity, complex, symbolic residue) is an honest rejection.
+static bool classifyNumericResult(const giac::gen& num, double& out) {
+    if (num.type == giac::_DOUBLE_) {
+        out = num._DOUBLE_val;
+        return true;
+    }
+    // Preserve pole behavior: signed infinities are legitimate samples.
+    if (num == giac::plus_inf) {
+        out = INFINITY;
+        return true;
+    }
+    if (num == giac::minus_inf) {
+        out = -INFINITY;
+        return true;
+    }
+    return false;  // symbolic residue / undef / unsigned infinity
+}
+
 bool GiacEngine::evaluateNumeric(const CompiledExpression& expr, double x,
                                  double& out) {
     out = NAN;
-    if (!expr.valid()) return false;
+    if (!expr.valid() || expr._impl->twoVars) return false;
 
     CallGuard guard(_inCall);
     if (!guard.entered()) return false;
@@ -587,20 +719,32 @@ bool GiacEngine::evaluateNumeric(const CompiledExpression& expr, double x,
         giac::gen sub = giac::subst(expr._impl->expr, expr._impl->var,
                                     giac::gen(x), false, _state->ctx);
         giac::gen num = giac::evalf_double(sub, 1, _state->ctx);
-        if (num.type == giac::_DOUBLE_) {
-            out = num._DOUBLE_val;
-            return true;
-        }
-        // Preserve pole behavior: signed infinities are legitimate samples.
-        if (num == giac::plus_inf) {
-            out = INFINITY;
-            return true;
-        }
-        if (num == giac::minus_inf) {
-            out = -INFINITY;
-            return true;
-        }
-        return false;  // symbolic residue / undef / unsigned infinity
+        return classifyNumericResult(num, out);
+    } catch (...) {
+        return false;
+    }
+}
+
+bool GiacEngine::evaluateNumeric2D(const CompiledExpression& expr, double a,
+                                   double b, double& out) {
+    out = NAN;
+    if (!expr.valid() || !expr._impl->twoVars) return false;
+
+    CallGuard guard(_inCall);
+    if (!guard.entered()) return false;
+    if (!begin()) return false;
+    syncAngleMode(_state->ctx);
+    try {
+        // Simultaneous substitution of both sampling variables — the shared
+        // context is never written, so a stored x/y value cannot capture the
+        // graph variables and no per-sample assignment state accumulates.
+        giac::vecteur vars(2), vals(2);
+        vars[0] = expr._impl->var;  vars[1] = expr._impl->var2;
+        vals[0] = giac::gen(a);     vals[1] = giac::gen(b);
+        giac::gen sub = giac::subst(expr._impl->expr, vars, vals, false,
+                                    _state->ctx);
+        giac::gen num = giac::evalf_double(sub, 1, _state->ctx);
+        return classifyNumericResult(num, out);
     } catch (...) {
         return false;
     }

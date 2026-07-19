@@ -117,6 +117,7 @@
 #include "../apps/GrapherApp.h"           // Phase 8G: LVGL-native grapher (RPN pipeline; no Giac/CAS)
 #include "../math/VariableManager.h"      // Phase 8B: assert_variable lee el singleton de variables
 #include "../math/AngleModeRuntime.h"     // AM-01: set/assert_angle_mode (runtime DEG/RAD truth)
+#include "../math/giac/GiacEngine.h"      // GIAC-C01: giac_reset script hook (opaque seam)
 #include "../display/DisplayDriver.h"
 #include "../ui/SplashScreen.h"
 #include "../ui/MainMenu.h"
@@ -1465,6 +1466,14 @@ static bool saveScreenshotPPM(const char* path)
 //   assert_angle_mode M       · (AM-01) aserta la verdad runtime (vpam::g_angleMode)
 //   assert_statusbar_angle M  · (AM-01) aserta el texto REAL del badge de la barra activa
 //   assert_graph_angle_mode M · (AM-01) aserta el modo del Evaluator del GraphModel
+//   assert_graph_engine E             · (GIAC-C01) motor de muestreo (giac|legacy)
+//   assert_graph_compile_status S ok|error · estado de compilacion Giac del slot S
+//   assert_graph_compile_count S N    · pases de compilacion acumulados del slot S
+//   assert_graph_eval_valid S T [Y]   · muestra valida via GraphModel (1 coord =
+//                                       funcion mono-parametro; 2 = residual G)
+//   assert_graph_eval_invalid S T [Y] · muestra invalida (gap de dominio/polo)
+//   assert_graph_eval_near S T [Y] V EPS · |muestra - V| <= EPS
+//   giac_reset                        · (GIAC-C01) rebuild del contexto Giac
 //
 // Modelo de planificacion (determinista): UN comando por frame, ejecutado ANTES
 // de processSdlEvents() para que la tecla sea visible al avance de tick y a
@@ -1514,7 +1523,20 @@ enum class ScriptCmdType : uint8_t {
     AssertCalcEngine,          // assert_calc_engine giac|legacy
     AssertCalcResultKind,      // assert_calc_result_kind structured|text_fallback|none
     AssertCalcStatus,          // assert_calc_status ok|undefined|parse_error|evaluation_error|unsupported|out_of_memory
-    AssertCalcExact            // assert_calc_exact TEXT (igualdad exacta con exactText)
+    AssertCalcExact,           // assert_calc_exact TEXT (igualdad exacta con exactText)
+    // GIAC-C01: Grapher engine probes (retained compiled cache). Los eval
+    // hooks pasan por los MISMOS puntos de entrada de GraphModel que usa el
+    // renderizado/trace/POIs, asi que no pueden observar otro evaluador.
+    //   forma de 1 coordenada: funcion mono-parametro del slot
+    //     (y=f(x): parametro x, resultado y; x=f(y): parametro y, resultado x)
+    //   forma de 2 coordenadas: residual implicito G(x,y)=lhs-rhs
+    AssertGraphEngine,         // assert_graph_engine giac|legacy
+    AssertGraphCompileStatus,  // assert_graph_compile_status SLOT ok|error
+    AssertGraphCompileCount,   // assert_graph_compile_count SLOT N (N en fArgs[0])
+    AssertGraphEvalValid,      // assert_graph_eval_valid SLOT T [Y]      (fArgs)
+    AssertGraphEvalInvalid,    // assert_graph_eval_invalid SLOT T [Y]    (fArgs)
+    AssertGraphEvalNear,       // assert_graph_eval_near SLOT T [Y] EXPECTED EPS
+    GiacReset                  // giac_reset (rebuild del contexto; handles huerfanos)
 };
 
 struct ScriptCmd {
@@ -1525,6 +1547,8 @@ struct ScriptCmd {
     std::string   strArg;                 // Screenshot (ruta) / Log (mensaje) /
                                           // Assert* (texto esperado / app canonica) /
                                           // OpenApp (nombre canonico, para el log)
+    std::vector<double> fArgs;            // GIAC-C01 assert_graph_eval_* /
+                                          // assert_graph_compile_count numeros
     int           line  = 0;              // linea de origen (diagnostico)
 };
 
@@ -1918,6 +1942,77 @@ static bool loadScript(const char* path)
             sc.type   = ScriptCmdType::AssertCalcExact;
             sc.strArg = rest;
         }
+        // ── GIAC-C01: Grapher engine probes (append-only) ────────────────
+        else if (lc == "assert_graph_engine") {
+            std::string mode, extra;
+            if (!(iss >> mode)) return scriptErr(path, lineNo, "assert_graph_engine requiere giac|legacy");
+            if (iss >> extra)   return scriptErr(path, lineNo, "assert_graph_engine: demasiados argumentos");
+            if (mode != "giac" && mode != "legacy")
+                return scriptErr(path, lineNo, "assert_graph_engine: valor desconocido (giac|legacy)");
+            sc.type   = ScriptCmdType::AssertGraphEngine;
+            sc.strArg = mode;
+        }
+        else if (lc == "assert_graph_compile_status") {
+            std::string sTok, st, extra;
+            long slot = 0;
+            if (!(iss >> sTok) || !parseNonNegLong(sTok, slot) || slot > 5)
+                return scriptErr(path, lineNo, "assert_graph_compile_status requiere SLOT 0..5");
+            if (!(iss >> st) || (st != "ok" && st != "error"))
+                return scriptErr(path, lineNo, "assert_graph_compile_status requiere ok|error");
+            if (iss >> extra) return scriptErr(path, lineNo, "assert_graph_compile_status: demasiados argumentos");
+            sc.type   = ScriptCmdType::AssertGraphCompileStatus;
+            sc.waitN  = slot;
+            sc.strArg = st;
+        }
+        else if (lc == "assert_graph_compile_count") {
+            std::string sTok, nTok, extra;
+            long slot = 0, n = 0;
+            if (!(iss >> sTok) || !parseNonNegLong(sTok, slot) || slot > 5)
+                return scriptErr(path, lineNo, "assert_graph_compile_count requiere SLOT 0..5");
+            if (!(iss >> nTok) || !parseNonNegLong(nTok, n))
+                return scriptErr(path, lineNo, "assert_graph_compile_count requiere N entero >= 0");
+            if (iss >> extra) return scriptErr(path, lineNo, "assert_graph_compile_count: demasiados argumentos");
+            sc.type  = ScriptCmdType::AssertGraphCompileCount;
+            sc.waitN = slot;
+            sc.fArgs.push_back(static_cast<double>(n));
+        }
+        else if (lc == "assert_graph_eval_valid" || lc == "assert_graph_eval_invalid" ||
+                 lc == "assert_graph_eval_near") {
+            // assert_graph_eval_valid   SLOT T [Y]
+            // assert_graph_eval_invalid SLOT T [Y]
+            // assert_graph_eval_near    SLOT T [Y] EXPECTED EPS
+            // 1 coordenada = funcion mono-parametro del slot; 2 = residual G(x,y).
+            std::string sTok;
+            long slot = 0;
+            if (!(iss >> sTok) || !parseNonNegLong(sTok, slot) || slot > 5)
+                return scriptErr(path, lineNo, "assert_graph_eval_*: requiere SLOT 0..5");
+            std::string tok;
+            std::vector<double> nums;
+            while (iss >> tok) {
+                char* end = nullptr;
+                double v = std::strtod(tok.c_str(), &end);
+                if (!end || *end != '\0')
+                    return scriptErr(path, lineNo, "assert_graph_eval_*: argumento no numerico");
+                nums.push_back(v);
+            }
+            const bool isNear = (lc == "assert_graph_eval_near");
+            if (isNear ? (nums.size() != 3 && nums.size() != 4)
+                       : (nums.size() != 1 && nums.size() != 2))
+                return scriptErr(path, lineNo, isNear
+                    ? "assert_graph_eval_near requiere SLOT T [Y] EXPECTED EPS"
+                    : "assert_graph_eval_valid/_invalid requiere SLOT T [Y]");
+            sc.type  = isNear ? ScriptCmdType::AssertGraphEvalNear
+                     : (lc == "assert_graph_eval_valid")
+                         ? ScriptCmdType::AssertGraphEvalValid
+                         : ScriptCmdType::AssertGraphEvalInvalid;
+            sc.waitN = slot;
+            sc.fArgs = std::move(nums);
+        }
+        else if (lc == "giac_reset") {
+            std::string extra;
+            if (iss >> extra) return scriptErr(path, lineNo, "giac_reset no acepta argumentos");
+            sc.type = ScriptCmdType::GiacReset;
+        }
         else {
             return scriptErr(path, lineNo, "comando desconocido");
         }
@@ -2165,7 +2260,13 @@ static void scriptStepBegin()
         case ScriptCmdType::AssertGraphRelationOp:
         case ScriptCmdType::AssertGraphExprText:
         case ScriptCmdType::AssertGraphTraceState:
-        case ScriptCmdType::AssertGraphIntersectionCount: {
+        case ScriptCmdType::AssertGraphIntersectionCount:
+        case ScriptCmdType::AssertGraphEngine:
+        case ScriptCmdType::AssertGraphCompileStatus:
+        case ScriptCmdType::AssertGraphCompileCount:
+        case ScriptCmdType::AssertGraphEvalValid:
+        case ScriptCmdType::AssertGraphEvalInvalid:
+        case ScriptCmdType::AssertGraphEvalNear: {
             if (g_mode != AppMode::GRAPHER || !g_grapherApp) {
                 assertFail(sc.line, "assert_graph_* requiere Grapher activo (app actual: '" +
                                     std::string(activeAppName()) + "')");
@@ -2254,6 +2355,94 @@ static void scriptStepBegin()
                                             std::to_string(slot) + " pero hay " + std::to_string(actual));
                     break;
                 }
+                // ── GIAC-C01 engine probes ──────────────────────────────
+                case ScriptCmdType::AssertGraphEngine: {
+                    const char* actual = g_grapherApp->debugGraphEngine();
+                    if (sc.strArg == actual)
+                        assertPass(sc.line, "assert_graph_engine " + sc.strArg);
+                    else
+                        assertFail(sc.line, "assert_graph_engine esperaba '" + sc.strArg +
+                                            "' pero el motor es '" + actual + "'");
+                    break;
+                }
+                case ScriptCmdType::AssertGraphCompileStatus: {
+                    const bool ok = g_grapherApp->debugSlotCompileOk(slot);
+                    const bool wantOk = (sc.strArg == "ok");
+                    if (ok == wantOk)
+                        assertPass(sc.line, "assert_graph_compile_status " +
+                                            std::to_string(slot) + " " + sc.strArg);
+                    else
+                        assertFail(sc.line, "assert_graph_compile_status slot " +
+                                            std::to_string(slot) + " esperaba '" + sc.strArg +
+                                            "' pero es '" + (ok ? "ok" : "error") +
+                                            "' (kind='" + g_grapherApp->debugSlotKind(slot) +
+                                            "', reason='" +
+                                            g_grapherApp->debugSlotInvalidReason(slot) + "')");
+                    break;
+                }
+                case ScriptCmdType::AssertGraphCompileCount: {
+                    const int expect = static_cast<int>(sc.fArgs[0]);
+                    const int actual = g_grapherApp->debugSlotCompileCount(slot);
+                    if (actual == expect)
+                        assertPass(sc.line, "assert_graph_compile_count " +
+                                            std::to_string(slot) + " " + std::to_string(expect));
+                    else
+                        assertFail(sc.line, "assert_graph_compile_count slot " +
+                                            std::to_string(slot) + " esperaba " +
+                                            std::to_string(expect) + " pero lleva " +
+                                            std::to_string(actual));
+                    break;
+                }
+                case ScriptCmdType::AssertGraphEvalValid:
+                case ScriptCmdType::AssertGraphEvalInvalid:
+                case ScriptCmdType::AssertGraphEvalNear: {
+                    const bool isNear = (sc.type == ScriptCmdType::AssertGraphEvalNear);
+                    const bool twoCoords = isNear ? (sc.fArgs.size() == 4)
+                                                  : (sc.fArgs.size() == 2);
+                    const float v = twoCoords
+                        ? g_grapherApp->debugSlotEvalResidual(
+                              slot, (float)sc.fArgs[0], (float)sc.fArgs[1])
+                        : g_grapherApp->debugSlotEvalParam(slot, (float)sc.fArgs[0]);
+                    char at[64];
+                    if (twoCoords)
+                        snprintf(at, sizeof(at), "(%g, %g)", sc.fArgs[0], sc.fArgs[1]);
+                    else
+                        snprintf(at, sizeof(at), "(%g)", sc.fArgs[0]);
+                    if (sc.type == ScriptCmdType::AssertGraphEvalValid) {
+                        if (!std::isnan(v))
+                            assertPass(sc.line, "assert_graph_eval_valid " +
+                                                std::to_string(slot) + " " + at +
+                                                " = " + std::to_string(v));
+                        else
+                            assertFail(sc.line, "assert_graph_eval_valid slot " +
+                                                std::to_string(slot) + " en " + at +
+                                                " es INVALIDO (gap)");
+                    } else if (sc.type == ScriptCmdType::AssertGraphEvalInvalid) {
+                        if (std::isnan(v))
+                            assertPass(sc.line, "assert_graph_eval_invalid " +
+                                                std::to_string(slot) + " " + at);
+                        else
+                            assertFail(sc.line, "assert_graph_eval_invalid slot " +
+                                                std::to_string(slot) + " en " + at +
+                                                " es VALIDO (= " + std::to_string(v) + ")");
+                    } else {
+                        const double expect = sc.fArgs[sc.fArgs.size() - 2];
+                        const double eps    = sc.fArgs[sc.fArgs.size() - 1];
+                        if (!std::isnan(v) && std::fabs((double)v - expect) <= eps)
+                            assertPass(sc.line, "assert_graph_eval_near " +
+                                                std::to_string(slot) + " " + at +
+                                                " = " + std::to_string(v));
+                        else
+                            assertFail(sc.line, "assert_graph_eval_near slot " +
+                                                std::to_string(slot) + " en " + at +
+                                                " esperaba " + std::to_string(expect) +
+                                                " +/- " + std::to_string(eps) +
+                                                " pero es " +
+                                                (std::isnan(v) ? "INVALIDO"
+                                                               : std::to_string(v)));
+                    }
+                    break;
+                }
                 default: break;
             }
             break;
@@ -2264,6 +2453,16 @@ static void scriptStepBegin()
             numos::setAngleMode(sc.strArg == "deg" ? vpam::AngleMode::DEG
                                                    : vpam::AngleMode::RAD);
             std::printf("[SCRIPT] set_angle_mode %s\n", sc.strArg.c_str());
+            break;
+        }
+
+        // GIAC-C01: destruye y reconstruye el contexto Giac. Todos los
+        // CompiledExpression previos quedan huerfanos (generation stamp); la
+        // siguiente evaluacion del Grapher debe recompilar exactamente una
+        // vez — es lo que asertan los scripts grapher_giac_reset_*.
+        case ScriptCmdType::GiacReset: {
+            numos::GiacEngine::instance().reset();
+            std::printf("[SCRIPT] giac_reset: contexto reconstruido (handles huerfanos)\n");
             break;
         }
         case ScriptCmdType::AssertAngleMode: {

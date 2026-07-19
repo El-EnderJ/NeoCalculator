@@ -32,6 +32,22 @@
 #include "../math/Evaluator.h"
 #include "../math/VariableContext.h"
 
+// ── GIAC-C01: engine selection ──────────────────────────────────────────────
+// Normal builds evaluate every curve through numos::GiacEngine retained
+// compiled expressions (parse once, sample many). The historical RPN
+// Evaluator remains ONLY as an explicit rollback build:
+//     -DNUMOS_GRAPHER_LEGACY_ENGINE
+// There is NO automatic per-expression fallback between the two: when Giac
+// compilation fails on classifier-accepted input, the slot becomes visibly
+// invalid instead of silently sampling the legacy path.
+// In BOTH builds the Tokenizer/Parser/Evaluator still run at COMMIT time as
+// the classifier (contract R0-R14) and its structural dry-run — that keeps
+// accept/reject behavior byte-identical — but in normal builds no sample is
+// ever computed by them.
+#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
+#include "../math/giac/GiacEngine.h"   // opaque CompiledExpression only
+#endif
+
 namespace grapher {
 
 /**
@@ -131,6 +147,28 @@ struct CartesianFunction {
     char               reasonDetail[12]; ///< UnknownIdent: offending identifier
     InvalidReason      serializeVerdict; ///< serialiser verdict (None/TooLong/Unsupported)
 
+#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
+    // ── GIAC-C01: per-slot retained compiled cache (normal builds) ─────────
+    // Compiled ONCE at commit (preCacheRPN) from the classifier's RPN, then
+    // sampled many times with no reparse. Which handles are filled depends on
+    // the slot kind:
+    //   explicit y=f(x)  → giacF  (variable x)
+    //   x=f(y) trace     → giacFy (variable y)  [+ giacG for the contour]
+    //   implicit / ineq  → giacG  (variables x,y; residual lhs-rhs)
+    // Handles are generation-stamped by GiacEngine: after a reset() they turn
+    // invalid and the next evaluation triggers exactly one recompile (counted
+    // in giacCompileCount, the test-hook counter). NOTE: CompiledExpression
+    // is move-only, which makes this struct move-only too (slot shifting in
+    // GrapherApp::removeFunction uses std::move).
+    numos::CompiledExpression giacF;    ///< f(x) for explicit y=f(x)
+    numos::CompiledExpression giacG;    ///< residual G(x,y) (implicit/ineq)
+    numos::CompiledExpression giacFy;   ///< f(y) for explicit x=f(y)
+    bool     giacFValid;                ///< giacF compiled OK
+    bool     giacGValid;                ///< giacG compiled OK
+    bool     giacFyValid;               ///< giacFy compiled OK
+    uint16_t giacCompileCount;          ///< cumulative Giac compiles (hook)
+#endif
+
     bool isInequality() const { return relation != Relation::Equal; }
     /// True when this slot can be traced/tabulated as a single-valued y=f(x).
     bool isExplicit()   const { return valid && !implicit; }
@@ -144,6 +182,10 @@ struct CartesianFunction {
           implicit(false), rpnLValid(false), relation(Relation::Equal),
           explicitY(false), rpnYValid(false),
           invalidReason(InvalidReason::None), serializeVerdict(InvalidReason::None)
+#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
+        , giacFValid(false), giacGValid(false), giacFyValid(false),
+          giacCompileCount(0)
+#endif
     { text[0] = '\0'; reasonDetail[0] = '\0'; }
 };
 
@@ -236,12 +278,38 @@ public:
     );
 
 #ifdef NATIVE_SIM
-    /// Emulator-only: angle mode the numeric evaluator is currently set to
-    /// ("deg"/"rad"). Reflects the LAST sync (preCacheRPN/evalAt/...), so a
-    /// set_angle_mode that has not been followed by an evaluation is not yet
-    /// visible here — that is exactly what the sync smoke asserts.
+    /// Emulator-only: angle mode the numeric evaluation layer is currently
+    /// set to ("deg"/"rad"). Reflects the LAST sync (preCacheRPN/evalAt/...),
+    /// so a set_angle_mode that has not been followed by an evaluation is not
+    /// yet visible here — that is exactly what the sync smoke asserts.
+    /// The classifier's Evaluator is synced at the same entry points in both
+    /// engine builds, so its mode doubles as the Giac-path mirror.
     const char* debugAngleMode() const {
         return _eval.angleMode() == AngleMode::DEG ? "deg" : "rad";
+    }
+
+    /// GIAC-C01 hooks: which engine samples curves in THIS build, and the
+    /// per-slot compiled state (see CartesianFunction::giacCompileCount).
+    static const char* debugEngineName() {
+#ifdef NUMOS_GRAPHER_LEGACY_ENGINE
+        return "legacy";
+#else
+        return "giac";
+#endif
+    }
+    static bool debugSlotCompiledOk(const CartesianFunction& fn) {
+#ifdef NUMOS_GRAPHER_LEGACY_ENGINE
+        return fn.valid;
+#else
+        return fn.valid && (fn.implicit ? fn.giacGValid : fn.giacFValid);
+#endif
+    }
+    static int debugSlotCompileCount(const CartesianFunction& fn) {
+#ifdef NUMOS_GRAPHER_LEGACY_ENGINE
+        (void)fn; return -1;   // no Giac compiles in the rollback build
+#else
+        return (int)fn.giacCompileCount;
+#endif
     }
 #endif
 
@@ -284,6 +352,35 @@ private:
      * "ln(x-5)" stays valid even though ln(-4) fails.
      */
     bool dryRunStructural(const std::vector<Token>& rpn, CartesianFunction& fn);
+
+#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
+    /**
+     * GIAC-C01: serialize a classifier-produced RPN into fully-parenthesized
+     * Giac text. Emitting from the RPN (not the raw text) reuses the EXACT
+     * parse the classifier validated, so NumOS-parser precedence can never
+     * diverge from Giac's grammar. Maps the frozen token vocabulary:
+     * x/y (lowercased), pi, e -> exp(1), ans -> (0) (the Grapher-private Ans
+     * legacy value), sin/cos/tan/sqrt/abs verbatim, log -> log10 (Giac log is
+     * ln), ln -> ln, + - * / ^. Returns false on anything else.
+     */
+    static bool rpnToGiacText(const std::vector<Token>& rpn, std::string& out);
+
+    /**
+     * Compile the slot's classifier RPNs into retained Giac handles (one
+     * compilation pass; bumps giacCompileCount once). On failure the slot is
+     * invalidated with an honest reason — NEVER left to sample the legacy
+     * evaluator. Returns the slot's final validity.
+     */
+    bool compileGiacHandles(CartesianFunction& fn);
+
+    /**
+     * Ensure the slot's handles are usable (not orphaned by a GiacEngine
+     * reset); recompiles once from the retained RPNs when stale. Evaluation
+     * entry points call this — pan/zoom/trace on unchanged expressions never
+     * recompile because fresh handles short-circuit here.
+     */
+    bool ensureGiacFresh(CartesianFunction& fn);
+#endif
 
     /// Compute f1(x) - f2(x)
     float diffAt(CartesianFunction& fn1, CartesianFunction& fn2, float x);

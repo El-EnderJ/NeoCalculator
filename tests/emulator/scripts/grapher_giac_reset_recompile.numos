@@ -1,0 +1,35 @@
+# grapher_giac_reset_recompile — GIAC-C01: a GiacEngine::reset() orphans every
+# retained handle (generation stamp); the next Grapher evaluation must NOT use
+# the stale handle — it recompiles exactly once from the retained classifier
+# RPNs and then samples correctly against the rebuilt context.
+#
+# Run:
+#   program --script tests/emulator/scripts/grapher_giac_reset_recompile.numos \
+#           --deterministic --frames 1400 --headless --quiet
+log "giac_reset_recompile: start"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key y
+key =
+key x
+key ^
+key 2
+key enter
+wait 60
+assert_graph_engine giac
+assert_graph_compile_status 0 ok
+assert_graph_compile_count 0 1
+assert_graph_eval_near 0 2 4 1e-9
+# Rebuild the engine context: the slot's handle is now stale.
+giac_reset
+wait 10
+# The next evaluation recompiles ONCE (never evaluates the stale handle) and
+# produces the same values.
+assert_graph_eval_near 0 2 4 1e-9
+assert_graph_compile_count 0 2
+assert_graph_eval_near 0 -3 9 1e-9
+assert_graph_compile_count 0 2
+log "giac_reset_recompile: stale handles orphaned, one deterministic recompile"

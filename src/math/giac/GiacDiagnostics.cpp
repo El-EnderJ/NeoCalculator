@@ -133,6 +133,60 @@ void runGiacDiagnostics() {
         NUMOS_SERIAL.println(line);
     }
 
+    // GIAC-C01: Grapher graph-path probes — strict 1-D compile+sweep and a
+    // representative 2-D residual grid, through the SAME engine calls
+    // GraphModel uses in normal builds. Compile time reported separately: a
+    // successful compile is not a frame-time claim.
+    {
+        t0 = micros();
+        CompiledExpression fx = eng.compileNumeric("x^2-2", "x", true);
+        uint32_t c1Us = micros() - t0;
+        int good = 0;
+        double sum = 0;
+        t0 = micros();
+        for (int i = 0; i < 1000; ++i) {
+            double x = -5.0 + 10.0 * i / 999.0;
+            double y;
+            if (eng.evaluateNumeric(fx, x, y) && std::isfinite(y)) {
+                ++good;
+                sum += y;
+            }
+        }
+        uint32_t sweepUs = micros() - t0;
+        snprintf(line, sizeof(line),
+                 "[GIACDIAG] graph1d x^2-2 compile_us=%u n=1000 total_us=%u "
+                 "per_point_us=%u good=%d checksum=%.3g",
+                 (unsigned)c1Us, (unsigned)sweepUs,
+                 (unsigned)(sweepUs / 1000), good, sum);
+        NUMOS_SERIAL.println(line);
+
+        t0 = micros();
+        CompiledExpression g = eng.compileNumeric2D("(x^2+y^2)-(1)", "x", "y");
+        uint32_t c2Us = micros() - t0;
+        good = 0;
+        sum = 0;
+        const int side = 32;   // 1024-sample residual grid
+        t0 = micros();
+        for (int j = 0; j < side; ++j) {
+            double y = -2.0 + 4.0 * j / (side - 1);
+            for (int i = 0; i < side; ++i) {
+                double x = -2.0 + 4.0 * i / (side - 1);
+                double r;
+                if (eng.evaluateNumeric2D(g, x, y, r) && std::isfinite(r)) {
+                    ++good;
+                    sum += r;
+                }
+            }
+        }
+        uint32_t gridUs = micros() - t0;
+        snprintf(line, sizeof(line),
+                 "[GIACDIAG] graph2d circle compile_us=%u n=%d total_us=%u "
+                 "per_point_us=%u good=%d checksum=%.3g",
+                 (unsigned)c2Us, side * side, (unsigned)gridUs,
+                 (unsigned)(gridUs / (side * side)), good, sum);
+        NUMOS_SERIAL.println(line);
+    }
+
     // compact suite
     int pass = 0, fail = 0;
     for (const SuiteCase& c : kSuite) {

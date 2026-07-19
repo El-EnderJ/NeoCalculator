@@ -100,6 +100,71 @@ static void sweep(const char* expr, double x0, double x1, int n) {
     g_pass++;
 }
 
+// GIAC-C01: Grapher-shaped strict 1-D sweep (raw parse retained; per-sample
+// substitution only) with COMPILE timing, and the 2-D residual grid sweep
+// used by implicit contours / inequality regions.
+static void sweepStrict(const char* expr, const char* var, double x0, double x1,
+                        int n) {
+    numos::GiacEngine& eng = numos::GiacEngine::instance();
+    auto tc = Clock::now();
+    numos::CompiledExpression ce = eng.compileNumeric(expr, var, true);
+    long long compileUs = usSince(tc);
+    if (!ce.valid()) {
+        printf("SWEEPS|%s|COMPILE_FAIL|%s\n", expr, ce.diagnostic().c_str());
+        g_fail++;
+        return;
+    }
+    int rejected = 0;
+    double sum = 0;
+    auto t0 = Clock::now();
+    for (int i = 0; i < n; ++i) {
+        double x = x0 + (x1 - x0) * i / (n - 1);
+        double y;
+        if (!eng.evaluateNumeric(ce, x, y) || std::isnan(y) || std::isinf(y)) {
+            ++rejected;
+            continue;
+        }
+        sum += y;
+    }
+    long long us = usSince(t0);
+    printf("SWEEPS|%s|compile_us=%lld|n=%d|total_ms=%.1f|per_point_us=%.2f|rejected=%d|checksum=%.6g\n",
+           expr, compileUs, n, us / 1000.0, (double)us / n, rejected, sum);
+    g_pass++;
+}
+
+static void sweep2D(const char* expr, double lo, double hi, int side) {
+    numos::GiacEngine& eng = numos::GiacEngine::instance();
+    auto tc = Clock::now();
+    numos::CompiledExpression ce = eng.compileNumeric2D(expr, "x", "y");
+    long long compileUs = usSince(tc);
+    if (!ce.valid()) {
+        printf("SWEEP2D|%s|COMPILE_FAIL|%s\n", expr, ce.diagnostic().c_str());
+        g_fail++;
+        return;
+    }
+    const int n = side * side;
+    int rejected = 0;
+    double sum = 0;
+    auto t0 = Clock::now();
+    for (int j = 0; j < side; ++j) {
+        double y = lo + (hi - lo) * j / (side - 1);
+        for (int i = 0; i < side; ++i) {
+            double x = lo + (hi - lo) * i / (side - 1);
+            double g;
+            if (!eng.evaluateNumeric2D(ce, x, y, g) || std::isnan(g) ||
+                std::isinf(g)) {
+                ++rejected;
+                continue;
+            }
+            sum += g;
+        }
+    }
+    long long us = usSince(t0);
+    printf("SWEEP2D|%s|compile_us=%lld|n=%d|total_ms=%.1f|per_point_us=%.2f|rejected=%d|checksum=%.6g\n",
+           expr, compileUs, n, us / 1000.0, (double)us / n, rejected, sum);
+    g_pass++;
+}
+
 int main() {
     using numos::GiacEngine;
     using numos::MathEngineStatus;
@@ -549,6 +614,128 @@ int main() {
             check(r.ok() && r.exactText == "0",
                   "b01-exactval-text-roundtrip", t + " diff -> " + r.exactText);
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // GIAC-C01: Grapher retained-expression contract (strict 1-D + 2-D)
+    // ═══════════════════════════════════════════════════════════════════
+    {
+        numos::setAngleMode(vpam::AngleMode::RAD);
+
+        // strict compile: unknown identifiers are an HONEST compile failure
+        // that names the offender (the Grapher's "unknown: <ident>" surface).
+        numos::CompiledExpression bad =
+            eng.compileNumeric("x+unboundsym", "x", true);
+        check(!bad.valid() &&
+                  bad.diagnostic().find("unboundsym") != std::string::npos,
+              "c01-strict-unknown-ident-named", bad.diagnostic());
+
+        // strict compile ignores context assignments: a stored value can
+        // never capture the sampling variable (x:=7 must NOT bake into f).
+        check(eng.evaluate("x:=7").ok(), "c01-ctx-x-assign");
+        numos::CompiledExpression fx = eng.compileNumeric("x^2", "x", true);
+        double v = 0;
+        check(fx.valid() && eng.evaluateNumeric(fx, 3.0, v) &&
+                  std::fabs(v - 9.0) < 1e-12,
+              "c01-strict-no-context-capture", std::to_string(v));
+        check(eng.evaluate("purge(x)").ok(), "c01-ctx-x-purge");
+
+        // strict compile rejects OTHER assigned variables too (a:=5, "a*x"):
+        // Grapher slots may only reference their sampling variables.
+        check(eng.evaluate("giaca:=5").ok(), "c01-ctx-a-assign");
+        numos::CompiledExpression ax = eng.compileNumeric("giaca*x", "x", true);
+        check(!ax.valid() &&
+                  ax.diagnostic().find("giaca") != std::string::npos,
+              "c01-strict-assigned-var-rejected", ax.diagnostic());
+        check(eng.evaluate("purge(giaca)").ok(), "c01-ctx-a-purge");
+
+        // DEG/RAD is applied at EVALUATION time on strict handles — no
+        // recompile needed after a mode flip (the Grapher relies on this).
+        numos::CompiledExpression fsin = eng.compileNumeric("sin(x)", "x", true);
+        double dv = 0, rv = 0;
+        numos::setAngleMode(vpam::AngleMode::DEG);
+        bool okDeg = fsin.valid() && eng.evaluateNumeric(fsin, 30.0, dv);
+        numos::setAngleMode(vpam::AngleMode::RAD);
+        bool okRad = eng.evaluateNumeric(fsin, 30.0, rv);
+        check(okDeg && okRad && std::fabs(dv - 0.5) < 1e-12 &&
+                  std::fabs(rv - (-0.98803162409286183)) < 1e-9,
+              "c01-strict-angle-mode-eval-time",
+              std::to_string(dv) + " / " + std::to_string(rv));
+
+        // 2-D residual handle: circle x^2+y^2-1.
+        numos::CompiledExpression circ =
+            eng.compileNumeric2D("(x^2+y^2)-(1)", "x", "y");
+        double g0 = 0, g1 = 0, g2 = 0;
+        check(circ.valid() &&
+                  eng.evaluateNumeric2D(circ, 1.0, 0.0, g0) &&
+                  eng.evaluateNumeric2D(circ, 0.0, 0.0, g1) &&
+                  eng.evaluateNumeric2D(circ, 2.0, 2.0, g2) &&
+                  std::fabs(g0) < 1e-12 && std::fabs(g1 + 1.0) < 1e-12 &&
+                  std::fabs(g2 - 7.0) < 1e-12,
+              "c01-2d-circle-residual");
+
+        // 2-D strictness + arity guards.
+        numos::CompiledExpression zbad =
+            eng.compileNumeric2D("x*y+zvar", "x", "y");
+        check(!zbad.valid() &&
+                  zbad.diagnostic().find("zvar") != std::string::npos,
+              "c01-2d-unknown-ident-named", zbad.diagnostic());
+        double dummy = 0;
+        check(!eng.evaluateNumeric(circ, 1.0, dummy),
+              "c01-2d-handle-rejects-1d-eval");
+        check(fx.valid() && !eng.evaluateNumeric2D(fx, 1.0, 1.0, dummy),
+              "c01-1d-handle-rejects-2d-eval");
+
+        // reset() orphans 2-D handles exactly like 1-D ones.
+        eng.reset();
+        check(!circ.valid() && !eng.evaluateNumeric2D(circ, 1.0, 0.0, dummy),
+              "c01-2d-handle-invalid-post-reset");
+        numos::CompiledExpression circ2 =
+            eng.compileNumeric2D("(x^2+y^2)-(1)", "x", "y");
+        double gpost = 0;
+        check(circ2.valid() && eng.evaluateNumeric2D(circ2, 1.0, 0.0, gpost) &&
+                  std::fabs(gpost) < 1e-12,
+              "c01-2d-recompile-after-reset");
+    }
+
+    // ── GIAC-C01 benchmarks: explicit 1-D (strict), 2-D residual grids,
+    // invalid-domain-heavy functions, and RSS drift across replots ──────────
+    sweepStrict("x^2-2", "x", -5.0, 5.0, 1000);
+    sweepStrict("sin(x)", "x", -5.0, 5.0, 1000);
+    sweepStrict("x^2-2", "x", -5.0, 5.0, 10000);
+    sweepStrict("sin(x)", "x", -5.0, 5.0, 10000);
+    sweepStrict("x^2-2", "x", -5.0, 5.0, 100000);
+    sweepStrict("sin(x)", "x", -5.0, 5.0, 100000);
+    // invalid-domain-heavy: half the sweep range is outside the domain.
+    sweepStrict("sqrt(x)", "x", -5.0, 5.0, 10000);
+    sweepStrict("ln(x)", "x", -5.0, 5.0, 10000);
+    // implicit 2-D residual grids: 1k, 10k, ~100k samples.
+    sweep2D("(x^2+y^2)-(1)", -2.0, 2.0, 32);     //  1,024
+    sweep2D("(x^2+y^2)-(1)", -2.0, 2.0, 100);    // 10,000
+    sweep2D("(x^2+y^2)-(1)", -2.0, 2.0, 316);    // 99,856
+    sweep2D("(sin(x)*cos(y))-((x*y)/(4))", -3.0, 3.0, 100);
+
+    // Repeated replots with two retained handles: recompile + resample 50
+    // times and require a bounded RSS drift (no unbounded growth).
+    {
+        size_t rssBefore = currentRssKb();
+        double sink = 0;
+        for (int rep = 0; rep < 50; ++rep) {
+            numos::CompiledExpression f =
+                eng.compileNumeric("sin(x)+x^2", "x", true);
+            numos::CompiledExpression g =
+                eng.compileNumeric2D("(x^2+y^2)-(4)", "x", "y");
+            for (int i = 0; i < 500; ++i) {
+                double x = -5.0 + 10.0 * i / 499.0, y;
+                if (eng.evaluateNumeric(f, x, y)) sink += y;
+                if (eng.evaluateNumeric2D(g, x, -x, y)) sink += y;
+            }
+        }
+        size_t rssAfter = currentRssKb();
+        long long deltaKb = (long long)rssAfter - (long long)rssBefore;
+        printf("REPLOT|reps=50|samples_per_rep=1000|rss_delta_kb=%lld|checksum=%.6g\n",
+               deltaKb, sink);
+        check(deltaKb < 1024, "c01-replot-rss-stable");
     }
 
     printf("RSS_END|rss_kb=%zu\n", currentRssKb());

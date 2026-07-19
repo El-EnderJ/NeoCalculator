@@ -1,0 +1,68 @@
+# grapher_giac_xfy_implicit_ineq — GIAC-C01: the non-y=f(x) relation kinds all
+# sample through Giac retained handles.
+#   slot 0: "x=y^2"     explicitX — 1-coordinate probe is the y PARAMETER and
+#                       returns x=f(y) (f(3)=9, the evalAtY trace path); the
+#                       2-coordinate probe is the residual G(x,y)=x-y^2
+#                       (G(9,3)=0 on-curve, G(0,1)=-1 off-curve).
+#   slot 1: "x^2+y^2=1" implicit — residual G=x^2+y^2-1: 0 on the circle,
+#                       -1 at the centre, 7 at (2,2).
+#   slot 2: "y<x"       ineqStrict (op lt) — SAME residual machinery:
+#                       G=y-x, so G(2,1)=-1 (inside the region: g<0).
+#
+# Run:
+#   program --script tests/emulator/scripts/grapher_giac_xfy_implicit_ineq.numos \
+#           --deterministic --frames 1400 --headless --quiet
+log "giac_xfy_implicit_ineq: start"
+wait 200
+open_app Grapher
+wait 60
+key down
+key enter
+key x
+key =
+key y
+key ^
+key 2
+key enter
+wait 40
+key down
+key enter
+key x
+key ^
+key 2
+key right
+key +
+key y
+key ^
+key 2
+key right
+key =
+key 1
+key enter
+wait 40
+key down
+key enter
+key y
+key lt
+key x
+key enter
+wait 60
+assert_graph_engine giac
+assert_graph_relation_count 3
+assert_graph_slot_kind 0 explicitX
+assert_graph_compile_status 0 ok
+assert_graph_eval_near 0 3 9 1e-9
+assert_graph_eval_near 0 -2 4 1e-9
+assert_graph_eval_near 0 9 3 0 1e-9
+assert_graph_eval_near 0 0 1 -1 1e-9
+assert_graph_slot_kind 1 implicit
+assert_graph_compile_status 1 ok
+assert_graph_eval_near 1 1 0 0 1e-9
+assert_graph_eval_near 1 0 0 -1 1e-9
+assert_graph_eval_near 1 2 2 7 1e-9
+assert_graph_slot_kind 2 ineqStrict
+assert_graph_relation_op 2 lt
+assert_graph_compile_status 2 ok
+assert_graph_eval_near 2 2 1 -1 1e-9
+assert_graph_eval_near 2 1 2 1 1e-9
+log "giac_xfy_implicit_ineq: x=f(y), implicit and inequality all Giac-backed"

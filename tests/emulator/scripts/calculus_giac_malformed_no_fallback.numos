@@ -1,0 +1,13 @@
+# GIAC-E01: incomplete authored AST is rejected before Giac/native operation.
+wait 200
+open_app Calculus
+wait 60
+key x
+key ^
+key ENTER
+wait 100
+assert_calculus_engine giac
+assert_calculus_operation differentiate
+assert_calculus_status parse_error
+assert_calculus_result_kind none
+assert_calculus_tutor_status unavailable

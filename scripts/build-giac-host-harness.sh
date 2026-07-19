@@ -5,8 +5,9 @@
 # Compiles the vendored embedded Giac (lib/giac, KhiCAS profile) natively
 # with the same macro set the esp32s3_n16r8 firmware uses, plus the
 # PRODUCTION seam (src/math/giac/GiacEngine.cpp) and the harness
-# (tests/host/giac_engine_suite_main.cpp). Successor of the GIAC-FEAS-01
-# spike script; there is no experimental adapter anymore.
+# (tests/host/giac_engine_suite_main.cpp) plus the focused GIAC-E01 calculus
+# executable. Successor of the GIAC-FEAS-01 spike script; there is no
+# experimental adapter anymore.
 #
 # -DHAVE_CONFIG_H: on firmware the Arduino-ESP32 platform injects it; native
 # builds must pass it explicitly (its absence was the old "native Giac is
@@ -105,12 +106,27 @@ printf '%s\n' "${proj_srcs[@]}" | \
   xargs -P "$JOBS" -I{} bash -c "compile_one {} '$PROJ_CXXFLAGS' '$CXX'"
 
 compile_one tests/host/giac_engine_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
+compile_one tests/host/giac_calculus_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
 compile_one tests/host/host_rss_probe.cpp "$PROJ_CXXFLAGS" "$CXX"
 
-# --- link ---
+# --- link the stable regression and focused calculus executables separately.
+# Vendored embedded Giac has a host-only, layout-sensitive failure when both
+# large suites share one main TU; both binaries still link the exact same
+# production objects and firmware macro profile.
+common_objs=()
+for obj in "$OUT"/obj/*.o; do
+  case "$(basename "$obj")" in
+    giac_engine_suite_main.cpp.o|giac_calculus_suite_main.cpp.o) continue ;;
+  esac
+  common_objs+=("$obj")
+done
 echo "LINK $OUT/giac_engine_suite"
-$CXX -o "$OUT/giac_engine_suite" "$OUT"/obj/*.o $LDFLAGS
+$CXX -o "$OUT/giac_engine_suite" "${common_objs[@]}" \
+  "$OUT/obj/giac_engine_suite_main.cpp.o" $LDFLAGS
+echo "LINK $OUT/giac_calculus_suite"
+$CXX -o "$OUT/giac_calculus_suite" "${common_objs[@]}" \
+  "$OUT/obj/giac_calculus_suite_main.cpp.o" $LDFLAGS
 
 [[ "${1:-}" == "--build-only" ]] && exit 0
 # Run from $OUT so any emulator_data/ a TU creates stays out of the repo.
-( cd "$OUT" && exec ./giac_engine_suite )
+( cd "$OUT" && ./giac_engine_suite && ./giac_calculus_suite )

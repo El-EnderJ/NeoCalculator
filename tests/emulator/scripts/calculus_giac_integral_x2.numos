@@ -1,0 +1,16 @@
+# GIAC-E01: indefinite integral is Giac-authoritative; UI appends +C.
+wait 200
+open_app Calculus
+wait 60
+key GRAPH
+key x
+key ^
+key 2
+key ENTER
+wait 120
+assert_calculus_engine giac
+assert_calculus_operation integrate_indefinite
+assert_calculus_status ok
+assert_calculus_result_kind structured
+assert_calculus_result_exact 1/3*x^3
+assert_calculus_tutor_status agreed

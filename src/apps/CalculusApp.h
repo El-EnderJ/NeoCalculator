@@ -22,17 +22,17 @@
  *   INPUT → COMPUTING → RESULT → STEPS
  *
  * Modes (selectable via tabs):
- *   DERIVATIVE — d/dx pipeline through SymDiff
- *   INTEGRAL   — ∫dx pipeline through SymIntegrate
+ *   DERIVATIVE — first derivative through Giac
+ *   INTEGRAL   — indefinite integral through Giac
  *
- * Pipeline:
- *   MathAST → ASTFlattener → SymExpr →
- *     [SymDiff::diff() | SymIntegrate::integrate()] →
- *   SymSimplify::simplify() → SymExprToAST → MathCanvas display
+ * Normal pipeline:
+ *   authored MathAST → CalculationEngine controlled serializer →
+ *   GiacEngine typed calculus request → structured MathAST or exact-text
+ *   fallback. Native output is never displayed as the primary answer.
  *
  * Features:
- *   - Full symbolic differentiation (17+ rules, chain/product/quotient)
- *   - Full symbolic integration (table, linearity, u-sub, parts/LIATE)
+ *   - Giac-authoritative symbolic differentiation and integration
+ *   - Fail-closed native educational steps
  *   - Tab-based mode switching (d/dx ↔ ∫dx) via F1/F2 or GRAPH key
  *   - Automatic simplification (0+x→x, 1·x→x, x^1→x, etc.)
  *   - 2D rendering of result via MathCanvas (VPAM)
@@ -50,6 +50,7 @@
 #include <memory>
 #include <vector>
 #include "../math/MathAST.h"
+#include "../math/CalculationEngine.h"
 #include "../math/CursorController.h"
 #include "../math/cas/ASTFlattener.h"
 #include "../math/cas/SymDiff.h"
@@ -75,6 +76,20 @@ public:
 
     bool isActive() const { return _scr != nullptr; }
 
+    // NativeHAL semantic-test seam. No Giac-owned type is exposed.
+    const char* debugEngineName() const;
+    const char* debugStatusName() const;
+    const char* debugResultKindName() const;
+    const char* debugTutorStatusName() const;
+    const char* debugOperationName() const;
+    const std::string& debugExactText() const;
+    bool debugResultNear(double expected, double epsilon) const;
+#ifdef NATIVE_SIM
+    void debugForceTutorDisagreement(bool enabled) {
+        _debugForceTutorDisagreement = enabled;
+    }
+#endif
+
 private:
     // ── App states ───────────────────────────────────────────────────
     enum class State : uint8_t {
@@ -88,6 +103,18 @@ private:
     enum class CalcMode : uint8_t {
         DERIVATIVE, ///< d/dx mode (orange accent)
         INTEGRAL    ///< ∫dx mode (purple accent)
+    };
+
+    enum class ResultKind : uint8_t {
+        None,
+        Structured,
+        TextFallback
+    };
+
+    enum class TutorStatus : uint8_t {
+        Agreed,
+        Unavailable,
+        Disabled
     };
 
     // ── LVGL widgets ─────────────────────────────────────────────────
@@ -116,6 +143,7 @@ private:
     lv_obj_t*       _resultContainer;
     lv_obj_t*       _resultTitle;
     lv_obj_t*       _resultLabel;    ///< "f'(x) =" or "F(x) =" label
+    lv_obj_t*       _resultFallback; ///< Labelled exact Giac text fallback
     lv_obj_t*       _resultHint;
     vpam::MathCanvas   _resultCanvas;  ///< Rendered result
     vpam::NodePtr      _resultNode;
@@ -152,6 +180,15 @@ private:
     cas::CASStepLogger _casSteps;
     cas::SymExpr*      _resultExpr;   ///< Simplified result (arena-owned)
     bool               _integralFound; ///< True if closed-form integral found
+    numos::StructuredCalculusResult _giacResult;
+    ResultKind         _resultKind;
+    TutorStatus        _tutorStatus;
+    std::string        _serializedInput;
+    std::string        _tutorDiagnostic;
+    std::string        _legacyExactText;
+#ifdef NATIVE_SIM
+    bool               _debugForceTutorDisagreement;
+#endif
 
     // ── UI creation / state management ───────────────────────────────
     void createUI();
@@ -175,6 +212,9 @@ private:
     void computeResult();
     void computeDerivative(cas::SymExpr* expr);
     void computeIntegral(cas::SymExpr* expr);
+    void computeGiacResult();
+    void runNativeTutor(const numos::CalculusRequest& request);
+    char detectAuthoredVariable(const vpam::MathNode* node) const;
     void buildResultDisplay();
     void buildStepsDisplay();
 

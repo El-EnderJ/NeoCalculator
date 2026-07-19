@@ -1,0 +1,15 @@
+# GIAC-E01: forced native disagreement suppresses steps, not the Giac answer.
+wait 200
+open_app Calculus
+wait 60
+set_calculus_tutor_disagreement on
+key x
+key ^
+key 2
+key ENTER
+wait 120
+assert_calculus_engine giac
+assert_calculus_status ok
+assert_calculus_result_kind structured
+assert_calculus_result_exact 2*x
+assert_calculus_tutor_status unavailable

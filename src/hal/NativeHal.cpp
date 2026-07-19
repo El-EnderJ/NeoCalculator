@@ -109,6 +109,7 @@
 #include "../input/LvglKeypad.h"
 #include "../input/KeyboardManager.h"
 #include "../apps/CalculationApp.h"
+#include "../apps/CalculusApp.h"
 #include "../apps/EquationsApp.h"
 #include "../apps/SettingsApp.h"          // Phase 5A: emulator-safe LVGL-native app
 #include "../apps/StatisticsApp.h"        // Phase 6A: LVGL-only, pure-math (no CAS/HW)
@@ -217,6 +218,7 @@ enum class AppMode : uint8_t {
     SPLASH,         // Pantalla de carga con animación
     MENU,           // Launcher (grid de apps)
     CALCULATION,    // Calculadora científica
+    CALCULUS,       // GIAC-E01 calculus authority surface
     SETTINGS,       // Ajustes (LVGL-native; Phase 5A, emulador)
     MATH_SHOWCASE,  // Vitrina de render matemático (Phase 5A, solo emulador)
     STATISTICS,     // Estadística (LVGL-native; Phase 6A, emulador)
@@ -268,6 +270,7 @@ static DisplayDriver    g_displayStub;        // Stub para MainMenu
 static SplashScreen*    g_splash  = nullptr;
 static MainMenu*        g_menu    = nullptr;
 static CalculationApp*  g_calcApp = nullptr;
+static CalculusApp*      g_calculusApp = nullptr;
 static EquationsApp*     g_equationsApp = nullptr;
 static SettingsApp*     g_settingsApp = nullptr;   // Phase 5A (emulador)
 static StatisticsApp*   g_statsApp = nullptr;      // Phase 6A (emulador)
@@ -681,6 +684,21 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
+        case AppMode::CALCULUS:
+            if (isDown && kc == KeyCode::MODE) {
+                returnToMenu();
+                break;
+            }
+            if (g_calculusApp) {
+                KeyEvent ke;
+                ke.code = kc;
+                ke.action = action;
+                ke.row = -1;
+                ke.col = -1;
+                g_calculusApp->handleKey(ke);
+            }
+            break;
+
         case AppMode::SETTINGS:
             // Mismo contrato que CALCULATION: MODE vuelve al launcher; el resto
             // (incluido RELEASE) se reenvia a SettingsApp::handleKey, que filtra
@@ -918,6 +936,7 @@ static void transitionToMenu()
     // Crear la calculadora (pre-crear pantalla para lanzamiento rápido)
     g_calcApp = new CalculationApp();
     g_calcApp->begin();
+    g_calculusApp = new CalculusApp();
     // Equations is created lazily so its object-heavy tutor UI does not
     // compete with the launcher until explicitly opened.
     g_equationsApp = new EquationsApp();
@@ -992,6 +1011,14 @@ static void launchApp(int appId)
             }
             break;
 
+        case 3: // Calculus
+            if (g_calculusApp) {
+                g_calculusApp->load();
+                g_mode = AppMode::CALCULUS;
+                std::printf("[APP] CalculusApp activa\n");
+            }
+            break;
+
         case 4: // Statistics (LVGL-native; Phase 6A, mismo id que la tarjeta del launcher)
             if (g_statsApp) {
                 g_statsApp->load();
@@ -1063,6 +1090,9 @@ static void performAppTeardown(AppMode m)
                 g_calcApp->end();
                 g_calcApp->begin();   // Pre-crear para la próxima vez
             }
+            break;
+        case AppMode::CALCULUS:
+            if (g_calculusApp) g_calculusApp->end();
             break;
         case AppMode::SETTINGS:
             // SettingsApp::load() vuelve a llamar begin() perezosamente.
@@ -1556,6 +1586,14 @@ enum class ScriptCmdType : uint8_t {
     AssertCalcResultKind,      // assert_calc_result_kind structured|text_fallback|none
     AssertCalcStatus,          // assert_calc_status ok|undefined|parse_error|evaluation_error|unsupported|out_of_memory
     AssertCalcExact,           // assert_calc_exact TEXT (igualdad exacta con exactText)
+    AssertCalculusEngine,
+    AssertCalculusStatus,
+    AssertCalculusResultKind,
+    AssertCalculusResultExact,
+    AssertCalculusResultNear,
+    AssertCalculusTutorStatus,
+    AssertCalculusOperation,
+    SetCalculusTutorDisagreement,
     SetEquationsComplexPolicy, // set_equations_complex_policy real|complex
     AssertEquationsEngine,
     AssertEquationsStatus,
@@ -1626,6 +1664,7 @@ static const char* canonicalAppName(const std::string& name)
     if (lc == "calculation" || lc == "calc")     return "Calculation";
     if (lc == "equations" || lc == "equation" ||
         lc == "eq")                               return "Equations";
+    if (lc == "calculus")                         return "Calculus";
     if (lc == "menu"        || lc == "launcher") return "Menu";
     if (lc == "splash")                           return "Splash";
     if (lc == "settings")                         return "Settings";        // Phase 5A
@@ -1649,6 +1688,7 @@ static int scriptAppNameToId(const std::string& name)
     for (char& c : lc) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     if (lc == "calculation" || lc == "calc")                          return 0;
     if (lc == "equations" || lc == "equation" || lc == "eq")          return 2;
+    if (lc == "calculus")                                              return 3;
     if (lc == "statistics" || lc == "stats")                          return 4;   // Phase 6A
     if (lc == "probability" || lc == "prob")                          return 5;   // Phase 6A
     if (lc == "sequences" || lc == "seq")                             return 7;   // Phase 7A
@@ -2003,6 +2043,88 @@ static bool loadScript(const char* path)
             sc.strArg = rest;
         }
         // ── GIAC-C01: Grapher engine probes (append-only) ────────────────
+        else if (lc == "assert_calculus_engine" ||
+                 lc == "assert_calculus_status" ||
+                 lc == "assert_calculus_result_kind" ||
+                 lc == "assert_calculus_tutor_status" ||
+                 lc == "assert_calculus_operation" ||
+                 lc == "set_calculus_tutor_disagreement") {
+            std::string value, extra;
+            if (!(iss >> value) || (iss >> extra))
+                return scriptErr(path, lineNo,
+                    "calculus hook requiere exactamente un valor");
+            if (lc == "assert_calculus_engine") {
+                if (value != "giac" && value != "legacy")
+                    return scriptErr(path, lineNo,
+                        "assert_calculus_engine requiere giac|legacy");
+                sc.type = ScriptCmdType::AssertCalculusEngine;
+            } else if (lc == "assert_calculus_status") {
+                if (value != "ok" && value != "undefined" &&
+                    value != "parse_error" && value != "evaluation_error" &&
+                    value != "unsupported" && value != "out_of_memory")
+                    return scriptErr(path, lineNo,
+                        "assert_calculus_status: estado desconocido");
+                sc.type = ScriptCmdType::AssertCalculusStatus;
+            } else if (lc == "assert_calculus_result_kind") {
+                if (value != "structured" && value != "text_fallback" &&
+                    value != "none")
+                    return scriptErr(path, lineNo,
+                        "assert_calculus_result_kind requiere structured|text_fallback|none");
+                sc.type = ScriptCmdType::AssertCalculusResultKind;
+            } else if (lc == "assert_calculus_tutor_status") {
+                if (value != "agreed" && value != "unavailable" &&
+                    value != "disabled")
+                    return scriptErr(path, lineNo,
+                        "assert_calculus_tutor_status requiere agreed|unavailable|disabled");
+                sc.type = ScriptCmdType::AssertCalculusTutorStatus;
+            } else if (lc == "assert_calculus_operation") {
+                if (value != "differentiate" &&
+                    value != "integrate_indefinite")
+                    return scriptErr(path, lineNo,
+                        "assert_calculus_operation: operacion desconocida");
+                sc.type = ScriptCmdType::AssertCalculusOperation;
+            } else {
+                if (value != "on" && value != "off")
+                    return scriptErr(path, lineNo,
+                        "set_calculus_tutor_disagreement requiere on|off");
+                sc.type = ScriptCmdType::SetCalculusTutorDisagreement;
+            }
+            sc.strArg = value;
+        }
+        else if (lc == "assert_calculus_result_exact") {
+            std::string rest;
+            std::getline(iss, rest);
+            size_t b = rest.find_first_not_of(" \t");
+            rest = b == std::string::npos ? std::string() : rest.substr(b);
+            size_t e = rest.find_last_not_of(" \t");
+            if (e != std::string::npos) rest = rest.substr(0, e + 1);
+            if (rest.size() >= 2 && rest.front() == '"' &&
+                rest.back() == '"')
+                rest = rest.substr(1, rest.size() - 2);
+            if (rest.empty())
+                return scriptErr(path, lineNo,
+                    "assert_calculus_result_exact requiere texto");
+            sc.type = ScriptCmdType::AssertCalculusResultExact;
+            sc.strArg = rest;
+        }
+        else if (lc == "assert_calculus_result_near") {
+            std::string expectedText, epsilonText, extra;
+            if (!(iss >> expectedText >> epsilonText) || (iss >> extra))
+                return scriptErr(path, lineNo,
+                    "assert_calculus_result_near requiere EXPECTED EPSILON");
+            char* endExpected = nullptr;
+            char* endEpsilon = nullptr;
+            const double expected =
+                std::strtod(expectedText.c_str(), &endExpected);
+            const double epsilon =
+                std::strtod(epsilonText.c_str(), &endEpsilon);
+            if (!endExpected || *endExpected || !endEpsilon || *endEpsilon ||
+                epsilon < 0.0)
+                return scriptErr(path, lineNo,
+                    "assert_calculus_result_near: numeros invalidos");
+            sc.type = ScriptCmdType::AssertCalculusResultNear;
+            sc.fArgs = {expected, epsilon};
+        }
         else if (lc == "assert_equations_engine" ||
                  lc == "assert_equations_status" ||
                  lc == "assert_equations_result_kind" ||
@@ -2233,6 +2355,7 @@ static const char* activeAppName()
          : (g_mode == AppMode::REGRESSION)    ? "Regression"
          : (g_mode == AppMode::GRAPHER)       ? "Grapher"
          : (g_mode == AppMode::EQUATIONS)     ? "Equations"
+         : (g_mode == AppMode::CALCULUS)      ? "Calculus"
                                               : "Calculation";
 }
 
@@ -2695,6 +2818,68 @@ static void scriptStepBegin()
             break;
         }
 
+        case ScriptCmdType::SetCalculusTutorDisagreement: {
+            if (!g_calculusApp) {
+                assertFail(sc.line, "CalculusApp no esta disponible");
+                break;
+            }
+            g_calculusApp->debugForceTutorDisagreement(sc.strArg == "on");
+            std::printf("[SCRIPT] set_calculus_tutor_disagreement %s\n",
+                        sc.strArg.c_str());
+            break;
+        }
+
+        case ScriptCmdType::AssertCalculusEngine:
+        case ScriptCmdType::AssertCalculusStatus:
+        case ScriptCmdType::AssertCalculusResultKind:
+        case ScriptCmdType::AssertCalculusResultExact:
+        case ScriptCmdType::AssertCalculusResultNear:
+        case ScriptCmdType::AssertCalculusTutorStatus:
+        case ScriptCmdType::AssertCalculusOperation: {
+            if (g_mode != AppMode::CALCULUS || !g_calculusApp) {
+                assertFail(sc.line,
+                    "assert_calculus_* requiere Calculus activa (app actual: '" +
+                    std::string(activeAppName()) + "')");
+                break;
+            }
+            const char* actual = nullptr;
+            if (sc.type == ScriptCmdType::AssertCalculusEngine)
+                actual = g_calculusApp->debugEngineName();
+            else if (sc.type == ScriptCmdType::AssertCalculusStatus)
+                actual = g_calculusApp->debugStatusName();
+            else if (sc.type == ScriptCmdType::AssertCalculusResultKind)
+                actual = g_calculusApp->debugResultKindName();
+            else if (sc.type == ScriptCmdType::AssertCalculusTutorStatus)
+                actual = g_calculusApp->debugTutorStatusName();
+            else if (sc.type == ScriptCmdType::AssertCalculusOperation)
+                actual = g_calculusApp->debugOperationName();
+
+            if (sc.type == ScriptCmdType::AssertCalculusResultExact) {
+                const std::string& exact = g_calculusApp->debugExactText();
+                if (sc.strArg == exact)
+                    assertPass(sc.line,
+                        "assert_calculus_result_exact '" + sc.strArg + "'");
+                else
+                    assertFail(sc.line,
+                        "assert_calculus_result_exact esperaba '" + sc.strArg +
+                        "' pero es '" + exact + "'");
+            } else if (sc.type == ScriptCmdType::AssertCalculusResultNear) {
+                if (g_calculusApp->debugResultNear(
+                        sc.fArgs[0], sc.fArgs[1]))
+                    assertPass(sc.line, "assert_calculus_result_near");
+                else
+                    assertFail(sc.line,
+                        "assert_calculus_result_near no coincide");
+            } else if (actual && sc.strArg == actual) {
+                assertPass(sc.line, "assert_calculus_* " + sc.strArg);
+            } else {
+                assertFail(sc.line,
+                    "assert_calculus_* esperaba '" + sc.strArg +
+                    "' pero es '" + (actual ? actual : "") + "'");
+            }
+            break;
+        }
+
         case ScriptCmdType::SetEquationsComplexPolicy:
             setting_complex_enabled = (sc.strArg == "complex");
             std::printf("[SCRIPT] set_equations_complex_policy %s\n",
@@ -3093,6 +3278,10 @@ int main(int argc, char** argv)
     // ── 7. Cleanup ──────────────────────────────────────────────────────
     std::printf("\n[SIM] Cerrando...\n");
     if (g_calcApp) { g_calcApp->end(); delete g_calcApp; }
+    if (g_calculusApp) {
+        g_calculusApp->end();
+        delete g_calculusApp;
+    }
     if (g_equationsApp) {
         g_equationsApp->end();
         delete g_equationsApp;

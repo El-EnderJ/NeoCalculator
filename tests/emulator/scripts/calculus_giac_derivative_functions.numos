@@ -1,0 +1,17 @@
+# GIAC-E01: chain rule case; answer is Giac, native steps are agreement-gated.
+wait 200
+open_app Calculus
+wait 60
+key sin
+key x
+key RIGHT
+key ^
+key 2
+key ENTER
+wait 120
+assert_calculus_engine giac
+assert_calculus_operation differentiate
+assert_calculus_status ok
+assert_calculus_result_kind structured
+assert_calculus_result_exact 2*cos(x)*sin(x)
+assert_calculus_tutor_status agreed

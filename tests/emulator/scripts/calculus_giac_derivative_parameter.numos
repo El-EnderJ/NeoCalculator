@@ -1,0 +1,18 @@
+# GIAC-E01: first authored x selects x; y remains a symbolic parameter.
+wait 200
+open_app Calculus
+wait 60
+key x
+key ^
+key 2
+key RIGHT
+key *
+key y
+key ENTER
+wait 120
+assert_calculus_engine giac
+assert_calculus_operation differentiate
+assert_calculus_status ok
+assert_calculus_result_kind structured
+assert_calculus_result_exact 2*x*y
+assert_calculus_tutor_status agreed

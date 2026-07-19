@@ -1,0 +1,16 @@
+# GIAC-E01: DEG derivative uses exact pi/180 semantics in Giac's stable mode.
+wait 200
+open_app Calculus
+wait 60
+set_angle_mode deg
+assert_angle_mode deg
+key sin
+key x
+key RIGHT
+key ENTER
+wait 120
+assert_calculus_engine giac
+assert_calculus_status ok
+assert_calculus_result_kind structured
+assert_calculus_result_exact pi/180*cos(x*pi/180)
+assert_calculus_tutor_status unavailable

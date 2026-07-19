@@ -1,0 +1,14 @@
+# GIAC-E01: constants differentiate exactly to zero.
+wait 200
+open_app Calculus
+wait 60
+key 7
+key ENTER
+wait 120
+assert_calculus_engine giac
+assert_calculus_operation differentiate
+assert_calculus_status ok
+assert_calculus_result_kind structured
+assert_calculus_result_exact 0
+assert_calculus_result_near 0 0.0000001
+assert_calculus_tutor_status agreed

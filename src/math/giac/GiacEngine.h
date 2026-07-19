@@ -38,8 +38,8 @@
  *    (x-2*x stays x-2*x — use simplify() for -x); undef and parser
  *    diagnostics come back as non-Ok statuses, never as ordinary values.
  *  - Variable policy: Giac-side assignments persist in the context until
- *    reset(); the engine does not mirror NumOS VariableManager (a later
- *    migration decides that mapping).
+ *    reset(). CalculationEngine mirrors supported VariableManager slots;
+ *    typed Calculus requests use free x/y variables and do not mutate Ans.
  */
 
 #pragma once
@@ -114,6 +114,42 @@ struct StructuredEngineResult {
     MathEngineResult base;
     bool hasTree = false;      // tree only meaningful when base.ok() && hasTree
     EngineResultNode tree;
+};
+
+/**
+ * GIAC-E01 calculus boundary.
+ *
+ * CalculusApp currently exposes exactly these two operations. The authored
+ * expression is serialized by CalculationEngine's controlled MathAST
+ * serializer; Giac syntax is never assembled in the app and no Giac type
+ * crosses this header.
+ */
+enum class CalculusOperation : uint8_t {
+    Differentiate,
+    IntegrateIndefinite
+};
+
+struct CalculusRequest {
+    CalculusOperation operation = CalculusOperation::Differentiate;
+    std::string expression;
+    std::string variable = "x";
+};
+
+struct StructuredCalculusResult {
+    MathEngineStatus status = MathEngineStatus::Unsupported;
+    bool hasTree = false;
+    EngineResultNode tree;
+    std::string exactText;
+    std::string approximateText;
+    std::string diagnostic;
+    bool unevaluated = false;  // valid Giac diff/integrate form, not a failure
+
+    bool ok() const { return status == MathEngineStatus::Ok; }
+};
+
+struct CalculusTutorVerification {
+    bool agreed = false;
+    std::string diagnostic;
 };
 
 /**
@@ -213,6 +249,25 @@ public:
      * walk hit an internal limit — the textual result still stands.
      */
     StructuredEngineResult evaluateStructured(const char* expression);
+
+    /**
+     * GIAC-E01: execute one typed CalculusApp operation. Input length/tree and
+     * result-tree walks are bounded. A valid unevaluated Giac operation keeps
+     * status=Ok and sets unevaluated=true so the app can use exact text
+     * fallback without invoking another answer engine.
+     */
+    StructuredCalculusResult evaluateCalculusStructured(
+        const CalculusRequest& request);
+
+    /**
+     * Independently verify a native tutor's final expression against Giac.
+     * Differentiation compares normalized exact expressions. Indefinite
+     * integration differentiates (native - Giac), accepting additive
+     * constants without relying on formatted strings or doubles.
+     */
+    CalculusTutorVerification verifyCalculusTutor(
+        const CalculusRequest& request,
+        const std::string& nativeResultExpression);
 
     /**
      * GIAC-D01: solve one equation in one Giac call and adapt the returned

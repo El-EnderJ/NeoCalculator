@@ -16,12 +16,14 @@
 /**
  * CalculusApp.cpp — Unified Symbolic Calculus App for NumOS.
  *
- * Phase 4: Unified Calculus (Derivatives + Integrals).
+ * GIAC-E01: Giac is the sole normal-build answer authority for the enabled
+ * first-derivative and indefinite-integral modes. The native symbolic
+ * engines remain available only for consistency-gated educational steps and
+ * the explicit NUMOS_CALCULUS_LEGACY_ENGINE diagnostic build.
  *
- * Pipeline:
- *   MathAST → ASTFlattener → SymExpr →
- *     [SymDiff::diff() | SymIntegrate::integrate()] →
- *   SymSimplify::simplify() → SymExprToAST → MathCanvas display
+ * Normal results reuse CalculationEngine's authored-AST serializer and
+ * structured result adapter; unsupported Giac presentation shapes retain
+ * their exact text.
  *
  * Part of: NumOS CAS — Phase 4 (Unified Calculus App)
  */
@@ -29,6 +31,7 @@
 #include "CalculusApp.h"
 #include "../math/MathAST.h"
 #include "../math/cas/SymToAST.h"
+#include <cmath>
 #include <cstdlib>
 
 using namespace vpam;
@@ -96,6 +99,7 @@ CalculusApp::CalculusApp()
     , _resultContainer(nullptr)
     , _resultTitle(nullptr)
     , _resultLabel(nullptr)
+    , _resultFallback(nullptr)
     , _resultHint(nullptr)
     , _originalLabel(nullptr)
     , _stepsContainer(nullptr)
@@ -108,11 +112,86 @@ CalculusApp::CalculusApp()
     , _originalRow(nullptr)
     , _resultExpr(nullptr)
     , _integralFound(false)
+    , _resultKind(ResultKind::None)
+    , _tutorStatus(TutorStatus::Disabled)
+#ifdef NATIVE_SIM
+    , _debugForceTutorDisagreement(false)
+#endif
 {
 }
 
 CalculusApp::~CalculusApp() {
     end();
+}
+
+const char* CalculusApp::debugEngineName() const {
+#ifdef NUMOS_CALCULUS_LEGACY_ENGINE
+    return "legacy";
+#else
+    return "giac";
+#endif
+}
+
+const char* CalculusApp::debugStatusName() const {
+#ifdef NUMOS_CALCULUS_LEGACY_ENGINE
+    return _resultExpr ? "ok" : "unsupported";
+#else
+    switch (_giacResult.status) {
+        case numos::MathEngineStatus::Ok:              return "ok";
+        case numos::MathEngineStatus::Undefined:       return "undefined";
+        case numos::MathEngineStatus::ParseError:      return "parse_error";
+        case numos::MathEngineStatus::EvaluationError: return "evaluation_error";
+        case numos::MathEngineStatus::Unsupported:     return "unsupported";
+        case numos::MathEngineStatus::OutOfMemory:     return "out_of_memory";
+    }
+    return "unsupported";
+#endif
+}
+
+const char* CalculusApp::debugResultKindName() const {
+    switch (_resultKind) {
+        case ResultKind::Structured:   return "structured";
+        case ResultKind::TextFallback: return "text_fallback";
+        case ResultKind::None:         return "none";
+    }
+    return "none";
+}
+
+const char* CalculusApp::debugTutorStatusName() const {
+    switch (_tutorStatus) {
+        case TutorStatus::Agreed:      return "agreed";
+        case TutorStatus::Unavailable: return "unavailable";
+        case TutorStatus::Disabled:    return "disabled";
+    }
+    return "disabled";
+}
+
+const char* CalculusApp::debugOperationName() const {
+    return _calcMode == CalcMode::DERIVATIVE
+        ? "differentiate" : "integrate_indefinite";
+}
+
+const std::string& CalculusApp::debugExactText() const {
+#ifdef NUMOS_CALCULUS_LEGACY_ENGINE
+    return _legacyExactText;
+#else
+    return _giacResult.exactText;
+#endif
+}
+
+bool CalculusApp::debugResultNear(double expected, double epsilon) const {
+    const std::string& exact = debugExactText();
+#ifndef NUMOS_CALCULUS_LEGACY_ENGINE
+    const std::string& candidate = _giacResult.approximateText.empty()
+        ? exact : _giacResult.approximateText;
+#else
+    const std::string& candidate = exact;
+#endif
+    if (candidate.empty() || epsilon < 0.0) return false;
+    char* end = nullptr;
+    const double actual = std::strtod(candidate.c_str(), &end);
+    return end && *end == '\0' && std::isfinite(actual) &&
+           std::fabs(actual - expected) <= epsilon;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -156,6 +235,7 @@ void CalculusApp::end() {
         _resultContainer   = nullptr;
         _resultTitle       = nullptr;
         _resultLabel       = nullptr;
+        _resultFallback    = nullptr;
         _resultHint        = nullptr;
         _originalLabel     = nullptr;
         _stepsContainer    = nullptr;
@@ -164,6 +244,12 @@ void CalculusApp::end() {
     _state = State::EDITING;
     _resultExpr = nullptr;
     _integralFound = false;
+    _giacResult = numos::StructuredCalculusResult();
+    _resultKind = ResultKind::None;
+    _tutorStatus = TutorStatus::Disabled;
+    _serializedInput.clear();
+    _tutorDiagnostic.clear();
+    _legacyExactText.clear();
     _casSteps.clear();
     _arena.reset();
 }
@@ -378,6 +464,15 @@ void CalculusApp::createUI() {
     lv_obj_set_pos(_resultCanvas.obj(), PAD + 4, 78);
     lv_obj_set_size(_resultCanvas.obj(), SCREEN_W - 2 * PAD - 4, 80);
     lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+
+    _resultFallback = lv_label_create(_resultContainer);
+    lv_obj_set_pos(_resultFallback, PAD + 4, 80);
+    lv_obj_set_width(_resultFallback, SCREEN_W - 2 * PAD - 8);
+    lv_label_set_long_mode(_resultFallback, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(_resultFallback, &stix_math_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_resultFallback,
+                                lv_color_hex(COL_STEP_HEX), LV_PART_MAIN);
+    lv_obj_add_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
 
     _resultHint = lv_label_create(_resultContainer);
     lv_label_set_text(_resultHint, "STEPS: See steps    AC: New");
@@ -766,6 +861,20 @@ char CalculusApp::detectVariable(const cas::SymExpr* expr) {
     }
 }
 
+char CalculusApp::detectAuthoredVariable(const vpam::MathNode* node) const {
+    if (!node) return 0;
+    if (node->type() == vpam::NodeType::Variable) {
+        const char name =
+            static_cast<const vpam::NodeVariable*>(node)->name();
+        return (name == 'x' || name == 'y') ? name : 0;
+    }
+    for (int i = 0; i < node->childCount(); ++i) {
+        const char found = detectAuthoredVariable(node->child(i));
+        if (found != 0) return found;
+    }
+    return 0;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Compute result — Dispatches to derivative or integral
 // ════════════════════════════════════════════════════════════════════════════
@@ -786,7 +895,11 @@ void CalculusApp::computeResult() {
     _stepRenderers.clear();
     _resultExpr = nullptr;
     _integralFound = false;
+    _resultKind = ResultKind::None;
+    _legacyExactText.clear();
 
+#ifdef NUMOS_CALCULUS_LEGACY_ENGINE
+    _tutorStatus = TutorStatus::Disabled;
     // Step 1: Flatten MathAST → SymExpr
     _casSteps.logNote("Converting expression to symbolic form");
 
@@ -815,7 +928,108 @@ void CalculusApp::computeResult() {
         computeIntegral(expr);
     }
 
+    if (_resultExpr) {
+        NodePtr legacyAst = cas::SymExprToAST::convert(_resultExpr);
+        std::string ignored;
+        numos::CalculationEngine::serializeForGiac(
+            legacyAst.get(), _legacyExactText, ignored);
+    }
     showResult();
+#else
+    computeGiacResult();
+#endif
+}
+
+void CalculusApp::computeGiacResult() {
+    _giacResult = numos::StructuredCalculusResult();
+    _tutorStatus = TutorStatus::Unavailable;
+    _tutorDiagnostic.clear();
+    _serializedInput.clear();
+
+    std::string serializerError;
+    if (!numos::CalculationEngine::serializeForGiac(
+            _inputRow, _serializedInput, serializerError)) {
+        _giacResult.status = numos::MathEngineStatus::ParseError;
+        _giacResult.diagnostic = serializerError;
+        showResult();
+        return;
+    }
+
+    _variable = detectAuthoredVariable(_inputRow);
+    if (_variable == 0) _variable = 'x';
+
+    numos::CalculusRequest request;
+    request.operation = _calcMode == CalcMode::DERIVATIVE
+        ? numos::CalculusOperation::Differentiate
+        : numos::CalculusOperation::IntegrateIndefinite;
+    request.expression = _serializedInput;
+    request.variable.assign(1, _variable);
+
+    // WHY: Giac runs before any native tutor work and remains the only source
+    // consumed by buildResultDisplay().
+    _giacResult =
+        numos::GiacEngine::instance().evaluateCalculusStructured(request);
+    if (_giacResult.ok()) runNativeTutor(request);
+    showResult();
+}
+
+void CalculusApp::runNativeTutor(const numos::CalculusRequest& request) {
+    _arena.reset();
+    _casSteps.clear();
+    _resultExpr = nullptr;
+    _integralFound = false;
+
+    cas::ASTFlattener flattener;
+    flattener.setArena(&_arena);
+    cas::SymExpr* expr = flattener.flattenToExpr(_inputRow);
+    if (!expr) {
+        _tutorDiagnostic = "native tutor could not represent authored input";
+        return;
+    }
+    _casSteps.logExpr("Original expression:", expr);
+    if (_calcMode == CalcMode::DERIVATIVE) {
+        computeDerivative(expr);
+    } else {
+        computeIntegral(expr);
+        if (!_integralFound) _resultExpr = nullptr;
+    }
+    if (!_resultExpr) {
+        _casSteps.clear();
+        _tutorDiagnostic = "native tutor did not produce a final result";
+        return;
+    }
+
+    NodePtr tutorAst = cas::SymExprToAST::convert(_resultExpr);
+    std::string nativeSerialized;
+    std::string serializerError;
+    if (!tutorAst ||
+        !numos::CalculationEngine::serializeForGiac(
+            tutorAst.get(), nativeSerialized, serializerError)) {
+        _casSteps.clear();
+        _tutorDiagnostic = serializerError.empty()
+            ? "native tutor result cannot be verified structurally"
+            : serializerError;
+        return;
+    }
+
+    numos::CalculusTutorVerification verification =
+        numos::GiacEngine::instance().verifyCalculusTutor(
+            request, nativeSerialized);
+#ifdef NATIVE_SIM
+    if (_debugForceTutorDisagreement) {
+        verification.agreed = false;
+        verification.diagnostic = "forced native tutor disagreement";
+    }
+#endif
+    _tutorDiagnostic = verification.diagnostic;
+    if (verification.agreed) {
+        _tutorStatus = TutorStatus::Agreed;
+    } else {
+        // WHY: fail closed. Native expressions and their steps never enter the
+        // result path and are discarded whenever verification is unavailable.
+        _tutorStatus = TutorStatus::Unavailable;
+        _casSteps.clear();
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -907,14 +1121,94 @@ void CalculusApp::buildResultDisplay() {
     // Clear previous
     _resultCanvas.stopCursorBlink();
     lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+    if (_resultFallback)
+        lv_obj_add_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
     _resultNode.reset();
     _resultRow = nullptr;
+    _resultKind = ResultKind::None;
 
     _originalCanvas.stopCursorBlink();
     lv_obj_add_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
     _originalNode.reset();
     _originalRow = nullptr;
 
+#ifndef NUMOS_CALCULUS_LEGACY_ENGINE
+    // Show the authored expression independently of result success.
+    if (_inputRow) {
+        _originalNode = cloneNode(_inputRow);
+        _originalRow = static_cast<NodeRow*>(_originalNode.get());
+        char fLabel[16];
+        snprintf(fLabel, sizeof(fLabel), "f(%c) =", _variable);
+        lv_label_set_text(_originalLabel, fLabel);
+        lv_obj_remove_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+        _originalCanvas.setExpression(_originalRow, nullptr);
+        _originalRow->calculateLayout(_originalCanvas.normalMetrics());
+        _originalCanvas.invalidate();
+    }
+
+    lv_obj_set_style_text_color(
+        _resultTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
+    lv_label_set_text(
+        _resultTitle,
+        _calcMode == CalcMode::DERIVATIVE
+            ? "Giac Symbolic Derivative"
+            : (_giacResult.unevaluated
+                   ? "Unevaluated Giac Integral"
+                   : "Giac Symbolic Integral"));
+    char resultLabel[24];
+    snprintf(resultLabel, sizeof(resultLabel),
+             _calcMode == CalcMode::DERIVATIVE ? "f'(%c) =" : "F(%c) =",
+             _variable);
+    lv_label_set_text(_resultLabel, resultLabel);
+    lv_label_set_text(
+        _resultHint,
+        _tutorStatus == TutorStatus::Agreed
+            ? "STEPS: See steps    AC: New"
+            : "STEPS: Unavailable  AC: New");
+
+    if (!_giacResult.ok()) {
+        lv_label_set_text(_resultTitle, "Giac Calculus Error");
+        lv_label_set_text(_resultLabel, "");
+        if (_resultFallback) {
+            std::string visible = "Giac diagnostic: ";
+            visible += _giacResult.diagnostic.empty()
+                ? debugStatusName() : _giacResult.diagnostic;
+            lv_label_set_text(_resultFallback, visible.c_str());
+            lv_obj_remove_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
+        }
+        return;
+    }
+
+    if (_giacResult.hasTree) {
+        _resultNode =
+            numos::CalculationEngine::resultTreeToAST(_giacResult.tree);
+        if (_resultNode && _calcMode == CalcMode::INTEGRAL) {
+            // Product policy: Giac supplies the authoritative primitive;
+            // NumOS presents the general antiderivative by appending + C.
+            auto* row = static_cast<NodeRow*>(_resultNode.get());
+            row->appendChild(makeOperator(OpKind::Add));
+            row->appendChild(makeVariable('C'));
+        }
+    }
+    if (_resultNode) {
+        _resultRow = static_cast<NodeRow*>(_resultNode.get());
+        lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+        _resultCanvas.setExpression(_resultRow, nullptr);
+        _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+        _resultCanvas.invalidate();
+        _resultKind = ResultKind::Structured;
+        return;
+    }
+
+    // Valid Giac values whose shape is unsupported by MathAST remain exact.
+    std::string visible = "Giac exact result (text): ";
+    visible += _giacResult.exactText;
+    if (_calcMode == CalcMode::INTEGRAL) visible += " + C";
+    lv_label_set_text(_resultFallback, visible.c_str());
+    lv_obj_remove_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
+    _resultKind = ResultKind::TextFallback;
+    return;
+#else
     if (!_resultExpr) {
         // Error case
         if (_calcMode == CalcMode::DERIVATIVE) {
@@ -925,6 +1219,7 @@ void CalculusApp::buildResultDisplay() {
         lv_label_set_text(_resultLabel, "");
         return;
     }
+    _resultKind = ResultKind::Structured;
 
     // Show original expression (small)
     if (_inputRow) {
@@ -1020,6 +1315,7 @@ void CalculusApp::buildResultDisplay() {
             }
         }
     }
+#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1030,6 +1326,24 @@ void CalculusApp::buildStepsDisplay() {
     // ── 1. Clean up ────────────────────────────────────────────────
     _stepRenderers.clear();
     lv_obj_clean(_stepsContainer);
+
+#ifndef NUMOS_CALCULUS_LEGACY_ENGINE
+    if (_tutorStatus != TutorStatus::Agreed) {
+        lv_obj_t* lbl = lv_label_create(_stepsContainer);
+        std::string message = "Steps unavailable.";
+        if (!_tutorDiagnostic.empty()) {
+            message += "\n";
+            message += _tutorDiagnostic;
+        }
+        lv_label_set_text(lbl, message.c_str());
+        lv_obj_set_width(lbl, SCREEN_W - 2 * PAD - 8);
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(lbl, &stix_math_18, LV_PART_MAIN);
+        lv_obj_set_style_text_color(
+            lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
+        return;
+    }
+#endif
 
     const auto& steps = _casSteps.steps();
 

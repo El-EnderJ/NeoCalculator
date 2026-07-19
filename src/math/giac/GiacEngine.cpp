@@ -32,6 +32,8 @@
 #include "identificateur.h"
 #include "prog.h"    // cas_setup
 #include "subst.h"   // subst, _simplify
+#include "derive.h"  // derive
+#include "intg.h"    // integrate_gen
 #include "unary.h"   // unary_function_ptr/_eval full types (result tree walk)
 #include "solve.h"   // has_num_coeff
 #include "sym2poly.h"
@@ -127,6 +129,9 @@ MathEngineResult rejectedReentrant() {
 
 constexpr int kTreeMaxDepth = 40;
 constexpr int kTreeNodeBudget = 400;
+constexpr size_t kCalculusMaxSerializedLength = 2000;
+constexpr int kCalculusInputNodeBudget = 400;
+constexpr int kCalculusMaxDepth = 40;
 
 void genToNode(const giac::gen& g, giac::context* ctx,
                EngineResultNode& out, int depth, int& budget);
@@ -500,6 +505,223 @@ static MathEngineResult runTextual(giac::context* ctx, const char* expression,
     }
 }
 
+bool validCalculusVariable(const std::string& name) {
+    // CalculusApp currently authors one-character x/y variables. Keep the
+    // engine seam slightly more general without admitting command names.
+    if (name.empty() || name.size() > 31) return false;
+    const unsigned char first = static_cast<unsigned char>(name.front());
+    if (!(std::isalpha(first) || name.front() == '_')) return false;
+    for (char c : name) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (!(std::isalnum(uc) || c == '_')) return false;
+    }
+    static const char* const kReserved[] = {
+        "pi", "e", "i", "oo", "undef", "diff", "derive", "integrate",
+        "solve", "limit", "series", "sin", "cos", "tan", "ln", "log",
+        "sqrt", "exp"
+    };
+    for (const char* reserved : kReserved)
+        if (name == reserved) return false;
+    return true;
+}
+
+bool calculusInputWithinBounds(const giac::gen& g, int depth, int& budget) {
+    if (depth > kCalculusMaxDepth || --budget < 0) return false;
+    switch (g.type) {
+        case giac::_VECT:
+            for (const auto& child : *g._VECTptr)
+                if (!calculusInputWithinBounds(child, depth + 1, budget))
+                    return false;
+            return true;
+        case giac::_SYMB:
+            return calculusInputWithinBounds(g._SYMBptr->feuille,
+                                             depth + 1, budget);
+        case giac::_FRAC:
+            return calculusInputWithinBounds(g._FRACptr->num,
+                                             depth + 1, budget) &&
+                   calculusInputWithinBounds(g._FRACptr->den,
+                                             depth + 1, budget);
+        case giac::_CPLX:
+            return calculusInputWithinBounds(*g._CPLXptr,
+                                             depth + 1, budget) &&
+                   calculusInputWithinBounds(*(g._CPLXptr + 1),
+                                             depth + 1, budget);
+        default:
+            return true;
+    }
+}
+
+bool containsCalculusOperation(const giac::gen& g,
+                               CalculusOperation operation,
+                               int depth, int& budget) {
+    if (depth > kCalculusMaxDepth || --budget < 0) return true;
+    if (g.type == giac::_SYMB) {
+        const auto sommet = g._SYMBptr->sommet;
+        if ((operation == CalculusOperation::Differentiate &&
+             sommet == giac::at_derive) ||
+            (operation == CalculusOperation::IntegrateIndefinite &&
+             sommet == giac::at_integrate)) {
+            return true;
+        }
+        return containsCalculusOperation(g._SYMBptr->feuille, operation,
+                                         depth + 1, budget);
+    }
+    if (g.type == giac::_VECT) {
+        for (const auto& child : *g._VECTptr)
+            if (containsCalculusOperation(child, operation,
+                                          depth + 1, budget))
+                return true;
+    } else if (g.type == giac::_FRAC) {
+        return containsCalculusOperation(g._FRACptr->num, operation,
+                                         depth + 1, budget) ||
+               containsCalculusOperation(g._FRACptr->den, operation,
+                                         depth + 1, budget);
+    }
+    return false;
+}
+
+// DEG symbolic trig is made explicit before invoking Giac algorithms that
+// are unstable with a degree-mode context. Equation solving reuses this same
+// helper below.
+giac::gen explicitDegreeTrig(const giac::gen& value, int depth, int& budget) {
+    if (depth > 64 || --budget < 0) return value;
+    if (value.type == giac::_VECT) {
+        giac::vecteur children;
+        children.reserve(value._VECTptr->size());
+        for (const auto& child : *value._VECTptr) {
+            children.push_back(
+                explicitDegreeTrig(child, depth + 1, budget));
+        }
+        return giac::gen(children, value.subtype);
+    }
+    if (value.type == giac::_FRAC) {
+        return explicitDegreeTrig(value._FRACptr->num, depth + 1, budget) /
+               explicitDegreeTrig(value._FRACptr->den, depth + 1, budget);
+    }
+    if (value.type != giac::_SYMB) return value;
+
+    const auto function = value._SYMBptr->sommet;
+    giac::gen leaf =
+        explicitDegreeTrig(value._SYMBptr->feuille, depth + 1, budget);
+    if (function == giac::at_sin || function == giac::at_cos ||
+        function == giac::at_tan) {
+        leaf = leaf * giac::cst_pi / giac::gen(180);
+        return giac::symbolic(function, leaf);
+    }
+    if (function == giac::at_asin || function == giac::at_acos ||
+        function == giac::at_atan) {
+        return giac::gen(180) / giac::cst_pi *
+               giac::symbolic(function, leaf);
+    }
+    return giac::symbolic(function, leaf);
+}
+
+class ScopedRadianMode {
+public:
+    ScopedRadianMode(giac::context* context, bool forceRadians)
+        : _context(context)
+        , _restore(forceRadians)
+        , _wasRadians(giac::angle_radian(context)) {
+        if (_restore) giac::angle_radian(true, _context);
+    }
+
+    ~ScopedRadianMode() {
+        if (_restore) giac::angle_radian(_wasRadians, _context);
+    }
+
+    ScopedRadianMode(const ScopedRadianMode&) = delete;
+    ScopedRadianMode& operator=(const ScopedRadianMode&) = delete;
+
+private:
+    giac::context* _context;
+    bool _restore;
+    bool _wasRadians;
+};
+
+MathEngineStatus computeCalculusGen(giac::context* ctx,
+                                    const CalculusRequest& request,
+                                    giac::gen& out,
+                                    bool& unevaluated,
+                                    std::string& diagnostic) {
+    unevaluated = false;
+    diagnostic.clear();
+    if (request.expression.empty()) {
+        diagnostic = "empty calculus expression";
+        return MathEngineStatus::ParseError;
+    }
+    if (request.expression.size() > kCalculusMaxSerializedLength) {
+        diagnostic = "calculus expression too long";
+        return MathEngineStatus::Unsupported;
+    }
+    if (!validCalculusVariable(request.variable)) {
+        diagnostic = "invalid or reserved calculus variable";
+        return MathEngineStatus::ParseError;
+    }
+
+    try {
+        DiagnosticCapture capture(ctx);
+        giac::gen authored(request.expression, ctx);
+        if (giac::is_undef(authored)) {
+            diagnostic = capture.text();
+            if (diagnostic.empty()) diagnostic = "unable to parse calculus expression";
+            return MathEngineStatus::ParseError;
+        }
+        int inputBudget = kCalculusInputNodeBudget;
+        if (!calculusInputWithinBounds(authored, 0, inputBudget)) {
+            diagnostic = "calculus expression exceeds structural limits";
+            return MathEngineStatus::Unsupported;
+        }
+
+        const bool authoredInDegrees = !giac::angle_radian(ctx);
+        if (authoredInDegrees) {
+            int angleBudget = kCalculusInputNodeBudget;
+            authored = explicitDegreeTrig(authored, 0, angleBudget);
+            if (angleBudget < 0) {
+                diagnostic = "calculus angle transform exceeds limits";
+                return MathEngineStatus::Unsupported;
+            }
+        }
+        // WHY: embedded Giac's symbolic derivative/integral paths are not
+        // stable with a DEG context. Explicit pi/180 conversion preserves
+        // authored semantics exactly while this scoped guard ensures every
+        // exit restores AngleModeRuntime's synchronized mode.
+        ScopedRadianMode radianMode(ctx, authoredInDegrees);
+        const giac::gen variable(giac::identificateur(request.variable));
+        if (request.operation == CalculusOperation::Differentiate) {
+            // WHY: this is a typed Giac call, not app-authored command text.
+            // The first-derivative order is fixed by the enabled UI.
+            out = giac::derive(authored, variable, ctx);
+        } else {
+            out = giac::integrate_gen(authored, variable, ctx);
+        }
+
+        diagnostic = capture.text();
+        if (giac::is_undef(out)) {
+            const std::string printed = out.print(ctx);
+            if (!printed.empty() && printed != "undef") {
+                if (!diagnostic.empty()) diagnostic += "\n";
+                diagnostic += printed;
+            }
+            return diagnostic.find("rror") != std::string::npos
+                       ? MathEngineStatus::EvaluationError
+                       : MathEngineStatus::Undefined;
+        }
+        int operationBudget = kTreeNodeBudget;
+        unevaluated = containsCalculusOperation(
+            out, request.operation, 0, operationBudget);
+        return MathEngineStatus::Ok;
+    } catch (const std::bad_alloc&) {
+        diagnostic = "allocation failure inside Giac calculus";
+        return MathEngineStatus::OutOfMemory;
+    } catch (const std::exception& e) {
+        diagnostic = e.what();
+        return MathEngineStatus::EvaluationError;
+    } catch (...) {
+        diagnostic = "unknown Giac calculus exception";
+        return MathEngineStatus::EvaluationError;
+    }
+}
+
 MathEngineResult GiacEngine::evaluate(const char* expression) {
     CallGuard guard(_inCall);
     if (!guard.entered()) return rejectedReentrant();
@@ -542,6 +764,126 @@ StructuredEngineResult GiacEngine::evaluateStructured(const char* expression) {
     sr.base = runTextual(_state->ctx, expression, /*simplifyMode=*/false,
                          &sr.tree, &sr.hasTree);
     return sr;
+}
+
+StructuredCalculusResult GiacEngine::evaluateCalculusStructured(
+    const CalculusRequest& request) {
+    StructuredCalculusResult result;
+    CallGuard guard(_inCall);
+    if (!guard.entered()) {
+        result.status = MathEngineStatus::Unsupported;
+        result.diagnostic = "GiacEngine is non-reentrant: nested call rejected";
+        return result;
+    }
+    if (!begin()) {
+        result.status = MathEngineStatus::OutOfMemory;
+        result.diagnostic = "Giac context initialization failed";
+        return result;
+    }
+    syncAngleMode(_state->ctx);
+
+    giac::gen exact;
+    result.status = computeCalculusGen(
+        _state->ctx, request, exact, result.unevaluated, result.diagnostic);
+    if (!result.ok()) return result;
+
+    result.exactText = exact.print(_state->ctx);
+    int treeBudget = kTreeNodeBudget;
+    genToNode(exact, _state->ctx, result.tree, 0, treeBudget);
+    result.hasTree = true;
+
+    try {
+        giac::gen approximate = giac::evalf(exact, 1, _state->ctx);
+        if (!giac::is_undef(approximate)) {
+            const std::string printed = approximate.print(_state->ctx);
+            if (printed != result.exactText)
+                result.approximateText = printed;
+        }
+    } catch (...) {
+        // Exact Giac output remains authoritative.
+    }
+    return result;
+}
+
+CalculusTutorVerification GiacEngine::verifyCalculusTutor(
+    const CalculusRequest& request,
+    const std::string& nativeResultExpression) {
+    CalculusTutorVerification verification;
+    CallGuard guard(_inCall);
+    if (!guard.entered()) {
+        verification.diagnostic =
+            "GiacEngine is non-reentrant: tutor verification rejected";
+        return verification;
+    }
+    if (!begin()) {
+        verification.diagnostic = "Giac context initialization failed";
+        return verification;
+    }
+    syncAngleMode(_state->ctx);
+    if (nativeResultExpression.empty() ||
+        nativeResultExpression.size() > kCalculusMaxSerializedLength) {
+        verification.diagnostic = "native tutor result exceeds verification limits";
+        return verification;
+    }
+
+    giac::gen authoritative;
+    bool unevaluated = false;
+    MathEngineStatus status = computeCalculusGen(
+        _state->ctx, request, authoritative, unevaluated,
+        verification.diagnostic);
+    if (status != MathEngineStatus::Ok || unevaluated) {
+        if (verification.diagnostic.empty())
+            verification.diagnostic =
+                "authoritative result is not verifiable in closed form";
+        return verification;
+    }
+
+    try {
+        DiagnosticCapture capture(_state->ctx);
+        giac::gen native(nativeResultExpression, _state->ctx);
+        if (giac::is_undef(native)) {
+            verification.diagnostic = capture.text();
+            if (verification.diagnostic.empty())
+                verification.diagnostic = "unable to parse native tutor result";
+            return verification;
+        }
+        int nativeBudget = kCalculusInputNodeBudget;
+        if (!calculusInputWithinBounds(native, 0, nativeBudget)) {
+            verification.diagnostic =
+                "native tutor result exceeds structural limits";
+            return verification;
+        }
+
+        giac::gen delta = native - authoritative;
+        giac::gen normalized;
+        if (request.operation == CalculusOperation::IntegrateIndefinite) {
+            // WHY: antiderivatives are equivalent iff their difference has
+            // zero derivative. This accepts harmless additive constants while
+            // remaining exact and bounded to one verification derivative.
+            const giac::gen variable(giac::identificateur(request.variable));
+            normalized = giac::derive(delta, variable, _state->ctx);
+        } else {
+            normalized = delta;
+        }
+        normalized = giac::_simplify(normalized, _state->ctx);
+        normalized = giac::ratnormal(normalized, _state->ctx);
+        verification.agreed = giac::is_zero(normalized, _state->ctx);
+        verification.diagnostic = verification.agreed
+            ? (request.operation == CalculusOperation::IntegrateIndefinite
+                   ? "native antiderivative agrees with Giac modulo a constant"
+                   : "normalized native derivative agrees with Giac")
+            : "native tutor result disagrees with Giac";
+        return verification;
+    } catch (const std::bad_alloc&) {
+        verification.diagnostic =
+            "allocation failure during tutor verification";
+    } catch (const std::exception& e) {
+        verification.diagnostic = e.what();
+    } catch (...) {
+        verification.diagnostic =
+            "unknown exception during tutor verification";
+    }
+    return verification;
 }
 
 namespace {
@@ -630,42 +972,6 @@ bool containsAnyVariable(const giac::gen& g,
                                    depth + 1, budget);
     }
     return false;
-}
-
-giac::gen explicitDegreeTrig(const giac::gen& value, int depth, int& budget) {
-    if (depth > 64 || --budget < 0) return value;
-    if (value.type == giac::_VECT) {
-        giac::vecteur children;
-        children.reserve(value._VECTptr->size());
-        for (const auto& child : *value._VECTptr) {
-            children.push_back(
-                explicitDegreeTrig(child, depth + 1, budget));
-        }
-        return giac::gen(children, value.subtype);
-    }
-    if (value.type == giac::_FRAC) {
-        return explicitDegreeTrig(value._FRACptr->num, depth + 1, budget) /
-               explicitDegreeTrig(value._FRACptr->den, depth + 1, budget);
-    }
-    if (value.type != giac::_SYMB) return value;
-
-    const auto function = value._SYMBptr->sommet;
-    giac::gen leaf =
-        explicitDegreeTrig(value._SYMBptr->feuille, depth + 1, budget);
-    if (function == giac::at_sin || function == giac::at_cos ||
-        function == giac::at_tan) {
-        // WHY: embedded Giac's symbolic solver is unstable with a DEG
-        // context. Making the unit conversion explicit preserves the authored
-        // equation while the solver itself remains in its stable RAD mode.
-        leaf = leaf * giac::cst_pi / giac::gen(180);
-        return giac::symbolic(function, leaf);
-    }
-    if (function == giac::at_asin || function == giac::at_acos ||
-        function == giac::at_atan) {
-        return giac::gen(180) / giac::cst_pi *
-               giac::symbolic(function, leaf);
-    }
-    return giac::symbolic(function, leaf);
 }
 
 bool splitEquality(const giac::gen& g, giac::gen& lhs, giac::gen& rhs) {

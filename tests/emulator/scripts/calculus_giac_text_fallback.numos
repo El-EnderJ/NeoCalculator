@@ -1,0 +1,18 @@
+# GIAC-E01: valid erfi result is exact Giac text, never a native fallback.
+wait 200
+open_app Calculus
+wait 60
+key GRAPH
+key e
+key ^
+key x
+key ^
+key 2
+key ENTER
+wait 180
+assert_calculus_engine giac
+assert_calculus_operation integrate_indefinite
+assert_calculus_status ok
+assert_calculus_result_kind text_fallback
+assert_calculus_result_exact i/2*sqrt(pi)*erf((-i)*x)
+assert_calculus_tutor_status unavailable

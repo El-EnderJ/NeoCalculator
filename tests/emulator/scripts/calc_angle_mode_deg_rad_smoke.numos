@@ -33,9 +33,10 @@ assert_no_error
 assert_result 1
 log "calc_angle_mode: DEG sin(90) == 1"
 
-# RAD: sin(90) == 0.8939966636... (differs from the DEG result). The vpam
-# evaluator rationalizes the 10-digit decimal, so the canonical assert text is
-# the exact reduced fraction 2234991659/2500000000 (== 0.8939966636).
+# RAD: GIAC-B01 intended semantic change — the legacy evaluator rationalized
+# the decimal (2234991659/2500000000); Giac keeps the exact symbolic result
+# sin(90) in RAD (structured tier). The mode change is still observable: DEG
+# gave 1, RAD gives symbolic sin(90).
 key ac
 wait 10
 set_angle_mode rad
@@ -47,5 +48,7 @@ key right
 key enter
 wait 120
 assert_no_error
-assert_result 2234991659/2500000000
-log "calc_angle_mode: RAD sin(90) ~= 0.894 (mode change observed in results)"
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact sin(90)
+log "calc_angle_mode: RAD sin(90) stays exact/symbolic (mode change observed)"

@@ -18,6 +18,7 @@
 // emulator_pc and the host harness; everything Giac-typed stays in this TU.
 
 #include <cmath>
+#include <cstring>
 #include <exception>
 #include <new>
 #include <sstream>
@@ -29,6 +30,7 @@
 #include "identificateur.h"
 #include "prog.h"    // cas_setup
 #include "subst.h"   // subst, _simplify
+#include "unary.h"   // unary_function_ptr/_eval full types (result tree walk)
 #include "solve.h"   // has_num_coeff
 #include "usual.h"
 
@@ -112,6 +114,171 @@ MathEngineResult rejectedReentrant() {
     r.status = MathEngineStatus::Unsupported;
     r.diagnostic = "GiacEngine is non-reentrant: nested call rejected";
     return r;
+}
+
+// ---------------------------------------------------------------------------
+// GIAC-B01: gen -> EngineResultNode structural walk. Bounded (depth + node
+// budget) so a pathological result degrades to Unsupported, never recurses
+// away. Every giac type stays inside this TU.
+// ---------------------------------------------------------------------------
+
+constexpr int kTreeMaxDepth = 40;
+constexpr int kTreeNodeBudget = 400;
+
+void genToNode(const giac::gen& g, giac::context* ctx,
+               EngineResultNode& out, int depth, int& budget);
+
+void childrenFromFeuille(const giac::gen& f, giac::context* ctx,
+                         EngineResultNode& out, int depth, int& budget) {
+    if (f.type == giac::_VECT) {
+        out.children.resize(f._VECTptr->size());
+        for (size_t i = 0; i < f._VECTptr->size(); ++i)
+            genToNode((*f._VECTptr)[i], ctx, out.children[i], depth, budget);
+    } else {
+        out.children.resize(1);
+        genToNode(f, ctx, out.children[0], depth, budget);
+    }
+}
+
+void genToNode(const giac::gen& g, giac::context* ctx,
+               EngineResultNode& out, int depth, int& budget) {
+    if (depth > kTreeMaxDepth || --budget < 0) {
+        out.kind = EngineNodeKind::Unsupported;
+        return;
+    }
+    if (giac::is_undef(g)) {  // shouldn't reach here (non-Ok upstream)
+        out.kind = EngineNodeKind::Unsupported;
+        return;
+    }
+    if (g == giac::unsigned_inf) { out.kind = EngineNodeKind::UnsignedInfinity; return; }
+    if (g == giac::plus_inf)     { out.kind = EngineNodeKind::PlusInfinity; return; }
+    if (g == giac::minus_inf)    { out.kind = EngineNodeKind::MinusInfinity; return; }
+
+    switch (g.type) {
+        case giac::_INT_:
+        case giac::_ZINT:
+            out.kind = EngineNodeKind::Integer;
+            out.text = g.print(ctx);
+            return;
+        case giac::_DOUBLE_:
+            out.kind = EngineNodeKind::Decimal;
+            out.text = g.print(ctx);
+            return;
+        case giac::_FRAC:
+            out.kind = EngineNodeKind::Rational;
+            out.children.resize(2);
+            genToNode(g._FRACptr->num, ctx, out.children[0], depth + 1, budget);
+            genToNode(g._FRACptr->den, ctx, out.children[1], depth + 1, budget);
+            return;
+        case giac::_CPLX:
+            out.kind = EngineNodeKind::Complex;
+            out.children.resize(2);
+            genToNode(*g._CPLXptr, ctx, out.children[0], depth + 1, budget);
+            genToNode(*(g._CPLXptr + 1), ctx, out.children[1], depth + 1, budget);
+            return;
+        case giac::_IDNT: {
+            if (g == giac::cst_pi) { out.kind = EngineNodeKind::Pi; return; }
+            if (g == giac::cst_i)  { out.kind = EngineNodeKind::ImagUnit; return; }
+            out.kind = EngineNodeKind::Symbol;
+            out.text = g.print(ctx);
+            return;
+        }
+        case giac::_VECT: {
+            out.kind = EngineNodeKind::List;
+            out.children.resize(g._VECTptr->size());
+            for (size_t i = 0; i < g._VECTptr->size(); ++i)
+                genToNode((*g._VECTptr)[i], ctx, out.children[i], depth + 1, budget);
+            return;
+        }
+        case giac::_SYMB: {
+            const giac::unary_function_ptr& s = g._SYMBptr->sommet;
+            const giac::gen& f = g._SYMBptr->feuille;
+            if (s == giac::at_plus) {
+                out.kind = EngineNodeKind::Add;
+                childrenFromFeuille(f, ctx, out, depth + 1, budget);
+                return;
+            }
+            if (s == giac::at_neg) {
+                out.kind = EngineNodeKind::Neg;
+                out.children.resize(1);
+                genToNode(f, ctx, out.children[0], depth + 1, budget);
+                return;
+            }
+            if (s == giac::at_prod) {
+                out.kind = EngineNodeKind::Mul;
+                childrenFromFeuille(f, ctx, out, depth + 1, budget);
+                return;
+            }
+            if (s == giac::at_inv) {
+                out.kind = EngineNodeKind::Inv;
+                out.children.resize(1);
+                genToNode(f, ctx, out.children[0], depth + 1, budget);
+                return;
+            }
+            if (s == giac::at_sqrt) {
+                out.kind = EngineNodeKind::Sqrt;
+                out.children.resize(1);
+                genToNode(f, ctx, out.children[0], depth + 1, budget);
+                return;
+            }
+            if (s == giac::at_exp && giac::is_one(f)) {
+                out.kind = EngineNodeKind::EulerE;
+                return;
+            }
+            if (s == giac::at_pow && f.type == giac::_VECT &&
+                f._VECTptr->size() == 2) {
+                const giac::gen& base = f._VECTptr->front();
+                const giac::gen& expo = f._VECTptr->back();
+                // x^(1/2) -> sqrt, x^(1/n) -> nth root (n small positive int)
+                if (expo.type == giac::_FRAC &&
+                    giac::is_one(expo._FRACptr->num) &&
+                    expo._FRACptr->den.type == giac::_INT_ &&
+                    expo._FRACptr->den.val >= 2 &&
+                    expo._FRACptr->den.val <= 64) {
+                    if (expo._FRACptr->den.val == 2) {
+                        out.kind = EngineNodeKind::Sqrt;
+                        out.children.resize(1);
+                        genToNode(base, ctx, out.children[0], depth + 1, budget);
+                    } else {
+                        out.kind = EngineNodeKind::Root;
+                        out.children.resize(2);
+                        genToNode(base, ctx, out.children[0], depth + 1, budget);
+                        out.children[1].kind = EngineNodeKind::Integer;
+                        out.children[1].text = std::to_string(expo._FRACptr->den.val);
+                    }
+                    return;
+                }
+                out.kind = EngineNodeKind::Pow;
+                out.children.resize(2);
+                genToNode(base, ctx, out.children[0], depth + 1, budget);
+                genToNode(expo, ctx, out.children[1], depth + 1, budget);
+                return;
+            }
+            if (s == giac::at_equal && f.type == giac::_VECT &&
+                f._VECTptr->size() == 2) {
+                out.kind = EngineNodeKind::Equation;
+                out.children.resize(2);
+                genToNode(f._VECTptr->front(), ctx, out.children[0], depth + 1, budget);
+                genToNode(f._VECTptr->back(), ctx, out.children[1], depth + 1, budget);
+                return;
+            }
+            // Generic named function call (sin, cos, ln, log10, abs, ...).
+            const char* name = s.ptr() ? s.ptr()->s : nullptr;
+            if (name && *name) {
+                out.kind = EngineNodeKind::Function;
+                out.text = name;
+                childrenFromFeuille(f, ctx, out, depth + 1, budget);
+                return;
+            }
+            out.kind = EngineNodeKind::Unsupported;
+            out.text = g.print(ctx);
+            return;
+        }
+        default:
+            out.kind = EngineNodeKind::Unsupported;
+            out.text = g.print(ctx);
+            return;
+    }
 }
 
 // File-scope mirrors of the singleton's context/generation. The context
@@ -211,8 +378,11 @@ static void syncAngleMode(giac::context* ctx) {
 }
 
 static MathEngineResult runTextual(giac::context* ctx, const char* expression,
-                                   bool simplifyMode) {
+                                   bool simplifyMode,
+                                   EngineResultNode* outTree = nullptr,
+                                   bool* outHasTree = nullptr) {
     MathEngineResult r;
+    if (outHasTree) *outHasTree = false;
     if (!expression || !*expression) {
         r.status = MathEngineStatus::ParseError;
         r.diagnostic = "empty expression";
@@ -250,6 +420,12 @@ static MathEngineResult runTextual(giac::context* ctx, const char* expression,
         r.status = MathEngineStatus::Ok;
         r.exactText = out.print(ctx);
         r.diagnostic = capture.text();
+
+        if (outTree && outHasTree) {
+            int budget = kTreeNodeBudget;
+            genToNode(out, ctx, *outTree, 0, budget);
+            *outHasTree = true;
+        }
 
         // Companion numeric form, only when it adds information.
         try {
@@ -301,6 +477,59 @@ MathEngineResult GiacEngine::simplify(const char* expression) {
     }
     syncAngleMode(_state->ctx);
     return runTextual(_state->ctx, expression, /*simplifyMode=*/true);
+}
+
+StructuredEngineResult GiacEngine::evaluateStructured(const char* expression) {
+    StructuredEngineResult sr;
+    CallGuard guard(_inCall);
+    if (!guard.entered()) {
+        sr.base = rejectedReentrant();
+        return sr;
+    }
+    if (!begin()) {
+        sr.base.status = MathEngineStatus::OutOfMemory;
+        sr.base.diagnostic = "Giac context initialization failed";
+        return sr;
+    }
+    syncAngleMode(_state->ctx);
+    sr.base = runTextual(_state->ctx, expression, /*simplifyMode=*/false,
+                         &sr.tree, &sr.hasTree);
+    return sr;
+}
+
+MathEngineResult GiacEngine::assign(const char* name,
+                                    const char* valueExpression) {
+    MathEngineResult bad;
+    bad.status = MathEngineStatus::ParseError;
+    if (!name || !*name || !valueExpression || !*valueExpression) {
+        bad.diagnostic = "assign: empty name or value";
+        return bad;
+    }
+    for (const char* p = name; *p; ++p) {
+        const bool okChar = (*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+                            *p == '_' || (p != name && *p >= '0' && *p <= '9');
+        if (!okChar) {
+            bad.diagnostic = "assign: name is not a plain identifier";
+            return bad;
+        }
+    }
+    std::string stmt;
+    stmt.reserve(std::strlen(name) + std::strlen(valueExpression) + 8);
+    stmt += name;
+    stmt += ":=(";
+    stmt += valueExpression;
+    stmt += ")";
+
+    CallGuard guard(_inCall);
+    if (!guard.entered()) return rejectedReentrant();
+    if (!begin()) {
+        MathEngineResult r;
+        r.status = MathEngineStatus::OutOfMemory;
+        r.diagnostic = "Giac context initialization failed";
+        return r;
+    }
+    syncAngleMode(_state->ctx);
+    return runTextual(_state->ctx, stmt.c_str(), /*simplifyMode=*/false);
 }
 
 CompiledExpression GiacEngine::compileNumeric(const char* expression,

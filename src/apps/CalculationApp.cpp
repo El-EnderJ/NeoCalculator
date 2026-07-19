@@ -33,6 +33,8 @@
 #include "CalculationApp.h"
 #include "../input/KeyCodes.h"
 #include "../Config.h"
+#include <cmath>
+#include <cstdlib>
 #include "../math/cas/ASTFlattener.h"
 #include "../math/cas/SymSimplify.h"
 #include "../math/cas/SymExprToAST.h"
@@ -109,7 +111,9 @@ void CalculationApp::end() {
         _screen      = nullptr;
         _resultSep   = nullptr;
         _stepsContainer = nullptr;
+        _resultTextLabel = nullptr;   // child of _screen, deleted with it
     }
+    _structuredResult.reset();
 
     _rootNode.reset();
     _rootRow = nullptr;
@@ -525,6 +529,113 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 void CalculationApp::evaluateExpression() {
     if (!_rootRow) return;
 
+#ifndef NUMOS_CALC_LEGACY_ENGINE
+    // ── GIAC-B01: Giac is the mathematical authority for Calculation ────
+    // Serialize the authored VPAM tree, mirror A-F/Ans/PreAns into the Giac
+    // context, evaluate, and receive the presentation tiers. NO legacy
+    // re-evaluation happens on any path (rollback is compile-time only).
+    numos::CalculationEvaluation ev =
+        numos::CalculationEngine::instance().evaluate(_rootRow);
+
+    _hasResult      = true;
+    _lastStatus     = ev.status;
+    _lastKind       = ev.kind;
+    _exactValValid  = ev.exactValValid;
+    _exactText      = ev.exactText;
+    _approxText     = ev.approximateText;
+    _structuredResult = std::move(ev.exactAST);
+
+    // ExactVal mirror: exact when tier 1; numeric fallback otherwise (probes,
+    // FACT and the persistent Ans store still see a coherent value).
+    bool ansUpdated = false;
+    if (ev.ok()) {
+        bool numericMirror = false;
+        if (ev.exactValValid) {
+            _lastResult = ev.exactVal;
+        } else {
+            double d = 0.0;
+            char* end = nullptr;
+            const bool numeric =
+                !_approxText.empty() &&
+                (d = std::strtod(_approxText.c_str(), &end), end && *end == '\0') &&
+                std::isfinite(d);
+            if (numeric) {
+                _lastResult = vpam::ExactVal::fromDouble(d);
+                numericMirror = true;
+            } else {
+                // Pure symbolic result (e.g. x-2*x): no numeric mirror.
+                _lastResult = vpam::ExactVal();
+                _lastResult.ok = true;
+                _lastResult.approximate = true;
+                _lastResult.approxVal = 0.0;
+            }
+        }
+        // Ans policy: successful results with an exact or numeric value
+        // update the persistent NumOS store; the exact Giac text rides
+        // along in the session so sqrt(2)/2^100 chains stay exact. Pure
+        // free-symbol results (no numeric mirror) leave Ans untouched.
+        if (ev.exactValValid || numericMirror) {
+            vpam::VariableManager::instance().updateAns(_lastResult);
+            numos::CalculationEngine::instance().noteAnsRotated(ev.exactText);
+            ansUpdated = true;
+        }
+    } else {
+        // Typed error statuses keep the legacy error rendering (and the
+        // assert_error contract). Failed evaluations never overwrite Ans.
+        const char* msg = "Math ERROR";
+        if (ev.status == numos::MathEngineStatus::ParseError ||
+            ev.status == numos::MathEngineStatus::Unsupported)
+            msg = "Syntax ERROR";
+        _lastResult = vpam::ExactVal::makeError(msg);
+    }
+    (void)ansUpdated;
+
+    // Default display mode: tier 1 keeps the legacy large-denominator
+    // heuristic (decimal-looking rationals open in Periodic); everything
+    // else opens Symbolic.
+    constexpr int64_t kDecimalDenThreshold = 100000;  // 10^5
+    if (_exactValValid && _lastResult.ok && _lastResult.isRational() &&
+        _lastResult.den >= kDecimalDenThreshold) {
+        _resultMode  = vpam::ResultMode::Periodic;
+        _showDecimal = true;
+    } else {
+        _resultMode  = vpam::ResultMode::Symbolic;
+        _showDecimal = false;
+    }
+
+    // ── Guardar en historial ─────────────────────────────────────────
+    {
+        HistoryEntry entry;
+        entry.exprAST = vpam::cloneNode(_rootRow);
+        entry.result  = _lastResult;
+        entry.status  = _lastStatus;
+        entry.kind    = _lastKind;
+        entry.exactValValid = _exactValValid;
+        entry.exactText  = _exactText;
+        entry.approxText = _approxText;
+        if (_structuredResult)
+            entry.resultAST = vpam::cloneNode(_structuredResult.get());
+        _history.push_back(std::move(entry));
+        if (static_cast<int>(_history.size()) > MAX_HISTORY) {
+            _history.erase(_history.begin());
+        }
+    }
+    _historyIndex = -1;
+
+    _mathCanvas.stopCursorBlink();
+    _mathCanvas.setExpression(_rootRow, nullptr);
+
+    // Educational steps (tutor mathematics stays on the custom CAS).
+    _eduStepLogger.clear();
+    _eduArena.reset();
+    _hasEduSteps = false;
+    if (setting_edu_steps && ev.ok()) {
+        generateEduSteps();
+    }
+
+    showResult();
+    return;
+#else
     // Evaluar
     _lastResult  = _evaluator.evaluate(_rootRow);
     _hasResult   = true;
@@ -581,6 +692,7 @@ void CalculationApp::evaluateExpression() {
 
     // Mostrar resultado
     showResult();
+#endif // NUMOS_CALC_LEGACY_ENGINE
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -701,6 +813,68 @@ void CalculationApp::applyResultLayout() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// GIAC-B01: presentación de texto plano (tier 3 — fallback honesto)
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculationApp::showTextResult(const std::string& text) {
+    if (!_screen || !_rootRow) return;
+
+    // No structured result AST in this tier.
+    _resultNode.reset();
+    _resultRow = nullptr;
+    if (_resultCanvas.obj())
+        lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+
+    if (!_resultTextLabel) {
+        _resultTextLabel = lv_label_create(_screen);
+        // stix_math fonts have no space glyph — plain text must use the
+        // default (montserrat) font.
+        lv_obj_set_style_text_color(_resultTextLabel, lv_color_hex(0x1A1A1A),
+                                    LV_PART_MAIN);
+        lv_label_set_long_mode(_resultTextLabel, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(_resultTextLabel, CONTENT_W);
+    }
+    lv_label_set_text(_resultTextLabel, text.c_str());
+    lv_obj_remove_flag(_resultTextLabel, LV_OBJ_FLAG_HIDDEN);
+
+    // Same band geometry idea as applyResultLayout(), with a fixed-height
+    // text band instead of a result canvas.
+    const int16_t cIn = vpam::mathObjectHeightPx(
+        _rootRow->layout(), _mathCanvas.normalMetrics(), 0);
+    const int16_t overhead = static_cast<int16_t>(SEP_THICK + 2 * SEP_GAP);
+    const int16_t avail    = static_cast<int16_t>(CONTENT_FULL_H - overhead);
+    constexpr int16_t TEXT_BAND_H = 48;   // up to two wrapped lines
+
+    int16_t inH = static_cast<int16_t>(avail - TEXT_BAND_H);
+    if (inH > cIn) inH = cIn;
+    if (inH < BAND_MIN_H) inH = BAND_MIN_H;
+
+    const int16_t inY  = static_cast<int16_t>(CONTENT_TOP);
+    const int16_t sepY = static_cast<int16_t>(inY + inH + SEP_GAP);
+    const int16_t resY = static_cast<int16_t>(sepY + SEP_THICK + SEP_GAP);
+
+    lv_obj_set_pos(_mathCanvas.obj(), PAD, inY);
+    lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, inH);
+
+    lv_obj_set_pos(_resultSep, PAD, sepY);
+    lv_obj_remove_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_set_pos(_resultTextLabel, PAD, resY);
+
+    _mathCanvas.setTraceLabel("calc_input_result_compact");
+    _mathCanvas.invalidate();
+
+    if (_hasEduSteps) {
+        _statusBar.setTitle("F2: View Steps");
+    }
+}
+
+void CalculationApp::hideTextResult() {
+    if (_resultTextLabel)
+        lv_obj_add_flag(_resultTextLabel, LV_OBJ_FLAG_HIDDEN);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // showResult() — Genera y muestra el AST del resultado (3 estados)
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -710,6 +884,52 @@ void CalculationApp::showResult() {
         _mathCanvas.stopCursorBlink();
     }
 
+#ifndef NUMOS_CALC_LEGACY_ENGINE
+    hideTextResult();
+
+    if (_lastStatus == numos::MathEngineStatus::Ok &&
+        _lastKind == numos::CalcResultKind::TextFallback) {
+        // Tier 3: Giac's own printed result as plain text — honest fallback,
+        // never a legacy re-evaluation.
+        showTextResult(_exactText);
+        return;
+    }
+
+    if (_lastStatus == numos::MathEngineStatus::Ok && !_exactValValid &&
+        _structuredResult) {
+        // Tier 2: structured Giac result. Symbolic shows the exact tree;
+        // the S<=>D states show the decimal companion when one exists.
+        if (_resultMode == vpam::ResultMode::Symbolic || _approxText.empty()) {
+            _resultNode = vpam::cloneNode(_structuredResult.get());
+        } else {
+            auto row = vpam::makeRow();
+            auto* r = static_cast<vpam::NodeRow*>(row.get());
+            std::string digits = _approxText;
+            if (!digits.empty() && digits[0] == '-') {
+                r->appendChild(vpam::makeOperator(vpam::OpKind::Sub));
+                digits.erase(0, 1);
+            }
+            r->appendChild(vpam::makeNumber(digits));
+            _resultNode = std::move(row);
+        }
+        _resultRow = static_cast<vpam::NodeRow*>(_resultNode.get());
+    } else {
+        // Tier 1 (exact ExactVal) and error results: unchanged legacy
+        // rendering — basic-arithmetic pixels and error visuals stay put.
+        switch (_resultMode) {
+            case vpam::ResultMode::Symbolic:
+                _resultNode = vpam::MathEvaluator::resultToAST(_lastResult);
+                break;
+            case vpam::ResultMode::Periodic:
+                _resultNode = vpam::MathEvaluator::resultToPeriodicAST(_lastResult);
+                break;
+            case vpam::ResultMode::Extended:
+                _resultNode = vpam::MathEvaluator::resultToExtendedAST(_lastResult, 200);
+                break;
+        }
+        _resultRow = static_cast<vpam::NodeRow*>(_resultNode.get());
+    }
+#else
     // Generar el AST del resultado según el estado
     switch (_resultMode) {
         case vpam::ResultMode::Symbolic:
@@ -723,6 +943,7 @@ void CalculationApp::showResult() {
             break;
     }
     _resultRow = static_cast<vpam::NodeRow*>(_resultNode.get());
+#endif // NUMOS_CALC_LEGACY_ENGINE
 
     // Conectar al canvas de resultado (sin cursor)
     _resultCanvas.setExpression(_resultRow, nullptr);
@@ -753,15 +974,21 @@ void CalculationApp::clearResult() {
     _hasResult = false;
     _resultNode.reset();
     _resultRow = nullptr;
+    _structuredResult.reset();
+    _lastKind = numos::CalcResultKind::None;
+    _exactValValid = false;
+    _exactText.clear();
+    _approxText.clear();
 
     // Clear educational steps
     _eduStepLogger.clear();
     _eduArena.reset();
     _hasEduSteps = false;
 
-    // Hide separator and result canvas
+    // Hide separator, result canvas and text-fallback label
     if (_resultSep) lv_obj_add_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
     if (_resultCanvas.obj()) lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+    hideTextResult();
 
     // Restore expression canvas to full-area vertically-centered Edit Mode.
     // Re-set position too: applyResultLayout() moves the canvas, clearResult() must undo it.
@@ -860,6 +1087,16 @@ void CalculationApp::loadHistoryEntry(int index) {
     _hasResult   = true;
     _showDecimal = false;
     _resultMode  = vpam::ResultMode::Symbolic;
+#ifndef NUMOS_CALC_LEGACY_ENGINE
+    _lastStatus    = entry.status;
+    _lastKind      = entry.kind;
+    _exactValValid = entry.exactValValid;
+    _exactText     = entry.exactText;
+    _approxText    = entry.approxText;
+    _structuredResult = entry.resultAST
+                            ? vpam::cloneNode(entry.resultAST.get())
+                            : vpam::NodePtr();
+#endif
     showResult();
 }
 
@@ -898,6 +1135,12 @@ void CalculationApp::executeStore(char varName) {
 
     // Intentar persistir en flash
     vm.saveToFlash();
+
+#ifndef NUMOS_CALC_LEGACY_ENGINE
+    // Keep the Giac session's exact text coherent with the store (A-F only;
+    // x/y/z stay free symbols on the Giac side).
+    numos::CalculationEngine::instance().noteVariableStored(varName);
+#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -984,6 +1227,7 @@ void CalculationApp::openStepViewer() {
     if (_mathCanvas.obj()) lv_obj_add_flag(_mathCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
     if (_resultCanvas.obj()) lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
     if (_resultSep) lv_obj_add_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
+    hideTextResult();
 
     _statusBar.setTitle("Steps");
 
@@ -1027,8 +1271,18 @@ void CalculationApp::closeStepViewer() {
     // Restore main UI
     if (_mathCanvas.obj()) lv_obj_remove_flag(_mathCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
     if (_hasResult) {
+#ifndef NUMOS_CALC_LEGACY_ENGINE
+        if (_lastStatus == numos::MathEngineStatus::Ok &&
+            _lastKind == numos::CalcResultKind::TextFallback) {
+            showTextResult(_exactText);
+        } else {
+            if (_resultCanvas.obj()) lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+            if (_resultSep) lv_obj_remove_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
+        }
+#else
         if (_resultCanvas.obj()) lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
         if (_resultSep) lv_obj_remove_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
+#endif
         _statusBar.setTitle("F2: View Steps");
     } else {
         _statusBar.setTitle("Calculation");
@@ -1124,3 +1378,36 @@ void CalculationApp::buildStepsDisplay() {
     lv_obj_add_style(hintLbl, &ui::style_math_primary, LV_PART_MAIN);
     lv_obj_set_style_text_color(hintLbl, lv_color_hex(0x808080), LV_PART_MAIN);
 }
+
+#ifdef NATIVE_SIM
+// ════════════════════════════════════════════════════════════════════════════
+// GIAC-B01 emulator probes — read-only accessors for the .numos runner.
+// Under -DNUMOS_CALC_LEGACY_ENGINE the fields keep their defaults, so
+// assert_calc_engine legacy / assert_calc_result_kind none stay truthful.
+// ════════════════════════════════════════════════════════════════════════════
+
+const char* CalculationApp::debugCalcResultKind() const {
+    switch (_lastKind) {
+        case numos::CalcResultKind::Structured:   return "structured";
+        case numos::CalcResultKind::TextFallback: return "text_fallback";
+        case numos::CalcResultKind::None:
+        default:                                  return "none";
+    }
+}
+
+const char* CalculationApp::debugCalcStatus() const {
+    switch (_lastStatus) {
+        case numos::MathEngineStatus::Ok:              return "ok";
+        case numos::MathEngineStatus::Undefined:       return "undefined";
+        case numos::MathEngineStatus::ParseError:      return "parse_error";
+        case numos::MathEngineStatus::EvaluationError: return "evaluation_error";
+        case numos::MathEngineStatus::Unsupported:     return "unsupported";
+        case numos::MathEngineStatus::OutOfMemory:     return "out_of_memory";
+    }
+    return "?";
+}
+
+const std::string& CalculationApp::debugCalcExactText() const {
+    return _exactText;
+}
+#endif // NATIVE_SIM

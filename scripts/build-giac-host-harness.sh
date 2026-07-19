@@ -88,6 +88,7 @@ printf '%s\n' src/math/giac/GiacEngine.cpp src/math/giac/GiacHostStubs.cpp | \
 # --- vpam::g_angleMode link closure (production MathEvaluator + deps; the
 # --- same subset emulator_pc links, proving CAS/Giac coexistence) ---
 proj_srcs=(
+  src/math/CalculationEngine.cpp
   src/math/MathEvaluator.cpp src/math/MathAST.cpp src/math/VariableManager.cpp
   src/math/font/MathGlyphAssembly.cpp src/hal/FileSystem.cpp
   src/math/cas/ASTFlattener.cpp src/math/cas/SymSimplify.cpp

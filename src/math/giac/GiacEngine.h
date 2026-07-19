@@ -46,6 +46,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace numos {
 
@@ -64,6 +65,55 @@ struct MathEngineResult {
     std::string approximateText;  // evalf of the result when it adds info
     std::string diagnostic;       // parser/engine messages, never in exactText
     bool ok() const { return status == MathEngineStatus::Ok; }
+};
+
+/**
+ * GIAC-B01 — engine-owned structural view of one evaluation result.
+ *
+ * The tree describes the SHAPE of the Giac result (integer, fraction, sum,
+ * power, ...) without exposing giac::gen. Consumers (the Calculation result
+ * bridge) turn it into MathAST for Natural Display; anything the tree cannot
+ * describe is marked Unsupported so the caller falls back to the printed
+ * exactText — never to a re-evaluation.
+ *
+ * Numeric literals carry their exact printed digits in `text` (big integers
+ * included); Symbol/Function carry the identifier/function name.
+ */
+enum class EngineNodeKind : uint8_t {
+    Integer,           // text = decimal digits, optional leading '-'
+    Decimal,           // text = printed double literal
+    Rational,          // children = { numerator, denominator }
+    Symbol,            // text = identifier name
+    Add,               // n-ary sum, children in printed order
+    Neg,               // unary minus, 1 child
+    Mul,               // n-ary product
+    Inv,               // reciprocal, 1 child
+    Pow,               // children = { base, exponent }
+    Sqrt,              // 1 child
+    Root,              // children = { radicand, integer degree } (x^(1/n))
+    Function,          // text = function name, children = arguments
+    Pi,                // the constant pi
+    EulerE,            // the constant e (Giac exp(1))
+    ImagUnit,          // the imaginary unit
+    PlusInfinity,
+    MinusInfinity,
+    UnsignedInfinity,
+    Equation,          // children = { lhs, rhs }
+    List,              // children = elements
+    Complex,           // children = { re, im }
+    Unsupported        // shape outside this contract (text = printed form)
+};
+
+struct EngineResultNode {
+    EngineNodeKind kind = EngineNodeKind::Unsupported;
+    std::string text;
+    std::vector<EngineResultNode> children;
+};
+
+struct StructuredEngineResult {
+    MathEngineResult base;
+    bool hasTree = false;      // tree only meaningful when base.ok() && hasTree
+    EngineResultNode tree;
 };
 
 /**
@@ -107,6 +157,22 @@ public:
 
     /// Explicit simplify mode (giac _simplify on the parsed input).
     MathEngineResult simplify(const char* expression);
+
+    /**
+     * GIAC-B01: plain evaluate() plus the structural result view. Same
+     * semantics as evaluate(); additionally fills `tree` describing the
+     * result shape (see EngineNodeKind). hasTree is false when the shape
+     * walk hit an internal limit — the textual result still stands.
+     */
+    StructuredEngineResult evaluateStructured(const char* expression);
+
+    /**
+     * GIAC-B01: assign `name := (valueExpression)` in the engine context.
+     * `name` must be a plain identifier ([A-Za-z_][A-Za-z0-9_]*). Used by
+     * the Calculation adapter to mirror NumOS variables (A-F, Ans, PreAns)
+     * before each evaluation; assignments live until reset().
+     */
+    MathEngineResult assign(const char* name, const char* valueExpression);
 
     /**
      * Parse + evaluate once for repeated numeric sampling in `variable`

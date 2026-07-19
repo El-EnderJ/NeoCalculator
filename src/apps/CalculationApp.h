@@ -47,10 +47,15 @@
 #include <lvgl.h>
 #include <vector>
 #include <memory>
+#include <string>
 #include "../math/MathAST.h"
 #include "../math/CursorController.h"
 #include "../math/MathEvaluator.h"
 #include "../math/VariableManager.h"
+// GIAC-B01: Giac is the default Calculation engine. The legacy MathEvaluator
+// path remains ONLY behind -DNUMOS_CALC_LEGACY_ENGINE (explicit rollback
+// build); there is no silent per-expression fallback.
+#include "../math/CalculationEngine.h"
 #include "../math/cas/CASStepLogger.h"
 #include "../math/cas/SymExpr.h"
 #include "../math/cas/SymExprArena.h"
@@ -104,6 +109,18 @@ public:
     // queda fuera del preprocesador en firmware → firmware.bin no cambia.
     bool                  debugHasResult() const { return _hasResult; }
     const vpam::ExactVal& debugLastResult() const { return _lastResult; }
+
+    // ── GIAC-B01 probes (assert_calc_engine / _result_kind / _status) ────
+    const char* debugCalcEngine() const {
+#ifdef NUMOS_CALC_LEGACY_ENGINE
+        return "legacy";
+#else
+        return "giac";
+#endif
+    }
+    const char* debugCalcResultKind() const;   // "structured"|"text_fallback"|"none"
+    const char* debugCalcStatus() const;       // "ok"|"undefined"|"parse_error"|...
+    const std::string& debugCalcExactText() const;
 #endif // NATIVE_SIM
 
 private:
@@ -128,10 +145,28 @@ private:
     vpam::NodePtr          _resultNode;      ///< AST del resultado (owned)
     vpam::NodeRow*         _resultRow;       ///< Puntero directo al NodeRow del resultado
 
+    // ── GIAC-B01: estado de presentación del motor Giac ──────────────────
+    // _lastResult sigue siendo el espejo ExactVal (tier 1 exacto, o numérico
+    // aproximado); estos campos llevan el estado que ExactVal no puede.
+    numos::MathEngineStatus _lastStatus = numos::MathEngineStatus::Ok;
+    numos::CalcResultKind   _lastKind   = numos::CalcResultKind::None;
+    bool                    _exactValValid = false;  ///< tier 1 (display legacy)
+    vpam::NodePtr           _structuredResult;       ///< tier 2 master AST
+    std::string             _exactText;              ///< Giac exact print
+    std::string             _approxText;             ///< companion decimal
+    lv_obj_t*               _resultTextLabel = nullptr;  ///< tier 3 fallback
+
     // ── Historial ────────────────────────────────────────────────────────
     struct HistoryEntry {
         vpam::NodePtr  exprAST;     ///< Copia profunda del AST de la expresión
         vpam::ExactVal result;      ///< Resultado evaluado
+        // GIAC-B01 presentation state (defaults reproduce the legacy shape)
+        numos::MathEngineStatus status = numos::MathEngineStatus::Ok;
+        numos::CalcResultKind   kind   = numos::CalcResultKind::Structured;
+        bool                    exactValValid = true;
+        vpam::NodePtr           resultAST;   ///< tier-2 clone (may be null)
+        std::string             exactText;
+        std::string             approxText;
     };
     std::vector<HistoryEntry> _history;      ///< Entradas de historial
     int  _historyIndex;                      ///< -1 = nueva expresión, 0..N-1 = historial
@@ -166,6 +201,12 @@ private:
     /// Dynamically repositions the separator and result canvas after
     /// trimming the expression canvas to its actual content height.
     void applyResultLayout();
+
+    // ── GIAC-B01 text-fallback presentation (tier 3) ─────────────────────
+    /// Shows Giac's own printed result as plain text (montserrat label —
+    /// stix_math has no space glyph) when no structured conversion exists.
+    void showTextResult(const std::string& text);
+    void hideTextResult();
     void toggleSD();
     void navigateHistory(int direction);  ///< -1 = arriba (atrás), +1 = abajo (reciente)
     void loadHistoryEntry(int index);     ///< Carga una entrada del historial en el canvas

@@ -1,0 +1,42 @@
+# calc_semantic_giac_infinity_undef.numos — GIAC-B01 honest failure semantics:
+#
+#   1/0 -> Giac infinity ("oo"): status OK, intentional TEXT-FALLBACK tier
+#          (Giac's own printed result; not an error, not a legacy re-eval).
+#   0/0 -> Giac undef: typed error status "undefined" (assert_error contract
+#          preserved via the Math ERROR ExactVal mirror).
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+
+log "calc_semantic_giac_infinity_undef: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+# 1/0 -> oo (Ok + text fallback).
+key 1
+key FRAC
+key 0
+key RIGHT
+key ENTER
+wait 120
+assert_app Calculation
+assert_no_error
+assert_calc_status ok
+assert_calc_result_kind text_fallback
+assert_calc_exact oo
+log "calc_semantic_giac_infinity_undef: 1/0 == oo (text fallback)"
+
+key ac
+wait 10
+
+# 0/0 -> undefined (typed error).
+key 0
+key FRAC
+key 0
+key RIGHT
+key ENTER
+wait 120
+assert_calc_status undefined
+assert_error ERROR
+log "calc_semantic_giac_infinity_undef: 0/0 == undefined (typed error)"

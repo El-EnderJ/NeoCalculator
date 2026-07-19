@@ -1,0 +1,21 @@
+# calc_semantic_giac_parse_error.numos — GIAC-B01: incomplete input ("2+")
+# is rejected by the typed VPAM->Giac serializer (parse_error status), shown
+# as Syntax ERROR — never silently emitted as ambiguous Giac text.
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+
+log "calc_semantic_giac_parse_error: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 2
+key +
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_calc_status parse_error
+assert_error ERROR
+log "calc_semantic_giac_parse_error: PASS (2+ is a typed parse error)"

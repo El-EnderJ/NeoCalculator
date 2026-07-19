@@ -1508,7 +1508,13 @@ enum class ScriptCmdType : uint8_t {
     SetAngleMode,              // set_angle_mode deg|rad        (escribe la verdad runtime)
     AssertAngleMode,           // assert_angle_mode deg|rad     (lee la verdad runtime)
     AssertStatusbarAngle,      // assert_statusbar_angle deg|rad (texto REAL del badge activo)
-    AssertGraphAngleMode       // assert_graph_angle_mode deg|rad (modo del Evaluator del GraphModel)
+    AssertGraphAngleMode,      // assert_graph_angle_mode deg|rad (modo del Evaluator del GraphModel)
+    // GIAC-B01: Calculation engine probes (which engine produced the result,
+    // presentation tier, typed status, and Giac's exact printed text).
+    AssertCalcEngine,          // assert_calc_engine giac|legacy
+    AssertCalcResultKind,      // assert_calc_result_kind structured|text_fallback|none
+    AssertCalcStatus,          // assert_calc_status ok|undefined|parse_error|evaluation_error|unsupported|out_of_memory
+    AssertCalcExact            // assert_calc_exact TEXT (igualdad exacta con exactText)
 };
 
 struct ScriptCmd {
@@ -1868,6 +1874,49 @@ static bool loadScript(const char* path)
                     : (lc == "assert_statusbar_angle") ? ScriptCmdType::AssertStatusbarAngle
                                                        : ScriptCmdType::AssertGraphAngleMode;
             sc.strArg = mode;
+        }
+        // ── GIAC-B01: aserciones del motor de Calculation ────────────────
+        else if (lc == "assert_calc_engine") {
+            std::string mode, extra;
+            if (!(iss >> mode)) return scriptErr(path, lineNo, "assert_calc_engine requiere giac|legacy");
+            if (iss >> extra)   return scriptErr(path, lineNo, "assert_calc_engine: demasiados argumentos");
+            if (mode != "giac" && mode != "legacy")
+                return scriptErr(path, lineNo, "assert_calc_engine: valor desconocido (giac|legacy)");
+            sc.type   = ScriptCmdType::AssertCalcEngine;
+            sc.strArg = mode;
+        }
+        else if (lc == "assert_calc_result_kind") {
+            std::string kind, extra;
+            if (!(iss >> kind)) return scriptErr(path, lineNo, "assert_calc_result_kind requiere structured|text_fallback|none");
+            if (iss >> extra)   return scriptErr(path, lineNo, "assert_calc_result_kind: demasiados argumentos");
+            if (kind != "structured" && kind != "text_fallback" && kind != "none")
+                return scriptErr(path, lineNo, "assert_calc_result_kind: valor desconocido (structured|text_fallback|none)");
+            sc.type   = ScriptCmdType::AssertCalcResultKind;
+            sc.strArg = kind;
+        }
+        else if (lc == "assert_calc_status") {
+            std::string st, extra;
+            if (!(iss >> st)) return scriptErr(path, lineNo, "assert_calc_status requiere un estado");
+            if (iss >> extra) return scriptErr(path, lineNo, "assert_calc_status: demasiados argumentos");
+            if (st != "ok" && st != "undefined" && st != "parse_error" &&
+                st != "evaluation_error" && st != "unsupported" && st != "out_of_memory")
+                return scriptErr(path, lineNo,
+                    "assert_calc_status: valor desconocido (ok|undefined|parse_error|evaluation_error|unsupported|out_of_memory)");
+            sc.type   = ScriptCmdType::AssertCalcStatus;
+            sc.strArg = st;
+        }
+        else if (lc == "assert_calc_exact") {
+            std::string rest;
+            std::getline(iss, rest);
+            size_t b = rest.find_first_not_of(" \t");
+            rest = (b == std::string::npos) ? std::string() : rest.substr(b);
+            size_t e = rest.find_last_not_of(" \t");
+            if (e != std::string::npos) rest = rest.substr(0, e + 1);
+            if (rest.size() >= 2 && rest.front() == '"' && rest.back() == '"')
+                rest = rest.substr(1, rest.size() - 2);
+            if (rest.empty()) return scriptErr(path, lineNo, "assert_calc_exact requiere el texto esperado");
+            sc.type   = ScriptCmdType::AssertCalcExact;
+            sc.strArg = rest;
         }
         else {
             return scriptErr(path, lineNo, "comando desconocido");
@@ -2243,6 +2292,55 @@ static void scriptStepBegin()
                                     "' pero el badge muestra '" + actual + "'");
             break;
         }
+        // ── GIAC-B01: aserciones del motor de Calculation ────────────────
+        case ScriptCmdType::AssertCalcEngine:
+        case ScriptCmdType::AssertCalcResultKind:
+        case ScriptCmdType::AssertCalcStatus:
+        case ScriptCmdType::AssertCalcExact: {
+            if (g_mode != AppMode::CALCULATION || !g_calcApp) {
+                assertFail(sc.line, "assert_calc_* requiere CalculationApp activa (app actual: '" +
+                                    std::string(activeAppName()) + "')");
+                break;
+            }
+            if (sc.type == ScriptCmdType::AssertCalcEngine) {
+                const char* actual = g_calcApp->debugCalcEngine();
+                if (sc.strArg == actual)
+                    assertPass(sc.line, "assert_calc_engine " + sc.strArg);
+                else
+                    assertFail(sc.line, "assert_calc_engine esperaba '" + sc.strArg +
+                                        "' pero el motor es '" + actual + "'");
+                break;
+            }
+            if (!g_calcApp->debugHasResult()) {
+                assertFail(sc.line, "assert_calc_*: no hay resultado evaluado "
+                                    "(pulsa ENTER y deja asentar con `wait` antes de asertar)");
+                break;
+            }
+            if (sc.type == ScriptCmdType::AssertCalcResultKind) {
+                const char* actual = g_calcApp->debugCalcResultKind();
+                if (sc.strArg == actual)
+                    assertPass(sc.line, "assert_calc_result_kind " + sc.strArg);
+                else
+                    assertFail(sc.line, "assert_calc_result_kind esperaba '" + sc.strArg +
+                                        "' pero es '" + actual + "'");
+            } else if (sc.type == ScriptCmdType::AssertCalcStatus) {
+                const char* actual = g_calcApp->debugCalcStatus();
+                if (sc.strArg == actual)
+                    assertPass(sc.line, "assert_calc_status " + sc.strArg);
+                else
+                    assertFail(sc.line, "assert_calc_status esperaba '" + sc.strArg +
+                                        "' pero es '" + actual + "'");
+            } else {
+                const std::string& actual = g_calcApp->debugCalcExactText();
+                if (sc.strArg == actual)
+                    assertPass(sc.line, "assert_calc_exact '" + sc.strArg + "'");
+                else
+                    assertFail(sc.line, "assert_calc_exact esperaba '" + sc.strArg +
+                                        "' pero exactText es '" + actual + "'");
+            }
+            break;
+        }
+
         case ScriptCmdType::AssertGraphAngleMode: {
             if (g_mode != AppMode::GRAPHER || !g_grapherApp) {
                 assertFail(sc.line, "assert_graph_angle_mode requiere Grapher activo (app actual: '" +

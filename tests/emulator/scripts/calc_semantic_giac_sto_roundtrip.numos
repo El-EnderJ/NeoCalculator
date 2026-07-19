@@ -1,0 +1,42 @@
+# calc_semantic_giac_sto_roundtrip.numos — GIAC-B01: STO writes both the
+# persistent NumOS VariableManager (assert_variable reads it) and the Giac
+# context mirror, so A participates exactly in the next evaluation.
+#
+#   2+2 ENTER      -> Ans = 4
+#   STO NUM_1      -> A := Ans (alphaKeyToVarName: NUM_1 -> 'A')
+#   ALPHA NUM_1 +1 -> A+1 == 5 through Giac
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+
+log "calc_semantic_giac_sto_roundtrip: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 2
+key +
+key 2
+key ENTER
+wait 120
+
+key sto
+key 1
+wait 30
+assert_variable A 4
+
+key ac
+wait 10
+
+key alpha
+key 1
+key +
+key 1
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_calc_engine giac
+assert_result 5
+log "calc_semantic_giac_sto_roundtrip: PASS (A(4)+1 == 5)"

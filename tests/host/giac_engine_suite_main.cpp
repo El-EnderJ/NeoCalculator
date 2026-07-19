@@ -20,6 +20,9 @@
 
 #include "math/giac/GiacEngine.h"
 #include "math/AngleModeRuntime.h"
+#include "math/CalculationEngine.h"
+#include "math/MathAST.h"
+#include "math/VariableManager.h"
 
 // Defined in host_rss_probe.cpp — its own TU because <windows.h> cannot
 // coexist with NumOS headers (INPUT/TokenType collisions).
@@ -269,6 +272,284 @@ int main() {
     sweep("sin(x)", -5.0, 5.0, 10000);
     sweep("1/x", -5.0, 5.0, 10000);
     sweep("x^2-2", -5.0, 5.0, 10000);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // GIAC-B01: CalculationEngine adapter (VPAM serializer + result bridge)
+    // ═══════════════════════════════════════════════════════════════════
+    {
+        using namespace vpam;
+        numos::CalculationEngine& calc = numos::CalculationEngine::instance();
+        numos::setAngleMode(vpam::AngleMode::RAD);
+
+        auto rowPtr = []() { return makeRow(); };
+        auto asRow = [](NodePtr& p) { return static_cast<NodeRow*>(p.get()); };
+        auto numRow = [&](const char* v) {
+            auto r = makeRow();
+            static_cast<NodeRow*>(r.get())->appendChild(makeNumber(v));
+            return r;
+        };
+
+        // -- serializer basics --------------------------------------------
+        {
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeNumber("2"));
+            asRow(r)->appendChild(makeOperator(OpKind::Add));
+            asRow(r)->appendChild(makeNumber("2"));
+            std::string out, err;
+            check(numos::CalculationEngine::serializeForGiac(r.get(), out, err) &&
+                      out == "2+2",
+                  "b01-ser-2plus2", out);
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.isInteger() &&
+                      ev.exactVal.num == 4,
+                  "b01-eval-2plus2", ev.exactText);
+        }
+        {   // 1/2 + 1/3 == exact 5/6, tier 1
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeFraction(numRow("1"), numRow("2")));
+            asRow(r)->appendChild(makeOperator(OpKind::Add));
+            asRow(r)->appendChild(makeFraction(numRow("1"), numRow("3")));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.isRational() &&
+                      ev.exactVal.num == 5 && ev.exactVal.den == 6,
+                  "b01-eval-frac-5-6", ev.exactText);
+        }
+        {   // unary minus normalization: [-,3^2] -> -9 ; [2,*,-,3] -> -6
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeOperator(OpKind::Sub));
+            asRow(r)->appendChild(makePower(numRow("3"), numRow("2")));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.num == -9,
+                  "b01-eval-unary-minus-pow", ev.exactText);
+            auto r2 = rowPtr();
+            asRow(r2)->appendChild(makeNumber("2"));
+            asRow(r2)->appendChild(makeOperator(OpKind::Mul));
+            asRow(r2)->appendChild(makeOperator(OpKind::Sub));
+            asRow(r2)->appendChild(makeNumber("3"));
+            auto ev2 = calc.evaluate(r2.get());
+            check(ev2.ok() && ev2.exactValValid && ev2.exactVal.num == -6,
+                  "b01-eval-mul-unary-minus", ev2.exactText);
+        }
+        {   // General roots: Giac keeps surd(8,3) EXACT as 8^(1/3) (no auto
+            // radical collapse under plain evaluate) — presented through the
+            // structured tier as a degree-3 NodeRoot.
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeRoot(numRow("8"), numRow("3")));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && !ev.exactValValid && ev.exactAST != nullptr &&
+                      ev.exactText == "8^(1/3)",
+                  "b01-eval-cuberoot-8-exact", ev.exactText);
+        }
+        {   // logb argument order: log_2(8) == 3
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeLogBase(numRow("2"), numRow("8")));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.num == 3,
+                  "b01-eval-logbase-2-8", ev.exactText);
+        }
+        {   // NumOS log == base 10 (Giac log is ln!)
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeFunction(FuncKind::Log, numRow("100")));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.num == 2,
+                  "b01-eval-log10-100", ev.exactText);
+        }
+        {   // pi and e stay exact (tier 1 pi/e multipliers)
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeConstant(ConstKind::Pi));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.piMul == 1,
+                  "b01-eval-pi-exact", ev.exactText);
+            auto r2 = rowPtr();
+            asRow(r2)->appendChild(makeConstant(ConstKind::E));
+            auto ev2 = calc.evaluate(r2.get());
+            check(ev2.ok() && ev2.exactValValid && ev2.exactVal.eMul == 1,
+                  "b01-eval-e-exact", ev2.exactText);
+        }
+        {   // sqrt(2) exact radical; sin(pi/6) == 1/2
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeRoot(numRow("2")));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.inner == 2 &&
+                      ev.exactVal.num == 1 && ev.exactVal.den == 1,
+                  "b01-eval-sqrt2-exact", ev.exactText);
+            auto arg = rowPtr();
+            asRow(arg)->appendChild(makeConstant(ConstKind::Pi));
+            asRow(arg)->appendChild(makeOperator(OpKind::Mul));
+            asRow(arg)->appendChild(makeFraction(numRow("1"), numRow("6")));
+            auto r2 = rowPtr();
+            asRow(r2)->appendChild(makeFunction(FuncKind::Sin, std::move(arg)));
+            auto ev2 = calc.evaluate(r2.get());
+            check(ev2.ok() && ev2.exactValValid && ev2.exactVal.num == 1 &&
+                      ev2.exactVal.den == 2,
+                  "b01-eval-sin-pi6", ev2.exactText);
+        }
+        {   // 2^100: beyond int64 -> structured AST tier (never lossy)
+            auto r = rowPtr();
+            asRow(r)->appendChild(makePower(numRow("2"), numRow("100")));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && !ev.exactValValid && ev.exactAST != nullptr &&
+                      ev.exactText == "1267650600228229401496703205376",
+                  "b01-eval-2pow100-structured", ev.exactText);
+        }
+        {   // free symbols: x-2*x stays x-2*x under plain evaluate
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeVariable('x'));
+            asRow(r)->appendChild(makeOperator(OpKind::Sub));
+            asRow(r)->appendChild(makeNumber("2"));
+            asRow(r)->appendChild(makeOperator(OpKind::Mul));
+            asRow(r)->appendChild(makeVariable('x'));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && !ev.exactValValid && ev.exactAST != nullptr &&
+                      ev.exactText == "x-2*x",
+                  "b01-eval-free-symbol", ev.exactText);
+        }
+        {   // 1/0 -> Giac infinity, honest text fallback tier
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeFraction(numRow("1"), numRow("0")));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() &&
+                      ev.kind == numos::CalcResultKind::TextFallback &&
+                      ev.exactText == "oo",
+                  "b01-eval-one-over-zero-oo", ev.exactText);
+            auto r2 = rowPtr();
+            asRow(r2)->appendChild(makeFraction(numRow("0"), numRow("0")));
+            auto ev2 = calc.evaluate(r2.get());
+            check(!ev2.ok() &&
+                      ev2.status == numos::MathEngineStatus::Undefined,
+                  "b01-eval-zero-over-zero-undef", ev2.diagnostic);
+        }
+        {   // incomplete input: typed reject, never ambiguous text
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeNumber("2"));
+            asRow(r)->appendChild(makeOperator(OpKind::Add));
+            asRow(r)->appendChild(makeEmpty());
+            auto ev = calc.evaluate(r.get());
+            check(!ev.ok() &&
+                      ev.status == numos::MathEngineStatus::ParseError,
+                  "b01-serialize-incomplete-typed", ev.diagnostic);
+            auto r2 = rowPtr();
+            asRow(r2)->appendChild(makeSummation(numRow("1"), numRow("5"),
+                                                 numRow("2")));
+            auto ev2 = calc.evaluate(r2.get());
+            check(!ev2.ok() &&
+                      ev2.status == numos::MathEngineStatus::ParseError,
+                  "b01-serialize-unsupported-typed", ev2.diagnostic);
+        }
+        {   // sqrt(2)/2-shaped result mirrors exactly ((1/2)*sqrt(2))
+            numos::StructuredEngineResult sr =
+                eng.evaluateStructured("sin(pi/4)");
+            vpam::ExactVal v;
+            check(sr.base.ok() && sr.hasTree &&
+                      numos::CalculationEngine::resultTreeToExactVal(sr.tree, v) &&
+                      v.inner == 2 && v.num == 1 && v.den == 2,
+                  "b01-mirror-sqrt2-over-2", sr.base.exactText);
+        }
+        {   // solve/factor/diff/integrate keep their Giac meaning through
+            // the structured bridge (lists fall back honestly)
+            numos::StructuredEngineResult sr =
+                eng.evaluateStructured("solve(x^2-2=0,x)");
+            check(sr.base.ok() && sr.hasTree &&
+                      sr.tree.kind == numos::EngineNodeKind::List &&
+                      numos::CalculationEngine::resultTreeToAST(sr.tree) == nullptr,
+                  "b01-solve-list-fallback", sr.base.exactText);
+            numos::StructuredEngineResult sf =
+                eng.evaluateStructured("factor(x^3-6*x^2+11*x-6)");
+            check(sf.base.ok() && sf.hasTree &&
+                      numos::CalculationEngine::resultTreeToAST(sf.tree) != nullptr,
+                  "b01-factor-structured", sf.base.exactText);
+            numos::StructuredEngineResult sd =
+                eng.evaluateStructured("diff(sin(x)^2,x)");
+            check(sd.base.ok() && sd.hasTree &&
+                      numos::CalculationEngine::resultTreeToAST(sd.tree) != nullptr,
+                  "b01-diff-structured", sd.base.exactText);
+            numos::StructuredEngineResult si =
+                eng.evaluateStructured("integrate(x^2,x)");
+            check(si.base.ok() && si.hasTree &&
+                      numos::CalculationEngine::resultTreeToAST(si.tree) != nullptr,
+                  "b01-integrate-structured", si.base.exactText);
+        }
+        {   // decimal input maps through fromDouble like the legacy engine
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeNumber("0.5"));
+            asRow(r)->appendChild(makeOperator(OpKind::Add));
+            asRow(r)->appendChild(makeNumber("0.25"));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.isRational() &&
+                      ev.exactVal.num == 3 && ev.exactVal.den == 4,
+                  "b01-eval-decimal-three-quarters", ev.exactText);
+        }
+        {   // Ans mirroring: exact chain through numos_Ans
+            auto& vm = vpam::VariableManager::instance();
+            vm.updateAns(vpam::ExactVal::fromInt(4));
+            calc.noteAnsRotated("4");
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeVariable(vpam::VAR_ANS));
+            asRow(r)->appendChild(makeOperator(OpKind::Add));
+            asRow(r)->appendChild(makeNumber("1"));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.num == 5,
+                  "b01-ans-chain-5", ev.exactText);
+
+            // beyond-int64 Ans: session-exact text keeps the chain exact
+            vpam::ExactVal approx;
+            approx.ok = true; approx.approximate = true;
+            approx.approxVal = 1.2676506002282294e30;
+            vm.updateAns(approx);
+            calc.noteAnsRotated("1267650600228229401496703205376");
+            auto r2 = rowPtr();
+            asRow(r2)->appendChild(makeVariable(vpam::VAR_ANS));
+            asRow(r2)->appendChild(makeOperator(OpKind::Mul));
+            asRow(r2)->appendChild(makeNumber("2"));
+            auto ev2 = calc.evaluate(r2.get());
+            check(ev2.ok() &&
+                      ev2.exactText == "2535301200456458802993406410752",
+                  "b01-ans-exact-bigint-chain", ev2.exactText);
+        }
+        {   // STO round-trip incl. potential name collisions (A..F, E!)
+            auto& vm = vpam::VariableManager::instance();
+            vm.updateAns(vpam::ExactVal::fromFrac(5, 6));
+            calc.noteAnsRotated("5/6");
+            for (char c : {'A', 'E', 'F'}) {
+                vm.setVariable(c, vm.getAns());
+                calc.noteVariableStored(c);
+                auto r = rowPtr();
+                asRow(r)->appendChild(makeVariable(c));
+                asRow(r)->appendChild(makeOperator(OpKind::Mul));
+                asRow(r)->appendChild(makeNumber("6"));
+                auto ev = calc.evaluate(r.get());
+                check(ev.ok() && ev.exactValValid && ev.exactVal.num == 5,
+                      (std::string("b01-sto-roundtrip-") + c).c_str(),
+                      ev.exactText);
+            }
+        }
+        {   // DEG/RAD through the adapter (AngleModeRuntime is the truth)
+            numos::setAngleMode(vpam::AngleMode::DEG);
+            auto r = rowPtr();
+            asRow(r)->appendChild(makeFunction(FuncKind::Sin, numRow("30")));
+            auto ev = calc.evaluate(r.get());
+            check(ev.ok() && ev.exactValValid && ev.exactVal.num == 1 &&
+                      ev.exactVal.den == 2,
+                  "b01-deg-sin30", ev.exactText);
+            numos::setAngleMode(vpam::AngleMode::RAD);
+            auto r2 = rowPtr();
+            asRow(r2)->appendChild(makeFunction(FuncKind::Sin, numRow("30")));
+            auto ev2 = calc.evaluate(r2.get());
+            check(ev2.ok() && !ev2.exactValValid &&
+                      ev2.exactText == "sin(30)",
+                  "b01-rad-sin30-symbolic", ev2.exactText);
+        }
+        {   // ExactVal -> Giac text round-trip ((1/2)*sqrt(2)): value-equal
+            // to sqrt(2)/2 (print forms may differ; compare the difference).
+            vpam::ExactVal v;
+            v.num = 1; v.den = 2; v.outer = 1; v.inner = 2; v.ok = true;
+            std::string t = numos::CalculationEngine::exactValToGiacText(v);
+            numos::MathEngineResult r =
+                eng.simplify(("(" + t + ")-(sqrt(2)/2)").c_str());
+            check(r.ok() && r.exactText == "0",
+                  "b01-exactval-text-roundtrip", t + " diff -> " + r.exactText);
+        }
+    }
 
     printf("RSS_END|rss_kb=%zu\n", currentRssKb());
     printf("FOOTER|pass=%d|fail=%d\n", g_pass, g_fail);

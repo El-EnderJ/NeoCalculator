@@ -1,0 +1,35 @@
+# calc_semantic_giac_sin_pi6.numos — GIAC-B01: RAD sin((1/6)*pi) == exact 1/2
+# through Giac's exact trig tables (tier-1 rational mirror).
+#
+# Typing note: the fraction is built first (1 FRAC 6), then *pi, so the test
+# does not depend on insertFraction's previous-term capture rules for pi.
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+
+log "calc_semantic_giac_sin_pi6: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+set_angle_mode rad
+assert_angle_mode rad
+
+key sin
+key 1
+key FRAC
+key 6
+key RIGHT
+key *
+key pi
+key RIGHT
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact 1/2
+assert_result 1/2
+log "calc_semantic_giac_sin_pi6: PASS (sin(pi/6) == 1/2)"

@@ -1,0 +1,53 @@
+# calc_semantic_giac_angle_modes.numos — GIAC-B01: DEG/RAD truth through Giac.
+#
+#   DEG sin(30) == exact 1/2  (Giac exact trig table in degree mode)
+#   RAD sin(30) stays SYMBOLIC sin(30) — the honest Giac exact result
+#   (intended semantic difference vs. the legacy evaluator's 10-digit
+#   rational truncation; S<=>D still offers the decimal companion).
+#
+# GiacEngine synchronizes vpam::g_angleMode (AngleModeRuntime) on every entry;
+# there is no second angle-mode store.
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+
+log "calc_semantic_giac_angle_modes: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+assert_app Calculation
+
+# Boot default is RAD.
+assert_angle_mode rad
+
+# DEG: exact 1/2.
+set_angle_mode deg
+assert_angle_mode deg
+key sin
+key 3
+key 0
+key RIGHT
+key ENTER
+wait 120
+assert_no_error
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_result 1/2
+log "calc_semantic_giac_angle_modes: DEG sin(30) == 1/2"
+
+# RAD: honest symbolic sin(30).
+key ac
+wait 10
+set_angle_mode rad
+assert_angle_mode rad
+key sin
+key 3
+key 0
+key RIGHT
+key ENTER
+wait 120
+assert_no_error
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact sin(30)
+log "calc_semantic_giac_angle_modes: RAD sin(30) stays exact/symbolic"

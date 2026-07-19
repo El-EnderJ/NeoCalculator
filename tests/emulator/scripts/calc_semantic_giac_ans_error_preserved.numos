@@ -1,0 +1,33 @@
+# calc_semantic_giac_ans_error_preserved.numos — GIAC-B01: a FAILED
+# evaluation (0/0 -> undefined) must NOT overwrite Ans.
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+
+log "calc_semantic_giac_ans_error_preserved: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 2
+key +
+key 2
+key ENTER
+wait 120
+assert_variable ans 4
+
+key ac
+wait 10
+
+key 0
+key FRAC
+key 0
+key RIGHT
+key ENTER
+wait 120
+assert_calc_status undefined
+assert_error
+
+# Ans untouched by the failed evaluation.
+assert_variable ans 4
+log "calc_semantic_giac_ans_error_preserved: PASS (Ans survives 0/0)"

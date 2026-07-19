@@ -139,15 +139,17 @@ jobs:
           if-no-files-found: warn
 
       # ---------------------------------------------------------------------
-      # Giac engine host harness (GIAC-A01).
+      # Giac engine host harness (GIAC-A01 + GIAC-B01).
       #
       # Builds the vendored embedded Giac natively (the old "native Giac is
       # broken / SIZEOF_INT" verdict was a missing -DHAVE_CONFIG_H — see
       # docs/GIAC_FEASIBILITY_SPIKE.md) and runs the PRODUCTION GiacEngine
       # seam (src/math/giac/GiacEngine.cpp) through the 24-expression suite,
-      # context/reset/DEG-RAD lifecycle checks and the compiled-expression
-      # Grapher sweeps. Artifacts stay in /tmp (dirty-tree guard safe).
-      # Expected green footer: FOOTER|pass=53|fail=0.
+      # context/reset/DEG-RAD lifecycle checks, the compiled-expression
+      # Grapher sweeps, and the GIAC-B01 CalculationEngine adapter cases
+      # (VPAM serializer, structured result bridge, Ans/STO mirroring).
+      # Artifacts stay in /tmp (dirty-tree guard safe).
+      # Expected green footer: FOOTER|pass=85|fail=0.
       - name: Giac engine host harness (GIAC-A01)
         run: |
           mkdir -p /tmp/giac-host-harness

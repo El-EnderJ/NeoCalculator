@@ -1,0 +1,35 @@
+# calc_semantic_giac_ans_chain.numos — GIAC-B01: Ans coherence through the
+# Giac context (numos_Ans mirror). 2+2 -> Ans=4; Ans+1 == 5.
+#
+# AC is required between evaluations (clearResult keeps the expression).
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+
+log "calc_semantic_giac_ans_chain: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 2
+key +
+key 2
+key ENTER
+wait 120
+assert_variable ans 4
+
+key ac
+wait 10
+
+key ans
+key +
+key 1
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_calc_engine giac
+assert_calc_result_kind structured
+assert_result 5
+log "calc_semantic_giac_ans_chain: PASS (Ans(4)+1 == 5)"

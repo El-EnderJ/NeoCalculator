@@ -1,17 +1,13 @@
-# calc_error_div_by_zero.numos — evaluate 1/0 and ASSERT it is an error.
+# calc_error_div_by_zero.numos — evaluate 1/0 under the GIAC-B01 engine.
 #
-# Phase 8B semantic smoke for the new `assert_error` command. NO screenshot,
-# NO golden image: this is a pure semantic test (exit code + PASS/FAIL tokens).
+# INTENDED SEMANTIC CHANGE (GIAC-B01): the legacy evaluator returned
+# "Math ERROR" for 1/0; Giac's honest semantics are 1/0 == infinity ("oo"),
+# an OK result presented through the text-fallback tier. The old
+# assert_error expectation was legacy-specific and is superseded here;
+# 0/0 (a genuine undef) keeps the error contract and is covered by
+# calc_semantic_giac_infinity_undef.numos.
 #
-# In NumOS the division key IS the fraction key (KeyCode::DIV -> insertFraction,
-# CalculationApp.cpp:344), so `FRAC` builds the fraction 1/0: type 1 (numerator),
-# FRAC, 0 (denominator), RIGHT to exit the fraction, then ENTER to evaluate.
-# Division by zero returns ExactVal::makeError("Math ERROR")
-# (MathEvaluator.cpp:354-356), i.e. debugLastResult().ok == false.
-#
-# `assert_error`        passes iff Calculation has a result AND it is an error.
-# `assert_error ERROR`  additionally requires "ERROR" to be a substring of the
-#                       error text ("Math ERROR" contains "ERROR").
+# Phase 8B lineage; NO screenshot, NO golden.
 #
 # Run:
 #   program --headless --deterministic --script tests/emulator/scripts/calc_error_div_by_zero.numos \
@@ -33,9 +29,11 @@ key RIGHT
 key ENTER
 wait 120
 
-# Semantic assertions (Phase 8B): Calculation active, the evaluated result IS an
-# error, and the error text contains "ERROR". No OCR, no pixels, no golden.
+# GIAC-B01 semantics: 1/0 is Giac infinity — OK status, text fallback "oo".
 assert_app Calculation
-assert_error
-assert_error ERROR
-log "calc_error_div_by_zero: assertions passed (1/0 is an error)"
+assert_no_error
+assert_calc_engine giac
+assert_calc_status ok
+assert_calc_result_kind text_fallback
+assert_calc_exact oo
+log "calc_error_div_by_zero: assertions passed (1/0 == oo, honest Giac semantics)"

@@ -1,0 +1,27 @@
+# calc_semantic_giac_engine_basic.numos — GIAC-B01: 2+2 evaluates through the
+# Giac engine by default (assert_calc_engine giac), lands in the structured
+# tier and keeps the legacy assert_result contract.
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+# Exit codes: 0 ok · 2 parse · 4 assertion failure.
+
+log "calc_semantic_giac_engine_basic: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 2
+key +
+key 2
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_calc_engine giac
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact 4
+assert_result 4
+log "calc_semantic_giac_engine_basic: PASS (Giac 2+2 == 4)"

@@ -1,0 +1,21 @@
+# calc_semantic_giac_pi.numos — GIAC-B01: pi stays symbolic pi (tier-1
+# ExactVal piMul mirror), never truncated to a rational.
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+
+log "calc_semantic_giac_pi: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key pi
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact pi
+log "calc_semantic_giac_pi: PASS (pi stays exact)"

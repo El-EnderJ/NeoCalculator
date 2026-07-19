@@ -1,0 +1,41 @@
+# calc_semantic_giac_free_symbol.numos — GIAC-B01: x is a FREE symbol for the
+# Giac Calculation path; plain evaluate does NOT collect like terms, so
+# x-2*x stays x-2*x (documented ENTER policy: evaluate, never implicit
+# simplify). A pure-symbolic result must NOT overwrite Ans.
+#
+# Assert-only smoke: NO screenshot, NO golden.
+# Run: program --headless --deterministic --script <this> --frames 1600 --quiet
+
+log "calc_semantic_giac_free_symbol: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+# Seed Ans with 4.
+key 2
+key +
+key 2
+key ENTER
+wait 120
+assert_variable ans 4
+
+key ac
+wait 10
+
+key x
+key -
+key 2
+key *
+key x
+key ENTER
+wait 120
+
+assert_app Calculation
+assert_no_error
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact x-2*x
+
+# Symbolic result: Ans still 4.
+assert_variable ans 4
+log "calc_semantic_giac_free_symbol: PASS (x-2*x stays symbolic; Ans preserved)"

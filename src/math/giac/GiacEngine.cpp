@@ -17,6 +17,8 @@
 // Owns THE giac::context (see GiacEngine.h contract). Compiled for firmware,
 // emulator_pc and the host harness; everything Giac-typed stays in this TU.
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <exception>
@@ -32,6 +34,7 @@
 #include "subst.h"   // subst, _simplify
 #include "unary.h"   // unary_function_ptr/_eval full types (result tree walk)
 #include "solve.h"   // has_num_coeff
+#include "sym2poly.h"
 #include "usual.h"
 
 #include "math/giac/GiacEngine.h"
@@ -540,6 +543,571 @@ StructuredEngineResult GiacEngine::evaluateStructured(const char* expression) {
                          &sr.tree, &sr.hasTree);
     return sr;
 }
+
+namespace {
+
+constexpr int kSolveWalkBudget = 800;
+
+bool isValidSolveIdentifier(const std::string& name) {
+    if (name.empty() || name.size() > 31) return false;
+    const auto alphaOrUnderscore = [](unsigned char c) {
+        return std::isalpha(c) != 0 || c == '_';
+    };
+    const auto alnumOrUnderscore = [](unsigned char c) {
+        return std::isalnum(c) != 0 || c == '_';
+    };
+    if (!alphaOrUnderscore(static_cast<unsigned char>(name.front())))
+        return false;
+    for (char c : name)
+        if (!alnumOrUnderscore(static_cast<unsigned char>(c))) return false;
+
+    // WHY: these names are parsed as constants/commands by Giac and therefore
+    // cannot safely designate an authored equation variable.
+    static const char* const kReserved[] = {
+        "pi", "e", "i", "oo", "undef", "solve", "csolve", "fsolve",
+        "sin", "cos", "tan", "asin", "acos", "atan", "ln", "log",
+        "log10", "sqrt", "surd", "exp", "abs", "diff", "integrate"
+    };
+    for (const char* reserved : kReserved)
+        if (name == reserved) return false;
+    return true;
+}
+
+bool containsUndef(const giac::gen& g, int depth, int& budget) {
+    if (depth > 64 || --budget < 0) return true;
+    if (giac::is_undef(g)) return true;
+    switch (g.type) {
+        case giac::_VECT:
+            for (const auto& child : *g._VECTptr)
+                if (containsUndef(child, depth + 1, budget)) return true;
+            return false;
+        case giac::_SYMB:
+            return containsUndef(g._SYMBptr->feuille, depth + 1, budget);
+        case giac::_FRAC:
+            return containsUndef(g._FRACptr->num, depth + 1, budget) ||
+                   containsUndef(g._FRACptr->den, depth + 1, budget);
+        default:
+            return false;
+    }
+}
+
+bool containsSolveCall(const giac::gen& g, int depth, int& budget) {
+    if (depth > 64 || --budget < 0) return true;
+    if (g.type == giac::_SYMB) {
+        if (g._SYMBptr->sommet == giac::at_solve) return true;
+        return containsSolveCall(g._SYMBptr->feuille, depth + 1, budget);
+    }
+    if (g.type == giac::_VECT) {
+        for (const auto& child : *g._VECTptr)
+            if (containsSolveCall(child, depth + 1, budget)) return true;
+    } else if (g.type == giac::_FRAC) {
+        return containsSolveCall(g._FRACptr->num, depth + 1, budget) ||
+               containsSolveCall(g._FRACptr->den, depth + 1, budget);
+    }
+    return false;
+}
+
+bool containsAnyVariable(const giac::gen& g,
+                         const std::vector<giac::gen>& variables,
+                         int depth, int& budget) {
+    if (depth > 64 || --budget < 0) return false;
+    if (g.type == giac::_IDNT) {
+        for (const auto& variable : variables)
+            if (g == variable) return true;
+        return false;
+    }
+    if (g.type == giac::_VECT) {
+        for (const auto& child : *g._VECTptr)
+            if (containsAnyVariable(child, variables, depth + 1, budget))
+                return true;
+    } else if (g.type == giac::_SYMB) {
+        return containsAnyVariable(g._SYMBptr->feuille, variables,
+                                   depth + 1, budget);
+    } else if (g.type == giac::_FRAC) {
+        return containsAnyVariable(g._FRACptr->num, variables,
+                                   depth + 1, budget) ||
+               containsAnyVariable(g._FRACptr->den, variables,
+                                   depth + 1, budget);
+    }
+    return false;
+}
+
+giac::gen explicitDegreeTrig(const giac::gen& value, int depth, int& budget) {
+    if (depth > 64 || --budget < 0) return value;
+    if (value.type == giac::_VECT) {
+        giac::vecteur children;
+        children.reserve(value._VECTptr->size());
+        for (const auto& child : *value._VECTptr) {
+            children.push_back(
+                explicitDegreeTrig(child, depth + 1, budget));
+        }
+        return giac::gen(children, value.subtype);
+    }
+    if (value.type == giac::_FRAC) {
+        return explicitDegreeTrig(value._FRACptr->num, depth + 1, budget) /
+               explicitDegreeTrig(value._FRACptr->den, depth + 1, budget);
+    }
+    if (value.type != giac::_SYMB) return value;
+
+    const auto function = value._SYMBptr->sommet;
+    giac::gen leaf =
+        explicitDegreeTrig(value._SYMBptr->feuille, depth + 1, budget);
+    if (function == giac::at_sin || function == giac::at_cos ||
+        function == giac::at_tan) {
+        // WHY: embedded Giac's symbolic solver is unstable with a DEG
+        // context. Making the unit conversion explicit preserves the authored
+        // equation while the solver itself remains in its stable RAD mode.
+        leaf = leaf * giac::cst_pi / giac::gen(180);
+        return giac::symbolic(function, leaf);
+    }
+    if (function == giac::at_asin || function == giac::at_acos ||
+        function == giac::at_atan) {
+        return giac::gen(180) / giac::cst_pi *
+               giac::symbolic(function, leaf);
+    }
+    return giac::symbolic(function, leaf);
+}
+
+bool splitEquality(const giac::gen& g, giac::gen& lhs, giac::gen& rhs) {
+    if (g.type != giac::_SYMB || g._SYMBptr->sommet != giac::at_equal)
+        return false;
+    const giac::gen& leaf = g._SYMBptr->feuille;
+    if (leaf.type != giac::_VECT || leaf._VECTptr->size() != 2) return false;
+    lhs = leaf._VECTptr->front();
+    rhs = leaf._VECTptr->back();
+    return true;
+}
+
+bool exactEquivalent(const giac::gen& a, const giac::gen& b,
+                     giac::context* ctx) {
+    if (a == b) return true;
+    try {
+        return giac::is_zero(giac::ratnormal(a - b, ctx), ctx);
+    } catch (...) {
+        return false;
+    }
+}
+
+bool realApproximation(const giac::gen& exact, giac::context* ctx,
+                       double& value, std::string& printed) {
+    try {
+        giac::gen approx = giac::evalf_double(exact, 1, ctx);
+        printed = approx.print(ctx);
+        if (approx.type == giac::_DOUBLE_) {
+            value = approx._DOUBLE_val;
+            return std::isfinite(value);
+        }
+        if (approx.type == giac::_INT_) {
+            value = static_cast<double>(approx.val);
+            return true;
+        }
+        if (approx.type == giac::_CPLX) {
+            const giac::gen& re = *approx._CPLXptr;
+            const giac::gen& im = *(approx._CPLXptr + 1);
+            if (giac::is_zero(im, ctx) && re.type == giac::_DOUBLE_) {
+                value = re._DOUBLE_val;
+                return std::isfinite(value);
+            }
+        }
+    } catch (...) {
+        // The exact solution remains valid without a numeric companion.
+    }
+    return false;
+}
+
+struct RawSolutionGroup {
+    std::vector<giac::gen> values;
+    std::vector<double> realOrder;
+    std::string exactOrder;
+    bool allReal = true;
+};
+
+bool unwrapSingleValue(const giac::gen& raw, const giac::gen& variable,
+                       giac::gen& value) {
+    value = raw;
+    for (int depth = 0;
+         depth < 8 && value.type == giac::_VECT &&
+         value._VECTptr->size() == 1;
+         ++depth) {
+        value = value._VECTptr->front();
+    }
+    giac::gen lhs, rhs;
+    if (!splitEquality(value, lhs, rhs)) return true;
+    if (lhs == variable) { value = rhs; return true; }
+    if (rhs == variable) { value = lhs; return true; }
+    return false;
+}
+
+bool adaptSystemGroup(const giac::gen& raw,
+                      const std::vector<giac::gen>& variables,
+                      RawSolutionGroup& group) {
+    giac::gen branch = raw;
+    for (int depth = 0;
+         depth < 8 && branch.type == giac::_VECT &&
+         branch._VECTptr->size() == 1 &&
+         branch._VECTptr->front().type == giac::_VECT;
+         ++depth) {
+        branch = branch._VECTptr->front();
+    }
+    if (branch.type != giac::_VECT) return false;
+    const giac::vecteur& elems = *branch._VECTptr;
+    if (elems.size() != variables.size()) return false;
+
+    bool anyEquality = false;
+    bool allEquality = true;
+    for (const auto& elem : elems) {
+        giac::gen lhs, rhs;
+        const bool equality = splitEquality(elem, lhs, rhs);
+        anyEquality = anyEquality || equality;
+        allEquality = allEquality && equality;
+    }
+    if (anyEquality && !allEquality) return false;
+
+    group.values.resize(variables.size());
+    if (!allEquality) {
+        for (size_t i = 0; i < elems.size(); ++i) group.values[i] = elems[i];
+        return true;
+    }
+
+    std::vector<bool> assigned(variables.size(), false);
+    for (const auto& elem : elems) {
+        giac::gen lhs, rhs;
+        splitEquality(elem, lhs, rhs);
+        bool matched = false;
+        for (size_t i = 0; i < variables.size(); ++i) {
+            if (lhs == variables[i] || rhs == variables[i]) {
+                if (assigned[i]) return false;
+                group.values[i] = (lhs == variables[i]) ? rhs : lhs;
+                assigned[i] = true;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) return false;
+    }
+    for (bool present : assigned)
+        if (!present) return false;
+    return true;
+}
+
+std::string rawGroupKey(const RawSolutionGroup& group, giac::context* ctx) {
+    std::string key;
+    for (const auto& value : group.values) {
+        key += value.print(ctx);
+        key.push_back('\x1f');
+    }
+    return key;
+}
+
+bool sameRawGroup(const RawSolutionGroup& a, const RawSolutionGroup& b,
+                  giac::context* ctx) {
+    if (a.values.size() != b.values.size()) return false;
+    for (size_t i = 0; i < a.values.size(); ++i)
+        if (!exactEquivalent(a.values[i], b.values[i], ctx)) return false;
+    return true;
+}
+
+StructuredSolveResult rejectedSolveReentrant() {
+    StructuredSolveResult result;
+    result.status = MathEngineStatus::Unsupported;
+    result.setKind = SolutionSetKind::Unsupported;
+    result.diagnostic = "GiacEngine is non-reentrant: nested call rejected";
+    return result;
+}
+
+StructuredSolveResult runStructuredSolve(
+    giac::context* ctx,
+    const std::vector<SolveEquation>& equations,
+    const std::vector<std::string>& variableNames,
+    SolveDomainPolicy policy) {
+    StructuredSolveResult result;
+    if (equations.empty() || variableNames.empty() ||
+        (equations.size() == 1 && variableNames.size() != 1)) {
+        result.status = MathEngineStatus::ParseError;
+        result.diagnostic = "invalid equation/variable arity";
+        return result;
+    }
+    for (const auto& name : variableNames) {
+        if (!isValidSolveIdentifier(name)) {
+            result.status = MathEngineStatus::ParseError;
+            result.diagnostic = "invalid or reserved solve variable: " + name;
+            return result;
+        }
+    }
+
+    try {
+        DiagnosticCapture capture(ctx);
+        const bool authoredInDegrees = numos::angleModeIsDeg();
+        std::vector<giac::gen> variables;
+        variables.reserve(variableNames.size());
+        for (const auto& name : variableNames) {
+            giac::gen variable(name, ctx);
+            if (variable.type != giac::_IDNT ||
+                variable.print(ctx) != name) {
+                result.status = MathEngineStatus::ParseError;
+                result.diagnostic = "solve variable is not a free identifier: " + name;
+                return result;
+            }
+            variables.push_back(variable);
+        }
+
+        giac::vecteur equationGens;
+        equationGens.reserve(equations.size());
+        for (const auto& equation : equations) {
+            if (equation.lhs.empty() || equation.rhs.empty()) {
+                result.status = MathEngineStatus::ParseError;
+                result.diagnostic = "empty equation side";
+                return result;
+            }
+            giac::gen lhs(equation.lhs, ctx);
+            giac::gen rhs(equation.rhs, ctx);
+            if (giac::is_undef(lhs) || giac::is_undef(rhs)) {
+                result.status = MathEngineStatus::ParseError;
+                result.diagnostic = capture.text();
+                if (result.diagnostic.empty())
+                    result.diagnostic = "unable to parse equation side";
+                return result;
+            }
+            if (authoredInDegrees) {
+                int angleBudget = kSolveWalkBudget;
+                lhs = explicitDegreeTrig(lhs, 0, angleBudget);
+                angleBudget = kSolveWalkBudget;
+                rhs = explicitDegreeTrig(rhs, 0, angleBudget);
+            }
+            equationGens.push_back(giac::symb_equal(lhs, rhs));
+        }
+
+        const bool oldComplex = giac::complex_mode(ctx);
+        const bool oldAngleRadians = giac::angle_radian(ctx);
+        giac::complex_mode(policy == SolveDomainPolicy::RealAndComplex, ctx);
+        giac::angle_radian(true, ctx);
+        giac::vecteur raw;
+        try {
+            if (equationGens.size() == 1 && variables.size() == 1) {
+                raw = giac::solve(equationGens.front(), variables.front(),
+                                  policy == SolveDomainPolicy::RealAndComplex ? 1 : 0,
+                                  ctx);
+            } else {
+                raw = giac::gsolve(
+                    equationGens, giac::vecteur(variables.begin(), variables.end()),
+                    policy == SolveDomainPolicy::RealAndComplex,
+                    /*evalf_after=*/0, ctx);
+            }
+        } catch (...) {
+            giac::complex_mode(oldComplex, ctx);
+            giac::angle_radian(oldAngleRadians, ctx);
+            throw;
+        }
+        giac::complex_mode(oldComplex, ctx);
+        giac::angle_radian(oldAngleRadians, ctx);
+
+        result.rawExactText = giac::gen(raw, giac::_LIST__VECT).print(ctx);
+        result.diagnostic = capture.text();
+
+        int undefBudget = kSolveWalkBudget;
+        if (containsUndef(giac::gen(raw, giac::_LIST__VECT), 0, undefBudget)) {
+            result.status = MathEngineStatus::Undefined;
+            result.setKind = SolutionSetKind::Unsupported;
+            if (result.diagnostic.empty())
+                result.diagnostic = "Giac returned an undefined solution";
+            return result;
+        }
+        if (raw.empty()) {
+            result.status = MathEngineStatus::Ok;
+            result.setKind = SolutionSetKind::NoSolution;
+            return result;
+        }
+
+        std::vector<RawSolutionGroup> normalized;
+        normalized.reserve(raw.size());
+        for (const auto& rawItem : raw) {
+            RawSolutionGroup group;
+            if (variables.size() == 1) {
+                giac::gen value;
+                if (!unwrapSingleValue(rawItem, variables.front(), value)) {
+                    result.status = MathEngineStatus::Unsupported;
+                    result.setKind = SolutionSetKind::Unsupported;
+                    result.diagnostic = "unsupported Giac equality solution shape";
+                    return result;
+                }
+                group.values.push_back(value);
+            } else if (!adaptSystemGroup(rawItem, variables, group)) {
+                result.status = MathEngineStatus::Unsupported;
+                result.setKind = SolutionSetKind::Unsupported;
+                result.diagnostic = "unsupported Giac system solution shape";
+                return result;
+            }
+
+            for (auto& value : group.values) {
+                try {
+                    value = giac::ratnormal(value, ctx);
+                } catch (...) {
+                    // Keep Giac's exact solve value if normalization declines.
+                }
+                int solveBudget = kSolveWalkBudget;
+                if (containsSolveCall(value, 0, solveBudget)) {
+                    result.status = MathEngineStatus::Unsupported;
+                    result.setKind = SolutionSetKind::Unsupported;
+                    result.diagnostic = "Giac left the solve operation unevaluated";
+                    return result;
+                }
+                int variableBudget = kSolveWalkBudget;
+                if (containsAnyVariable(value, variables, 0, variableBudget)) {
+                    result.status = MathEngineStatus::Ok;
+                    result.setKind = SolutionSetKind::AllValues;
+                    result.groups.clear();
+                    return result;
+                }
+                double realValue = 0.0;
+                std::string approximateText;
+                if (realApproximation(value, ctx, realValue,
+                                      approximateText)) {
+                    group.realOrder.push_back(realValue);
+                } else {
+                    group.allReal = false;
+                }
+            }
+            group.exactOrder = rawGroupKey(group, ctx);
+            normalized.push_back(std::move(group));
+        }
+
+        std::stable_sort(normalized.begin(), normalized.end(),
+                         [](const RawSolutionGroup& a,
+                            const RawSolutionGroup& b) {
+                             // WHY: numeric approximations are used only as
+                             // ordering keys; the retained/displayed values
+                             // remain Giac's exact gens. This gives natural,
+                             // stable order for real roots such as 30,150
+                             // without reconstructing exact data from doubles.
+                             if (a.allReal != b.allReal)
+                                 return a.allReal;  // real groups first
+                             if (a.allReal) {
+                                 return std::lexicographical_compare(
+                                     a.realOrder.begin(), a.realOrder.end(),
+                                     b.realOrder.begin(), b.realOrder.end());
+                             }
+                             return a.exactOrder < b.exactOrder;
+                         });
+        std::vector<RawSolutionGroup> unique;
+        unique.reserve(normalized.size());
+        for (auto& group : normalized) {
+            bool duplicate = false;
+            for (const auto& accepted : unique) {
+                if (sameRawGroup(group, accepted, ctx)) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) unique.push_back(std::move(group));
+        }
+
+        result.groups.reserve(unique.size());
+        for (const auto& rawGroup : unique) {
+            StructuredSolutionGroup group;
+            group.values.reserve(rawGroup.values.size());
+            for (size_t i = 0; i < rawGroup.values.size(); ++i) {
+                StructuredSolution solution;
+                solution.variable = variableNames[i];
+                solution.exactText = rawGroup.values[i].print(ctx);
+                int treeBudget = kTreeNodeBudget;
+                genToNode(rawGroup.values[i], ctx, solution.exactValue, 0,
+                          treeBudget);
+                solution.hasApproximateReal = realApproximation(
+                    rawGroup.values[i], ctx, solution.approximateReal,
+                    solution.approximateText);
+                group.values.push_back(std::move(solution));
+            }
+            result.groups.push_back(std::move(group));
+        }
+        result.status = MathEngineStatus::Ok;
+        result.setKind = SolutionSetKind::Solutions;
+        return result;
+    } catch (const std::bad_alloc&) {
+        result.status = MathEngineStatus::OutOfMemory;
+        result.setKind = SolutionSetKind::Unsupported;
+        result.diagnostic = "allocation failure inside Giac solve";
+    } catch (const std::exception& e) {
+        result.status = MathEngineStatus::EvaluationError;
+        result.setKind = SolutionSetKind::Unsupported;
+        result.diagnostic = e.what();
+    } catch (...) {
+        result.status = MathEngineStatus::EvaluationError;
+        result.setKind = SolutionSetKind::Unsupported;
+        result.diagnostic = "unknown Giac solve exception";
+    }
+    return result;
+}
+
+} // namespace
+
+StructuredSolveResult GiacEngine::solveStructured(
+    const SolveEquation& equation, const std::string& variable,
+    SolveDomainPolicy policy) {
+    CallGuard guard(_inCall);
+    if (!guard.entered()) return rejectedSolveReentrant();
+    if (!begin()) {
+        StructuredSolveResult result;
+        result.status = MathEngineStatus::OutOfMemory;
+        result.diagnostic = "Giac context initialization failed";
+        return result;
+    }
+    syncAngleMode(_state->ctx);
+    return runStructuredSolve(_state->ctx, {equation}, {variable}, policy);
+}
+
+StructuredSolveResult GiacEngine::solveSystemStructured(
+    const std::vector<SolveEquation>& equations,
+    const std::vector<std::string>& solveVariables,
+    SolveDomainPolicy policy) {
+    CallGuard guard(_inCall);
+    if (!guard.entered()) return rejectedSolveReentrant();
+    if (!begin()) {
+        StructuredSolveResult result;
+        result.status = MathEngineStatus::OutOfMemory;
+        result.diagnostic = "Giac context initialization failed";
+        return result;
+    }
+    syncAngleMode(_state->ctx);
+    return runStructuredSolve(_state->ctx, equations, solveVariables, policy);
+}
+
+#ifdef NUMOS_GIAC_HOST_HARNESS
+bool GiacEngine::debugStructuredSolveAdapterForms() {
+    CallGuard guard(_inCall);
+    if (!guard.entered() || !begin()) return false;
+
+    giac::context* ctx = _state->ctx;
+    const giac::gen x(giac::identificateur("x"));
+    const giac::gen y(giac::identificateur("y"));
+
+    // Single-value adapter: [[x=2]] -> 2.
+    const giac::gen xEquality = giac::symb_equal(x, giac::gen(2));
+    giac::vecteur nestedOnceItems;
+    nestedOnceItems.push_back(xEquality);
+    const giac::gen nestedOnce(nestedOnceItems, giac::_LIST__VECT);
+    giac::vecteur nestedTwiceItems;
+    nestedTwiceItems.push_back(nestedOnce);
+    const giac::gen nestedTwice(nestedTwiceItems, giac::_LIST__VECT);
+    giac::gen singleValue;
+    if (!unwrapSingleValue(nestedTwice, x, singleValue) ||
+        !exactEquivalent(singleValue, giac::gen(2), ctx)) {
+        return false;
+    }
+
+    // System adapter: equality order is deliberately y,x; output must follow
+    // the requested UI order x,y.
+    giac::vecteur equalitySystemItems;
+    equalitySystemItems.push_back(giac::symb_equal(y, giac::gen(1)));
+    equalitySystemItems.push_back(giac::symb_equal(x, giac::gen(2)));
+    const giac::gen equalitySystem(equalitySystemItems, giac::_LIST__VECT);
+    RawSolutionGroup group;
+    const std::vector<giac::gen> variables{x, y};
+    return adaptSystemGroup(equalitySystem, variables, group) &&
+           group.values.size() == 2 &&
+           exactEquivalent(group.values[0], giac::gen(2), ctx) &&
+           exactEquivalent(group.values[1], giac::gen(1), ctx);
+}
+#endif
 
 MathEngineResult GiacEngine::assign(const char* name,
                                     const char* valueExpression) {

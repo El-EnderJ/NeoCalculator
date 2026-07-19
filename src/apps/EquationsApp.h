@@ -35,6 +35,8 @@
 #include <string>
 #include <cstddef>
 #include "../math/MathAST.h"
+#include "../math/CalculationEngine.h"
+#include "../math/giac/GiacEngine.h"
 #include "../math/CursorController.h"
 #include "../math/cas/ASTFlattener.h"
 #include "../math/cas/SingleSolver.h"
@@ -66,6 +68,21 @@ public:
     void handleKey(const KeyEvent& ev);
 
     bool isActive() const { return _screen != nullptr; }
+
+#ifdef NATIVE_SIM
+    // GIAC-D01 semantic probes. These expose NumOS-owned state only.
+    const char* debugEngineName() const;
+    const char* debugStatusName() const;
+    int debugSolutionCount() const;
+    bool debugSolutionNear(const std::string& variable, int index,
+                           double expected, double epsilon) const;
+    bool debugSolutionExact(const std::string& variable, int index,
+                            const std::string& expected) const;
+    std::string debugSolutionExactText(const std::string& variable,
+                                       int index) const;
+    const char* debugResultKindName() const;
+    const char* debugTutorStatusName() const;
+#endif
 
 private:
     // ── States ───────────────────────────────────────────────────────
@@ -138,10 +155,28 @@ private:
     lv_obj_t*       _resultContainer = nullptr;
     lv_obj_t*       _resultTitle     = nullptr;
     lv_obj_t*       _resultHint      = nullptr;
+    lv_obj_t*       _resultFallback  = nullptr;
     vpam::MathCanvas   _resultCanvas[MAX_RESULTS];
     vpam::NodePtr      _resultNode[MAX_RESULTS];
     vpam::NodeRow*     _resultRow[MAX_RESULTS];
     int                _resultCount   = 0;
+
+    enum class ResultKind : uint8_t {
+        None,
+        Structured,
+        TextFallback,
+    };
+
+    enum class TutorStatus : uint8_t {
+        Disabled,
+        Agreed,
+        Unavailable,
+    };
+
+    numos::StructuredSolveResult _giacResult;
+    ResultKind                   _resultKind = ResultKind::None;
+    TutorStatus                  _tutorStatus = TutorStatus::Disabled;
+    std::string                  _tutorDiagnostic;
 
     // ── STEPS state ──────────────────────────────────────────────────
     lv_obj_t*       _stepsContainer  = nullptr;
@@ -253,7 +288,11 @@ private:
     void solveEquations();
     void solveOmni();
     void solveSystem();
+    void solveWithGiac();
+    void generateTutorCandidate();
+    bool tutorCandidateAgrees() const;
     void buildResultDisplay();
+    void buildGiacResultDisplay();
     void buildStepsDisplay();
     void buildCASStepsDisplay();         ///< Algebraic TRS step display (RuleEngine)
     void buildSystemCASStepsDisplay();   ///< System of equations TRS step display

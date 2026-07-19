@@ -117,6 +117,54 @@ struct StructuredEngineResult {
 };
 
 /**
+ * GIAC-D01 equation-solving boundary.
+ *
+ * Equation sides are already-authored, controlled Giac expressions. Keeping
+ * lhs/rhs separate prevents an app from manufacturing solve syntax or parsing
+ * rendered pixels. All Giac-owned types remain private to GiacEngine.cpp.
+ */
+enum class SolveDomainPolicy : uint8_t {
+    RealOnly,
+    RealAndComplex
+};
+
+enum class SolutionSetKind : uint8_t {
+    Solutions,
+    NoSolution,
+    AllValues,
+    Unsupported
+};
+
+struct SolveEquation {
+    std::string lhs;
+    std::string rhs;
+};
+
+struct StructuredSolution {
+    std::string variable;
+    EngineResultNode exactValue;
+    std::string exactText;
+    std::string approximateText;
+    bool hasApproximateReal = false;
+    double approximateReal = 0.0;
+};
+
+struct StructuredSolutionGroup {
+    // Ordered exactly as the request's solveVariables.
+    std::vector<StructuredSolution> values;
+};
+
+struct StructuredSolveResult {
+    MathEngineStatus status = MathEngineStatus::Unsupported;
+    SolutionSetKind setKind = SolutionSetKind::Unsupported;
+    std::vector<StructuredSolutionGroup> groups;
+    std::string diagnostic;
+    std::string rawExactText;
+
+    bool ok() const { return status == MathEngineStatus::Ok; }
+};
+
+/**
  * Opaque handle to a parse-once/evaluate-many numeric expression
  * (Grapher-shaped). Movable, non-copyable; owns its Giac-side state
  * privately. Invalidated by GiacEngine::reset() (generation check).
@@ -165,6 +213,33 @@ public:
      * walk hit an internal limit — the textual result still stands.
      */
     StructuredEngineResult evaluateStructured(const char* expression);
+
+    /**
+     * GIAC-D01: solve one equation in one Giac call and adapt the returned
+     * list/equality shapes into an engine-owned structural solution set.
+     * Duplicate roots are removed by exact Giac equality; remaining roots are
+     * ordered deterministically. Unsupported value presentation retains
+     * status=Ok and rawExactText so the app can show an honest text fallback.
+     */
+    StructuredSolveResult solveStructured(
+        const SolveEquation& equation,
+        const std::string& variable,
+        SolveDomainPolicy policy = SolveDomainPolicy::RealOnly);
+
+    /**
+     * GIAC-D01: solve a simultaneous system as one Giac operation. Solution
+     * tuple members are reordered to solveVariables, never map order.
+     */
+    StructuredSolveResult solveSystemStructured(
+        const std::vector<SolveEquation>& equations,
+        const std::vector<std::string>& solveVariables,
+        SolveDomainPolicy policy = SolveDomainPolicy::RealOnly);
+
+#ifdef NUMOS_GIAC_HOST_HARNESS
+    // Host-only structural seam: validates Giac equality/nested-list shapes
+    // without exposing giac::gen outside GiacEngine.cpp.
+    bool debugStructuredSolveAdapterForms();
+#endif
 
     /**
      * GIAC-B01: assign `name := (valueExpression)` in the engine context.

@@ -1,0 +1,54 @@
+# GIAC-D01: enabled 3x3 mode; ALPHA+y authors z in the AST.
+wait 200
+open_app Equations
+wait 60
+key ENTER
+key ENTER
+key x
+key +
+key y
+key +
+key ALPHA
+key y
+key =
+key 6
+key ENTER
+key DOWN
+key ENTER
+key ENTER
+key 2
+key *
+key x
+key -
+key y
+key +
+key ALPHA
+key y
+key =
+key 3
+key ENTER
+key DOWN
+key ENTER
+key ENTER
+key x
+key +
+key 2
+key *
+key y
+key -
+key ALPHA
+key y
+key =
+key 2
+key ENTER
+key DOWN
+key ENTER
+wait 220
+assert_equations_engine giac
+assert_equations_status ok
+assert_equations_solution_count 1
+assert_equations_solution_exact x 0 1
+assert_equations_solution_exact y 0 2
+assert_equations_solution_exact z 0 3
+assert_equations_result_kind structured
+assert_equations_tutor_status unavailable

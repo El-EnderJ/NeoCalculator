@@ -1,0 +1,27 @@
+# GIAC-D01: a valid result too large/complex for the row widget remains Giac text.
+wait 200
+set_equations_complex_policy complex
+open_app Equations
+wait 60
+key ENTER
+key ENTER
+key x
+key ^
+key 5
+key RIGHT
+key -
+key x
+key +
+key 1
+key =
+key 0
+key ENTER
+key DOWN
+key DOWN
+key ENTER
+wait 300
+assert_equations_engine giac
+assert_equations_status ok
+assert_equations_result_kind text_fallback
+assert_equations_tutor_status unavailable
+

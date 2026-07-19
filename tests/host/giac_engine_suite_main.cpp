@@ -17,6 +17,7 @@
 #include <cmath>
 #include <string>
 #include <chrono>
+#include <algorithm>
 
 #include "math/giac/GiacEngine.h"
 #include "math/AngleModeRuntime.h"
@@ -53,6 +54,17 @@ static void check(bool cond, const char* label, const std::string& detail = "") 
     (cond ? g_pass : g_fail)++;
     printf("CHECK|%s|%s%s%s\n", label, cond ? "PASS" : "FAIL",
            detail.empty() ? "" : "|", detail.c_str());
+}
+
+static bool hasExact(const numos::StructuredSolveResult& result,
+                     const char* variable, const char* exact) {
+    for (const auto& group : result.groups) {
+        for (const auto& value : group.values) {
+            if (value.variable == variable && value.exactText == exact)
+                return true;
+        }
+    }
+    return false;
 }
 
 // Run one expression through the engine in evaluate or simplify mode and
@@ -617,6 +629,184 @@ int main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // GIAC-D01: structured equation solving.
+    {
+        using numos::SolutionSetKind;
+        using numos::SolveDomainPolicy;
+        check(eng.debugStructuredSolveAdapterForms(),
+              "d01-adapter-nested-equality-forms");
+        auto single = [&](const char* lhs, const char* rhs,
+                          SolveDomainPolicy policy =
+                              SolveDomainPolicy::RealOnly) {
+            return eng.solveStructured({lhs, rhs}, "x", policy);
+        };
+
+        eng.reset();
+        const auto coldSolveStart = Clock::now();
+        auto linear = single("2*x+4", "0");
+        const auto coldSolveUs =
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                Clock::now() - coldSolveStart).count();
+        std::printf("SOLVE_COLD|2*x+4=0|us=%lld\n",
+                    static_cast<long long>(coldSolveUs));
+        check(linear.ok() && linear.setKind == SolutionSetKind::Solutions &&
+                  linear.groups.size() == 1 && hasExact(linear, "x", "-2"),
+              "d01-single-linear", linear.rawExactText);
+
+        auto quadratic = single("x^2-2", "0");
+        check(quadratic.ok() && quadratic.groups.size() == 2 &&
+                  hasExact(quadratic, "x", "-sqrt(2)") &&
+                  hasExact(quadratic, "x", "sqrt(2)"),
+              "d01-single-exact-radicals", quadratic.rawExactText);
+
+        auto repeated = single("(x-1)^2", "0");
+        check(repeated.ok() && repeated.groups.size() == 1 &&
+                  hasExact(repeated, "x", "1"),
+              "d01-single-duplicate-normalized", repeated.rawExactText);
+
+        auto cubic = single("x^3-6*x^2+11*x-6", "0");
+        check(cubic.ok() && cubic.groups.size() == 3 &&
+                  hasExact(cubic, "x", "1") && hasExact(cubic, "x", "2") &&
+                  hasExact(cubic, "x", "3"),
+              "d01-single-cubic-order", cubic.rawExactText);
+
+        auto logarithmic = single("ln(x)", "1");
+        check(logarithmic.ok() && logarithmic.groups.size() == 1 &&
+                  (hasExact(logarithmic, "x", "exp(1)") ||
+                   hasExact(logarithmic, "x", "e")),
+              "d01-single-ln-exact", logarithmic.rawExactText);
+
+        numos::setAngleMode(vpam::AngleMode::RAD);
+        auto trig = single("sin(x)", "1/2");
+        check(trig.ok() && !trig.rawExactText.empty(),
+              "d01-single-trig-rad", trig.rawExactText);
+        numos::setAngleMode(vpam::AngleMode::DEG);
+        auto trigDeg = single("sin(x)", "1/2");
+        check(trigDeg.ok() && !trigDeg.rawExactText.empty() &&
+                  trigDeg.rawExactText != trig.rawExactText,
+              "d01-single-trig-angle-synchronized",
+              trig.rawExactText + " -> " + trigDeg.rawExactText);
+        numos::setAngleMode(vpam::AngleMode::RAD);
+
+        auto noReal = single("x^2+1", "0", SolveDomainPolicy::RealOnly);
+        check(noReal.ok() && noReal.setKind == SolutionSetKind::NoSolution,
+              "d01-single-no-real-root", noReal.rawExactText);
+        auto complex = single("x^2+1", "0",
+                              SolveDomainPolicy::RealAndComplex);
+        bool complexTree = complex.ok() && complex.groups.size() == 2;
+        for (const auto& group : complex.groups) {
+            complexTree = complexTree && group.values.size() == 1 &&
+                (group.values[0].exactValue.kind ==
+                     numos::EngineNodeKind::ImagUnit ||
+                 group.values[0].exactValue.kind ==
+                     numos::EngineNodeKind::Neg ||
+                 group.values[0].exactValue.kind ==
+                     numos::EngineNodeKind::Complex);
+        }
+        check(complexTree, "d01-single-complex-policy",
+              complex.rawExactText);
+
+        auto identity = single("x", "x");
+        check(identity.ok() && identity.setKind == SolutionSetKind::AllValues,
+              "d01-single-identity", identity.rawExactText);
+        auto contradiction = single("x", "x+1");
+        check(contradiction.ok() &&
+                  contradiction.setKind == SolutionSetKind::NoSolution,
+              "d01-single-contradiction", contradiction.rawExactText);
+
+        auto malformed = single("2+*3", "0");
+        check(malformed.status == MathEngineStatus::ParseError,
+              "d01-single-malformed-typed", malformed.diagnostic);
+        auto unsupported = single("unknownfun(x)", "0");
+        check(!unsupported.ok() ||
+                  unsupported.setKind == SolutionSetKind::Unsupported,
+              "d01-single-unevaluated-unsupported",
+              unsupported.diagnostic + "|" + unsupported.rawExactText);
+
+        std::vector<numos::SolveEquation> sys2 = {
+            {"2*x+y", "5"}, {"x-y", "1"}
+        };
+        auto unique2 = eng.solveSystemStructured(sys2, {"x", "y"});
+        check(unique2.ok() && unique2.groups.size() == 1 &&
+                  unique2.groups[0].values.size() == 2 &&
+                  unique2.groups[0].values[0].variable == "x" &&
+                  unique2.groups[0].values[1].variable == "y" &&
+                  hasExact(unique2, "x", "2") &&
+                  hasExact(unique2, "y", "1"),
+              "d01-system-2x2-ui-order", unique2.rawExactText);
+
+        auto reordered = eng.solveSystemStructured(sys2, {"y", "x"});
+        check(reordered.ok() && reordered.groups.size() == 1 &&
+                  reordered.groups[0].values.size() == 2 &&
+                  reordered.groups[0].values[0].variable == "y" &&
+                  reordered.groups[0].values[1].variable == "x" &&
+                  hasExact(reordered, "x", "2") &&
+                  hasExact(reordered, "y", "1"),
+              "d01-system-reordered-variables", reordered.rawExactText);
+
+        std::vector<numos::SolveEquation> rationalSys = {
+            {"2*x+y", "1"}, {"x-y", "0"}
+        };
+        auto rational = eng.solveSystemStructured(rationalSys, {"x", "y"});
+        check(rational.ok() && hasExact(rational, "x", "1/3") &&
+                  hasExact(rational, "y", "1/3"),
+              "d01-system-exact-rational", rational.rawExactText);
+
+        std::vector<numos::SolveEquation> inconsistent = {
+            {"x+y", "1"}, {"x+y", "2"}
+        };
+        auto none = eng.solveSystemStructured(inconsistent, {"x", "y"});
+        check(none.ok() && none.setKind == SolutionSetKind::NoSolution,
+              "d01-system-inconsistent", none.rawExactText);
+
+        std::vector<numos::SolveEquation> dependent = {
+            {"x+y", "1"}, {"2*x+2*y", "2"}
+        };
+        auto infinite = eng.solveSystemStructured(dependent, {"x", "y"});
+        check(infinite.ok() &&
+                  infinite.setKind == SolutionSetKind::AllValues,
+              "d01-system-dependent", infinite.rawExactText);
+
+        std::vector<numos::SolveEquation> sys3 = {
+            {"x+y+z", "6"}, {"2*x-y+z", "3"}, {"x+2*y-z", "2"}
+        };
+        auto unique3 =
+            eng.solveSystemStructured(sys3, {"x", "y", "z"});
+        check(unique3.ok() && unique3.groups.size() == 1 &&
+                  unique3.groups[0].values.size() == 3 &&
+                  unique3.groups[0].values[0].variable == "x" &&
+                  unique3.groups[0].values[1].variable == "y" &&
+                  unique3.groups[0].values[2].variable == "z",
+              "d01-system-3x3", unique3.rawExactText);
+
+        auto badArity =
+            eng.solveSystemStructured({{"x+y", "1"}}, {"x", "y"});
+        check(badArity.status == MathEngineStatus::Unsupported ||
+                  badArity.status == MathEngineStatus::ParseError,
+              "d01-system-malformed-arity", badArity.diagnostic);
+
+        eng.solveStructured({"x^2-2", "0"}, "x");
+        const size_t rssBefore = currentRssKb();
+        const auto solveStart = Clock::now();
+        int solveOk = 0;
+        static constexpr int kRepeatedSolves = 500;
+        for (int i = 0; i < kRepeatedSolves; ++i) {
+            auto r = eng.solveStructured({"x^2-2", "0"}, "x");
+            if (r.ok() && r.groups.size() == 2) ++solveOk;
+            if ((i + 1) % 100 == 0) eng.reset();
+        }
+        const long long solveUs = usSince(solveStart);
+        const long long rssDelta =
+            static_cast<long long>(currentRssKb()) -
+            static_cast<long long>(rssBefore);
+        printf("SOLVE_WARM|n=%d|ok=%d|avg_us=%.1f|rss_delta_kb=%lld\n",
+               kRepeatedSolves, solveOk,
+               static_cast<double>(solveUs) / kRepeatedSolves, rssDelta);
+        check(solveOk == kRepeatedSolves,
+              "d01-repeated-solve-reset-all-ok");
+        check(rssDelta < 1024, "d01-repeated-solve-rss-stable");
+    }
+
     // GIAC-C01: Grapher retained-expression contract (strict 1-D + 2-D)
     // ═══════════════════════════════════════════════════════════════════
     {

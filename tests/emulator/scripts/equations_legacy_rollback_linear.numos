@@ -1,0 +1,25 @@
+# GIAC-D01: explicit rollback build retains the prior engine for diagnosis.
+wait 200
+open_app Equations
+wait 60
+key ENTER
+key ENTER
+key 2
+key *
+key x
+key +
+key 4
+key =
+key 0
+key ENTER
+key DOWN
+key DOWN
+key ENTER
+wait 120
+assert_equations_engine legacy
+assert_equations_status ok
+assert_equations_solution_count 1
+assert_equations_solution_near x 0 -2 0.0000001
+assert_equations_result_kind structured
+assert_equations_tutor_status disabled
+

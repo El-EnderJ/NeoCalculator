@@ -1,0 +1,28 @@
+# GIAC-D01: incomplete rows are rejected before Giac without legacy fallback.
+wait 200
+open_app Equations
+wait 60
+key ENTER
+key ENTER
+key x
+key +
+key y
+key =
+key 1
+key ENTER
+key DOWN
+key ENTER
+key ENTER
+key x
+key =
+key ENTER
+key DOWN
+key DOWN
+key ENTER
+wait 100
+assert_equations_engine giac
+assert_equations_status parse_error
+assert_equations_solution_count 0
+assert_equations_result_kind none
+assert_equations_tutor_status unavailable
+

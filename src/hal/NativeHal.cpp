@@ -109,6 +109,7 @@
 #include "../input/LvglKeypad.h"
 #include "../input/KeyboardManager.h"
 #include "../apps/CalculationApp.h"
+#include "../apps/EquationsApp.h"
 #include "../apps/SettingsApp.h"          // Phase 5A: emulator-safe LVGL-native app
 #include "../apps/StatisticsApp.h"        // Phase 6A: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/ProbabilityApp.h"       // Phase 6A: LVGL-only, pure-math (no CAS/HW)
@@ -212,6 +213,7 @@ static uint32_t detTickCb() { return g_detTick; }
 // Modos de la aplicación
 // ════════════════════════════════════════════════════════════════════════════
 enum class AppMode : uint8_t {
+    EQUATIONS,      // GIAC-D01 equation solver
     SPLASH,         // Pantalla de carga con animación
     MENU,           // Launcher (grid de apps)
     CALCULATION,    // Calculadora científica
@@ -266,6 +268,7 @@ static DisplayDriver    g_displayStub;        // Stub para MainMenu
 static SplashScreen*    g_splash  = nullptr;
 static MainMenu*        g_menu    = nullptr;
 static CalculationApp*  g_calcApp = nullptr;
+static EquationsApp*     g_equationsApp = nullptr;
 static SettingsApp*     g_settingsApp = nullptr;   // Phase 5A (emulador)
 static StatisticsApp*   g_statsApp = nullptr;      // Phase 6A (emulador)
 static ProbabilityApp*  g_probApp  = nullptr;      // Phase 6A (emulador)
@@ -639,6 +642,21 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
+        case AppMode::EQUATIONS:
+            if (isDown && kc == KeyCode::MODE) {
+                returnToMenu();
+                break;
+            }
+            if (g_equationsApp) {
+                KeyEvent ke;
+                ke.code = kc;
+                ke.action = action;
+                ke.row = -1;
+                ke.col = -1;
+                g_equationsApp->handleKey(ke);
+            }
+            break;
+
         case AppMode::CALCULATION:
             // MODE → volver al launcher (solo en la pulsacion).
             if (isDown && kc == KeyCode::MODE) {
@@ -900,6 +918,9 @@ static void transitionToMenu()
     // Crear la calculadora (pre-crear pantalla para lanzamiento rápido)
     g_calcApp = new CalculationApp();
     g_calcApp->begin();
+    // Equations is created lazily so its object-heavy tutor UI does not
+    // compete with the launcher until explicitly opened.
+    g_equationsApp = new EquationsApp();
 
     // Phase 5A: SettingsApp (LVGL-native). begin() perezoso: su pantalla se crea
     // en el primer load() (SettingsApp::load llama a begin() si hace falta).
@@ -960,6 +981,14 @@ static void launchApp(int appId)
                 g_grapherApp->load();
                 g_mode = AppMode::GRAPHER;
                 std::printf("[APP] GrapherApp activa\n");
+            }
+            break;
+
+        case 2: // Equations
+            if (g_equationsApp) {
+                g_equationsApp->load();
+                g_mode = AppMode::EQUATIONS;
+                std::printf("[APP] EquationsApp activa\n");
             }
             break;
 
@@ -1026,6 +1055,9 @@ static void launchApp(int appId)
 static void performAppTeardown(AppMode m)
 {
     switch (m) {
+        case AppMode::EQUATIONS:
+            if (g_equationsApp) g_equationsApp->end();
+            break;
         case AppMode::CALCULATION:
             if (g_calcApp) {
                 g_calcApp->end();
@@ -1524,6 +1556,14 @@ enum class ScriptCmdType : uint8_t {
     AssertCalcResultKind,      // assert_calc_result_kind structured|text_fallback|none
     AssertCalcStatus,          // assert_calc_status ok|undefined|parse_error|evaluation_error|unsupported|out_of_memory
     AssertCalcExact,           // assert_calc_exact TEXT (igualdad exacta con exactText)
+    SetEquationsComplexPolicy, // set_equations_complex_policy real|complex
+    AssertEquationsEngine,
+    AssertEquationsStatus,
+    AssertEquationsSolutionCount,
+    AssertEquationsSolutionNear,
+    AssertEquationsSolutionExact,
+    AssertEquationsResultKind,
+    AssertEquationsTutorStatus,
     // GIAC-C01: Grapher engine probes (retained compiled cache). Los eval
     // hooks pasan por los MISMOS puntos de entrada de GraphModel que usa el
     // renderizado/trace/POIs, asi que no pueden observar otro evaluador.
@@ -1584,6 +1624,8 @@ static const char* canonicalAppName(const std::string& name)
     std::string lc = name;
     for (char& c : lc) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     if (lc == "calculation" || lc == "calc")     return "Calculation";
+    if (lc == "equations" || lc == "equation" ||
+        lc == "eq")                               return "Equations";
     if (lc == "menu"        || lc == "launcher") return "Menu";
     if (lc == "splash")                           return "Splash";
     if (lc == "settings")                         return "Settings";        // Phase 5A
@@ -1606,6 +1648,7 @@ static int scriptAppNameToId(const std::string& name)
     std::string lc = name;
     for (char& c : lc) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     if (lc == "calculation" || lc == "calc")                          return 0;
+    if (lc == "equations" || lc == "equation" || lc == "eq")          return 2;
     if (lc == "statistics" || lc == "stats")                          return 4;   // Phase 6A
     if (lc == "probability" || lc == "prob")                          return 5;   // Phase 6A
     if (lc == "sequences" || lc == "seq")                             return 7;   // Phase 7A
@@ -1909,6 +1952,23 @@ static bool loadScript(const char* path)
             sc.type   = ScriptCmdType::AssertCalcEngine;
             sc.strArg = mode;
         }
+        else if (lc == "set_equations_complex_policy") {
+            std::string policy, extra;
+            if (!(iss >> policy))
+                return scriptErr(path, lineNo,
+                                 "set_equations_complex_policy requiere real|complex");
+            if (iss >> extra)
+                return scriptErr(path, lineNo,
+                                 "set_equations_complex_policy: demasiados argumentos");
+            for (char& c : policy)
+                c = static_cast<char>(
+                    std::tolower(static_cast<unsigned char>(c)));
+            if (policy != "real" && policy != "complex")
+                return scriptErr(path, lineNo,
+                                 "politica desconocida (real|complex)");
+            sc.type = ScriptCmdType::SetEquationsComplexPolicy;
+            sc.strArg = policy;
+        }
         else if (lc == "assert_calc_result_kind") {
             std::string kind, extra;
             if (!(iss >> kind)) return scriptErr(path, lineNo, "assert_calc_result_kind requiere structured|text_fallback|none");
@@ -1943,6 +2003,100 @@ static bool loadScript(const char* path)
             sc.strArg = rest;
         }
         // ── GIAC-C01: Grapher engine probes (append-only) ────────────────
+        else if (lc == "assert_equations_engine" ||
+                 lc == "assert_equations_status" ||
+                 lc == "assert_equations_result_kind" ||
+                 lc == "assert_equations_tutor_status") {
+            std::string value, extra;
+            if (!(iss >> value) || (iss >> extra))
+                return scriptErr(path, lineNo,
+                    "assert_equations_* requiere exactamente un valor");
+            if (lc == "assert_equations_engine") {
+                if (value != "giac" && value != "legacy")
+                    return scriptErr(path, lineNo,
+                        "assert_equations_engine requiere giac|legacy");
+                sc.type = ScriptCmdType::AssertEquationsEngine;
+            } else if (lc == "assert_equations_status") {
+                if (value != "ok" && value != "no_solution" &&
+                    value != "all_values" && value != "parse_error" &&
+                    value != "unsupported" && value != "undefined" &&
+                    value != "evaluation_error" &&
+                    value != "out_of_memory")
+                    return scriptErr(path, lineNo,
+                        "assert_equations_status: estado desconocido");
+                sc.type = ScriptCmdType::AssertEquationsStatus;
+            } else if (lc == "assert_equations_result_kind") {
+                if (value != "structured" && value != "text_fallback" &&
+                    value != "none")
+                    return scriptErr(path, lineNo,
+                        "assert_equations_result_kind requiere structured|text_fallback|none");
+                sc.type = ScriptCmdType::AssertEquationsResultKind;
+            } else {
+                if (value != "agreed" && value != "unavailable" &&
+                    value != "disabled")
+                    return scriptErr(path, lineNo,
+                        "assert_equations_tutor_status requiere agreed|unavailable|disabled");
+                sc.type = ScriptCmdType::AssertEquationsTutorStatus;
+            }
+            sc.strArg = value;
+        }
+        else if (lc == "assert_equations_solution_count") {
+            std::string countToken, extra;
+            long count = 0;
+            if (!(iss >> countToken) ||
+                !parseNonNegLong(countToken, count) || (iss >> extra))
+                return scriptErr(path, lineNo,
+                    "assert_equations_solution_count requiere N >= 0");
+            sc.type = ScriptCmdType::AssertEquationsSolutionCount;
+            sc.waitN = count;
+        }
+        else if (lc == "assert_equations_solution_near") {
+            std::string variable, indexToken, expectedToken, epsilonToken, extra;
+            long index = 0;
+            if (!(iss >> variable >> indexToken >> expectedToken >>
+                  epsilonToken) ||
+                !parseNonNegLong(indexToken, index) || (iss >> extra))
+                return scriptErr(path, lineNo,
+                    "assert_equations_solution_near requiere VARIABLE INDEX EXPECTED EPSILON");
+            char* expectedEnd = nullptr;
+            char* epsilonEnd = nullptr;
+            const double expected =
+                std::strtod(expectedToken.c_str(), &expectedEnd);
+            const double epsilon =
+                std::strtod(epsilonToken.c_str(), &epsilonEnd);
+            if (!expectedEnd || *expectedEnd != '\0' || !epsilonEnd ||
+                *epsilonEnd != '\0' || epsilon < 0.0)
+                return scriptErr(path, lineNo,
+                    "assert_equations_solution_near: numeros invalidos");
+            sc.type = ScriptCmdType::AssertEquationsSolutionNear;
+            sc.waitN = index;
+            sc.strArg = variable;
+            sc.fArgs = {expected, epsilon};
+        }
+        else if (lc == "assert_equations_solution_exact") {
+            std::string variable, indexToken;
+            long index = 0;
+            if (!(iss >> variable >> indexToken) ||
+                !parseNonNegLong(indexToken, index))
+                return scriptErr(path, lineNo,
+                    "assert_equations_solution_exact requiere VARIABLE INDEX TEXTO");
+            std::string expected;
+            std::getline(iss, expected);
+            const size_t begin = expected.find_first_not_of(" \t");
+            expected = begin == std::string::npos
+                ? std::string() : expected.substr(begin);
+            if (expected.size() >= 2 && expected.front() == '"' &&
+                expected.back() == '"')
+                expected = expected.substr(1, expected.size() - 2);
+            if (expected.empty())
+                return scriptErr(path, lineNo,
+                    "assert_equations_solution_exact requiere TEXTO");
+            sc.type = ScriptCmdType::AssertEquationsSolutionExact;
+            sc.waitN = index;
+            sc.strArg = variable;
+            sc.strArg.push_back('\x1f');
+            sc.strArg += expected;
+        }
         else if (lc == "assert_graph_engine") {
             std::string mode, extra;
             if (!(iss >> mode)) return scriptErr(path, lineNo, "assert_graph_engine requiere giac|legacy");
@@ -2078,6 +2232,7 @@ static const char* activeAppName()
          : (g_mode == AppMode::SEQUENCES)     ? "Sequences"
          : (g_mode == AppMode::REGRESSION)    ? "Regression"
          : (g_mode == AppMode::GRAPHER)       ? "Grapher"
+         : (g_mode == AppMode::EQUATIONS)     ? "Equations"
                                               : "Calculation";
 }
 
@@ -2540,6 +2695,86 @@ static void scriptStepBegin()
             break;
         }
 
+        case ScriptCmdType::SetEquationsComplexPolicy:
+            setting_complex_enabled = (sc.strArg == "complex");
+            std::printf("[SCRIPT] set_equations_complex_policy %s\n",
+                        sc.strArg.c_str());
+            break;
+
+        case ScriptCmdType::AssertEquationsEngine:
+        case ScriptCmdType::AssertEquationsStatus:
+        case ScriptCmdType::AssertEquationsSolutionCount:
+        case ScriptCmdType::AssertEquationsSolutionNear:
+        case ScriptCmdType::AssertEquationsSolutionExact:
+        case ScriptCmdType::AssertEquationsResultKind:
+        case ScriptCmdType::AssertEquationsTutorStatus: {
+            if (g_mode != AppMode::EQUATIONS || !g_equationsApp) {
+                assertFail(sc.line,
+                    "assert_equations_* requiere Equations activa (app actual: '" +
+                    std::string(activeAppName()) + "')");
+                break;
+            }
+
+            if (sc.type == ScriptCmdType::AssertEquationsSolutionCount) {
+                const int actual = g_equationsApp->debugSolutionCount();
+                if (actual == sc.waitN)
+                    assertPass(sc.line,
+                        "assert_equations_solution_count " +
+                        std::to_string(sc.waitN));
+                else
+                    assertFail(sc.line,
+                        "assert_equations_solution_count esperaba " +
+                        std::to_string(sc.waitN) + " pero hay " +
+                        std::to_string(actual));
+                break;
+            }
+            if (sc.type == ScriptCmdType::AssertEquationsSolutionNear) {
+                const bool ok = g_equationsApp->debugSolutionNear(
+                    sc.strArg, static_cast<int>(sc.waitN),
+                    sc.fArgs[0], sc.fArgs[1]);
+                if (ok)
+                    assertPass(sc.line, "assert_equations_solution_near");
+                else
+                    assertFail(sc.line,
+                        "assert_equations_solution_near no coincide");
+                break;
+            }
+            if (sc.type == ScriptCmdType::AssertEquationsSolutionExact) {
+                const size_t separator = sc.strArg.find('\x1f');
+                const std::string variable = sc.strArg.substr(0, separator);
+                const std::string expected =
+                    separator == std::string::npos
+                        ? std::string() : sc.strArg.substr(separator + 1);
+                const bool ok = g_equationsApp->debugSolutionExact(
+                    variable, static_cast<int>(sc.waitN), expected);
+                if (ok)
+                    assertPass(sc.line,
+                               "assert_equations_solution_exact " + expected);
+                else
+                    assertFail(sc.line,
+                        "assert_equations_solution_exact esperaba '" +
+                        expected + "' pero es '" +
+                        g_equationsApp->debugSolutionExactText(
+                            variable, static_cast<int>(sc.waitN)) + "'");
+                break;
+            }
+
+            const char* actual =
+                sc.type == ScriptCmdType::AssertEquationsEngine
+                    ? g_equationsApp->debugEngineName()
+                : sc.type == ScriptCmdType::AssertEquationsStatus
+                    ? g_equationsApp->debugStatusName()
+                : sc.type == ScriptCmdType::AssertEquationsResultKind
+                    ? g_equationsApp->debugResultKindName()
+                    : g_equationsApp->debugTutorStatusName();
+            if (sc.strArg == actual)
+                assertPass(sc.line, "assert_equations_* " + sc.strArg);
+            else
+                assertFail(sc.line, "assert_equations_* esperaba '" +
+                    sc.strArg + "' pero es '" + actual + "'");
+            break;
+        }
+
         case ScriptCmdType::AssertGraphAngleMode: {
             if (g_mode != AppMode::GRAPHER || !g_grapherApp) {
                 assertFail(sc.line, "assert_graph_angle_mode requiere Grapher activo (app actual: '" +
@@ -2780,6 +3015,9 @@ int main(int argc, char** argv)
             g_detTick += static_cast<uint32_t>(g_opts.stepMs);
         }
 
+        if (g_mode == AppMode::EQUATIONS && g_equationsApp) {
+            g_equationsApp->update();
+        }
         lv_timer_handler();
 
         // Presentar el frame en pantalla (fuera de lv_timer_handler)
@@ -2855,6 +3093,10 @@ int main(int argc, char** argv)
     // ── 7. Cleanup ──────────────────────────────────────────────────────
     std::printf("\n[SIM] Cerrando...\n");
     if (g_calcApp) { g_calcApp->end(); delete g_calcApp; }
+    if (g_equationsApp) {
+        g_equationsApp->end();
+        delete g_equationsApp;
+    }
     if (g_settingsApp) { g_settingsApp->end(); delete g_settingsApp; }  // Phase 5A
     if (g_statsApp) { g_statsApp->end(); delete g_statsApp; }           // Phase 6A
     if (g_probApp)  { g_probApp->end();  delete g_probApp;  }           // Phase 6A

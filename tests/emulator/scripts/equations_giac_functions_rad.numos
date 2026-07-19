@@ -1,0 +1,28 @@
+# GIAC-D01: common functions and RAD-policy trigonometric exact roots.
+wait 200
+set_angle_mode rad
+open_app Equations
+wait 60
+key ENTER
+key ENTER
+key sin
+key x
+key RIGHT
+key =
+key 1
+key FRAC
+key 2
+key RIGHT
+key ENTER
+key DOWN
+key DOWN
+key ENTER
+wait 180
+assert_angle_mode rad
+assert_equations_engine giac
+assert_equations_status ok
+assert_equations_solution_count 2
+assert_equations_solution_exact x 0 pi/6
+assert_equations_solution_exact x 1 5*pi/6
+assert_equations_result_kind structured
+assert_equations_tutor_status unavailable

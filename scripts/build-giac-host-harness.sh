@@ -35,7 +35,7 @@ INC="-Ilib/giac -Ilib/giac/src -Ilib/libtommath -Isrc"
 # the two symbols PE/COFF cannot strip (see that file's header).
 GIAC_CXXFLAGS="-std=gnu++17 -O1 -fexceptions -ffunction-sections -fdata-sections -D_USE_MATH_DEFINES $GIAC_DEFS $INC -w"
 CFLAGS="-O1 -ffunction-sections -fdata-sections -D_USE_MATH_DEFINES -Ilib/libtommath -w"
-PROJ_CXXFLAGS="-std=gnu++17 -O1 -Wall -Wextra -Wno-unused-parameter -ffunction-sections -fdata-sections -D_USE_MATH_DEFINES -Isrc"
+PROJ_CXXFLAGS="-std=gnu++17 -O1 -Wall -Wextra -Wno-unused-parameter -ffunction-sections -fdata-sections -D_USE_MATH_DEFINES -DNUMOS_GIAC_HOST_HARNESS=1 -Isrc"
 LDFLAGS="-Wl,--gc-sections"
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
@@ -50,7 +50,12 @@ case "$(uname -s)" in
   *)
     # config.h #undefs HAVE_UNISTD_H (embedded profile) but Giac's access()
     # guard still calls POSIX access() off-Windows; force the declaration.
+    # GCC 13's C++ locale implementation also expects the gettext declarations
+    # that the embedded Giac profile suppresses.
     GIAC_CXXFLAGS="$GIAC_CXXFLAGS -include unistd.h"
+    if [[ -f /usr/include/libintl.h ]]; then
+      GIAC_CXXFLAGS="$GIAC_CXXFLAGS -include libintl.h"
+    fi
     ;;
 esac
 

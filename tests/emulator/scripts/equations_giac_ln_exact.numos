@@ -1,0 +1,22 @@
+# GIAC-D01: a transcendental equation keeps its exact exponential solution.
+wait 200
+open_app Equations
+wait 60
+key ENTER
+key ENTER
+key ln
+key x
+key RIGHT
+key =
+key 1
+key ENTER
+key DOWN
+key DOWN
+key ENTER
+wait 160
+assert_equations_engine giac
+assert_equations_status ok
+assert_equations_solution_count 1
+assert_equations_solution_exact x 0 exp(1)
+assert_equations_result_kind structured
+assert_equations_tutor_status agreed

@@ -31,7 +31,7 @@
  */
 
 #include "EquationsApp.h"
-#include "Arduino.h"
+#include "../Config.h"
 #include "../math/MathAST.h"
 #include "../math/cas/SymToAST.h"
 #include "../math/cas/SymExprToAST.h"
@@ -41,11 +41,18 @@
 #include "../math/cas/PersistentAST.h"
 #include "../math/cas/RuleEngine.h"
 #include "../math/cas/TutorTemplates.h"
+#ifdef ARDUINO
+#include "Arduino.h"
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#else
+#include "../hal/ArduinoCompat.h"
+#endif
 #include <cstring>
 #include <cstdlib>
+#include <algorithm>
+#include <cmath>
 
 using namespace vpam;
 
@@ -105,6 +112,154 @@ static constexpr int NUM_SOLVING_MSGS = sizeof(SOLVING_MESSAGES) / sizeof(SOLVIN
 const char* EquationsApp::randomSolvingMessage() {
     return SOLVING_MESSAGES[rand() % NUM_SOLVING_MSGS];
 }
+
+#ifdef NATIVE_SIM
+const char* EquationsApp::debugEngineName() const {
+#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
+    return "legacy";
+#else
+    return "giac";
+#endif
+}
+
+const char* EquationsApp::debugStatusName() const {
+#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
+    if (_isOmniSolve) return _omniResult.ok ? "ok" : "unsupported";
+    if (_isNLSolve) return _nlResult.ok ? "ok" : "unsupported";
+    return _systemResult.ok ? "ok" : "unsupported";
+#else
+    if (_giacResult.status == numos::MathEngineStatus::Ok) {
+        if (_giacResult.setKind == numos::SolutionSetKind::NoSolution)
+            return "no_solution";
+        if (_giacResult.setKind == numos::SolutionSetKind::AllValues)
+            return "all_values";
+        if (_giacResult.setKind == numos::SolutionSetKind::Unsupported)
+            return "unsupported";
+        return "ok";
+    }
+    switch (_giacResult.status) {
+        case numos::MathEngineStatus::ParseError: return "parse_error";
+        case numos::MathEngineStatus::Undefined: return "undefined";
+        case numos::MathEngineStatus::EvaluationError:
+            return "evaluation_error";
+        case numos::MathEngineStatus::OutOfMemory: return "out_of_memory";
+        default: return "unsupported";
+    }
+#endif
+}
+
+int EquationsApp::debugSolutionCount() const {
+#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
+    if (_isOmniSolve)
+        return _omniResult.hasComplexRoots
+            ? 2 : static_cast<int>(_omniResult.solutions.size());
+    if (_isNLSolve) return static_cast<int>(_nlResult.solutions.size());
+    return _systemResult.ok ? 1 : 0;
+#else
+    return static_cast<int>(_giacResult.groups.size());
+#endif
+}
+
+bool EquationsApp::debugSolutionNear(const std::string& variable, int index,
+                                     double expected,
+                                     double epsilon) const {
+#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
+    if (!_isOmniSolve || variable != "x" || index < 0 ||
+        index >= static_cast<int>(_omniResult.solutions.size())) {
+        return false;
+    }
+    return std::fabs(_omniResult.solutions[static_cast<std::size_t>(index)]
+                         .numeric - expected) <= epsilon;
+#else
+    if (index < 0 || index >= static_cast<int>(_giacResult.groups.size()))
+        return false;
+    const auto& group = _giacResult.groups[static_cast<std::size_t>(index)];
+    for (const auto& value : group.values) {
+        if (value.variable != variable) continue;
+        double actual = 0.0;
+        if (value.hasApproximateReal) {
+            actual = value.approximateReal;
+        } else {
+            vpam::ExactVal exact;
+            if (!numos::CalculationEngine::resultTreeToExactVal(
+                    value.exactValue, exact)) {
+                return false;
+            }
+            actual = exact.toDouble();
+        }
+        return std::isfinite(actual) &&
+               std::fabs(actual - expected) <= epsilon;
+    }
+    return false;
+#endif
+}
+
+bool EquationsApp::debugSolutionExact(const std::string& variable, int index,
+                                      const std::string& expected) const {
+#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
+    if (!_isOmniSolve || variable != "x" || index < 0 ||
+        index >= static_cast<int>(_omniResult.solutions.size())) {
+        return false;
+    }
+    const auto& solution =
+        _omniResult.solutions[static_cast<std::size_t>(index)];
+    return solution.isExact &&
+           numos::CalculationEngine::exactValToGiacText(solution.exact) ==
+               expected;
+#else
+    if (index < 0 || index >= static_cast<int>(_giacResult.groups.size()))
+        return false;
+    const auto& group = _giacResult.groups[static_cast<std::size_t>(index)];
+    for (const auto& value : group.values) {
+        if (value.variable == variable) return value.exactText == expected;
+    }
+    return false;
+#endif
+}
+
+std::string EquationsApp::debugSolutionExactText(
+    const std::string& variable, int index) const {
+#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
+    if (!_isOmniSolve || variable != "x" || index < 0 ||
+        index >= static_cast<int>(_omniResult.solutions.size())) {
+        return {};
+    }
+    const auto& solution =
+        _omniResult.solutions[static_cast<std::size_t>(index)];
+    return solution.isExact
+        ? numos::CalculationEngine::exactValToGiacText(solution.exact)
+        : std::string();
+#else
+    if (index < 0 || index >= static_cast<int>(_giacResult.groups.size()))
+        return {};
+    for (const auto& value :
+         _giacResult.groups[static_cast<std::size_t>(index)].values) {
+        if (value.variable == variable) return value.exactText;
+    }
+    return {};
+#endif
+}
+
+const char* EquationsApp::debugResultKindName() const {
+#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
+    return "structured";
+#else
+    switch (_resultKind) {
+        case ResultKind::Structured: return "structured";
+        case ResultKind::TextFallback: return "text_fallback";
+        default: return "none";
+    }
+#endif
+}
+
+const char* EquationsApp::debugTutorStatusName() const {
+    switch (_tutorStatus) {
+        case TutorStatus::Agreed: return "agreed";
+        case TutorStatus::Unavailable: return "unavailable";
+        default: return "disabled";
+    }
+}
+#endif
 
 // ════════════════════════════════════════════════════════════════════════════
 // CAS helpers — VPAM NodeRow → equation text → cas::NodePtr
@@ -333,6 +488,7 @@ EquationsApp::EquationsApp()
     , _editRow(nullptr), _editingIndex(-1)
     , _solvingContainer(nullptr), _solvingSpinner(nullptr), _solvingLabel(nullptr)
     , _resultContainer(nullptr), _resultTitle(nullptr), _resultHint(nullptr)
+    , _resultFallback(nullptr)
     , _resultCount(0)
     , _stepsContainer(nullptr)
     , _state(State::EQ_LIST)
@@ -413,6 +569,12 @@ void EquationsApp::end() {
         _resultNode[i].reset();
         _resultRow[i] = nullptr;
     }
+    for (int i = 0; i < NUM_TEMPLATES; ++i) {
+        _templateCanvas[i].destroy();
+        _templateNode[i].reset();
+        _templateItems[i] = nullptr;
+        _templateLabels[i] = nullptr;
+    }
     _statusBar.destroy();
 
     _stepRenderers.clear();
@@ -438,14 +600,13 @@ void EquationsApp::end() {
         _resultContainer   = nullptr;
         _resultTitle       = nullptr;
         _resultHint        = nullptr;
+        _resultFallback    = nullptr;
         _stepsContainer    = nullptr;
         for (int i = 0; i < MAX_EQS; ++i) {
             _eqRows[i] = nullptr;
             _eqLabels[i] = nullptr;
         }
         for (int i = 0; i < NUM_TEMPLATES; ++i) {
-            _templateCanvas[i].destroy();
-            _templateNode[i].reset();
             _templateItems[i] = nullptr;
             _templateLabels[i] = nullptr;
         }
@@ -484,6 +645,7 @@ bool EquationsApp::isValidLvObj(const lv_obj_t* obj) const {
 }
 
 bool EquationsApp::canAllocStep(std::size_t requiredContiguous) const {
+#ifdef ARDUINO
     const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
     const std::size_t internalLargestBlock =
         static_cast<std::size_t>(heap_caps_get_largest_free_block(caps));
@@ -500,9 +662,16 @@ bool EquationsApp::canAllocStep(std::size_t requiredContiguous) const {
     if (internalLargestBlock < requiredContiguous) return false;
     if (internalFree < requiredContiguous) return false;
     return true;
+#else
+    (void)requiredContiguous;
+    return !isValidLvObj(_stepsContainer) ||
+           static_cast<std::size_t>(lv_obj_get_child_count(_stepsContainer)) <
+               STEPS_CHILD_HARD_CAP;
+#endif
 }
 
 void EquationsApp::logStepBudget(int stepIndex) const {
+#ifdef ARDUINO
     int children = 0;
     if (isValidLvObj(_stepsContainer)) {
         children = static_cast<int>(lv_obj_get_child_count(_stepsContainer));
@@ -520,6 +689,9 @@ void EquationsApp::logStepBudget(int stepIndex) const {
     Serial.printf(
         "[DEBUG] Step:%d | Children:%d | InternalFree:%u | InternalMaxBlock:%u | PSRAMFree:%u.\n",
         stepIndex, children, internalFree, internalMaxBlock, freePsram);
+#else
+    (void)stepIndex;
+#endif
 }
 
 void EquationsApp::failClosedStepRender(std::size_t stepIndex) {
@@ -757,6 +929,15 @@ void EquationsApp::createUI() {
     lv_obj_set_style_text_font(_resultTitle, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_resultTitle, lv_color_hex(COL_ACCENT_HEX), LV_PART_MAIN);
     lv_obj_set_pos(_resultTitle, PAD, 4);
+
+    _resultFallback = lv_label_create(_resultContainer);
+    lv_obj_set_pos(_resultFallback, PAD + 4, 32);
+    lv_obj_set_width(_resultFallback, SCREEN_W - 2 * PAD - 8);
+    lv_label_set_long_mode(_resultFallback, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(_resultFallback, &stix_math_18, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_resultFallback, lv_color_hex(COL_SEP_HEX),
+                                LV_PART_MAIN);
+    lv_obj_add_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
 
     for (int i = 0; i < MAX_RESULTS; ++i) {
         _resultCanvas[i].create(_resultContainer);
@@ -1025,6 +1206,22 @@ void EquationsApp::showSteps() {
         return;
     }
 
+#ifndef NUMOS_EQUATIONS_LEGACY_ENGINE
+    // WHY: tutor rendering is fail-closed. The authoritative Giac answer
+    // remains visible in RESULT even when the retained tutor disagrees.
+    if (_tutorStatus != TutorStatus::Agreed) {
+        appendInfoLabel("Steps unavailable", COL_ACCENT_HEX);
+        appendInfoLabel(_tutorDiagnostic.empty()
+                            ? "Tutor result could not be verified."
+                            : _tutorDiagnostic.c_str(),
+                        COL_HINT_HEX);
+        lv_obj_remove_flag(_stepsContainer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_scroll_to_y(_stepsContainer, 0, LV_ANIM_OFF);
+        lv_obj_invalidate(_screen);
+        return;
+    }
+#endif
+
     logStepBudget(0);
     _stepsProgressLabel = nullptr;
     if (canAllocStep(STEPS_LABEL_BUDGET)) {
@@ -1040,6 +1237,13 @@ void EquationsApp::showSteps() {
                                     LV_PART_MAIN);
     }
 
+#ifndef NUMOS_EQUATIONS_LEGACY_ENGINE
+    // WHY: the consistency gate compared Giac specifically with
+    // _omniResult/_systemResult. Render only that candidate's own logged
+    // steps; starting a second tutor pipeline here would introduce an
+    // unverified mathematical source after the gate.
+    _stepsSource = StepsSource::LEGACY_LOG;
+#else
     if (_numEquations == 2 && _eqRowData[0] && _eqRowData[1]) {
         _stepsSource = StepsSource::SYSTEM_CAS;
     } else if (_isOmniSolve && _numEquations == 1 && _eqRowData[0]) {
@@ -1047,6 +1251,7 @@ void EquationsApp::showSteps() {
     } else {
         _stepsSource = StepsSource::LEGACY_LOG;
     }
+#endif
 
     _stepsStage = StepsStage::PARSE;
     _stepsPipelineActive = true;
@@ -1826,7 +2031,17 @@ void EquationsApp::handleKeyEditing(const KeyEvent& ev) {
 
         // ── Variables ──
         case KeyCode::VAR_X: cc.insertVariable('x'); changed = true; break;
-        case KeyCode::VAR_Y: cc.insertVariable('y'); changed = true; break;
+        case KeyCode::VAR_Y:
+            if (km.isAlpha()) {
+                // WHY: Three-variable systems need z, but the keypad has only
+                // dedicated x/y keys. ALPHA+y preserves an authored AST path.
+                cc.insertVariable('z');
+                km.consumeModifier();
+            } else {
+                cc.insertVariable('y');
+            }
+            changed = true;
+            break;
 
         // ── Functions (sin, cos, tan, ln, log) ──
         case KeyCode::SIN:
@@ -2074,6 +2289,8 @@ void EquationsApp::adjustEditHeight() {
 bool EquationsApp::splitAtEquals(NodeRow* row,
                                   NodePtr& outLHS,
                                   NodePtr& outRHS) {
+    outLHS.reset();
+    outRHS.reset();
     if (!row) return false;
 
     int eqIdx = -1;
@@ -2081,21 +2298,25 @@ bool EquationsApp::splitAtEquals(NodeRow* row,
 
     for (int i = 0; i < count; ++i) {
         const MathNode* ch = row->child(i);
+        bool isEquals = false;
         if (ch->type() == NodeType::Variable) {
             const auto* v = static_cast<const NodeVariable*>(ch);
-            if (v->name() == '=') {
-                eqIdx = i;
-                break;
-            }
+            isEquals = (v->name() == '=');
+        } else if (ch->type() == NodeType::Operator) {
+            const auto* relation = static_cast<const NodeOperator*>(ch);
+            isEquals = (relation->op() == OpKind::Eq);
+        }
+
+        // WHY: authored equation rows must contain exactly one complete
+        // equality. Treating a missing side as zero fabricated input and made
+        // template relations take a different route from the '=' key.
+        if (isEquals) {
+            if (eqIdx >= 0) return false;
+            eqIdx = i;
         }
     }
 
-    if (eqIdx < 0) {
-        outLHS = cloneNode(row);
-        outRHS = makeRow();
-        static_cast<NodeRow*>(outRHS.get())->appendChild(makeNumber("0"));
-        return false;
-    }
+    if (eqIdx <= 0 || eqIdx >= count - 1) return false;
 
     outLHS = makeRow();
     auto* lhsRow = static_cast<NodeRow*>(outLHS.get());
@@ -2109,10 +2330,7 @@ bool EquationsApp::splitAtEquals(NodeRow* row,
         rhsRow->appendChild(cloneNode(row->child(i)));
     }
 
-    if (lhsRow->isEmpty()) lhsRow->appendChild(makeNumber("0"));
-    if (rhsRow->isEmpty()) rhsRow->appendChild(makeNumber("0"));
-
-    return true;
+    return !lhsRow->isEmpty() && !rhsRow->isEmpty();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2154,6 +2372,9 @@ cas::LinEq EquationsApp::symEquationToLinEq(const cas::SymEquation& eq,
 
 void EquationsApp::solveEquations() {
     _solveEpoch = 0;
+#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
+    _tutorStatus = TutorStatus::Disabled;
+    _tutorDiagnostic = "legacy rollback build";
     if (_numEquations == 1) {
         _isOmniSolve = true;
         solveOmni();
@@ -2161,10 +2382,234 @@ void EquationsApp::solveEquations() {
         _isOmniSolve = false;
         solveSystem();
     }
+#else
+    solveWithGiac();
+#endif
 
     // Mark solve data as coherent with the current equation generation.
     _solveEpoch = _equationEpoch;
 }
+
+#ifndef NUMOS_EQUATIONS_LEGACY_ENGINE
+void EquationsApp::solveWithGiac() {
+    showSolving();
+
+    _isOmniSolve = (_numEquations == 1);
+    _isNLSolve = false;
+    _resultKind = ResultKind::None;
+    _tutorStatus = TutorStatus::Unavailable;
+    _tutorDiagnostic.clear();
+    _giacResult = numos::StructuredSolveResult();
+
+    std::vector<numos::SolveEquation> equations;
+    equations.reserve(static_cast<std::size_t>(_numEquations));
+
+    for (int i = 0; i < _numEquations; ++i) {
+        NodePtr lhs;
+        NodePtr rhs;
+        if (!splitAtEquals(_eqRowData[i], lhs, rhs)) {
+            _giacResult.status = numos::MathEngineStatus::ParseError;
+            _giacResult.diagnostic =
+                "Equation row must contain one complete equality";
+            showResult();
+            return;
+        }
+
+        numos::SolveEquation serialized;
+        std::string error;
+        if (!numos::CalculationEngine::serializeForGiac(
+                lhs.get(), serialized.lhs, error) ||
+            !numos::CalculationEngine::serializeForGiac(
+                rhs.get(), serialized.rhs, error)) {
+            _giacResult.status = numos::MathEngineStatus::ParseError;
+            _giacResult.diagnostic = error.empty()
+                ? "Unsupported equation input" : error;
+            showResult();
+            return;
+        }
+        equations.push_back(std::move(serialized));
+    }
+
+    const numos::SolveDomainPolicy policy = setting_complex_enabled
+        ? numos::SolveDomainPolicy::RealAndComplex
+        : numos::SolveDomainPolicy::RealOnly;
+
+    if (_numEquations == 1) {
+        _giacResult = numos::GiacEngine::instance().solveStructured(
+            equations.front(), "x", policy);
+    } else {
+        static const char* const kVariables[MAX_EQS] = {"x", "y", "z"};
+        std::vector<std::string> variables;
+        variables.reserve(static_cast<std::size_t>(_numEquations));
+        for (int i = 0; i < _numEquations; ++i) {
+            variables.emplace_back(kVariables[i]);
+        }
+        _giacResult =
+            numos::GiacEngine::instance().solveSystemStructured(
+                equations, variables, policy);
+    }
+
+    // WHY: the custom CAS is invoked only as an optional tutor producer.
+    // Its roots never enter _giacResult or the result-presentation path.
+    if (_giacResult.ok() &&
+        _giacResult.setKind == numos::SolutionSetKind::Solutions) {
+        generateTutorCandidate();
+        if (tutorCandidateAgrees()) {
+            _tutorStatus = TutorStatus::Agreed;
+            _tutorDiagnostic = "normalized tutor solutions agree with Giac";
+        } else {
+            _tutorStatus = TutorStatus::Unavailable;
+            _tutorDiagnostic =
+                "tutor solution set disagrees with or cannot represent Giac";
+        }
+    } else {
+        _tutorDiagnostic =
+            "tutor disabled for non-ordinary Giac solution result";
+    }
+
+    showResult();
+}
+
+void EquationsApp::generateTutorCandidate() {
+    _arena.reset();
+    _omniResult = cas::OmniResult();
+    _systemResult = cas::SystemResult();
+    _nlResult = cas::NLSystemResult();
+    _isNLSolve = false;
+
+    cas::ASTFlattener flattener;
+    flattener.setArena(&_arena);
+
+    if (_numEquations == 1) {
+        NodePtr lhs;
+        NodePtr rhs;
+        if (!splitAtEquals(_eqRowData[0], lhs, rhs)) return;
+        cas::SymExpr* lhsExpr = flattener.flattenToExpr(lhs.get());
+        cas::SymExpr* rhsExpr = flattener.flattenToExpr(rhs.get());
+        if (!lhsExpr || !rhsExpr) return;
+
+        cas::OmniSolver solver;
+        _omniResult = solver.solve(lhsExpr, rhsExpr, 'x', _arena);
+        return;
+    }
+
+    // The retained SystemTutor is linear. Do not broaden its mathematics
+    // during GIAC-D01; nonlinear systems simply report steps unavailable.
+    cas::LinEq linear[3];
+    static const char kVariables[MAX_EQS] = {'x', 'y', 'z'};
+    for (int i = 0; i < _numEquations; ++i) {
+        NodePtr lhs;
+        NodePtr rhs;
+        if (!splitAtEquals(_eqRowData[i], lhs, rhs)) return;
+        const auto flattened = flattener.flattenEquation(lhs.get(), rhs.get());
+        if (!flattened.ok) return;
+        linear[i] = symEquationToLinEq(flattened.eq, kVariables,
+                                       _numEquations);
+    }
+
+    cas::SystemSolver solver;
+    if (_numEquations == 2) {
+        _systemResult = solver.solve2x2(linear[0], linear[1],
+                                        'x', 'y', &_arena);
+    } else if (_numEquations == 3) {
+        _systemResult = solver.solve3x3(linear[0], linear[1], linear[2]);
+    }
+}
+
+bool EquationsApp::tutorCandidateAgrees() const {
+    auto exactEqual = [](vpam::ExactVal a, vpam::ExactVal b) {
+        if (!a.ok || !b.ok || a.approximate || b.approximate) return false;
+        a.simplify();
+        a.simplifyRadical();
+        b.simplify();
+        b.simplifyRadical();
+        return a.num == b.num && a.den == b.den &&
+               a.outer == b.outer && a.inner == b.inner &&
+               a.piMul == b.piMul && a.eMul == b.eMul;
+    };
+
+    auto matches = [&](const numos::StructuredSolution& giac,
+                       const vpam::ExactVal* exact,
+                       const double* approximate) {
+        vpam::ExactVal giacExact;
+        if (exact &&
+            numos::CalculationEngine::resultTreeToExactVal(
+                giac.exactValue, giacExact)) {
+            return exactEqual(*exact, giacExact);
+        }
+
+        // WHY: tolerance is permitted only when the tutor explicitly marked
+        // its own result approximate and Giac supplied a real approximation.
+        return approximate && giac.hasApproximateReal &&
+               std::isfinite(*approximate) &&
+               std::fabs(*approximate - giac.approximateReal) <= 1e-8;
+    };
+
+    if (!_giacResult.ok() ||
+        _giacResult.setKind != numos::SolutionSetKind::Solutions) {
+        return false;
+    }
+
+    if (_numEquations == 1) {
+        if (!_omniResult.ok || _omniResult.hasComplexRoots) return false;
+
+        std::vector<const cas::OmniSolution*> uniqueTutor;
+        for (const auto& candidate : _omniResult.solutions) {
+            bool duplicate = false;
+            for (const auto* existing : uniqueTutor) {
+                if (candidate.isExact && existing->isExact) {
+                    duplicate = exactEqual(candidate.exact, existing->exact);
+                } else if (!candidate.isExact && !existing->isExact) {
+                    duplicate =
+                        std::fabs(candidate.numeric - existing->numeric) <=
+                        1e-10;
+                }
+                if (duplicate) break;
+            }
+            if (!duplicate) uniqueTutor.push_back(&candidate);
+        }
+
+        if (_giacResult.groups.size() != uniqueTutor.size()) return false;
+        std::vector<bool> consumed(_giacResult.groups.size(), false);
+        for (const auto* tutor : uniqueTutor) {
+            bool found = false;
+            for (std::size_t i = 0; i < _giacResult.groups.size(); ++i) {
+                if (consumed[i] || _giacResult.groups[i].values.size() != 1)
+                    continue;
+                const vpam::ExactVal* exact =
+                    tutor->isExact ? &tutor->exact : nullptr;
+                const double* approximate =
+                    tutor->isExact ? nullptr : &tutor->numeric;
+                if (matches(_giacResult.groups[i].values[0],
+                            exact, approximate)) {
+                    consumed[i] = true;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    if (!_systemResult.ok || _giacResult.groups.size() != 1 ||
+        _giacResult.groups[0].values.size() != _systemResult.numVars ||
+        _systemResult.numVars != _numEquations) {
+        return false;
+    }
+
+    for (int i = 0; i < _numEquations; ++i) {
+        const auto& value = _giacResult.groups[0].values[
+            static_cast<std::size_t>(i)];
+        if (value.variable.size() != 1 ||
+            value.variable[0] != _systemResult.vars[i] ||
+            !matches(value, &_systemResult.solutions[i], nullptr)) {
+            return false;
+        }
+    }
+    return true;
+}
+#endif
 
 // ════════════════════════════════════════════════════════════════════════════
 // solveOmni — OmniSolver pipeline
@@ -2352,7 +2797,156 @@ void EquationsApp::solveSystem() {
 // Build result display
 // ════════════════════════════════════════════════════════════════════════════
 
+void EquationsApp::buildGiacResultDisplay() {
+    for (int i = 0; i < MAX_RESULTS; ++i) {
+        _resultCanvas[i].stopCursorBlink();
+        lv_obj_add_flag(_resultCanvas[i].obj(), LV_OBJ_FLAG_HIDDEN);
+        _resultNode[i].reset();
+        _resultRow[i] = nullptr;
+    }
+    _resultCount = 0;
+    _resultKind = ResultKind::None;
+    if (_resultFallback) {
+        lv_label_set_text(_resultFallback, "");
+        lv_obj_add_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    auto showTextFallback = [&](const char* title, const std::string& text) {
+        _resultKind = ResultKind::TextFallback;
+        lv_label_set_text(_resultTitle, title);
+        if (!_resultFallback) return;
+        std::string visible = "Giac result (text presentation): ";
+        visible += text.empty() ? "(no printable result)" : text;
+        static constexpr std::size_t kUiTextLimit = 512;
+        if (visible.size() > kUiTextLimit) {
+            visible.resize(kUiTextLimit);
+            visible += "...";
+        }
+        lv_label_set_text(_resultFallback, visible.c_str());
+        lv_obj_remove_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
+    };
+
+    if (!_giacResult.ok()) {
+        const char* title = "Solve error";
+        switch (_giacResult.status) {
+            case numos::MathEngineStatus::ParseError:
+                title = "Invalid equation";
+                break;
+            case numos::MathEngineStatus::Undefined:
+                title = "Undefined";
+                break;
+            case numos::MathEngineStatus::Unsupported:
+                title = "Unsupported solve";
+                break;
+            case numos::MathEngineStatus::OutOfMemory:
+                title = "Not enough memory";
+                break;
+            default:
+                break;
+        }
+        lv_label_set_text(_resultTitle, title);
+        if (_resultFallback && !_giacResult.diagnostic.empty()) {
+            lv_label_set_text(_resultFallback, _giacResult.diagnostic.c_str());
+            lv_obj_remove_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
+        }
+        return;
+    }
+
+    if (_giacResult.setKind == numos::SolutionSetKind::NoSolution) {
+        _resultKind = ResultKind::Structured;
+        lv_label_set_text(_resultTitle, "No solution");
+        return;
+    }
+    if (_giacResult.setKind == numos::SolutionSetKind::AllValues) {
+        _resultKind = ResultKind::Structured;
+        lv_label_set_text(_resultTitle, "Infinitely many solutions");
+        return;
+    }
+    if (_giacResult.setKind == numos::SolutionSetKind::Unsupported) {
+        showTextFallback("Solution:", _giacResult.rawExactText);
+        return;
+    }
+
+    std::size_t rowCount = 0;
+    for (const auto& group : _giacResult.groups) {
+        rowCount += group.values.size();
+    }
+    if (rowCount == 0 || rowCount > MAX_RESULTS) {
+        showTextFallback("Solutions:", _giacResult.rawExactText);
+        return;
+    }
+
+    std::vector<NodePtr> rows;
+    rows.reserve(rowCount);
+    const bool indexGroups = _giacResult.groups.size() > 1;
+    for (std::size_t groupIndex = 0;
+         groupIndex < _giacResult.groups.size(); ++groupIndex) {
+        for (const auto& solution : _giacResult.groups[groupIndex].values) {
+            if (solution.variable.size() != 1) {
+                showTextFallback("Solutions:", _giacResult.rawExactText);
+                return;
+            }
+
+            NodePtr value =
+                numos::CalculationEngine::resultTreeToAST(solution.exactValue);
+            if (!value) {
+                showTextFallback("Solutions:", _giacResult.rawExactText);
+                return;
+            }
+
+            auto row = makeRow();
+            auto* resultRow = static_cast<NodeRow*>(row.get());
+            resultRow->appendChild(makeVariable(solution.variable[0]));
+            if (indexGroups) {
+                resultRow->appendChild(
+                    makeNumber(std::to_string(groupIndex + 1)));
+            }
+            resultRow->appendChild(makeRelation(OpKind::Eq));
+            if (value->type() == NodeType::Row) {
+                auto* valueRow = static_cast<NodeRow*>(value.get());
+                while (valueRow->childCount() > 0) {
+                    resultRow->appendChild(valueRow->removeChild(0));
+                }
+            } else {
+                resultRow->appendChild(std::move(value));
+            }
+            rows.push_back(std::move(row));
+        }
+    }
+
+    _resultKind = ResultKind::Structured;
+    lv_label_set_text(_resultTitle,
+                      _giacResult.groups.size() > 1
+                          ? "Solutions:" : "Solution:");
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        _resultNode[i] = std::move(rows[i]);
+        _resultRow[i] = static_cast<NodeRow*>(_resultNode[i].get());
+
+        const int y = 28 + static_cast<int>(i) * 38;
+        lv_obj_set_pos(_resultCanvas[i].obj(), PAD + 20, y);
+        lv_obj_set_size(_resultCanvas[i].obj(),
+                        SCREEN_W - 2 * PAD - 20, 34);
+        lv_obj_remove_flag(_resultCanvas[i].obj(), LV_OBJ_FLAG_HIDDEN);
+        _resultCanvas[i].setExpression(_resultRow[i], nullptr);
+        _resultRow[i]->calculateLayout(_resultCanvas[i].normalMetrics());
+        _resultCanvas[i].invalidate();
+        ++_resultCount;
+    }
+}
+
 void EquationsApp::buildResultDisplay() {
+#ifndef NUMOS_EQUATIONS_LEGACY_ENGINE
+    buildGiacResultDisplay();
+    if (!_resultHint || lv_obj_get_parent(_resultHint) != _resultContainer) {
+        _resultHint = lv_label_create(_resultContainer);
+        lv_obj_set_style_text_font(_resultHint, &stix_math_18, LV_PART_MAIN);
+        lv_obj_set_style_text_color(_resultHint, lv_color_hex(COL_HINT_HEX),
+                                    LV_PART_MAIN);
+    }
+    lv_label_set_text(_resultHint, "STEPS: View steps    AC: Back");
+    lv_obj_set_pos(_resultHint, PAD, SCREEN_H - BAR_H - 22);
+    return;
+#else
     // Clear previous results
     for (int i = 0; i < MAX_RESULTS; ++i) {
         _resultCanvas[i].stopCursorBlink();
@@ -2688,6 +3282,7 @@ addHint:
     }
     lv_label_set_text(_resultHint, "STEPS: View steps    AC: Back");
     lv_obj_set_pos(_resultHint, PAD, SCREEN_H - BAR_H - 22);
+#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════

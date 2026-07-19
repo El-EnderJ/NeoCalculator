@@ -1,0 +1,26 @@
+# GIAC-D01: exact radical roots and deterministic ordering.
+wait 200
+open_app Equations
+wait 60
+key ENTER
+key ENTER
+key x
+key ^
+key 2
+key RIGHT
+key -
+key 2
+key =
+key 0
+key ENTER
+key DOWN
+key DOWN
+key ENTER
+wait 160
+assert_equations_engine giac
+assert_equations_status ok
+assert_equations_solution_count 2
+assert_equations_solution_exact x 0 -sqrt(2)
+assert_equations_solution_exact x 1 sqrt(2)
+assert_equations_result_kind structured
+assert_equations_tutor_status unavailable

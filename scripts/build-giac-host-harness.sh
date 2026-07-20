@@ -110,6 +110,7 @@ printf '%s\n' "${proj_srcs[@]}" | \
 compile_one tests/host/giac_engine_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
 compile_one tests/host/giac_calculus_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
 compile_one tests/host/neo_math_backend_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
+compile_one tests/host/giac_cross_app_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
 compile_one tests/host/host_rss_probe.cpp "$PROJ_CXXFLAGS" "$CXX"
 
 # --- link the stable regression and focused calculus executables separately.
@@ -119,7 +120,7 @@ compile_one tests/host/host_rss_probe.cpp "$PROJ_CXXFLAGS" "$CXX"
 common_objs=()
 for obj in "$OUT"/obj/*.o; do
   case "$(basename "$obj")" in
-    giac_engine_suite_main.cpp.o|giac_calculus_suite_main.cpp.o|neo_math_backend_suite_main.cpp.o) continue ;;
+    giac_engine_suite_main.cpp.o|giac_calculus_suite_main.cpp.o|neo_math_backend_suite_main.cpp.o|giac_cross_app_suite_main.cpp.o) continue ;;
   esac
   common_objs+=("$obj")
 done
@@ -132,8 +133,11 @@ $CXX -o "$OUT/giac_calculus_suite" "${common_objs[@]}" \
 echo "LINK $OUT/neo_math_backend_suite"
 $CXX -o "$OUT/neo_math_backend_suite" "${common_objs[@]}" \
   "$OUT/obj/neo_math_backend_suite_main.cpp.o" $LDFLAGS
+echo "LINK $OUT/giac_cross_app_suite"
+$CXX -o "$OUT/giac_cross_app_suite" "${common_objs[@]}" \
+  "$OUT/obj/giac_cross_app_suite_main.cpp.o" $LDFLAGS
 
 [[ "${1:-}" == "--build-only" ]] && exit 0
 # Run from $OUT so any emulator_data/ a TU creates stays out of the repo.
 ( cd "$OUT" && ./giac_engine_suite && ./giac_calculus_suite && \
-  ./neo_math_backend_suite )
+  ./neo_math_backend_suite && ./giac_cross_app_suite )

@@ -18,6 +18,7 @@
 // types (everything Giac-shaped arrives as EngineResultNode).
 
 #include "CalculationEngine.h"
+#include "giac/EngineContracts.h"
 
 #include <cctype>
 #include <cstdio>
@@ -80,8 +81,8 @@ namespace {
 // Complexity guard: keeps a single synchronous Giac call bounded by input
 // size (there is no safe in-process interruption mechanism — see GIAC-B01
 // runtime-safety report).
-constexpr int kMaxSerializedNodes = 400;
-constexpr size_t kMaxSerializedLength = 2000;
+constexpr int kMaxSerializedNodes = enginecontract::kMaxTreeNodes;
+constexpr size_t kMaxSerializedLength = enginecontract::kMaxSourceBytes;
 
 struct Serializer {
     std::string out;

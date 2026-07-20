@@ -43,6 +43,7 @@
 
 #include "math/giac/GiacEngine.h"
 #include "math/giac/GiacEngineInternal.h"
+#include "math/giac/EngineContracts.h"
 #include "math/AngleModeRuntime.h"
 
 namespace giac {
@@ -129,11 +130,12 @@ MathEngineResult rejectedReentrant() {
 // away. Every giac type stays inside this TU.
 // ---------------------------------------------------------------------------
 
-constexpr int kTreeMaxDepth = 40;
-constexpr int kTreeNodeBudget = 400;
-constexpr size_t kCalculusMaxSerializedLength = 2000;
-constexpr int kCalculusInputNodeBudget = 400;
-constexpr int kCalculusMaxDepth = 40;
+constexpr int kTreeMaxDepth = enginecontract::kMaxTreeDepth;
+constexpr int kTreeNodeBudget = enginecontract::kMaxTreeNodes;
+constexpr size_t kCalculusMaxSerializedLength =
+    enginecontract::kMaxSourceBytes;
+constexpr int kCalculusInputNodeBudget = enginecontract::kMaxTreeNodes;
+constexpr int kCalculusMaxDepth = enginecontract::kMaxTreeDepth;
 
 void genToNode(const giac::gen& g, giac::context* ctx,
                EngineResultNode& out, int depth, int& budget);
@@ -510,13 +512,7 @@ static MathEngineResult runTextual(giac::context* ctx, const char* expression,
 bool validCalculusVariable(const std::string& name) {
     // CalculusApp currently authors one-character x/y variables. Keep the
     // engine seam slightly more general without admitting command names.
-    if (name.empty() || name.size() > 31) return false;
-    const unsigned char first = static_cast<unsigned char>(name.front());
-    if (!(std::isalpha(first) || name.front() == '_')) return false;
-    for (char c : name) {
-        const unsigned char uc = static_cast<unsigned char>(c);
-        if (!(std::isalnum(uc) || c == '_')) return false;
-    }
+    if (!enginecontract::isPlainIdentifier(name, 31)) return false;
     static const char* const kReserved[] = {
         "pi", "e", "i", "oo", "undef", "diff", "derive", "integrate",
         "solve", "limit", "series", "sin", "cos", "tan", "ln", "log",
@@ -1036,17 +1032,7 @@ namespace {
 constexpr int kSolveWalkBudget = 800;
 
 bool isValidSolveIdentifier(const std::string& name) {
-    if (name.empty() || name.size() > 31) return false;
-    const auto alphaOrUnderscore = [](unsigned char c) {
-        return std::isalpha(c) != 0 || c == '_';
-    };
-    const auto alnumOrUnderscore = [](unsigned char c) {
-        return std::isalnum(c) != 0 || c == '_';
-    };
-    if (!alphaOrUnderscore(static_cast<unsigned char>(name.front())))
-        return false;
-    for (char c : name)
-        if (!alnumOrUnderscore(static_cast<unsigned char>(c))) return false;
+    if (!enginecontract::isPlainIdentifier(name, 31)) return false;
 
     // WHY: these names are parsed as constants/commands by Giac and therefore
     // cannot safely designate an authored equation variable.
@@ -1568,13 +1554,9 @@ MathEngineResult GiacEngine::assign(const char* name,
         bad.diagnostic = "assign: empty name or value";
         return bad;
     }
-    for (const char* p = name; *p; ++p) {
-        const bool okChar = (*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
-                            *p == '_' || (p != name && *p >= '0' && *p <= '9');
-        if (!okChar) {
-            bad.diagnostic = "assign: name is not a plain identifier";
-            return bad;
-        }
+    if (!enginecontract::isPlainIdentifier(name)) {
+        bad.diagnostic = "assign: name is not a plain identifier";
+        return bad;
     }
     std::string stmt;
     stmt.reserve(std::strlen(name) + std::strlen(valueExpression) + 8);

@@ -58,6 +58,11 @@ bool setting_edu_steps = false;
 #include "math/giac/GiacDiagnostics.h"
 #endif
 
+// GIAC-F01 whole-engine diagnostics (opt-in firmware only).
+#ifdef NUMOS_MATH_ENGINE_DIAGNOSTICS
+#include "math/giac/MathEngineDiagnostics.h"
+#endif
+
 // CAS tests (enable via -DCAS_RUN_TESTS in platformio.ini)
 #ifdef CAS_RUN_TESTS
   #include "../tests/CASTest.h"
@@ -122,6 +127,10 @@ void setup() {
     // -- GIAC-A01 engine diagnostics (opt-in build only) --
 #ifdef NUMOS_GIAC_DIAGNOSTICS
     numos::runGiacDiagnostics();
+#endif
+
+#ifdef NUMOS_MATH_ENGINE_DIAGNOSTICS
+    numos::runMathEngineDiagnostics();
 #endif
 
     // -- 1. PSRAM --

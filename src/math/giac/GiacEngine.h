@@ -376,6 +376,10 @@ public:
     bool evaluateNumeric2D(const CompiledExpression& expr, double a, double b,
                            double& out);
 
+    /// Monotonic context generation, exposed as an engine-neutral diagnostic.
+    /// It changes only when reset() invalidates every retained handle.
+    uint32_t generation() const { return _generation; }
+
     GiacEngine(const GiacEngine&) = delete;
     GiacEngine& operator=(const GiacEngine&) = delete;
 

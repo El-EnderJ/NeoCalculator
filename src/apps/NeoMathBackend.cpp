@@ -12,22 +12,16 @@
 #include "../math/cas/SymIntegrate.h"
 #include "../math/cas/SymSimplify.h"
 #include "../math/cas/SystemSolver.h"
+#include "../math/giac/EngineContracts.h"
 
 namespace {
 
-constexpr int kNeoMathDepth = 40;
-constexpr int kNeoMathNodes = 400;
-constexpr size_t kNeoMathSource = 2000;
+constexpr int kNeoMathDepth = numos::enginecontract::kMaxTreeDepth;
+constexpr int kNeoMathNodes = numos::enginecontract::kMaxTreeNodes;
+constexpr size_t kNeoMathSource = numos::enginecontract::kMaxSourceBytes;
 
 bool validIdentifier(const std::string& name) {
-    if (name.empty() || name.size() > 63) return false;
-    const unsigned char first = static_cast<unsigned char>(name.front());
-    if (!(std::isalpha(first) || name.front() == '_')) return false;
-    for (char c : name) {
-        const unsigned char uc = static_cast<unsigned char>(c);
-        if (!(std::isalnum(uc) || c == '_')) return false;
-    }
-    return true;
+    return numos::enginecontract::isPlainIdentifier(name, 63);
 }
 
 bool parseInt64(const std::string& text, int64_t& out) {

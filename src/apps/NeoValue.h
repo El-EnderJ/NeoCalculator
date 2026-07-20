@@ -57,6 +57,7 @@
 #include "../math/cas/SymExprArena.h"
 #include "../math/cas/SymExpr.h"
 #include "../math/cas/CASRational.h"
+#include "../math/giac/GiacEngine.h"
 #include "NeoAST.h"
 
 // Forward declaration to break circular dependency:
@@ -103,6 +104,8 @@ public:
         Quantity,       ///< physical quantity with dimensional analysis (Phase 5)
         String,         ///< string value (Phase 6)
         Dictionary,     ///< key-value map (Phase 6)
+        Math,           ///< engine-neutral structured mathematical value
+        Error,          ///< explicit backend/runtime error value
     };
 
     // ── Default: Null ─────────────────────────────────────────────
@@ -119,6 +122,9 @@ public:
         , _nativeCtx(nullptr)
         , _quantity(nullptr)
         , _dict(nullptr)
+        , _math(nullptr)
+        , _mathUnevaluated(false)
+        , _mathOpaque(false)
     {}
 
     // ── Static factories ──────────────────────────────────────────
@@ -159,6 +165,10 @@ public:
      * (heap-allocated with new by the caller).  Reference semantics (like lists).
      */
     static NeoValue makeDict(std::map<std::string, NeoValue>* dict);
+    static NeoValue makeMath(const numos::EngineResultNode* tree,
+                             bool unevaluated = false,
+                             bool opaque = false);
+    static NeoValue makeError(const std::string& diagnostic);
 
     // ── Type queries ──────────────────────────────────────────────
     Type type()             const { return _type; }
@@ -173,6 +183,9 @@ public:
     bool isQuantity()       const { return _type == Type::Quantity; }
     bool isString()         const { return _type == Type::String; }
     bool isDict()           const { return _type == Type::Dictionary; }
+    bool isMath()           const { return _type == Type::Math; }
+    bool isError()          const { return _type == Type::Error; }
+    bool isMathLike()       const { return isSymbolic() || isMath(); }
 
     /// True for Number or Exact (numerically concrete, non-symbolic).
     bool isNumeric()  const { return _type == Type::Number || _type == Type::Exact; }
@@ -196,6 +209,10 @@ public:
     const std::string&      asString()     const { return _str; }
     /// Returns the dictionary pointer (null if not Dictionary type).
     std::map<std::string, NeoValue>* asDict() const { return _dict; }
+    const numos::EngineResultNode* asMath() const { return _math; }
+    bool isUnevaluatedMath() const { return _mathUnevaluated; }
+    bool isOpaqueMath() const { return _mathOpaque; }
+    const std::string& errorText() const { return _errorText; }
 
     // ── Truthiness (Python-style) ─────────────────────────────────
     /// Null → false; Boolean → value; Number → non-zero; others → true.
@@ -258,4 +275,8 @@ private:
     std::string      _str;
     /// Dictionary map (Dictionary type only). Heap-allocated, reference semantics.
     std::map<std::string, NeoValue>* _dict;
+    const numos::EngineResultNode* _math;
+    bool _mathUnevaluated;
+    bool _mathOpaque;
+    std::string _errorText;
 };

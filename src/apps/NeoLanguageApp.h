@@ -51,6 +51,7 @@
 #include "NeoEnv.h"
 #include "NeoInterpreter.h"
 #include "NeoStdLib.h"
+#include "NeoMathBackend.h"
 #include "../math/cas/SymExprArena.h"
 
 // ════════════════════════════════════════════════════════════════════
@@ -69,6 +70,21 @@ public:
     void handleKey(const KeyEvent& ev);
 
     bool isActive() const { return _screen != nullptr; }
+
+#if defined(NUMOS_NEO_APP_SMOKE)
+    // Opt-in emulator smoke seams. Program execution still enters via F5.
+    void debugSetSource(const char* source);
+    const char* debugConsoleText() const;
+    const char* debugMathEngine() const { return _mathBackend.engineName(); }
+    uint32_t debugMathOperationTotal(NeoMathEngine engine) const;
+    uint32_t debugPlotCompileCount() const {
+        return _mathBackend.plotCompileCount();
+    }
+    bool debugPlotActive() const {
+        return _plotMode && static_cast<bool>(_retainedPlot);
+    }
+    bool debugPlotSample(double x, double& out);
+#endif
 
 private:
     // Layout constants
@@ -120,6 +136,7 @@ private:
     lv_draw_buf_t  _plotDrawBuf;
     uint8_t*       _plotBuf;
     bool           _plotMode;
+    std::unique_ptr<NeoCompiledPlot> _retainedPlot;
 
     // Application state
     Tab            _activeTab;
@@ -129,6 +146,7 @@ private:
     // Compiler components
     NeoArena          _arena;
     cas::SymExprArena _symArena;
+    NeoMathBackend    _mathBackend;
 
     // UI helpers
     void createUI();
@@ -150,9 +168,11 @@ private:
     void clearConsole();
 
     // Graphics Mode
-    void showPlot(const NeoPlotRequest& req);
+    void showPlot(std::unique_ptr<NeoCompiledPlot> plot,
+                  double xMin, double xMax);
     void hidePlot();
-    void renderPlot(cas::SymExpr* expr, double xMin, double xMax);
+    void renderPlot(NeoMathBackend& backend, NeoCompiledPlot& plot,
+                    double xMin, double xMax);
 
     // Persistence
     void saveToFlash();

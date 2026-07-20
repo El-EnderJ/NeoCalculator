@@ -87,11 +87,13 @@ NeoLanguageApp::NeoLanguageApp()
     , _panelConsole(nullptr), _console(nullptr)
     , _plotOverlay(nullptr), _plotCanvas(nullptr), _plotHintLabel(nullptr)
     , _plotDrawBuf{}, _plotBuf(nullptr), _plotMode(false)
+    , _retainedPlot()
     , _activeTab(Tab::EDITOR)
     , _focus(Focus::TAB_BAR)
     , _tabIdx(0)
     , _arena(32 * 1024)
     , _symArena(32 * 1024)
+    , _mathBackend()
 {
     for (int i = 0; i < 2; ++i) {
         _tabPills[i]  = nullptr;
@@ -107,6 +109,7 @@ NeoLanguageApp::~NeoLanguageApp() { end(); }
 
 void NeoLanguageApp::begin() {
     if (_screen) return;
+    _mathBackend.resetSession();
     createUI();
     _activeTab = Tab::EDITOR;
     _focus     = Focus::TAB_BAR;
@@ -118,6 +121,8 @@ void NeoLanguageApp::begin() {
 
 void NeoLanguageApp::end() {
     hidePlot();  // Dismiss any active plot overlay
+    _retainedPlot.reset();
+    _mathBackend.resetSession();
     _statusBar.destroy();
     if (_screen) {
         lv_obj_delete(_screen);
@@ -658,7 +663,8 @@ void NeoLanguageApp::runCode() {
 
     // ── Interpret ─────────────────────────────────────────────────
     _symArena.reset();
-    NeoInterpreter interp(_symArena);
+    _mathBackend.beginRun();
+    NeoInterpreter interp(_symArena, _mathBackend);
 
     // Connect host callbacks (print, msg_box, input_num)
     interp.setHostCallbacks(buildHostCallbacks());
@@ -704,8 +710,10 @@ void NeoLanguageApp::runCode() {
 
     // ── Graphics Mode: check for pending plot request ──────────────
     const NeoPlotRequest& req = interp.plotRequest();
-    if (req.pending && req.expr) {
-        showPlot(req);
+    if (req.pending && req.backend && req.plot) {
+        const double xMin = req.xMin;
+        const double xMax = req.xMax;
+        showPlot(interp.takeCompiledPlot(), xMin, xMax);
         interp.clearPlotRequest();
     }
 }
@@ -719,8 +727,10 @@ void NeoLanguageApp::runCode() {
 // NeoLanguage from GrapherApp: upgrading GrapherApp requires no
 // changes here.
 
-void NeoLanguageApp::showPlot(const NeoPlotRequest& req) {
-    if (!_screen || _plotMode) return;
+void NeoLanguageApp::showPlot(std::unique_ptr<NeoCompiledPlot> plot,
+                              double xMin, double xMax) {
+    if (!_screen || _plotMode || !plot) return;
+    _retainedPlot = std::move(plot);
 
     // ── Allocate pixel buffer ────────────────────────────────────
     const int BUF_SIZE = PLOT_W * PLOT_H * 2;  // RGB565, 2 bytes/pixel
@@ -730,6 +740,7 @@ void NeoLanguageApp::showPlot(const NeoPlotRequest& req) {
     _plotBuf = (uint8_t*)malloc(BUF_SIZE);
 #endif
     if (!_plotBuf) {
+        _retainedPlot.reset();
         appendConsole("[plot] Not enough memory for plot buffer.\n");
         return;
     }
@@ -770,7 +781,7 @@ void NeoLanguageApp::showPlot(const NeoPlotRequest& req) {
     lv_obj_set_style_text_align(_plotHintLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     // ── Render the plot ──────────────────────────────────────────
-    renderPlot(req.expr, req.xMin, req.xMax);
+    renderPlot(_mathBackend, *_retainedPlot, xMin, xMax);
 
     // Refresh the image widget so LVGL re-reads the pixel buffer
     lv_image_set_src(_plotCanvas, &imgDsc);
@@ -797,7 +808,35 @@ void NeoLanguageApp::hidePlot() {
 #endif
         _plotBuf = nullptr;
     }
+    _retainedPlot.reset();
 }
+
+#if defined(NUMOS_NEO_APP_SMOKE)
+void NeoLanguageApp::debugSetSource(const char* source) {
+    if (_editor) lv_textarea_set_text(_editor, source ? source : "");
+}
+
+const char* NeoLanguageApp::debugConsoleText() const {
+    return _console ? lv_textarea_get_text(_console) : "";
+}
+
+uint32_t NeoLanguageApp::debugMathOperationTotal(
+        NeoMathEngine engine) const {
+    uint32_t total = 0;
+    for (size_t i = 0;
+         i < static_cast<size_t>(NeoMathOperation::Count); ++i) {
+        total += _mathBackend.count(
+            engine, static_cast<NeoMathOperation>(i));
+    }
+    return total;
+}
+
+bool NeoLanguageApp::debugPlotSample(double x, double& out) {
+    return _retainedPlot &&
+           _mathBackend.evaluatePlot(
+               *_retainedPlot, x, out, _symArena);
+}
+#endif
 
 // Render a function expressed as a SymExpr* into the pixel buffer.
 //
@@ -805,23 +844,33 @@ void NeoLanguageApp::hidePlot() {
 // string-evaluator or GrapherApp internal.  If GrapherApp is upgraded,
 // this function does not need to change.
 
-void NeoLanguageApp::renderPlot(cas::SymExpr* expr, double xMin, double xMax) {
-    if (!_plotBuf || !expr) return;
+void NeoLanguageApp::renderPlot(NeoMathBackend& backend,
+                                NeoCompiledPlot& plot,
+                                double xMin, double xMax) {
+    if (!_plotBuf) return;
 
     const int W = PLOT_W;
     const int H = PLOT_H;
 
     // ── Compute y range by sampling ──────────────────────────────
     double yMin =  1e30, yMax = -1e30;
+    bool anyValidSample = false;
     for (int i = 0; i <= PLOT_SAMPLE_PTS; ++i) {
         double x = xMin + (xMax - xMin) * i / PLOT_SAMPLE_PTS;
-        double y = expr->evaluate(x);
-        if (std::isnan(y) || std::isinf(y)) continue;
+        double y = 0.0;
+        if (!backend.evaluatePlot(plot, x, y, _symArena)) continue;
+        anyValidSample = true;
         if (y < yMin) yMin = y;
         if (y > yMax) yMax = y;
     }
     // Ensure a usable range
-    if (yMax <= yMin) { yMin -= 5.0; yMax += 5.0; }
+    if (!anyValidSample) {
+        yMin = -5.0;
+        yMax = 5.0;
+    } else if (yMax <= yMin) {
+        yMin -= 5.0;
+        yMax += 5.0;
+    }
     double yRange = yMax - yMin;
     double xRange = xMax - xMin;
 
@@ -860,7 +909,9 @@ void NeoLanguageApp::renderPlot(cas::SymExpr* expr, double xMin, double xMax) {
 
     for (int px = 0; px < W; ++px) {
         double x  = xMin + (double)px / W * xRange;
-        double y  = expr->evaluate(x);
+        double y = 0.0;
+        if (!backend.evaluatePlot(plot, x, y, _symArena))
+            y = std::numeric_limits<double>::quiet_NaN();
 
         if (std::isnan(y) || std::isinf(y)) {
             prevY = std::numeric_limits<double>::quiet_NaN();

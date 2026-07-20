@@ -116,6 +116,19 @@ struct StructuredEngineResult {
     EngineResultNode tree;
 };
 
+enum class AlgebraTransform : uint8_t {
+    Simplify,
+    Expand,
+    Factor
+};
+
+struct TaylorRequest {
+    std::string expression;
+    std::string variable = "x";
+    std::string center = "0";
+    int order = 0;
+};
+
 /**
  * GIAC-E01 calculus boundary.
  *
@@ -249,6 +262,21 @@ public:
      * walk hit an internal limit — the textual result still stands.
      */
     StructuredEngineResult evaluateStructured(const char* expression);
+
+    /**
+     * Apply one typed algebraic transform to an already-authored expression.
+     * The operation is selected by enum, never manufactured as command text.
+     */
+    StructuredEngineResult transformStructured(
+        AlgebraTransform operation, const char* expression);
+
+    /**
+     * Return exact Taylor coefficients [c0, ..., c_order] about `center`.
+     * Uses Giac's series/Taylor implementation directly; the big-O marker is
+     * intentionally omitted because NeoLanguage's established result is the
+     * truncated coefficient list.
+     */
+    StructuredEngineResult taylorStructured(const TaylorRequest& request);
 
     /**
      * GIAC-E01: execute one typed CalculusApp operation. Input length/tree and

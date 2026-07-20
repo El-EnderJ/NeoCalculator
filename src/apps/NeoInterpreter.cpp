@@ -40,8 +40,11 @@ static constexpr int NEO_MAX_ITER = 10000;
 // Constructor
 // ════════════════════════════════════════════════════════════════════
 
-NeoInterpreter::NeoInterpreter(cas::SymExprArena& symArena)
+NeoInterpreter::NeoInterpreter(cas::SymExprArena& symArena,
+                               NeoMathBackend& mathBackend)
     : _symArena(symArena)
+    , _mathBackend(mathBackend)
+    , _stdlib(mathBackend)
     , _hasError(false)
     , _lastError()
     , _errorCount(0)
@@ -185,17 +188,17 @@ NeoValue NeoInterpreter::evalSymbol(SymbolNode* node, NeoEnv& env) {
     // Check for well-known constants first
     const std::string& name = node->name;
     if (name == "pi" || name == "Pi" || name == "PI") {
-        return NeoValue::makeNumber(M_PI);
+        return _mathBackend.constant("pi", _symArena);
     }
     if (name == "e" || name == "E") {
-        return NeoValue::makeNumber(M_E);
+        return _mathBackend.constant("e", _symArena);
     }
     if (name == "phi" || name == "PHI" || name == "golden") {
         // Golden ratio φ = (1 + √5) / 2
         return NeoValue::makeNumber(1.6180339887498948482);
     }
     if (name == "inf"   || name == "Inf" || name == "Infinity")
-        return NeoValue::makeNumber(std::numeric_limits<double>::infinity());
+        return _mathBackend.constant("infinity", _symArena);
     if (name == "True"  || name == "true")  return NeoValue::makeBool(true);
     if (name == "False" || name == "false") return NeoValue::makeBool(false);
     if (name == "None"  || name == "none")  return NeoValue::makeNull();
@@ -209,9 +212,7 @@ NeoValue NeoInterpreter::evalSymbol(SymbolNode* node, NeoEnv& env) {
     // map perfectly. Multi-char names use only the first character; this
     // is a known limitation — 'alpha' and 'apple' both become 'a'.
     // Future work: add a multi-char SymNamedVar node to the CAS.
-    char varChar = name.empty() ? 'x' : name[0];
-    cas::SymExpr* symv = cas::symVar(_symArena, varChar);
-    return NeoValue::makeSymbolic(symv);
+    return _mathBackend.symbol(name, _symArena);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -236,17 +237,37 @@ NeoValue NeoInterpreter::evalBinaryOp(BinaryOpNode* node, NeoEnv& env) {
     NeoValue rv = eval(node->right, env);
     if (_returnFlag) return rv;
 
+    auto mathBinary = [&](NeoBinaryMathOp operation) -> NeoValue {
+        NeoMathResult r = _mathBackend.binary(operation, lv, rv, _symArena);
+        if (!r.ok()) recordError(r.diagnostic, node->line, node->col);
+        return r.value;
+    };
+
     switch (node->op) {
-        case BinaryOpNode::OpKind::Add: return lv.add(rv, _symArena);
-        case BinaryOpNode::OpKind::Sub: return lv.sub(rv, _symArena);
-        case BinaryOpNode::OpKind::Mul: return lv.mul(rv, _symArena);
-        case BinaryOpNode::OpKind::Div: return lv.div(rv, _symArena);
-        case BinaryOpNode::OpKind::Pow: return lv.pow(rv, _symArena);
-        case BinaryOpNode::OpKind::Eq:
-            // When at least one side is symbolic, return lhs-rhs as a symbolic
-            // residual (used by solve() for multi-variable system detection).
-            if (lv.isSymbolic() || rv.isSymbolic())
+        case BinaryOpNode::OpKind::Add:
+            if (lv.isQuantity() || rv.isQuantity() || lv.isList() || rv.isList())
+                return lv.add(rv, _symArena);
+            return mathBinary(NeoBinaryMathOp::Add);
+        case BinaryOpNode::OpKind::Sub:
+            if (lv.isQuantity() || rv.isQuantity())
                 return lv.sub(rv, _symArena);
+            return mathBinary(NeoBinaryMathOp::Subtract);
+        case BinaryOpNode::OpKind::Mul:
+            if (lv.isQuantity() || rv.isQuantity() || lv.isList() || rv.isList())
+                return lv.mul(rv, _symArena);
+            return mathBinary(NeoBinaryMathOp::Multiply);
+        case BinaryOpNode::OpKind::Div:
+            if (lv.isQuantity() || rv.isQuantity())
+                return lv.div(rv, _symArena);
+            return mathBinary(NeoBinaryMathOp::Divide);
+        case BinaryOpNode::OpKind::Pow:
+            return mathBinary(NeoBinaryMathOp::Power);
+        case BinaryOpNode::OpKind::Eq:
+            if (lv.isMathLike() || rv.isMathLike()) {
+                NeoMathResult r = _mathBackend.equation(lv, rv, _symArena);
+                if (!r.ok()) recordError(r.diagnostic, node->line, node->col);
+                return r.value;
+            }
             return lv.opEq(rv);
         case BinaryOpNode::OpKind::Ne:  return lv.opNe(rv);
         case BinaryOpNode::OpKind::Lt:  return lv.opLt(rv);
@@ -274,8 +295,11 @@ NeoValue NeoInterpreter::evalUnaryOp(UnaryOpNode* node, NeoEnv& env) {
     if (_returnFlag) return v;
 
     switch (node->op) {
-        case UnaryOpNode::OpKind::Neg:
-            return v.neg(_symArena);
+        case UnaryOpNode::OpKind::Neg: {
+            NeoMathResult r = _mathBackend.negate(v, _symArena);
+            if (!r.ok()) recordError(r.diagnostic, node->line, node->col);
+            return r.value;
+        }
         case UnaryOpNode::OpKind::Not:
             return NeoValue::makeBool(!v.isTruthy());
         case UnaryOpNode::OpKind::BitNot:
@@ -369,12 +393,13 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
     auto unary = [&](SymFuncKind kind, double (*fn)(double)) -> bool {
         if (args.size() != 1) return false;
         const NeoValue& a = args[0];
-        if (a.isNumeric()) {
+        if (_mathBackend.engine() == NeoMathEngine::Native && a.isNumeric()) {
             result = NeoValue::makeNumber(fn(a.toDouble()));
-        } else if (a.isSymbolic() && a.asSym()) {
-            result = NeoValue::makeSymbolic(symFunc(_symArena, kind, a.asSym()));
         } else {
-            result = NeoValue::makeNumber(fn(a.toDouble()));
+            (void)kind;
+            NeoMathResult r = _mathBackend.function(name, args, _symArena);
+            result = r.value;
+            if (!r.ok()) recordError(r.diagnostic, 0, 0);
         }
         return true;
     };
@@ -490,14 +515,12 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
     if (name == "sqrt") {
         if (args.size() != 1) return false;
         const NeoValue& a = args[0];
-        // sqrt(x) == x ^ (1/2)
-        if (a.isNumeric()) {
+        if (_mathBackend.engine() == NeoMathEngine::Native && a.isNumeric()) {
             result = NeoValue::makeNumber(std::sqrt(a.toDouble()));
-        } else if (a.isSymbolic() && a.asSym()) {
-            SymExpr* half = symFrac(_symArena, 1, 2);
-            result = NeoValue::makeSymbolic(symPow(_symArena, a.asSym(), half));
         } else {
-            result = NeoValue::makeNumber(std::sqrt(a.toDouble()));
+            NeoMathResult r = _mathBackend.function("sqrt", args, _symArena);
+            result = r.value;
+            if (!r.ok()) recordError(r.diagnostic, 0, 0);
         }
         return true;
     }
@@ -513,8 +536,13 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
         int digits = (args.size() >= 2) ? static_cast<int>(args[1].toDouble()) : 10;
         if (digits < 1) digits = 1;
         if (digits > 15) digits = 15;
-        double numVal = a.toDouble();
-        result = NeoValue::makeNumber(numVal);
+        double numVal = 0.0;
+        if (!_mathBackend.numericValue(a, numVal, _symArena)) {
+            recordError("numeric evaluation failed", 0, 0);
+            result = NeoValue::makeError("numeric evaluation failed");
+        } else {
+            result = NeoValue::makeNumber(numVal);
+        }
         return true;
     }
 
@@ -674,6 +702,7 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
 
         // Build a C++ lambda that evaluates the NeoLanguage/native function
         std::function<double(double, double)> f;
+        std::unique_ptr<NeoCompiledPlot> compiledMath;
 
         if (funcVal.isFunction() && funcVal.funcDef()) {
             FunctionDefNode* def     = funcVal.funcDef();
@@ -696,11 +725,17 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
                                             NeoValue::makeNumber(y) };
                 return funcVal.nativeFn()(a, funcVal.nativeCtx(), _symArena).toDouble();
             };
-        } else if (funcVal.isSymbolic() && funcVal.asSym()) {
+        } else if (funcVal.isMathLike()) {
             // Treat symbolic f(x, y) as f(x) — evaluate sym at x only
-            cas::SymExpr* sym = funcVal.asSym();
-            f = [sym](double x, double /*y*/) -> double {
-                return sym->evaluate(x);
+            compiledMath = _mathBackend.compilePlot(
+                funcVal, "x", _symArena);
+            NeoCompiledPlot* compiled = compiledMath.get();
+            f = [this, compiled](double x, double /*y*/) -> double {
+                double value = std::numeric_limits<double>::quiet_NaN();
+                if (compiled)
+                    _mathBackend.evaluatePlot(
+                        *compiled, x, value, _symArena);
+                return value;
             };
         } else {
             _stdlib.callBuiltin("print", {NeoValue::makeString("[ndsolve] First argument must be a function f(x, y)")}, result, env, _symArena);
@@ -722,6 +757,7 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
         bool   doMax = (name == "maximize");
 
         std::function<double(double)> f;
+        std::unique_ptr<NeoCompiledPlot> compiledMath;
 
         if (funcVal.isFunction() && funcVal.funcDef()) {
             FunctionDefNode* def     = funcVal.funcDef();
@@ -742,9 +778,17 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
                 std::vector<NeoValue> a = { NeoValue::makeNumber(x) };
                 return funcVal.nativeFn()(a, funcVal.nativeCtx(), _symArena).toDouble();
             };
-        } else if (funcVal.isSymbolic() && funcVal.asSym()) {
-            cas::SymExpr* sym = funcVal.asSym();
-            f = [sym](double x) -> double { return sym->evaluate(x); };
+        } else if (funcVal.isMathLike()) {
+            compiledMath = _mathBackend.compilePlot(
+                funcVal, "x", _symArena);
+            NeoCompiledPlot* compiled = compiledMath.get();
+            f = [this, compiled](double x) -> double {
+                double value = std::numeric_limits<double>::quiet_NaN();
+                if (compiled)
+                    _mathBackend.evaluatePlot(
+                        *compiled, x, value, _symArena);
+                return value;
+            };
         } else {
             _stdlib.callBuiltin("print", {NeoValue::makeString("[minimize/maximize] First argument must be a function")}, result, env, _symArena);
             result = NeoValue::makeNull(); return true;
@@ -760,7 +804,11 @@ bool NeoInterpreter::evalBuiltin(const std::string& name,
     // This handles: diff, integrate, solve, simplify, expand,
     //               plot, clear_plot, print, println, type,
     //               vars, input_num, msg_box
-    if (_stdlib.callBuiltin(name, args, result, env, _symArena)) return true;
+    if (_stdlib.callBuiltin(name, args, result, env, _symArena)) {
+        if (result.isError())
+            recordError(result.errorText(), 0, 0);
+        return true;
+    }
 
     // ── Phase 8: time_it(func, args...) — performance profiling ──
     // Measures the time in milliseconds to execute a NeoLanguage function.

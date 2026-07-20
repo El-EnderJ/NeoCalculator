@@ -23,6 +23,7 @@
 #include "NeoUnits.h"
 #include <cstdio>
 #include <cstring>
+#include <functional>
 
 // ════════════════════════════════════════════════════════════════════
 // Static factories
@@ -104,6 +105,23 @@ NeoValue NeoValue::makeDict(std::map<std::string, NeoValue>* dict) {
     return v;
 }
 
+NeoValue NeoValue::makeMath(const numos::EngineResultNode* tree,
+                            bool unevaluated, bool opaque) {
+    NeoValue v;
+    v._type = Type::Math;
+    v._math = tree;
+    v._mathUnevaluated = unevaluated;
+    v._mathOpaque = opaque;
+    return v;
+}
+
+NeoValue NeoValue::makeError(const std::string& diagnostic) {
+    NeoValue v;
+    v._type = Type::Error;
+    v._errorText = diagnostic;
+    return v;
+}
+
 // ════════════════════════════════════════════════════════════════════
 // isTruthy
 // ════════════════════════════════════════════════════════════════════
@@ -121,6 +139,8 @@ bool NeoValue::isTruthy() const {
         case Type::Quantity:   return _quantity != nullptr;
         case Type::String:     return !_str.empty();
         case Type::Dictionary: return _dict != nullptr && !_dict->empty();
+        case Type::Math:       return _math != nullptr;
+        case Type::Error:      return false;
     }
     return false;
 }
@@ -136,6 +156,8 @@ double NeoValue::toDouble() const {
         case Type::Boolean:  return _bool ? 1.0 : 0.0;
         case Type::Symbolic: return _sym ? _sym->evaluate(0.0) : 0.0;
         case Type::Quantity: return _quantity ? _quantity->magnitude : 0.0;
+        case Type::Math:
+        case Type::Error:
         default:             return 0.0;
     }
 }
@@ -448,6 +470,8 @@ NeoValue NeoValue::opEq(const NeoValue& rhs) const {
         case Type::Number:   return makeBool(_num  == rhs._num);
         case Type::Exact:    return makeBool(_exact == rhs._exact);
         case Type::Symbolic: return makeBool(_sym  == rhs._sym);
+        case Type::Math:     return makeBool(_math == rhs._math);
+        case Type::Error:    return makeBool(_errorText == rhs._errorText);
         default:             return makeBool(false);
     }
 }
@@ -505,16 +529,7 @@ std::string NeoValue::toString() const {
         }
         case Type::Exact: {
             if (_exact.hasError()) return "Rational(error)";
-            if (_exact.isInteger()) {
-                std::snprintf(buf, sizeof(buf), "%lld",
-                    static_cast<long long>(_exact.toInt64()));
-                return std::string(buf);
-            }
-            // num/den
-            std::string s = std::to_string(_exact.num().toInt64());
-            s += "/";
-            s += std::to_string(_exact.den().toInt64());
-            return s;
+            return _exact.toString();
         }
         case Type::Symbolic:
             return _sym ? _sym->toString() : "Symbolic(null)";
@@ -556,6 +571,77 @@ std::string NeoValue::toString() const {
             s += "}";
             return s;
         }
+        case Type::Math: {
+            if (!_math) return "Math(null)";
+            std::function<std::string(const numos::EngineResultNode&, int)> fmt;
+            fmt = [&fmt](const numos::EngineResultNode& n, int depth) -> std::string {
+                using numos::EngineNodeKind;
+                if (depth > 40) return "<depth-limit>";
+                auto child = [&](size_t i) -> std::string {
+                    return i < n.children.size() ? fmt(n.children[i], depth + 1)
+                                                 : "?";
+                };
+                switch (n.kind) {
+                    case EngineNodeKind::Integer:
+                    case EngineNodeKind::Decimal:
+                    case EngineNodeKind::Symbol: return n.text;
+                    case EngineNodeKind::Pi: return "pi";
+                    case EngineNodeKind::EulerE: return "e";
+                    case EngineNodeKind::ImagUnit: return "i";
+                    case EngineNodeKind::PlusInfinity: return "infinity";
+                    case EngineNodeKind::MinusInfinity: return "-infinity";
+                    case EngineNodeKind::UnsignedInfinity: return "unsigned_infinity";
+                    case EngineNodeKind::Rational:
+                        return "(" + child(0) + "/" + child(1) + ")";
+                    case EngineNodeKind::Neg: return "(-" + child(0) + ")";
+                    case EngineNodeKind::Inv: return "(1/" + child(0) + ")";
+                    case EngineNodeKind::Pow:
+                        return "(" + child(0) + "^" + child(1) + ")";
+                    case EngineNodeKind::Sqrt:
+                        return "sqrt(" + child(0) + ")";
+                    case EngineNodeKind::Root:
+                        return "root(" + child(0) + ", " + child(1) + ")";
+                    case EngineNodeKind::Equation:
+                        return child(0) + " == " + child(1);
+                    case EngineNodeKind::Complex:
+                        return "(" + child(0) + " + " + child(1) + "*i)";
+                    case EngineNodeKind::Function: {
+                        std::string s = n.text + "(";
+                        for (size_t i = 0; i < n.children.size(); ++i) {
+                            if (i) s += ", ";
+                            s += child(i);
+                        }
+                        return s + ")";
+                    }
+                    case EngineNodeKind::Add:
+                    case EngineNodeKind::Mul: {
+                        std::string s = "(";
+                        const char* sep = n.kind == EngineNodeKind::Add ? " + " : "*";
+                        for (size_t i = 0; i < n.children.size(); ++i) {
+                            if (i) s += sep;
+                            s += child(i);
+                        }
+                        return s + ")";
+                    }
+                    case EngineNodeKind::List: {
+                        std::string s = "[";
+                        for (size_t i = 0; i < n.children.size(); ++i) {
+                            if (i) s += ", ";
+                            s += child(i);
+                        }
+                        return s + "]";
+                    }
+                    case EngineNodeKind::Unsupported:
+                        return "<opaque:" + n.text + ">";
+                }
+                return "?";
+            };
+            const std::string rendered = fmt(*_math, 0);
+            return _mathUnevaluated ? "<unevaluated:" + rendered + ">"
+                                    : rendered;
+        }
+        case Type::Error:
+            return "<error:" + _errorText + ">";
     }
     return "?";
 }

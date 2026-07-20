@@ -1,0 +1,76 @@
+# GIAC-N01: opt-in NeoLanguageApp lifecycle/console/backend smoke.
+# Run with emulator_pc_neo_smoke; the normal emulator whitelist stays closed.
+wait 450
+open_app NeoLanguage
+wait 30
+assert_app NeoLanguage
+assert_neo_engine giac
+
+# Default query and a real Giac operation reach the visible LVGL console.
+neo_source math_engine()
+key f5
+assert_neo_console_contains giac
+neo_source simplify(x+0)
+key f5
+assert_neo_console_contains "=> x"
+
+# Native is explicit, F5 re-runs in-session, and Giac counters stay fixed.
+neo_source math_engine("native")
+key f5
+assert_neo_engine native
+assert_neo_console_contains native
+neo_snapshot_counts
+neo_source diff(x^3,x)
+key f5
+assert_neo_count_unchanged giac
+assert_neo_console_contains =>
+key f5
+assert_neo_engine native
+assert_neo_count_unchanged giac
+
+# Switch back. A valid unevaluated Giac result cannot invoke Native.
+neo_source math_engine("giac")
+key f5
+assert_neo_engine giac
+neo_snapshot_counts
+neo_source integrate(x^x,x)
+key f5
+assert_neo_count_unchanged native
+assert_neo_console_contains integrate
+
+# Parse errors remain ordinary Neo errors and do not damage selection.
+neo_source diff(
+key f5
+assert_neo_console_contains "[Parse ERROR]"
+assert_neo_engine giac
+neo_source math_engine()
+key f5
+assert_neo_console_contains giac
+
+# The app owns one compiled handle. Reset makes it stale; the next sample
+# recompiles exactly once and produces the same finite value.
+neo_source plot(x^2,-2,2)
+key f5
+assert_neo_plot_active
+assert_neo_plot_compile_count 1
+assert_neo_plot_near 2 4 0.000001
+assert_neo_plot_compile_count 1
+giac_reset
+assert_neo_plot_compile_count 1
+assert_neo_plot_near 2 4 0.000001
+assert_neo_plot_compile_count 2
+
+# First MODE dismisses the overlay; second closes the app. Deferred teardown
+# calls end(), so reopening starts a fresh Giac session.
+key mode
+key mode
+wait 30
+assert_app Menu
+open_app NeoLanguage
+wait 30
+assert_app NeoLanguage
+assert_neo_engine giac
+assert_neo_plot_compile_count 0
+neo_source math_engine()
+key f5
+assert_neo_console_contains giac

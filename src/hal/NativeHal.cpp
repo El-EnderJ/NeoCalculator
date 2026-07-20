@@ -117,6 +117,9 @@
 #include "../apps/SequencesApp.h"         // Phase 7A: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/RegressionApp.h"        // Phase 7C: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/GrapherApp.h"           // Phase 8G: LVGL-native grapher (RPN pipeline; no Giac/CAS)
+#if defined(NUMOS_NEO_APP_SMOKE)
+#include "../apps/NeoLanguageApp.h"        // GIAC-N01 opt-in lifecycle smoke only
+#endif
 #include "../math/VariableManager.h"      // Phase 8B: assert_variable lee el singleton de variables
 #include "../math/AngleModeRuntime.h"     // AM-01: set/assert_angle_mode (runtime DEG/RAD truth)
 #include "../math/giac/GiacEngine.h"      // GIAC-C01: giac_reset script hook (opaque seam)
@@ -225,7 +228,10 @@ enum class AppMode : uint8_t {
     PROBABILITY,    // Probabilidad (LVGL-native; Phase 6A, emulador)
     SEQUENCES,      // Secuencias (LVGL-native; Phase 7A, emulador)
     REGRESSION,     // Regresion (LVGL-native; Phase 7C, emulador)
-    GRAPHER         // Grapher (LVGL-native; Phase 8G, emulador)
+    GRAPHER,        // Grapher (LVGL-native; Phase 8G, emulador)
+#if defined(NUMOS_NEO_APP_SMOKE)
+    NEO_LANGUAGE    // Opt-in: excluded from the normal emulator whitelist
+#endif
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -278,6 +284,11 @@ static ProbabilityApp*  g_probApp  = nullptr;      // Phase 6A (emulador)
 static SequencesApp*    g_seqApp   = nullptr;      // Phase 7A (emulador)
 static RegressionApp*   g_regApp   = nullptr;      // Phase 7C (emulador)
 static GrapherApp*      g_grapherApp = nullptr;    // Phase 8G (emulador)
+#if defined(NUMOS_NEO_APP_SMOKE)
+static NeoLanguageApp*  g_neoLangApp = nullptr;
+static uint32_t         g_neoGiacCountSnapshot = 0;
+static uint32_t         g_neoNativeCountSnapshot = 0;
+#endif
 
 // ── Math Showcase (Phase 5A, solo emulador) ─────────────────────────────────
 // Identificador de app fuera del rango de tarjetas del launcher (0..21) para que
@@ -803,6 +814,23 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
+#if defined(NUMOS_NEO_APP_SMOKE)
+        case AppMode::NEO_LANGUAGE:
+            if (isDown && kc == KeyCode::MODE) {
+                returnToMenu();
+                break;
+            }
+            if (g_neoLangApp) {
+                KeyEvent ke;
+                ke.code   = kc;
+                ke.action = action;
+                ke.row    = -1;
+                ke.col    = -1;
+                g_neoLangApp->handleKey(ke);
+            }
+            break;
+#endif
+
         case AppMode::MATH_SHOWCASE:
             // MODE vuelve al launcher; IZQ/ARRIBA y DCHA/ABAJO recorren los casos
             // curados. Solo en el down-edge (una pulsacion = un paso), sin cursor
@@ -963,6 +991,11 @@ static void transitionToMenu()
     // el objeto (sin begin(), para no agotar el heap LVGL al arranque); su pantalla
     // se crea en el primer load() (GrapherApp::load() llama a begin() si hace falta).
     g_grapherApp = new GrapherApp();
+#if defined(NUMOS_NEO_APP_SMOKE)
+    // Opt-in only: the full Neo stack still contains native file() routes
+    // outside the emulator LittleFS sandbox. This smoke never invokes them.
+    g_neoLangApp = new NeoLanguageApp();
+#endif
 
     // Crear y mostrar el MainMenu
     g_menu = new MainMenu(g_displayStub);
@@ -1059,6 +1092,16 @@ static void launchApp(int appId)
             }
             break;
 
+#if defined(NUMOS_NEO_APP_SMOKE)
+        case 18: // NeoLanguage production launcher id
+            if (g_neoLangApp) {
+                g_neoLangApp->load();
+                g_mode = AppMode::NEO_LANGUAGE;
+                std::printf("[APP] NeoLanguageApp activa (opt-in smoke)\n");
+            }
+            break;
+#endif
+
         case APPID_MATH_SHOWCASE: // Math Showcase (solo emulador)
             showcaseLoad();
             g_mode = AppMode::MATH_SHOWCASE;
@@ -1118,6 +1161,11 @@ static void performAppTeardown(AppMode m)
             // Phase 8G: GrapherApp::load() vuelve a llamar begin() perezosamente.
             if (g_grapherApp) g_grapherApp->end();
             break;
+#if defined(NUMOS_NEO_APP_SMOKE)
+        case AppMode::NEO_LANGUAGE:
+            if (g_neoLangApp) g_neoLangApp->end();
+            break;
+#endif
         case AppMode::MATH_SHOWCASE:
             showcaseEnd();
             break;
@@ -1614,7 +1662,17 @@ enum class ScriptCmdType : uint8_t {
     AssertGraphEvalValid,      // assert_graph_eval_valid SLOT T [Y]      (fArgs)
     AssertGraphEvalInvalid,    // assert_graph_eval_invalid SLOT T [Y]    (fArgs)
     AssertGraphEvalNear,       // assert_graph_eval_near SLOT T [Y] EXPECTED EPS
-    GiacReset                  // giac_reset (rebuild del contexto; handles huerfanos)
+    GiacReset,                 // giac_reset (rebuild del contexto; handles huerfanos)
+#if defined(NUMOS_NEO_APP_SMOKE)
+    NeoSource,
+    AssertNeoEngine,
+    AssertNeoConsoleContains,
+    NeoSnapshotCounts,
+    AssertNeoCountUnchanged,
+    AssertNeoPlotCompileCount,
+    AssertNeoPlotActive,
+    AssertNeoPlotNear
+#endif
 };
 
 struct ScriptCmd {
@@ -1675,6 +1733,10 @@ static const char* canonicalAppName(const std::string& name)
     if (lc == "sequences" || lc == "seq")         return "Sequences";       // Phase 7A
     if (lc == "regression" || lc == "reg")        return "Regression";      // Phase 7C
     if (lc == "grapher" || lc == "graph")         return "Grapher";         // Phase 8G
+#if defined(NUMOS_NEO_APP_SMOKE)
+    if (lc == "neolanguage" || lc == "neolang" || lc == "neo")
+                                                    return "NeoLanguage";
+#endif
     return nullptr;
 }
 
@@ -1695,6 +1757,9 @@ static int scriptAppNameToId(const std::string& name)
     if (lc == "regression" || lc == "reg")                            return 6;   // Phase 7C
     if (lc == "grapher" || lc == "graph")                             return 1;   // Phase 8G
     if (lc == "settings")                                             return 10;
+#if defined(NUMOS_NEO_APP_SMOKE)
+    if (lc == "neolanguage" || lc == "neolang" || lc == "neo")         return 18;
+#endif
     if (lc == "mathshowcase" || lc == "math_showcase" || lc == "showcase")
                                                                       return APPID_MATH_SHOWCASE;
     return -1;
@@ -2289,6 +2354,93 @@ static bool loadScript(const char* path)
             if (iss >> extra) return scriptErr(path, lineNo, "giac_reset no acepta argumentos");
             sc.type = ScriptCmdType::GiacReset;
         }
+#if defined(NUMOS_NEO_APP_SMOKE)
+        else if (lc == "neo_source" ||
+                 lc == "assert_neo_console_contains") {
+            std::string rest;
+            std::getline(iss, rest);
+            const size_t begin = rest.find_first_not_of(" \t");
+            rest = begin == std::string::npos
+                ? std::string() : rest.substr(begin);
+            if (lc == "assert_neo_console_contains" &&
+                rest.size() >= 2 && rest.front() == '"' &&
+                rest.back() == '"') {
+                rest = rest.substr(1, rest.size() - 2);
+            }
+            if (rest.empty())
+                return scriptErr(path, lineNo,
+                    "neo_source/assert_neo_console_contains requiere texto");
+            sc.type = lc == "neo_source"
+                ? ScriptCmdType::NeoSource
+                : ScriptCmdType::AssertNeoConsoleContains;
+            sc.strArg = std::move(rest);
+        }
+        else if (lc == "assert_neo_engine") {
+            std::string engine, extra;
+            if (!(iss >> engine) ||
+                (engine != "giac" && engine != "native") ||
+                (iss >> extra))
+                return scriptErr(path, lineNo,
+                    "assert_neo_engine requiere giac|native");
+            sc.type = ScriptCmdType::AssertNeoEngine;
+            sc.strArg = engine;
+        }
+        else if (lc == "neo_snapshot_counts") {
+            std::string extra;
+            if (iss >> extra)
+                return scriptErr(path, lineNo,
+                    "neo_snapshot_counts no acepta argumentos");
+            sc.type = ScriptCmdType::NeoSnapshotCounts;
+        }
+        else if (lc == "assert_neo_count_unchanged") {
+            std::string engine, extra;
+            if (!(iss >> engine) ||
+                (engine != "giac" && engine != "native") ||
+                (iss >> extra))
+                return scriptErr(path, lineNo,
+                    "assert_neo_count_unchanged requiere giac|native");
+            sc.type = ScriptCmdType::AssertNeoCountUnchanged;
+            sc.strArg = engine;
+        }
+        else if (lc == "assert_neo_plot_compile_count") {
+            std::string countToken, extra;
+            long count = 0;
+            if (!(iss >> countToken) ||
+                !parseNonNegLong(countToken, count) || (iss >> extra))
+                return scriptErr(path, lineNo,
+                    "assert_neo_plot_compile_count requiere N >= 0");
+            sc.type = ScriptCmdType::AssertNeoPlotCompileCount;
+            sc.waitN = count;
+        }
+        else if (lc == "assert_neo_plot_active") {
+            std::string extra;
+            if (iss >> extra)
+                return scriptErr(path, lineNo,
+                    "assert_neo_plot_active no acepta argumentos");
+            sc.type = ScriptCmdType::AssertNeoPlotActive;
+        }
+        else if (lc == "assert_neo_plot_near") {
+            std::string xToken, expectedToken, epsilonToken, extra;
+            if (!(iss >> xToken >> expectedToken >> epsilonToken) ||
+                (iss >> extra))
+                return scriptErr(path, lineNo,
+                    "assert_neo_plot_near requiere X EXPECTED EPSILON");
+            char* xEnd = nullptr;
+            char* expectedEnd = nullptr;
+            char* epsilonEnd = nullptr;
+            const double x = std::strtod(xToken.c_str(), &xEnd);
+            const double expected =
+                std::strtod(expectedToken.c_str(), &expectedEnd);
+            const double epsilon =
+                std::strtod(epsilonToken.c_str(), &epsilonEnd);
+            if (!xEnd || *xEnd || !expectedEnd || *expectedEnd ||
+                !epsilonEnd || *epsilonEnd || epsilon < 0.0)
+                return scriptErr(path, lineNo,
+                    "assert_neo_plot_near: numeros invalidos");
+            sc.type = ScriptCmdType::AssertNeoPlotNear;
+            sc.fArgs = {x, expected, epsilon};
+        }
+#endif
         else {
             return scriptErr(path, lineNo, "comando desconocido");
         }
@@ -2356,6 +2508,9 @@ static const char* activeAppName()
          : (g_mode == AppMode::GRAPHER)       ? "Grapher"
          : (g_mode == AppMode::EQUATIONS)     ? "Equations"
          : (g_mode == AppMode::CALCULUS)      ? "Calculus"
+#if defined(NUMOS_NEO_APP_SMOKE)
+         : (g_mode == AppMode::NEO_LANGUAGE)  ? "NeoLanguage"
+#endif
                                               : "Calculation";
 }
 
@@ -2420,6 +2575,128 @@ static void scriptStepBegin()
                                     "' pero la app activa es '" + cur + "'");
             break;
         }
+#if defined(NUMOS_NEO_APP_SMOKE)
+        case ScriptCmdType::NeoSource:
+            if (g_mode != AppMode::NEO_LANGUAGE || !g_neoLangApp) {
+                assertFail(sc.line,
+                    "neo_source requiere NeoLanguage activa");
+                break;
+            }
+            g_neoLangApp->debugSetSource(sc.strArg.c_str());
+            std::printf("[SCRIPT] neo_source %s\n", sc.strArg.c_str());
+            break;
+        case ScriptCmdType::AssertNeoEngine: {
+            if (g_mode != AppMode::NEO_LANGUAGE || !g_neoLangApp) {
+                assertFail(sc.line,
+                    "assert_neo_engine requiere NeoLanguage activa");
+                break;
+            }
+            const char* actual = g_neoLangApp->debugMathEngine();
+            if (sc.strArg == actual)
+                assertPass(sc.line, "assert_neo_engine " + sc.strArg);
+            else
+                assertFail(sc.line, "assert_neo_engine esperaba '" +
+                    sc.strArg + "' pero es '" + actual + "'");
+            break;
+        }
+        case ScriptCmdType::AssertNeoConsoleContains: {
+            if (g_mode != AppMode::NEO_LANGUAGE || !g_neoLangApp) {
+                assertFail(sc.line,
+                    "assert_neo_console_contains requiere NeoLanguage activa");
+                break;
+            }
+            const std::string actual = g_neoLangApp->debugConsoleText();
+            if (actual.find(sc.strArg) != std::string::npos)
+                assertPass(sc.line, "assert_neo_console_contains '" +
+                    sc.strArg + "'");
+            else
+                assertFail(sc.line,
+                    "consola Neo no contiene '" + sc.strArg +
+                    "' (actual='" + actual + "')");
+            break;
+        }
+        case ScriptCmdType::NeoSnapshotCounts:
+            if (g_mode != AppMode::NEO_LANGUAGE || !g_neoLangApp) {
+                assertFail(sc.line,
+                    "neo_snapshot_counts requiere NeoLanguage activa");
+                break;
+            }
+            g_neoGiacCountSnapshot =
+                g_neoLangApp->debugMathOperationTotal(
+                    NeoMathEngine::Giac);
+            g_neoNativeCountSnapshot =
+                g_neoLangApp->debugMathOperationTotal(
+                    NeoMathEngine::Native);
+            std::printf(
+                "[SCRIPT] neo_snapshot_counts giac=%u native=%u\n",
+                g_neoGiacCountSnapshot, g_neoNativeCountSnapshot);
+            break;
+        case ScriptCmdType::AssertNeoCountUnchanged: {
+            if (g_mode != AppMode::NEO_LANGUAGE || !g_neoLangApp) {
+                assertFail(sc.line,
+                    "assert_neo_count_unchanged requiere NeoLanguage activa");
+                break;
+            }
+            const NeoMathEngine engine = sc.strArg == "giac"
+                ? NeoMathEngine::Giac : NeoMathEngine::Native;
+            const uint32_t expected = engine == NeoMathEngine::Giac
+                ? g_neoGiacCountSnapshot : g_neoNativeCountSnapshot;
+            const uint32_t actual =
+                g_neoLangApp->debugMathOperationTotal(engine);
+            if (actual == expected)
+                assertPass(sc.line,
+                    "assert_neo_count_unchanged " + sc.strArg);
+            else
+                assertFail(sc.line,
+                    "contador " + sc.strArg + " cambio de " +
+                    std::to_string(expected) + " a " +
+                    std::to_string(actual));
+            break;
+        }
+        case ScriptCmdType::AssertNeoPlotCompileCount: {
+            if (g_mode != AppMode::NEO_LANGUAGE || !g_neoLangApp) {
+                assertFail(sc.line,
+                    "assert_neo_plot_compile_count requiere NeoLanguage activa");
+                break;
+            }
+            const uint32_t actual =
+                g_neoLangApp->debugPlotCompileCount();
+            if (actual == static_cast<uint32_t>(sc.waitN))
+                assertPass(sc.line,
+                    "assert_neo_plot_compile_count " +
+                    std::to_string(sc.waitN));
+            else
+                assertFail(sc.line,
+                    "compile count Neo esperaba " +
+                    std::to_string(sc.waitN) + " pero es " +
+                    std::to_string(actual));
+            break;
+        }
+        case ScriptCmdType::AssertNeoPlotActive:
+            if (g_mode == AppMode::NEO_LANGUAGE && g_neoLangApp &&
+                g_neoLangApp->debugPlotActive())
+                assertPass(sc.line, "assert_neo_plot_active");
+            else
+                assertFail(sc.line, "Neo no tiene plot retenido activo");
+            break;
+        case ScriptCmdType::AssertNeoPlotNear: {
+            if (g_mode != AppMode::NEO_LANGUAGE || !g_neoLangApp) {
+                assertFail(sc.line,
+                    "assert_neo_plot_near requiere NeoLanguage activa");
+                break;
+            }
+            double actual = 0.0;
+            const bool valid = g_neoLangApp->debugPlotSample(
+                sc.fArgs[0], actual);
+            if (valid &&
+                std::fabs(actual - sc.fArgs[1]) <= sc.fArgs[2])
+                assertPass(sc.line, "assert_neo_plot_near");
+            else
+                assertFail(sc.line,
+                    "muestra Neo invalida o fuera de tolerancia");
+            break;
+        }
+#endif
         case ScriptCmdType::AssertResult:
         case ScriptCmdType::AssertResultContains: {
             if (g_mode != AppMode::CALCULATION || !g_calcApp) {
@@ -3291,6 +3568,12 @@ int main(int argc, char** argv)
     if (g_probApp)  { g_probApp->end();  delete g_probApp;  }           // Phase 6A
     if (g_seqApp)   { g_seqApp->end();   delete g_seqApp;   }           // Phase 7A
     if (g_regApp)   { g_regApp->end();   delete g_regApp;   }           // Phase 7C
+#if defined(NUMOS_NEO_APP_SMOKE)
+    if (g_neoLangApp) {
+        g_neoLangApp->end();
+        delete g_neoLangApp;
+    }
+#endif
     showcaseEnd();                                                      // Phase 5A (no-op si inactiva)
     delete g_menu;
     delete g_splash;

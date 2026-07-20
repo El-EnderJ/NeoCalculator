@@ -97,16 +97,19 @@ proj_srcs=(
   src/math/CalculationEngine.cpp
   src/math/MathEvaluator.cpp src/math/MathAST.cpp src/math/VariableManager.cpp
   src/math/font/MathGlyphAssembly.cpp src/hal/FileSystem.cpp
-  src/math/cas/ASTFlattener.cpp src/math/cas/SymSimplify.cpp
-  src/math/cas/SymExprToAST.cpp src/math/cas/SymExpr.cpp
-  src/math/cas/ConsTable.cpp src/math/cas/CASStepLogger.cpp
-  src/math/cas/SymPoly.cpp
+  src/apps/NeoValue.cpp src/apps/NeoUnits.cpp
+  src/apps/NeoMathBackend.cpp
+  src/apps/NeoEnv.cpp src/apps/NeoLexer.cpp src/apps/NeoParser.cpp
+  src/apps/NeoInterpreter.cpp src/apps/NeoStdLib.cpp
+  src/apps/NeoStats.cpp src/apps/NeoModules.cpp src/apps/NeoIO.cpp
 )
+for f in src/math/cas/*.cpp; do proj_srcs+=("$f"); done
 printf '%s\n' "${proj_srcs[@]}" | \
   xargs -P "$JOBS" -I{} bash -c "compile_one {} '$PROJ_CXXFLAGS' '$CXX'"
 
 compile_one tests/host/giac_engine_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
 compile_one tests/host/giac_calculus_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
+compile_one tests/host/neo_math_backend_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
 compile_one tests/host/host_rss_probe.cpp "$PROJ_CXXFLAGS" "$CXX"
 
 # --- link the stable regression and focused calculus executables separately.
@@ -116,7 +119,7 @@ compile_one tests/host/host_rss_probe.cpp "$PROJ_CXXFLAGS" "$CXX"
 common_objs=()
 for obj in "$OUT"/obj/*.o; do
   case "$(basename "$obj")" in
-    giac_engine_suite_main.cpp.o|giac_calculus_suite_main.cpp.o) continue ;;
+    giac_engine_suite_main.cpp.o|giac_calculus_suite_main.cpp.o|neo_math_backend_suite_main.cpp.o) continue ;;
   esac
   common_objs+=("$obj")
 done
@@ -126,7 +129,11 @@ $CXX -o "$OUT/giac_engine_suite" "${common_objs[@]}" \
 echo "LINK $OUT/giac_calculus_suite"
 $CXX -o "$OUT/giac_calculus_suite" "${common_objs[@]}" \
   "$OUT/obj/giac_calculus_suite_main.cpp.o" $LDFLAGS
+echo "LINK $OUT/neo_math_backend_suite"
+$CXX -o "$OUT/neo_math_backend_suite" "${common_objs[@]}" \
+  "$OUT/obj/neo_math_backend_suite_main.cpp.o" $LDFLAGS
 
 [[ "${1:-}" == "--build-only" ]] && exit 0
 # Run from $OUT so any emulator_data/ a TU creates stays out of the repo.
-( cd "$OUT" && ./giac_engine_suite && ./giac_calculus_suite )
+( cd "$OUT" && ./giac_engine_suite && ./giac_calculus_suite && \
+  ./neo_math_backend_suite )

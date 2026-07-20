@@ -381,6 +381,31 @@ print("x =", sol[0], "  y =", sol[1])
 
 ## 8. Symbolic vs Numeric
 
+### Mathematical backend selection
+
+NeoLanguage starts each app session with Giac as its mathematical backend.
+The existing NumOS native CAS remains available as an explicit compatibility
+and diagnostic path:
+
+```nl
+math_engine()          # "giac"
+math_engine("native")  # select the native CAS for this Neo session
+math_engine("giac")    # switch back to Giac
+```
+
+Only `"giac"` and `"native"` are accepted. Selection is idempotent and
+session-local; it does not change the backend used by Calculation, Grapher,
+Equations, or Calculus. There is no automatic fallback: an error,
+unsupported result, or valid unevaluated result is reported by the selected
+engine without invoking the other one.
+
+Giac results are retained as bounded, engine-neutral Neo value trees. Exact
+integers, rationals, radicals, constants, complex values, equations, lists,
+and solution dictionaries are not reconstructed from floating-point display
+text. A valid structure that Neo cannot model is printed with an
+`<opaque:...>` marker; a valid unevaluated operation is printed with an
+`<unevaluated:...>` marker.
+
 ### 8.1 Why sqrt(8) Returns 2*sqrt(2)
 
 NeoLanguage uses a CAS (Computer Algebra System) for symbolic computations.

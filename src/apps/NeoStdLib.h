@@ -61,12 +61,14 @@
 
 #include <string>
 #include <vector>
+#include <memory>
 #include "../math/cas/SymExprArena.h"
 #include "../math/cas/SymExpr.h"
 #include "NeoValue.h"
 #include "NeoEnv.h"
 #include "NeoStats.h"
 #include "NeoUnits.h"
+#include "NeoMathBackend.h"
 
 // ════════════════════════════════════════════════════════════════════
 // NeoPlotRequest — data produced by plot() for the host to render
@@ -83,7 +85,8 @@
  * upgrading GrapherApp does not require any changes to NeoStdLib.
  */
 struct NeoPlotRequest {
-    cas::SymExpr* expr    = nullptr;  ///< Arena-owned expression to evaluate
+    NeoMathBackend* backend = nullptr;
+    NeoCompiledPlot* plot   = nullptr;
     double        xMin    = -10.0;    ///< Left boundary of the view
     double        xMax    =  10.0;    ///< Right boundary of the view
     bool          pending = false;    ///< true if a plot was requested
@@ -123,7 +126,7 @@ struct NeoHostCallbacks {
 
 class NeoStdLib {
 public:
-    NeoStdLib();
+    explicit NeoStdLib(NeoMathBackend& mathBackend);
 
     // ── Host integration ──────────────────────────────────────────
     /**
@@ -140,7 +143,16 @@ public:
     const NeoPlotRequest& plotRequest() const { return _plotReq; }
 
     /** Clear the pending plot request (host calls after consuming it). */
-    void clearPlotRequest() { _plotReq = NeoPlotRequest{}; }
+    void clearPlotRequest();
+
+    /**
+     * Transfer the retained plot to the host before this run-local standard
+     * library is destroyed. The request's raw pointer is cleared atomically.
+     */
+    std::unique_ptr<NeoCompiledPlot> takeCompiledPlot() {
+        _plotReq.plot = nullptr;
+        return std::move(_compiledPlot);
+    }
 
     // ── Built-in dispatch ─────────────────────────────────────────
     /**
@@ -163,6 +175,8 @@ public:
 private:
     NeoHostCallbacks _cbs;
     NeoPlotRequest   _plotReq;
+    NeoMathBackend&  _mathBackend;
+    std::unique_ptr<NeoCompiledPlot> _compiledPlot;
 
     // ── Per-function implementations ──────────────────────────────
 
@@ -185,6 +199,7 @@ private:
     /// expand(expr) — polynomial expansion (distribute rule)
     bool callExpand    (const std::vector<NeoValue>& args, NeoValue& result,
                         cas::SymExprArena& sa);
+    bool callMathEngine(const std::vector<NeoValue>& args, NeoValue& result);
 
     /// plot(expr, xmin, xmax) — queue a graphics-mode plot request
     bool callPlot      (const std::vector<NeoValue>& args, NeoValue& result,

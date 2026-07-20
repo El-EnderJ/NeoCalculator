@@ -18,18 +18,10 @@
  *
  * See NeoStdLib.h for the public API and design rationale.
  *
- * CAS usage:
- *   diff      → cas::SymDiff::diff()
- *   integrate → cas::SymIntegrate::integrate()
- *   solve     → cas::OmniSolver::solve()
- *   simplify  → cas::SymSimplify::simplify()
- *   expand    → cas::SymSimplify::simplify() (includes G8: distribute)
- *
- * Plot usage:
- *   plot() stores a NeoPlotRequest with the SymExpr* pointer.
- *   The host (NeoLanguageApp) reads plotRequest() after execution and
- *   renders the curve using SymExpr::evaluate(x) directly — this makes
- *   the plot completely independent of GrapherApp's string evaluator.
+ * Mathematical built-ins route through the Neo-owned NeoMathBackend.
+ * Giac is the session default; the existing custom CAS is used only after
+ * explicit math_engine("native") selection. Plot requests retain a compiled
+ * handle from that same selected backend, so sampling never changes authority.
  *
  * Part of: NeoCalculator / NumOS — NeoLanguage Phase 3 (Standard Library)
  */
@@ -59,10 +51,41 @@
 // Constructor
 // ════════════════════════════════════════════════════════════════════
 
-NeoStdLib::NeoStdLib()
+NeoStdLib::NeoStdLib(NeoMathBackend& mathBackend)
     : _cbs{}
     , _plotReq{}
+    , _mathBackend(mathBackend)
+    , _compiledPlot()
 {}
+
+void NeoStdLib::clearPlotRequest() {
+    _plotReq = NeoPlotRequest{};
+    _compiledPlot.reset();
+}
+
+bool NeoStdLib::callMathEngine(const std::vector<NeoValue>& args,
+                               NeoValue& result) {
+    if (args.empty()) {
+        result = NeoValue::makeString(_mathBackend.engineName());
+        return true;
+    }
+    if (args.size() != 1 || !args[0].isString()) {
+        result = NeoValue::makeError(
+            "math_engine expects no arguments or one string");
+        return true;
+    }
+    if (args[0].asString() == "giac")
+        _mathBackend.setEngine(NeoMathEngine::Giac);
+    else if (args[0].asString() == "native")
+        _mathBackend.setEngine(NeoMathEngine::Native);
+    else {
+        result = NeoValue::makeError(
+            "math_engine accepts only \"giac\" or \"native\"");
+        return true;
+    }
+    result = NeoValue::makeString(_mathBackend.engineName());
+    return true;
+}
 
 // ════════════════════════════════════════════════════════════════════
 // Helpers
@@ -110,6 +133,8 @@ bool NeoStdLib::callBuiltin(const std::string&          name,
                              NeoEnv&                      env,
                              cas::SymExprArena&           sa)
 {
+    if (name == "math_engine") return callMathEngine(args, result);
+
     // ── Symbolic calculus ──────────────────────────────────────────
     if (name == "diff")      return callDiff     (args, result, sa);
     if (name == "integrate") return callIntegrate(args, result, sa);
@@ -273,6 +298,14 @@ bool NeoStdLib::callDiff(const std::vector<NeoValue>& args,
         return true;
     }
 
+    std::string variable;
+    if (!_mathBackend.variableName(args[1], variable)) {
+        result = NeoValue::makeError("diff variable must be an identifier");
+        return true;
+    }
+    result = _mathBackend.differentiate(args[0], variable, sa).value;
+    return true;
+
     cas::SymExpr* expr = toSym(args[0], sa);
     char          var  = toVarChar(args[1], sa);
 
@@ -309,6 +342,15 @@ bool NeoStdLib::callIntegrate(const std::vector<NeoValue>& args,
         return true;
     }
 
+    std::string variable;
+    if (!_mathBackend.variableName(args[1], variable)) {
+        result = NeoValue::makeError(
+            "integrate variable must be an identifier");
+        return true;
+    }
+    result = _mathBackend.integrate(args[0], variable, sa).value;
+    return true;
+
     cas::SymExpr* expr = toSym(args[0], sa);
     char          var  = toVarChar(args[1], sa);
 
@@ -344,6 +386,32 @@ bool NeoStdLib::callSolve(const std::vector<NeoValue>& args,
         result = NeoValue::makeNull();
         return true;
     }
+
+    if (args[0].isList() && args[1].isList() &&
+        args[0].asList() && args[1].asList()) {
+        std::vector<std::string> variables;
+        variables.reserve(args[1].asList()->size());
+        for (const NeoValue& variableValue : *args[1].asList()) {
+            std::string variable;
+            if (!_mathBackend.variableName(variableValue, variable)) {
+                result = NeoValue::makeError(
+                    "solve system variables must be identifiers");
+                return true;
+            }
+            variables.push_back(std::move(variable));
+        }
+        result = _mathBackend.solveSystem(
+            *args[0].asList(), variables, sa).value;
+        return true;
+    }
+
+    std::string variable;
+    if (!_mathBackend.variableName(args[1], variable)) {
+        result = NeoValue::makeError("solve variable must be an identifier");
+        return true;
+    }
+    result = _mathBackend.solve(args[0], variable, sa).value;
+    return true;
 
     // ── Multi-variable solver: solve([eq1, eq2], [x, y]) ──────────
     if (args[0].isList() && args[1].isList()
@@ -517,6 +585,9 @@ bool NeoStdLib::callSimplify(const std::vector<NeoValue>& args,
         return true;
     }
 
+    result = _mathBackend.simplify(args[0], sa).value;
+    return true;
+
     cas::SymExpr* expr = toSym(args[0], sa);
     if (!expr) {
         result = args[0];  // pass through non-symbolic values
@@ -538,10 +609,12 @@ bool NeoStdLib::callExpand(const std::vector<NeoValue>& args,
                             NeoValue& result,
                             cas::SymExprArena& sa)
 {
-    // expand() applies the distribute rule (G8 in SymSimplify)
-    // SymSimplify::simplify() already runs all rule groups including G8,
-    // so calling it is equivalent to a full expansion pass.
-    return callSimplify(args, result, sa);
+    if (args.empty()) {
+        result = NeoValue::makeError("expand expects one expression");
+        return true;
+    }
+    result = _mathBackend.expand(args[0], sa).value;
+    return true;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -562,29 +635,26 @@ bool NeoStdLib::callPlot(const std::vector<NeoValue>& args,
         return true;
     }
 
-    cas::SymExpr* expr = toSym(args[0], sa);
-    if (!expr) {
-        hostPrint("[plot] First argument must be a symbolic expression.\n");
-        result = NeoValue::makeNull();
+    {
+    double xMin = (args.size() >= 2) ? args[1].toDouble() : -10.0;
+    double xMax = (args.size() >= 3) ? args[2].toDouble() : 10.0;
+    if (xMin >= xMax) xMax = xMin + 20.0;
+    _compiledPlot = _mathBackend.compilePlot(args[0], "x", sa);
+    if (!_compiledPlot || !_compiledPlot->diagnostic.empty()) {
+        result = NeoValue::makeError(
+            _compiledPlot ? _compiledPlot->diagnostic :
+                            "plot compilation failed");
         return true;
     }
-
-    double xMin = (args.size() >= 2) ? args[1].toDouble() : -10.0;
-    double xMax = (args.size() >= 3) ? args[2].toDouble() :  10.0;
-    if (xMin >= xMax) xMax = xMin + 20.0;
-
-    _plotReq.expr    = expr;
-    _plotReq.xMin    = xMin;
-    _plotReq.xMax    = xMax;
+    _plotReq.backend = &_mathBackend;
+    _plotReq.plot = _compiledPlot.get();
+    _plotReq.xMin = xMin;
+    _plotReq.xMax = xMax;
     _plotReq.pending = true;
-
-    char buf[128];
-    std::snprintf(buf, sizeof(buf), "[plot] %s  [%.4g, %.4g]\n",
-                  expr->toString().c_str(), xMin, xMax);
-    hostPrint(buf);
-
     result = NeoValue::makeNull();
     return true;
+    }
+
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -638,6 +708,10 @@ bool NeoStdLib::callType(const std::vector<NeoValue>& args,
         case NeoValue::Type::List:            typeName = "list";           ordinal = 6; break;
         case NeoValue::Type::NativeFunction:  typeName = "native_function";ordinal = 7; break;
         case NeoValue::Type::Quantity:        typeName = "quantity";       ordinal = 8; break;
+        case NeoValue::Type::String:          typeName = "string";         ordinal = 9; break;
+        case NeoValue::Type::Dictionary:      typeName = "dictionary";     ordinal = 10; break;
+        case NeoValue::Type::Math:            typeName = "math";           ordinal = 11; break;
+        case NeoValue::Type::Error:           typeName = "error";          ordinal = 12; break;
         default:                              typeName = "unknown";        ordinal = -1; break;
     }
 
@@ -959,6 +1033,33 @@ bool NeoStdLib::callLimit(const std::vector<NeoValue>& args,
         result = NeoValue::makeNull();
         return true;
     }
+    {
+    std::string variable;
+    if (!_mathBackend.variableName(args[1], variable)) {
+        result = NeoValue::makeError("limit variable must be an identifier");
+        return true;
+    }
+    auto compiled = _mathBackend.compilePlot(args[0], variable, sa);
+    if (!compiled || !compiled->diagnostic.empty()) {
+        result = NeoValue::makeError(
+            compiled ? compiled->diagnostic : "limit compilation failed");
+        return true;
+    }
+    const double point = args[2].toDouble();
+    static constexpr double H = 1e-4;
+    double f1p = 0.0, f1m = 0.0, f2p = 0.0, f2m = 0.0;
+    if (!_mathBackend.evaluatePlot(*compiled, point + H, f1p, sa) ||
+        !_mathBackend.evaluatePlot(*compiled, point - H, f1m, sa) ||
+        !_mathBackend.evaluatePlot(*compiled, point + H * 0.5, f2p, sa) ||
+        !_mathBackend.evaluatePlot(*compiled, point - H * 0.5, f2m, sa)) {
+        result = NeoValue::makeError("limit sampling is undefined");
+        return true;
+    }
+    const double lim1 = (f1p + f1m) * 0.5;
+    const double lim2 = (f2p + f2m) * 0.5;
+    result = NeoValue::makeNumber((4.0 * lim2 - lim1) / 3.0);
+    return true;
+    }
     cas::SymExpr* expr = toSym(args[0], sa);
     if (!expr) { result = args[0]; return true; }
     char   var = toVarChar(args[1], sa);
@@ -991,6 +1092,18 @@ bool NeoStdLib::callTaylor(const std::vector<NeoValue>& args,
         hostPrint("[taylor] Usage: taylor(expr, var, point, order)\n");
         result = NeoValue::makeNull();
         return true;
+    }
+    {
+    std::string variable;
+    if (!_mathBackend.variableName(args[1], variable)) {
+        result = NeoValue::makeError(
+            "taylor variable must be an identifier");
+        return true;
+    }
+    const int order = static_cast<int>(args[3].toDouble());
+    result = _mathBackend.taylor(
+        args[0], variable, args[2], order, sa).value;
+    return true;
     }
     cas::SymExpr* expr = toSym(args[0], sa);
     if (!expr) { result = args[0]; return true; }
@@ -1040,6 +1153,34 @@ bool NeoStdLib::callSumExpr(const std::vector<NeoValue>& args,
         result = NeoValue::makeNull();
         return true;
     }
+    {
+    std::string variable;
+    if (!_mathBackend.variableName(args[1], variable)) {
+        result = NeoValue::makeError("sigma variable must be an identifier");
+        return true;
+    }
+    auto compiled = _mathBackend.compilePlot(args[0], variable, sa);
+    if (!compiled || !compiled->diagnostic.empty()) {
+        result = NeoValue::makeError(
+            compiled ? compiled->diagnostic : "sigma compilation failed");
+        return true;
+    }
+    int start = static_cast<int>(args[2].toDouble());
+    int end = static_cast<int>(args[3].toDouble());
+    if (end - start > 10000) end = start + 10000;
+    double total = 0.0;
+    for (int i = start; i <= end; ++i) {
+        double sample = 0.0;
+        if (!_mathBackend.evaluatePlot(
+                *compiled, static_cast<double>(i), sample, sa)) {
+            result = NeoValue::makeError("sigma sample is undefined");
+            return true;
+        }
+        total += sample;
+    }
+    result = NeoValue::makeNumber(total);
+    return true;
+    }
     cas::SymExpr* expr = toSym(args[0], sa);
     char   var   = toVarChar(args[1], sa);
     int    start = static_cast<int>(args[2].toDouble());
@@ -1086,6 +1227,17 @@ bool NeoStdLib::callTable(const std::vector<NeoValue>& args,
     if (maxPts > 10002) maxPts = 10002;
     out->reserve(static_cast<size_t>(maxPts));
 
+    std::unique_ptr<NeoCompiledPlot> compiled;
+    if (funcVal.isMathLike() || funcVal.isNumeric()) {
+        compiled = _mathBackend.compilePlot(funcVal, "x", sa);
+        if (!compiled || !compiled->diagnostic.empty()) {
+            delete out;
+            result = NeoValue::makeError(
+                compiled ? compiled->diagnostic : "table compilation failed");
+            return true;
+        }
+    }
+
     for (double x = xstart;
          (step > 0 ? x <= xend + step * 0.5 : x >= xend + step * 0.5);
          x += step)
@@ -1095,6 +1247,9 @@ bool NeoStdLib::callTable(const std::vector<NeoValue>& args,
             std::vector<NeoValue> callArgs = { NeoValue::makeNumber(x) };
             NeoValue r = funcVal.nativeFn()(callArgs, funcVal.nativeCtx(), sa);
             y = r.toDouble();
+        } else if (compiled) {
+            if (!_mathBackend.evaluatePlot(*compiled, x, y, sa))
+                y = std::numeric_limits<double>::quiet_NaN();
         }
         auto* row = new std::vector<NeoValue>();
         row->push_back(NeoValue::makeNumber(x));

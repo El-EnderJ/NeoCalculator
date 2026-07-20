@@ -59,6 +59,7 @@
 #include "NeoEnv.h"
 #include "NeoStdLib.h"
 #include "NeoModules.h"
+#include "NeoMathBackend.h"
 
 // ════════════════════════════════════════════════════════════════════
 // NeoInterpreter
@@ -70,7 +71,7 @@ public:
      * Construct with a SymExprArena used for all Symbolic node creation.
      * The arena must outlive the interpreter.
      */
-    explicit NeoInterpreter(cas::SymExprArena& symArena);
+    NeoInterpreter(cas::SymExprArena& symArena, NeoMathBackend& mathBackend);
 
     // ── Standard Library / Host integration ───────────────────────
     /**
@@ -91,6 +92,9 @@ public:
 
     /** Clear the pending plot request (host calls after consuming it). */
     void clearPlotRequest() { _stdlib.clearPlotRequest(); }
+    std::unique_ptr<NeoCompiledPlot> takeCompiledPlot() {
+        return _stdlib.takeCompiledPlot();
+    }
 
     // ── Main entry point ──────────────────────────────────────────
     /**
@@ -116,6 +120,7 @@ public:
 
 private:
     cas::SymExprArena& _symArena;
+    NeoMathBackend&    _mathBackend;
     NeoStdLib          _stdlib;   ///< Standard Library (CAS + graphics + I/O)
 
     // ── Error tracking ────────────────────────────────────────────

@@ -38,6 +38,8 @@
 #include "solve.h"   // has_num_coeff
 #include "sym2poly.h"
 #include "usual.h"
+#include "lin.h"
+#include "series.h"
 
 #include "math/giac/GiacEngine.h"
 #include "math/giac/GiacEngineInternal.h"
@@ -763,6 +765,149 @@ StructuredEngineResult GiacEngine::evaluateStructured(const char* expression) {
     syncAngleMode(_state->ctx);
     sr.base = runTextual(_state->ctx, expression, /*simplifyMode=*/false,
                          &sr.tree, &sr.hasTree);
+    return sr;
+}
+
+StructuredEngineResult GiacEngine::transformStructured(
+    AlgebraTransform operation, const char* expression) {
+    StructuredEngineResult sr;
+    CallGuard guard(_inCall);
+    if (!guard.entered()) {
+        sr.base = rejectedReentrant();
+        return sr;
+    }
+    if (!begin()) {
+        sr.base.status = MathEngineStatus::OutOfMemory;
+        sr.base.diagnostic = "Giac context initialization failed";
+        return sr;
+    }
+    if (!expression || !*expression) {
+        sr.base.status = MathEngineStatus::ParseError;
+        sr.base.diagnostic = "empty expression";
+        return sr;
+    }
+    syncAngleMode(_state->ctx);
+    try {
+        DiagnosticCapture capture(_state->ctx);
+        giac::gen authored(std::string(expression), _state->ctx);
+        if (giac::is_undef(authored)) {
+            sr.base.status = MathEngineStatus::ParseError;
+            sr.base.diagnostic = capture.text();
+            return sr;
+        }
+        giac::gen exact;
+        switch (operation) {
+            case AlgebraTransform::Simplify:
+                exact = giac::_simplify(authored, _state->ctx);
+                break;
+            case AlgebraTransform::Expand:
+                exact = giac::expand(authored, _state->ctx);
+                break;
+            case AlgebraTransform::Factor:
+                exact = giac::_factor(authored, _state->ctx);
+                break;
+        }
+        if (giac::is_undef(exact)) {
+            sr.base.status = MathEngineStatus::Undefined;
+            sr.base.diagnostic = capture.text();
+            return sr;
+        }
+        sr.base.status = MathEngineStatus::Ok;
+        sr.base.exactText = exact.print(_state->ctx);
+        sr.base.diagnostic = capture.text();
+        int budget = kTreeNodeBudget;
+        genToNode(exact, _state->ctx, sr.tree, 0, budget);
+        sr.hasTree = true;
+        giac::gen approximate = giac::evalf(exact, 1, _state->ctx);
+        if (!giac::is_undef(approximate)) {
+            const std::string printed = approximate.print(_state->ctx);
+            if (printed != sr.base.exactText)
+                sr.base.approximateText = printed;
+        }
+    } catch (const std::bad_alloc&) {
+        sr.base.status = MathEngineStatus::OutOfMemory;
+        sr.base.diagnostic = "allocation failure inside Giac transform";
+    } catch (const std::exception& e) {
+        sr.base.status = MathEngineStatus::EvaluationError;
+        sr.base.diagnostic = e.what();
+    } catch (...) {
+        sr.base.status = MathEngineStatus::EvaluationError;
+        sr.base.diagnostic = "unknown Giac transform exception";
+    }
+    return sr;
+}
+
+StructuredEngineResult GiacEngine::taylorStructured(
+    const TaylorRequest& request) {
+    StructuredEngineResult sr;
+    CallGuard guard(_inCall);
+    if (!guard.entered()) {
+        sr.base = rejectedReentrant();
+        return sr;
+    }
+    if (!begin()) {
+        sr.base.status = MathEngineStatus::OutOfMemory;
+        sr.base.diagnostic = "Giac context initialization failed";
+        return sr;
+    }
+    if (request.expression.empty() || request.center.empty() ||
+        !validCalculusVariable(request.variable)) {
+        sr.base.status = MathEngineStatus::ParseError;
+        sr.base.diagnostic = "invalid Taylor request";
+        return sr;
+    }
+    if (request.expression.size() > kCalculusMaxSerializedLength ||
+        request.center.size() > 256 || request.order < 0 ||
+        request.order > 32) {
+        sr.base.status = MathEngineStatus::Unsupported;
+        sr.base.diagnostic = "Taylor request exceeds limits";
+        return sr;
+    }
+    syncAngleMode(_state->ctx);
+    try {
+        DiagnosticCapture capture(_state->ctx);
+        giac::gen authored(request.expression, _state->ctx);
+        giac::gen center(request.center, _state->ctx);
+        if (giac::is_undef(authored) || giac::is_undef(center)) {
+            sr.base.status = MathEngineStatus::ParseError;
+            sr.base.diagnostic = capture.text();
+            return sr;
+        }
+        int inputBudget = kCalculusInputNodeBudget;
+        if (!calculusInputWithinBounds(authored, 0, inputBudget)) {
+            sr.base.status = MathEngineStatus::Unsupported;
+            sr.base.diagnostic = "Taylor expression exceeds structural limits";
+            return sr;
+        }
+        const giac::gen variable(giac::identificateur(request.variable));
+        giac::vecteur coefficients;
+        if (!giac::taylor(authored, variable, center, request.order,
+                          coefficients, _state->ctx) ||
+            coefficients.size() < static_cast<size_t>(request.order + 1)) {
+            sr.base.status = MathEngineStatus::EvaluationError;
+            sr.base.diagnostic = capture.text();
+            if (sr.base.diagnostic.empty())
+                sr.base.diagnostic = "Giac Taylor expansion failed";
+            return sr;
+        }
+        coefficients.resize(static_cast<size_t>(request.order + 1));
+        const giac::gen exact(coefficients, giac::_LIST__VECT);
+        sr.base.status = MathEngineStatus::Ok;
+        sr.base.exactText = exact.print(_state->ctx);
+        sr.base.diagnostic = capture.text();
+        int budget = kTreeNodeBudget;
+        genToNode(exact, _state->ctx, sr.tree, 0, budget);
+        sr.hasTree = true;
+    } catch (const std::bad_alloc&) {
+        sr.base.status = MathEngineStatus::OutOfMemory;
+        sr.base.diagnostic = "allocation failure inside Giac Taylor expansion";
+    } catch (const std::exception& e) {
+        sr.base.status = MathEngineStatus::EvaluationError;
+        sr.base.diagnostic = e.what();
+    } catch (...) {
+        sr.base.status = MathEngineStatus::EvaluationError;
+        sr.base.diagnostic = "unknown Giac Taylor exception";
+    }
     return sr;
 }
 

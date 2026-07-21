@@ -5,6 +5,7 @@
       "memory_type": "qio_opi",
       "partitions": "default_16MB.csv"
     },
+    "boot": "qio",
     "core": "esp32",
     "extra_flags": [
       "-DARDUINO_ESP32S3_DEV",
@@ -15,11 +16,12 @@
     ],
     "f_cpu": "240000000L",
     "f_flash": "80000000L",
-    "flash_mode": "qio",
+    "filesystem": "littlefs",
+    "flash_mode": "dio",
     "hwids": [
       [
-        "0x303A",
-        "0x1001"
+        "0x1A86",
+        "0x55D3"
       ]
     ],
     "mcu": "esp32s3",
@@ -40,14 +42,14 @@
     "arduino",
     "espidf"
   ],
-  "name": "Espressif ESP32-S3-DevKitC-1-N16R8 (16 MB QIO, 8 MB PSRAM)",
+  "name": "NumOS ESP32-S3R8 N16R8 CAM/CH343 (DIO boot, QIO runtime, OPI PSRAM)",
   "upload": {
     "flash_size": "16MB",
     "maximum_ram_size": 327680,
-    "maximum_size": 16777216,
+    "maximum_size": 6553600,
     "require_upload_port": true,
-    "speed": 460800
+    "speed": 921600
   },
-  "url": "https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/hw-reference/esp32s3/user-guide-devkitc-1.html",
-  "vendor": "Espressif"
+  "url": "https://docs.espressif.com/projects/esptool/en/latest/esp32s3/advanced-topics/spi-flash-modes.html",
+  "vendor": "NumOS"
 }

@@ -8,7 +8,7 @@
 
 | Quantity | Component | Specification | Notes |
 |:--------:|:----------|:--------------|:------|
-| 1 | ESP32-S3 N16R8 CAM | 16 MB Flash QIO + 8 MB PSRAM OPI | Module with integrated antenna |
+| 1 | ESP32-S3 N16R8 CAM | 16 MB QIO runtime flash (DIO ROM header) + 8 MB PSRAM OPI | Module with integrated antenna |
 | 1 | IPS TFT Display | 3.2" ILI9341 320×240 SPI | IPS panel (not TN) — invertDisplay=true |
 | 48 | Tactile push buttons | 6×6 mm, 5 mm height | For 3D printed keycaps |
 | 1 | Breadboard / PCB | 400 points or more | Or custom PCB (Phase 5) |
@@ -78,14 +78,17 @@ ESP32-S3  Signal    Direction
 git clone https://github.com/your-username/numOS.git
 cd numOS
 
-# 2. Build only (without flashing)
-C:\Python314\Scripts\pio.exe run -e esp32s3_n16r8
+# 2. Build and validate the production package
+python scripts/esp32_boot.py package
 
-# 3. Build and flash
-C:\Python314\Scripts\pio.exe run -e esp32s3_n16r8 --target upload
+# 3. Application-only development upload
+python scripts/esp32_boot.py flash-app --port <PORT>
+
+# Clean provisioning or recovery (erases the device)
+python scripts/esp32_boot.py flash-full --port <PORT> --confirm-erase
 
 # 4. Open Serial Monitor
-C:\Python314\Scripts\pio.exe device monitor
+pio device monitor
 ```
 
 Alternatively, from the VS Code UI: bottom toolbar → Upload (→) or Monitor (🔌) icon.

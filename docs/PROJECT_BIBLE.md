@@ -474,15 +474,14 @@ Without this, PSRAM accumulates allocations between app sessions.
 ### Critical flags
 
 ```ini
-board_build.arduino.memory_type = qio_opi   ; Flash QIO + PSRAM OPI — critical
-board_build.flash_mode          = qio
-board_upload.flash_size         = 16MB
-board_build.partitions          = default_16MB.csv
+; Authoritative in boards/numos-esp32-s3-n16r8-cam.json:
+; DIO ROM header + QIO second stage/runtime + OPI PSRAM, 80 MHz, 16 MB.
 
 build_flags =
     -DBOARD_HAS_PSRAM
-    -DARDUINO_USB_MODE=1
-    -DARDUINO_USB_CDC_ON_BOOT=1
+    -DARDUINO_USB_MODE=0
+    -DARDUINO_USB_CDC_ON_BOOT=0
+    -DNUMOS_SERIAL_BACKEND_UART0=1
     -DUSE_FSPI_PORT                           ; SPI_PORT=2 — without: crash 0x10
     -DILI9341_DRIVER=1
     -DSPI_FREQUENCY=10000000                  ; 10 MHz — without: artifacts
@@ -501,6 +500,9 @@ monitor_filters = esp32_exception_decoder
 monitor_rts     = 0
 monitor_dtr     = 0
 ```
+
+See `docs/ESP32_BOOT_FLASHING.md`; never override a merged image to a QIO
+header at offset zero.
 
 ### Why `-DUSE_FSPI_PORT` is mandatory
 

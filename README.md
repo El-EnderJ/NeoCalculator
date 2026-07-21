@@ -62,7 +62,7 @@
 
 ## What is NumOS?
 
-**NumOS** is an open-source scientific and graphing calculator operating system built on the **ESP32-S3 N16R8** microcontroller (16 MB Flash QIO + 8 MB PSRAM OPI). The project aims to provide advanced features comparable to established scientific calculators, including symbolic mathematics, graphing, and natural display formatting.
+**NumOS** is an open-source scientific and graphing calculator operating system built on the **ESP32-S3 N16R8** microcontroller (16 MB QIO runtime flash, DIO ROM boot header + 8 MB PSRAM OPI). The project aims to provide advanced features comparable to established scientific calculators, including symbolic mathematics, graphing, and natural display formatting.
 
 *Working toward delivering a capable CAS experience for a ~€20 BOM as an open-source alternative in the educational calculator space.*
 
@@ -329,8 +329,11 @@ cd NeoCalculator
 # Build only
 pio run -e esp32s3_n16r8
 
-# Build and flash to ESP32-S3
-pio run -e esp32s3_n16r8 --target upload
+# Build a validated production/recovery package
+python scripts/esp32_boot.py package
+
+# Application-only development upload
+python scripts/esp32_boot.py flash-app --port <PORT>
 
 # Open serial monitor (115 200 baud)
 pio device monitor
@@ -566,7 +569,7 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 
 | # | Problem | Symptom | Solution |
 |:-:|:--------|:--------|:---------|
-| **①** | Flash OPI Panic | Boot → `Guru Meditation: Illegal instruction` | `memory_type = qio_opi` + `flash_mode = qio` |
+| **①** | Flash/PSRAM mode mismatch | ROM watchdog or PSRAM boot panic | DIO ROM header + QIO second stage + `memory_type = qio_opi` |
 | **②** | SPI StoreProhibited | Crash in `TFT_eSPI::begin()` at address `0x10` | `-DUSE_FSPI_PORT` → `SPI_PORT=2` → `REG_SPI_BASE(2)=0x60024000` |
 | **③** | Display noise | Horizontal lines and visual artefacts | Reduce SPI to 10 MHz: `-DSPI_FREQUENCY=10000000` |
 | **④** | LVGL black screen | `lv_timer_handler()` invokes flush but no image appears | Buffers via `heap_caps_malloc(MALLOC_CAP_DMA\|MALLOC_CAP_8BIT)` — **never** `ps_malloc` |
@@ -644,6 +647,7 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | [CAS_UPGRADE_ROADMAP.md](docs/CAS_UPGRADE_ROADMAP.md) | Full roadmap for the 6-phase CAS upgrade |
 | [MATH_ENGINE.md](docs/MATH_ENGINE.md) | Math engine + CAS: design, algorithms, pipeline, and examples |
 | [HARDWARE.md](docs/HARDWARE.md) | ESP32-S3 pinout, complete wiring, critical bugs, and bring-up notes |
+| [ESP32_BOOT_FLASHING.md](docs/ESP32_BOOT_FLASHING.md) | Authoritative development upload, provisioning, and recovery workflow |
 | [CONSTRUCTION.md](docs/CONSTRUCTION.md) | Physical assembly guide, 3D printing, and hardware testing |
 | [DIMENSIONES_DISEÑO.md](docs/DIMENSIONES_DISEÑO.md) | Dimensional specifications for the 3D chassis |
 

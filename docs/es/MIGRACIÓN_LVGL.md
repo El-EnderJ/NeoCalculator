@@ -102,7 +102,7 @@ Migración completa del sistema NumOS de renderizado directo a TFT (legacy) a **
 pip install platformio
 
 # Luego compilar:
-cd C:\Users\Juan Ramón\Documents\Calculadora
+cd ruta/al/repositorio/NumOS
 pio run
 ```
 
@@ -114,17 +114,15 @@ pio run
 
 #### Opción C: CLI directo con Python
 ```powershell
-cd C:\Users\Juan Ramón\Documents\Calculadora
+cd ruta/al/repositorio/NumOS
 python -m platformio run
 ```
 
-### Ubicaciones Compilación
-```
-.pio/build/esp32s3_n16r8/
-  ├── firmware.bin   # Flashear con esptool.py
-  ├── program.elf
-  └── ...
-```
+### Ubicaciones de compilación
+
+PlatformIO conserva los binarios intermedios en su directorio de compilación.
+El flujo oficial copia y valida los artefactos publicables en
+`out/esp32-boot-01/package/`; no dependas de una ruta absoluta de una máquina.
 
 ---
 
@@ -144,15 +142,16 @@ pio run --target clean
 
 ### Flash al Hardware
 ```bash
-pio run -e esp32s3_n16r8 --target upload
+python scripts/esp32_boot.py package
+python scripts/esp32_boot.py flash-app --port <PORT>
 
-# O con esptool.py directamente:
-python -m esptool --port COM3 write_flash 0x0 .pio/build/esp32s3_n16r8/firmware.bin
+# Aprovisionamiento/recuperación completa (borra el dispositivo):
+python scripts/esp32_boot.py flash-full --port <PORT> --confirm-erase
 ```
 
 ### Monitor Serial
 ```bash
-pio device monitor -p COM3 -b 115200
+pio device monitor -p <PORT> -b 115200
 ```
 
 ---

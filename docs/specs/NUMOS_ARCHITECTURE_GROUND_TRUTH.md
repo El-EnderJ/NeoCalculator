@@ -83,7 +83,7 @@ Math is a **three-engine stack**: (1) the VPAM structural editor/evaluator (`vpa
 | `docs/` | Documentation (mixed freshness) | `PROJECT_BIBLE.md` (898, partially stale — see delta doc), `NUMOS_MATH_ENGINE_SPEC.md`, `MATH_ENGINE.md`, `ROADMAP.md`, `emulator-sdl2-quickstart.md` (accurate), `HARDWARE.md`, `KEYBOARD_LAYOUT.md`, `math-renderer-acceptance.md`, `GLYPH_INVENTORY.md`, `NeoLanguage.md`, `es/` | Treat as possibly stale until checked against source |
 | `.github/workflows/` | CI | `compile-and-release.yml` (firmware build+release on `main`), `emulator-build.yml` (emulator build + 9 gate phases + golden compare) | See §K |
 | `platformio.ini` | 6 build environments | 266 lines | `build_dir` Windows path (line 6); emulator whitelist (195-266) |
-| Top-level cruft | `build_output.log`, `pio_error.log` (stale UTF-16 Windows logs of an old failed build — the error at `TutorTemplates.cpp:25` no longer exists in source), `compile_commands.json` (23 MB generated), `User_Setup.h`, `wokwi.toml`+`diagram.json` (stale), `archive/`, `info/`, `emulator_data/`, `boards/esp32-s3-devkitc-1-n16r8.json` | Logs/`compile_commands.json` should be removed/ignored |
+| Top-level cruft | `build_output.log`, `pio_error.log` (stale UTF-16 Windows logs of an old failed build — the error at `TutorTemplates.cpp:25` no longer exists in source), `compile_commands.json` (23 MB generated), `User_Setup.h`, `wokwi.toml`+`diagram.json` (stale), `archive/`, `info/`, `emulator_data/` | Logs/`compile_commands.json` should be removed/ignored; the custom NumOS board manifest is authoritative hardware configuration, not cruft |
 
 ---
 
@@ -224,7 +224,7 @@ Golden pipeline: `scripts/generate-emulator-candidates.py` runs a fixed list of 
 
 ## E. Build architecture (PlatformIO environments)
 
-Global: `build_dir = C:/.piobuild/numOS` (`platformio.ini:6`) — see risk R-9. `boards_dir = boards` provides the custom `esp32-s3-devkitc-1-n16r8.json`.
+Global: `build_dir = C:/.piobuild/numOS` (`platformio.ini:6`) — see risk R-9. `boards_dir = boards` provides the authoritative custom `numos-esp32-s3-n16r8-cam.json` manifest.
 
 | Env | Purpose | Key flags (delta) | Sources | Excluded | Traps |
 |---|---|---|---|---|---|
@@ -312,7 +312,7 @@ Covered in §D/§E; additional operational facts:
 
 ## J. Hardware architecture
 
-- **MCU**: ESP32-S3 N16R8 — 16 MB QIO flash @80 MHz, 8 MB OPI PSRAM, 240 MHz, `qio_opi` memory type mandatory (`platformio.ini:25-31`; custom board `boards/esp32-s3-devkitc-1-n16r8.json`). Partition table `default_16MB.csv` (framework-provided; not in repo).
+- **MCU**: ESP32-S3R8 N16R8 class — 16 MB flash with a DIO ROM header and QIO second-stage/runtime access @80 MHz, 8 MB OPI PSRAM @80 MHz, 240 MHz CPU, and mandatory `qio_opi` Arduino memory type (`boards/numos-esp32-s3-n16r8-cam.json`). Partition table `default_16MB.csv` is framework-provided. See `docs/ESP32_BOOT_FLASHING.md` before writing offset zero.
 - **Display**: ILI9341 IPS 240×320 on FSPI (`USE_FSPI_PORT` mandatory — SPI port 0 base addr is 0 on S3 → StoreProhibited, PROJECT_BIBLE §5), rotation 1 → logical 320×240 (`Config.h:46-49`), BGR order, SPI 40 MHz (`platformio.ini:71` — PROJECT_BIBLE's "10 MHz" is stale), backlight GPIO 45 wired always-on (no PWM driver yet).
 - **Keyboard matrix**: designed 5×10 (pins §D); **only 3 columns physically wired** (`Config.h:63,68`) and **scanning compiled off** (`Keyboard.h:82`). Legacy 6×8 `KeyMatrix` retained but never instantiated (`main.cpp:35`).
 - **PSRAM users**: LVGL allocations >512 B (`lv_conf.h:74` cutoff), MathAST `operator new`, cas:: arenas/allocator, Giac allocations (`GiacAlloc.cpp`), big app buffers (Fluid2D, ParticleLab, NeuralLab, Python heap, NeoArena). LVGL **draw buffer** is the explicit exception (internal DMA only).

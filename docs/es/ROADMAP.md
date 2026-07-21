@@ -114,7 +114,7 @@
 
 | Fix | Problema | Solucin Aplicada |
 |:----|:---------|:------------------|
-| ? | Crash `Illegal instruction` en boot | `board_build.arduino.memory_type = qio_opi` + `flash_mode = qio` |
+| ? | Modos de flash/PSRAM incompatibles | Cabecera ROM DIO + segunda etapa QIO + `memory_type = qio_opi` |
 | ? | Crash en `TFT_eSPI::begin()` addr `0x10` | `-DUSE_FSPI_PORT` ? `SPI_PORT=2` ? `REG_SPI_BASE(2)=0x60024000` |
 | ? | Lneas y artefactos en pantalla | `SPI_FREQUENCY=10000000` (10 MHz) |
 | ? | LVGL pantalla siempre negra | `heap_caps_malloc(DMA+8BIT)`  jams `ps_malloc` para buffers LVGL |

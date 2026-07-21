@@ -24,12 +24,10 @@
 
 ### Configuración de memoria (CRÍTICA en PlatformIO)
 
-```ini
-board_build.arduino.memory_type = qio_opi   ; Flash QIO + PSRAM OPI
-board_build.flash_mode          = qio        ; Modo de Flash
-board_upload.flash_size         = 16MB
-board_build.partitions          = default_16MB.csv
-```
+La configuración autoritativa está en
+`boards/numos-esp32-s3-n16r8-cam.json`: cabecera ROM DIO, segunda etapa y
+flash runtime QIO, PSRAM OPI, 80 MHz y 16 MB. Consulta
+`docs/ESP32_BOOT_FLASHING.md` antes de escribir una imagen en offset cero.
 
 &gt; ⚠️ **Si no se especifica `qio_opi`**, el ESP-IDF intenta inicializar la PSRAM en modo SPI estándar y el arranque termina en `Guru Meditation: Illegal Instruction` inmediatamente.
 
@@ -248,7 +246,9 @@ Para pruebas sin teclado físico, la calculadora puede controlarse desde el Seri
 
 ## 6. USB Serial — Procedimiento de Conexión
 
-El ESP32-S3 usa su USB CDC nativo. Después de flashear:
+La placa validada usa el puente USB-UART CH343 y NumOS de producción usa
+UART0. El USB CDC nativo queda desactivado en producción y solo se habilita en
+el entorno de validación opcional. Después de flashear:
 
 1. **Espera ~3 segundos** tras el upload.
 2. Abre el Serial Monitor con `monitor_rts=0`.

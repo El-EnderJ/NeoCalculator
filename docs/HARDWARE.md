@@ -16,7 +16,7 @@
 | Parameter | Value |
 |:----------|:------|
 | **MCU** | ESP32-S3 (dual-core Xtensa LX7 @ 240 MHz) |
-| **Flash** | 16 MB — Quad SPI (QIO) |
+| **Flash** | 16 MB — DIO ROM boot header, QIO runtime |
 | **PSRAM** | 8 MB — Octal SPI (OPI) |
 | **USB** | Native USB 1.1 Full-Speed (CDC + JTAG) |
 | **GPIO** | 45 pins (no ADC-only inputs like classic ESP32) |
@@ -24,12 +24,17 @@
 
 ### Memory Configuration (CRITICAL in PlatformIO)
 
-```ini
-board_build.arduino.memory_type = qio_opi   ; Flash QIO + PSRAM OPI
-board_build.flash_mode          = qio        ; Flash mode
-board_upload.flash_size         = 16MB
-board_build.partitions          = default_16MB.csv
+The authoritative values live in `boards/numos-esp32-s3-n16r8-cam.json`:
+
+```text
+build.flash_mode          = dio       # ROM header
+build.boot                = qio       # second-stage/runtime flash
+build.arduino.memory_type = qio_opi   # QIO flash + OPI PSRAM libraries
+upload.flash_size         = 16MB
 ```
+
+See [ESP32_BOOT_FLASHING.md](ESP32_BOOT_FLASHING.md) before creating or
+flashing any image at offset zero. ESP32-S3 ROM cannot load a QIO header.
 
 &gt; ⚠️ **If `qio_opi` is not specified**, ESP-IDF attempts to initialize PSRAM in standard SPI mode and boot ends with `Guru Meditation: Illegal Instruction` immediately.
 
@@ -246,7 +251,9 @@ For testing without physical keyboard, the calculator can be controlled from PC 
 
 ## 6. USB Serial — Connection Procedure
 
-ESP32-S3 uses its native USB CDC. After flashing:
+The validated carrier uses its CH343 USB-UART bridge and production NumOS uses
+UART0. Native ESP32-S3 USB CDC is disabled in the production environment and
+is available only in the opt-in USB CDC validation environment. After flashing:
 
 1. **Wait ~3 seconds** after upload.
 2. Open Serial Monitor with `monitor_rts=0`.

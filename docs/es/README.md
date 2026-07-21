@@ -53,7 +53,7 @@
 
 ## ¿Qué es NumOS?
 
-**NumOS** es un sistema operativo de calculadora científica y graficadora de código abierto, construido sobre el microcontrolador **ESP32-S3 N16R8** (16 MB Flash QIO + 8 MB PSRAM OPI). Es un proyecto que aspira a convertirse en la mejor calculadora open-source del mundo, rivalizando con la Casio fx-991EX ClassWiz, la NumWorks, la TI-84 Plus CE y la HP Prime G2.
+**NumOS** es un sistema operativo de calculadora científica y graficadora de código abierto, construido sobre el microcontrolador **ESP32-S3 N16R8** (16 MB flash runtime QIO con cabecera ROM DIO + 8 MB PSRAM OPI). Es un proyecto que aspira a convertirse en la mejor calculadora open-source del mundo, rivalizando con la Casio fx-991EX ClassWiz, la NumWorks, la TI-84 Plus CE y la HP Prime G2.
 
 **NumOS incorpora:**
 
@@ -326,8 +326,11 @@ cd numOS
 # Solo compilar
 pio run -e esp32s3_n16r8
 
-# Compilar y flashear al ESP32-S3
-pio run -e esp32s3_n16r8 --target upload
+# Crear un paquete de producción/recuperación validado
+python scripts/esp32_boot.py package
+
+# Actualización solo de la aplicación
+python scripts/esp32_boot.py flash-app --port <PORT>
 
 # Abrir monitor serial (115 200 baud)
 pio device monitor
@@ -514,7 +517,7 @@ Problemas descubiertos y resueltos durante el bring-up. **Esenciales** para cual
 
 | # | Problema | Síntoma | Solución |
 |:-:|:---------|:--------|:---------|
-| **①** | Flash OPI Panic | Boot → `Guru Meditation: Illegal instruction` | `memory_type = qio_opi` + `flash_mode = qio` |
+| **①** | Modos flash/PSRAM incompatibles | Watchdog ROM o fallo PSRAM | Cabecera ROM DIO + segunda etapa QIO + `memory_type = qio_opi` |
 | **②** | SPI StoreProhibited | Crash en `TFT_eSPI::begin()` dirección `0x10` | `-DUSE_FSPI_PORT` → `SPI_PORT=2` → `REG_SPI_BASE(2)=0x60024000` |
 | **③** | Ruido de pantalla | Líneas horizontales y artefactos visuales | Reducir SPI a 10 MHz: `-DSPI_FREQUENCY=10000000` |
 | **④** | Pantalla negra LVGL | `lv_timer_handler()` invoca flush pero no aparece imagen | Buffers con `heap_caps_malloc(MALLOC_CAP_DMA|MALLOC_CAP_8BIT)` — **jamás** `ps_malloc` |

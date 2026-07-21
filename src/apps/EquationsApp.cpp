@@ -41,6 +41,7 @@
 #include "../math/cas/PersistentAST.h"
 #include "../math/cas/RuleEngine.h"
 #include "../math/cas/TutorTemplates.h"
+#include "../utils/HwUxProbe.h"
 #ifdef ARDUINO
 #include "Arduino.h"
 #include <esp_heap_caps.h>
@@ -2312,6 +2313,7 @@ void EquationsApp::solveEquations() {
 }
 
 void EquationsApp::solveWithGiac() {
+    numos::HwUxProbe hwux("equations", "solve");
     showSolving();
 
     _isOmniSolve = (_numEquations == 1);
@@ -2387,6 +2389,19 @@ void EquationsApp::solveWithGiac() {
     }
 
     showResult();
+
+    const char* status = _giacResult.ok() ? "ok" : "error";
+    const char* kind = _resultKind == ResultKind::Structured
+        ? "structured" : (_resultKind == ResultKind::TextFallback
+        ? "text_fallback" : "none");
+    uint32_t hash = 2166136261u;
+    for (const auto& group : _giacResult.groups) {
+        for (const auto& value : group.values) {
+            hash ^= numos::hwUxHash(value.exactText.c_str());
+            hash *= 16777619u;
+        }
+    }
+    hwux.finish(status, kind, "giac", hash);
 }
 
 void EquationsApp::generateTutorCandidate() {

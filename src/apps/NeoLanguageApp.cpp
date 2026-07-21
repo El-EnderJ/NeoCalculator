@@ -37,6 +37,7 @@
 #include <cctype>
 #include <cmath>
 #include <string>
+#include "../utils/HwUxProbe.h"
 
 #ifdef ARDUINO
   #include <LittleFS.h>
@@ -619,6 +620,7 @@ void NeoLanguageApp::runCode() {
         return;
     }
 
+    numos::HwUxProbe hwux("neolang", "run");
     clearConsole();
     appendConsole("[NeoLang] Running...\n");
 
@@ -716,6 +718,16 @@ void NeoLanguageApp::runCode() {
         showPlot(interp.takeCompiledPlot(), xMin, xMax);
         interp.clearPlotRequest();
     }
+
+    uint32_t giacCalls = 0;
+    for (size_t i = 0; i < static_cast<size_t>(NeoMathOperation::Count); ++i) {
+        giacCalls += _mathBackend.count(
+            NeoMathEngine::Giac, static_cast<NeoMathOperation>(i));
+    }
+    hwux.finish(_mathBackend.lastStatus() == numos::MathEngineStatus::Ok
+                    ? "ok" : "no_math_or_error",
+                giacCalls ? "math" : "language",
+                _mathBackend.engineName(), giacCalls);
 }
 
 // ═════════════════════════════════════════════════════════════════

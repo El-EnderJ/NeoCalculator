@@ -30,6 +30,7 @@
 #include "CalculusApp.h"
 #include "../math/MathAST.h"
 #include "../math/cas/SymToAST.h"
+#include "../utils/HwUxProbe.h"
 #include <cmath>
 #include <cstdlib>
 
@@ -868,6 +869,9 @@ void CalculusApp::computeResult() {
         return;
     }
 
+    numos::HwUxProbe hwux("calculus",
+        _calcMode == CalcMode::DERIVATIVE ? "differentiate" : "integrate");
+
     // Show computing animation
     showComputing();
 
@@ -879,6 +883,12 @@ void CalculusApp::computeResult() {
     _integralFound = false;
     _resultKind = ResultKind::None;
     computeGiacResult();
+
+    const char* kind = _resultKind == ResultKind::Structured
+        ? "structured" : (_resultKind == ResultKind::TextFallback
+        ? "text_fallback" : "none");
+    hwux.finish(debugStatusName(), kind, "giac",
+                 numos::hwUxHash(_giacResult.exactText.c_str()));
 }
 
 void CalculusApp::computeGiacResult() {

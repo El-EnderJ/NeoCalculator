@@ -20,6 +20,7 @@
  * since LV_USE_CANVAS / LV_USE_TABLE / LV_USE_TABVIEW = 0.
  */
 #include "GrapherApp.h"
+#include "../utils/HwUxProbe.h"
 #include <cstring>
 #include <cmath>
 #include <cstdio>
@@ -826,7 +827,8 @@ void GrapherApp::switchTab(Tab t) {
         lv_obj_remove_flag(_panelExpr, LV_OBJ_FLAG_HIDDEN);
         refreshExprList();
         break;
-    case Tab::GRAPH:
+    case Tab::GRAPH: {
+        numos::HwUxProbe hwux("grapher", "plot");
         if (!_panelGraph) {
             Serial.println("[GRAPHER] graphPanel (lazy)...");
             createGraphPanel();
@@ -890,7 +892,14 @@ void GrapherApp::switchTab(Tab t) {
             }
         }
         updateInfoBar();
+        int validCount = 0;
+        for (int i = 0; i < _numFuncs; ++i) {
+            if (_funcs[i].valid && _funcs[i].visible) ++validCount;
+        }
+        hwux.finish(validCount > 0 ? "ok" : "no_valid_curve",
+                    "raster", "giac", static_cast<uint32_t>(validCount));
         break;
+    }
     case Tab::TABLE:
         if (_tblHeaderBar) lv_obj_remove_flag(_tblHeaderBar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);

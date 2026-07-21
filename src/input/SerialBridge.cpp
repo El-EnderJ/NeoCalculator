@@ -159,7 +159,8 @@ void SerialBridge::processChar(int ch) {
             return;
         }
 
-        // Case-insensitive keyword checks (HOME, AC, DEL, ENTER, EXE, F1, F2)
+        // Case-insensitive keyword checks. Named keys keep the PC bridge usable
+        // for keys that have no unambiguous single-character representation.
         std::string upper = line;
         std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return std::toupper(c); });
         if (upper == "HOME") { push(KeyCode::MODE, "MODE/HOME"); inputBuffer.clear(); return; }
@@ -169,6 +170,17 @@ void SerialBridge::processChar(int ch) {
         if (upper == "EXE")  { push(KeyCode::EXE, "EXE"); inputBuffer.clear(); return; }
         if (upper == "F1")   { push(KeyCode::F1, "F1"); inputBuffer.clear(); return; }
         if (upper == "F2")   { push(KeyCode::F2, "F2"); inputBuffer.clear(); return; }
+        if (upper == "F3")   { push(KeyCode::F3, "F3"); inputBuffer.clear(); return; }
+        if (upper == "F4")   { push(KeyCode::F4, "F4"); inputBuffer.clear(); return; }
+        if (upper == "F5")   { push(KeyCode::F5, "F5"); inputBuffer.clear(); return; }
+        if (upper == "SIN")  { push(KeyCode::SIN, "SIN"); inputBuffer.clear(); return; }
+        if (upper == "COS")  { push(KeyCode::COS, "COS"); inputBuffer.clear(); return; }
+        if (upper == "TAN")  { push(KeyCode::TAN, "TAN"); inputBuffer.clear(); return; }
+        if (upper == "LN")   { push(KeyCode::LN, "LN"); inputBuffer.clear(); return; }
+        if (upper == "LOG")  { push(KeyCode::LOG, "LOG"); inputBuffer.clear(); return; }
+        if (upper == "SQRT") { push(KeyCode::SQRT, "SQRT"); inputBuffer.clear(); return; }
+        if (upper == "ANS")  { push(KeyCode::ANS, "ANS"); inputBuffer.clear(); return; }
+        if (upper == "PI")   { push(KeyCode::CONST_PI, "PI"); inputBuffer.clear(); return; }
 
         // Single character line: map to key codes (preserve previous mappings)
         if (line.size() == 1) {

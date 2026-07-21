@@ -39,6 +39,7 @@
 #include "../math/cas/SymSimplify.h"
 #include "../math/cas/SymExprToAST.h"
 #include "../ui/MathTypography.h"
+#include "../utils/HwUxProbe.h"
 #ifdef NATIVE_SIM
   #include <cstdio>
 #endif
@@ -528,6 +529,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 
 void CalculationApp::evaluateExpression() {
     if (!_rootRow) return;
+    numos::HwUxProbe hwux("calculation", "evaluate");
 
     // Giac is the mathematical authority for Calculation.
     // Serialize the authored VPAM tree, mirror A-F/Ans/PreAns into the Giac
@@ -633,6 +635,20 @@ void CalculationApp::evaluateExpression() {
     }
 
     showResult();
+
+    const char* status = "error";
+    switch (_lastStatus) {
+        case numos::MathEngineStatus::Ok: status = "ok"; break;
+        case numos::MathEngineStatus::Undefined: status = "undefined"; break;
+        case numos::MathEngineStatus::ParseError: status = "parse_error"; break;
+        case numos::MathEngineStatus::EvaluationError: status = "evaluation_error"; break;
+        case numos::MathEngineStatus::Unsupported: status = "unsupported"; break;
+        case numos::MathEngineStatus::OutOfMemory: status = "out_of_memory"; break;
+    }
+    const char* kind = _lastKind == numos::CalcResultKind::Structured
+        ? "structured" : (_lastKind == numos::CalcResultKind::TextFallback
+        ? "text_fallback" : "none");
+    hwux.finish(status, kind, "giac", numos::hwUxHash(_exactText.c_str()));
 }
 
 // ════════════════════════════════════════════════════════════════════════════

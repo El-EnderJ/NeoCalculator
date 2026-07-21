@@ -1439,6 +1439,411 @@ void NodeSubscript::setSubscript(NodePtr node) {
     _subscript->setParent(this);
 }
 
+// MATH-RESULTS-01 semantic result nodes. Ownership is established before
+// layout; the routines below use fixed-capacity geometry and allocate nothing.
+
+constexpr int32_t kResultWidthOverflowSentinel = 4097;
+constexpr int32_t kResultHeightOverflowSentinel = 1025;
+
+static int16_t boundedTextWidth(const std::string& text,
+                                const FontMetrics& fm) {
+    int glyphs = 0;
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(text.c_str());
+    while (*p) {
+        uint32_t cp = 0;
+        const uint8_t used = utf8Decode(p, cp);
+        if (used == 0) break;
+        p += used;
+        ++glyphs;
+    }
+    if (glyphs == 0) glyphs = 1;
+    return static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        static_cast<int32_t>(fm.charWidth) * glyphs));
+}
+
+static void setTextLayout(MathNode* node, LayoutResult& layout,
+                          const std::string& text, const FontMetrics& fm) {
+    applyScriptLevel(node, fm);
+    layout.width = boundedTextWidth(text, fm);
+    layout.ascent = fm.ascent;
+    layout.descent = fm.descent;
+    layout.inkAscent = fm.ascent;
+    layout.inkDescent = fm.descent;
+}
+
+NodeSymbol::NodeSymbol(std::string name)
+    : MathNode(NodeType::Symbol), _name(std::move(name)) {}
+
+void NodeSymbol::calculateLayout(const FontMetrics& fm) {
+    setTextLayout(this, _layout, _name, fm);
+}
+
+NodeSpecialValue::NodeSpecialValue(SpecialValueKind kind)
+    : MathNode(NodeType::SpecialValue), _kind(kind) {}
+
+const char* NodeSpecialValue::label() const {
+    switch (_kind) {
+        case SpecialValueKind::PositiveInfinity: return "+\xE2\x88\x9E";
+        case SpecialValueKind::NegativeInfinity: return "-\xE2\x88\x9E";
+        case SpecialValueKind::UnsignedInfinity: return "\xE2\x88\x9E";
+        case SpecialValueKind::Undefined:        return "undefined";
+    }
+    return "undefined";
+}
+
+void NodeSpecialValue::calculateLayout(const FontMetrics& fm) {
+    setTextLayout(this, _layout, label(), fm);
+}
+
+NodeCollection::NodeCollection(CollectionKind kind)
+    : MathNode(NodeType::Collection), _kind(kind) {}
+
+int NodeCollection::childCount() const {
+    return static_cast<int>(_elements.size());
+}
+
+MathNode* NodeCollection::child(int index) const {
+    return index >= 0 && index < childCount() ? _elements[index].get() : nullptr;
+}
+
+void NodeCollection::appendElement(NodePtr element) {
+    if (!element || _elements.size() >= 32) return;
+    element->setParent(this);
+    _elements.push_back(std::move(element));
+}
+
+void NodeCollection::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
+    LayoutResult content{};
+    content.ascent = fm.ascent;
+    content.descent = fm.descent;
+    _separatorWidth = static_cast<int16_t>(fm.charWidth +
+        MathConstantsProvider(fm.emSize).muToPx(3));
+    for (size_t i = 0; i < _elements.size(); ++i) {
+        _elements[i]->calculateLayout(fm);
+        const auto& childLayout = _elements[i]->layout();
+        content.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+            static_cast<int32_t>(content.width) + childLayout.width +
+            (i + 1 < _elements.size() ? _separatorWidth : 0)));
+        content.ascent = std::max(content.ascent, childLayout.ascent);
+        content.descent = std::max(content.descent, childLayout.descent);
+    }
+    AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
+        content, fm, delimiterVerticalPadPx(content, fm));
+    _delimiterWidth = assembledDelimiterWidthPx(geom, fm, leftCp());
+    _innerPad = std::max<int16_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(1));
+    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        static_cast<int32_t>(content.width) + 2 * _delimiterWidth +
+        2 * _innerPad));
+    _layout.ascent = geom.ascent;
+    _layout.descent = geom.descent;
+}
+
+NodeEquation::NodeEquation(NodePtr lhs, NodePtr rhs, EquationKind kind)
+    : MathNode(NodeType::Equation),
+      _lhs(lhs ? std::move(lhs) : makeEmptyRow()),
+      _rhs(rhs ? std::move(rhs) : makeEmptyRow()), _kind(kind) {
+    _lhs->setParent(this);
+    _rhs->setParent(this);
+}
+
+MathNode* NodeEquation::child(int index) const {
+    if (index == 0) return _lhs.get();
+    if (index == 1) return _rhs.get();
+    return nullptr;
+}
+
+void NodeEquation::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
+    _lhs->calculateLayout(fm);
+    _rhs->calculateLayout(fm);
+    _relationWidth = fm.charWidth;
+    _relationGap = std::max<int16_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(5));
+    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        static_cast<int32_t>(_lhs->layout().width) + _rhs->layout().width +
+        _relationWidth + 2 * _relationGap));
+    _layout.ascent = std::max({_lhs->layout().ascent,
+                               _rhs->layout().ascent, fm.ascent});
+    _layout.descent = std::max({_lhs->layout().descent,
+                                _rhs->layout().descent, fm.descent});
+}
+
+NodeMatrix::NodeMatrix(uint8_t rows, uint8_t columns)
+    : MathNode(NodeType::Matrix),
+      _rows(std::min(rows, kCapacity)),
+      _columns(std::min(columns, kCapacity)) {
+    _cells.resize(static_cast<size_t>(_rows) * _columns);
+}
+
+int NodeMatrix::childCount() const { return static_cast<int>(_cells.size()); }
+
+MathNode* NodeMatrix::child(int index) const {
+    return index >= 0 && index < childCount() ? _cells[index].get() : nullptr;
+}
+
+MathNode* NodeMatrix::cell(uint8_t row, uint8_t column) const {
+    if (row >= _rows || column >= _columns) return nullptr;
+    return _cells[static_cast<size_t>(row) * _columns + column].get();
+}
+
+bool NodeMatrix::setCell(uint8_t row, uint8_t column, NodePtr value) {
+    if (!value || row >= _rows || column >= _columns) return false;
+    value->setParent(this);
+    _cells[static_cast<size_t>(row) * _columns + column] = std::move(value);
+    return true;
+}
+
+int16_t NodeMatrix::columnWidth(uint8_t column) const {
+    return column < _columns ? _columnWidths[column] : 0;
+}
+
+int16_t NodeMatrix::rowBaseline(uint8_t row) const {
+    return row < _rows ? _rowBaselines[row] : 0;
+}
+
+void NodeMatrix::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
+    _columnWidths.fill(0);
+    _rowAscents.fill(0);
+    _rowDescents.fill(0);
+    const auto mc = MathConstantsProvider(fm.emSize);
+    _horizontalPad = std::max<int16_t>(1, mc.muToPx(2));
+    _verticalPad = std::max<int16_t>(1, mc.muToPx(2));
+    for (uint8_t row = 0; row < _rows; ++row) {
+        for (uint8_t column = 0; column < _columns; ++column) {
+            MathNode* value = cell(row, column);
+            if (!value) continue;
+            value->calculateLayout(fm);
+            const auto& cellLayout = value->layout();
+            _columnWidths[column] = std::max(_columnWidths[column], cellLayout.width);
+            _rowAscents[row] = std::max(_rowAscents[row], cellLayout.ascent);
+            _rowDescents[row] = std::max(_rowDescents[row], cellLayout.descent);
+        }
+        if (_rowAscents[row] == 0) _rowAscents[row] = fm.ascent;
+        if (_rowDescents[row] == 0) _rowDescents[row] = fm.descent;
+    }
+    int32_t contentWidth = 0;
+    for (uint8_t column = 0; column < _columns; ++column)
+        contentWidth += _columnWidths[column] + 2 * _horizontalPad;
+    int32_t contentHeight = 0;
+    for (uint8_t row = 0; row < _rows; ++row)
+        contentHeight += _rowAscents[row] + _rowDescents[row] +
+            (row + 1 < _rows ? _verticalPad : 0);
+    contentHeight = std::min<int32_t>(kResultHeightOverflowSentinel, contentHeight);
+    const int16_t axis = fm.axisHeight();
+    LayoutResult content{};
+    content.width = static_cast<int16_t>(std::min<int32_t>(
+        kResultWidthOverflowSentinel, contentWidth));
+    content.ascent = static_cast<int16_t>(axis + (contentHeight + 1) / 2);
+    content.descent = static_cast<int16_t>(contentHeight - (content.ascent - axis));
+    int16_t top = static_cast<int16_t>(-content.ascent);
+    for (uint8_t row = 0; row < _rows; ++row) {
+        _rowBaselines[row] = static_cast<int16_t>(top + _rowAscents[row]);
+        top = static_cast<int16_t>(top + _rowAscents[row] +
+            _rowDescents[row] + (row + 1 < _rows ? _verticalPad : 0));
+    }
+    AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
+        content, fm, delimiterVerticalPadPx(content, fm));
+    _delimiterWidth = assembledDelimiterWidthPx(geom, fm, 0x005B);
+    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        contentWidth + 2 * _delimiterWidth));
+    _layout.ascent = geom.ascent;
+    _layout.descent = geom.descent;
+}
+
+NodeInterval::NodeInterval(NodePtr lower, NodePtr upper,
+                           bool leftClosed, bool rightClosed)
+    : MathNode(NodeType::Interval),
+      _lower(lower ? std::move(lower) : makeEmptyRow()),
+      _upper(upper ? std::move(upper) : makeEmptyRow()),
+      _leftClosed(leftClosed), _rightClosed(rightClosed) {
+    _lower->setParent(this);
+    _upper->setParent(this);
+}
+
+MathNode* NodeInterval::child(int index) const {
+    if (index == 0) return _lower.get();
+    if (index == 1) return _upper.get();
+    return nullptr;
+}
+
+void NodeInterval::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
+    _lower->calculateLayout(fm);
+    _upper->calculateLayout(fm);
+    _separatorWidth = static_cast<int16_t>(fm.charWidth +
+        MathConstantsProvider(fm.emSize).muToPx(3));
+    _innerPad = std::max<int16_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(1));
+    LayoutResult content{};
+    content.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        static_cast<int32_t>(_lower->layout().width) + _upper->layout().width +
+        _separatorWidth));
+    content.ascent = std::max(_lower->layout().ascent, _upper->layout().ascent);
+    content.descent = std::max(_lower->layout().descent, _upper->layout().descent);
+    AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
+        content, fm, delimiterVerticalPadPx(content, fm));
+    _delimiterWidth = assembledDelimiterWidthPx(geom, fm, leftCp());
+    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        static_cast<int32_t>(content.width) + 2 * _delimiterWidth + 2 * _innerPad));
+    _layout.ascent = geom.ascent;
+    _layout.descent = geom.descent;
+}
+
+NodePiecewise::NodePiecewise() : MathNode(NodeType::Piecewise) {}
+
+bool NodePiecewise::appendBranch(NodePtr expression, NodePtr condition,
+                                 bool otherwise) {
+    if (!expression || _branches.size() >= kCapacity ||
+        (!otherwise && !condition)) return false;
+    expression->setParent(this);
+    if (condition) condition->setParent(this);
+    _branches.push_back({std::move(expression), std::move(condition), otherwise});
+    return true;
+}
+
+int NodePiecewise::childCount() const {
+    int count = 0;
+    for (const auto& branch : _branches)
+        count += branch.condition ? 2 : 1;
+    return count;
+}
+
+MathNode* NodePiecewise::child(int index) const {
+    for (const auto& branch : _branches) {
+        if (index-- == 0) return branch.expression.get();
+        if (branch.condition && index-- == 0) return branch.condition.get();
+    }
+    return nullptr;
+}
+
+void NodePiecewise::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
+    _expressionColumnWidth = 0;
+    _conditionColumnWidth = 0;
+    _columnGap = std::max<int16_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(4));
+    const int16_t rowGap = std::max<int16_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(2));
+    std::array<int16_t, kCapacity> rowAscents{};
+    std::array<int16_t, kCapacity> rowDescents{};
+    int32_t totalHeight = 0;
+    for (size_t i = 0; i < _branches.size(); ++i) {
+        auto& branch = _branches[i];
+        branch.expression->calculateLayout(fm);
+        const auto& expressionLayout = branch.expression->layout();
+        _expressionColumnWidth = std::max(_expressionColumnWidth,
+                                          expressionLayout.width);
+        rowAscents[i] = expressionLayout.ascent;
+        rowDescents[i] = expressionLayout.descent;
+        if (branch.condition) {
+            branch.condition->calculateLayout(fm);
+            const auto& conditionLayout = branch.condition->layout();
+            _conditionColumnWidth = std::max(_conditionColumnWidth,
+                static_cast<int16_t>(conditionLayout.width +
+                    boundedTextWidth("if ", fm)));
+            rowAscents[i] = std::max(rowAscents[i], conditionLayout.ascent);
+            rowDescents[i] = std::max(rowDescents[i], conditionLayout.descent);
+        } else {
+            _conditionColumnWidth = std::max(_conditionColumnWidth,
+                boundedTextWidth("otherwise", fm));
+        }
+        totalHeight += rowAscents[i] + rowDescents[i] +
+            (i + 1 < _branches.size() ? rowGap : 0);
+    }
+    totalHeight = std::min<int32_t>(kResultHeightOverflowSentinel, totalHeight);
+    const int16_t axis = fm.axisHeight();
+    LayoutResult content{};
+    content.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        static_cast<int32_t>(_expressionColumnWidth) + _columnGap +
+        _conditionColumnWidth));
+    content.ascent = static_cast<int16_t>(axis + (totalHeight + 1) / 2);
+    content.descent = static_cast<int16_t>(totalHeight - (content.ascent - axis));
+    int16_t top = static_cast<int16_t>(-content.ascent);
+    for (size_t i = 0; i < _branches.size(); ++i) {
+        _rowBaselines[i] = static_cast<int16_t>(top + rowAscents[i]);
+        top = static_cast<int16_t>(top + rowAscents[i] + rowDescents[i] +
+            (i + 1 < _branches.size() ? rowGap : 0));
+    }
+    AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
+        content, fm, delimiterVerticalPadPx(content, fm));
+    _braceWidth = assembledDelimiterWidthPx(geom, fm, 0x007B);
+    _bracePad = MathConstantsProvider(fm.emSize).muToPx(2);
+    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        static_cast<int32_t>(content.width) + _braceWidth +
+        _bracePad));
+    _layout.ascent = geom.ascent;
+    _layout.descent = geom.descent;
+}
+
+NodeCall::NodeCall(std::string name)
+    : MathNode(NodeType::Call), _name(std::move(name)) {}
+
+void NodeCall::appendArgument(NodePtr argument) {
+    if (!argument || _arguments.size() >= 32) return;
+    argument->setParent(this);
+    _arguments.push_back(std::move(argument));
+}
+
+int NodeCall::childCount() const { return static_cast<int>(_arguments.size()); }
+
+MathNode* NodeCall::child(int index) const {
+    return index >= 0 && index < childCount() ? _arguments[index].get() : nullptr;
+}
+
+void NodeCall::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
+    _labelWidth = boundedTextWidth(_name, fm);
+    _separatorWidth = static_cast<int16_t>(fm.charWidth +
+        MathConstantsProvider(fm.emSize).muToPx(3));
+    LayoutResult content{};
+    content.ascent = fm.ascent;
+    content.descent = fm.descent;
+    for (size_t i = 0; i < _arguments.size(); ++i) {
+        _arguments[i]->calculateLayout(fm);
+        const auto& argumentLayout = _arguments[i]->layout();
+        content.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+            static_cast<int32_t>(content.width) + argumentLayout.width +
+            (i + 1 < _arguments.size() ? _separatorWidth : 0)));
+        content.ascent = std::max(content.ascent, argumentLayout.ascent);
+        content.descent = std::max(content.descent, argumentLayout.descent);
+    }
+    AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
+        content, fm, delimiterVerticalPadPx(content, fm));
+    _delimiterWidth = assembledDelimiterWidthPx(geom, fm, 0x0028);
+    _innerPad = std::max<int16_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(1));
+    _labelGap = MathConstantsProvider(fm.emSize).muToPx(2);
+    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        static_cast<int32_t>(_labelWidth) + content.width + 2 * _delimiterWidth +
+        2 * _innerPad + _labelGap));
+    _layout.ascent = std::max<int16_t>(geom.ascent, fm.ascent);
+    _layout.descent = std::max<int16_t>(geom.descent, fm.descent);
+}
+
+NodeUnevaluated::NodeUnevaluated(NodePtr expression)
+    : MathNode(NodeType::Unevaluated),
+      _expression(expression ? std::move(expression) : makeEmptyRow()) {
+    _expression->setParent(this);
+}
+
+MathNode* NodeUnevaluated::child(int index) const {
+    return index == 0 ? _expression.get() : nullptr;
+}
+
+void NodeUnevaluated::calculateLayout(const FontMetrics& fm) {
+    applyScriptLevel(this, fm);
+    _expression->calculateLayout(fm);
+    _labelWidth = boundedTextWidth("unevaluated", fm);
+    _gap = std::max<int16_t>(1, MathConstantsProvider(fm.emSize).muToPx(4));
+    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
+        static_cast<int32_t>(_labelWidth) + _gap + _expression->layout().width));
+    _layout.ascent = std::max<int16_t>(fm.ascent, _expression->layout().ascent);
+    _layout.descent = std::max<int16_t>(fm.descent, _expression->layout().descent);
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1509,6 +1914,44 @@ NodePtr makeConstant(ConstKind kind) {
 
 NodePtr makeVariable(char name) {
     return std::make_unique<NodeVariable>(name);
+}
+
+NodePtr makeSymbol(const std::string& name) {
+    return std::make_unique<NodeSymbol>(name);
+}
+
+NodePtr makeSpecialValue(SpecialValueKind kind) {
+    return std::make_unique<NodeSpecialValue>(kind);
+}
+
+NodePtr makeCollection(CollectionKind kind) {
+    return std::make_unique<NodeCollection>(kind);
+}
+
+NodePtr makeEquation(NodePtr lhs, NodePtr rhs, EquationKind kind) {
+    return std::make_unique<NodeEquation>(std::move(lhs), std::move(rhs), kind);
+}
+
+NodePtr makeMatrix(uint8_t rows, uint8_t columns) {
+    return std::make_unique<NodeMatrix>(rows, columns);
+}
+
+NodePtr makeInterval(NodePtr lower, NodePtr upper,
+                     bool leftClosed, bool rightClosed) {
+    return std::make_unique<NodeInterval>(std::move(lower), std::move(upper),
+                                          leftClosed, rightClosed);
+}
+
+NodePtr makePiecewise() {
+    return std::make_unique<NodePiecewise>();
+}
+
+NodePtr makeCall(const std::string& name) {
+    return std::make_unique<NodeCall>(name);
+}
+
+NodePtr makeUnevaluated(NodePtr expression) {
+    return std::make_unique<NodeUnevaluated>(std::move(expression));
 }
 
 NodePtr makePeriodicDecimal(const std::string& intPart,
@@ -1728,6 +2171,38 @@ std::string dumpTree(const MathNode* node, int indent) {
             out += dumpTree(node->child(2), indent + 2);
             break;
         }
+        case NodeType::Symbol:
+            out += "Symbol \"" + static_cast<const NodeSymbol*>(node)->name() +
+                   "\"" + metrics() + "\n";
+            break;
+        case NodeType::SpecialValue:
+            out += std::string("SpecialValue ") +
+                   static_cast<const NodeSpecialValue*>(node)->label() +
+                   metrics() + "\n";
+            break;
+        case NodeType::Collection:
+        case NodeType::Equation:
+        case NodeType::Matrix:
+        case NodeType::Interval:
+        case NodeType::Piecewise:
+        case NodeType::Call:
+        case NodeType::Unevaluated: {
+            const char* name = "Semantic";
+            switch (node->type()) {
+                case NodeType::Collection: name = "Collection"; break;
+                case NodeType::Equation: name = "Equation"; break;
+                case NodeType::Matrix: name = "Matrix"; break;
+                case NodeType::Interval: name = "Interval"; break;
+                case NodeType::Piecewise: name = "Piecewise"; break;
+                case NodeType::Call: name = "Call"; break;
+                case NodeType::Unevaluated: name = "Unevaluated"; break;
+                default: break;
+            }
+            out += std::string(name) + metrics() + "\n";
+            for (int i = 0; i < node->childCount(); ++i)
+                out += dumpTree(node->child(i), indent + 1);
+            break;
+        }
     }
 
     return out;
@@ -1822,6 +2297,65 @@ NodePtr cloneNode(const MathNode* node) {
                              cloneNode(bo->lower()),
                              cloneNode(bo->upper()),
                              cloneNode(bo->body()));
+        }
+        case NodeType::Symbol:
+            return makeSymbol(static_cast<const NodeSymbol*>(node)->name());
+        case NodeType::SpecialValue:
+            return makeSpecialValue(
+                static_cast<const NodeSpecialValue*>(node)->specialKind());
+        case NodeType::Collection: {
+            const auto* source = static_cast<const NodeCollection*>(node);
+            auto result = makeCollection(source->collectionKind());
+            auto* collection = static_cast<NodeCollection*>(result.get());
+            for (int i = 0; i < source->childCount(); ++i)
+                collection->appendElement(cloneNode(source->child(i)));
+            return result;
+        }
+        case NodeType::Equation: {
+            const auto* equation = static_cast<const NodeEquation*>(node);
+            return makeEquation(cloneNode(equation->lhs()),
+                                cloneNode(equation->rhs()),
+                                equation->equationKind());
+        }
+        case NodeType::Matrix: {
+            const auto* source = static_cast<const NodeMatrix*>(node);
+            auto result = makeMatrix(source->rows(), source->columns());
+            auto* matrix = static_cast<NodeMatrix*>(result.get());
+            for (uint8_t row = 0; row < source->rows(); ++row)
+                for (uint8_t column = 0; column < source->columns(); ++column)
+                    matrix->setCell(row, column,
+                        cloneNode(source->cell(row, column)));
+            return result;
+        }
+        case NodeType::Interval: {
+            const auto* interval = static_cast<const NodeInterval*>(node);
+            return makeInterval(cloneNode(interval->lower()),
+                                cloneNode(interval->upper()),
+                                interval->leftClosed(),
+                                interval->rightClosed());
+        }
+        case NodeType::Piecewise: {
+            const auto* source = static_cast<const NodePiecewise*>(node);
+            auto result = makePiecewise();
+            auto* piecewise = static_cast<NodePiecewise*>(result.get());
+            for (uint8_t i = 0; i < source->branchCount(); ++i) {
+                const auto& branch = source->branch(i);
+                piecewise->appendBranch(cloneNode(branch.expression.get()),
+                    cloneNode(branch.condition.get()), branch.otherwise);
+            }
+            return result;
+        }
+        case NodeType::Call: {
+            const auto* source = static_cast<const NodeCall*>(node);
+            auto result = makeCall(source->name());
+            auto* call = static_cast<NodeCall*>(result.get());
+            for (int i = 0; i < source->childCount(); ++i)
+                call->appendArgument(cloneNode(source->child(i)));
+            return result;
+        }
+        case NodeType::Unevaluated: {
+            const auto* value = static_cast<const NodeUnevaluated*>(node);
+            return makeUnevaluated(cloneNode(value->expression()));
         }
     }
     return nullptr;  // unreachable

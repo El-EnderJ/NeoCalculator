@@ -1,4 +1,4 @@
-# GIAC-E01: a valid unevaluated Giac integral remains an exact text result.
+# MATH-RESULTS-01: a valid unevaluated Giac integral remains a semantic tree.
 wait 200
 open_app Calculus
 wait 60
@@ -13,6 +13,6 @@ wait 180
 assert_calculus_engine giac
 assert_calculus_operation integrate_indefinite
 assert_calculus_status ok
-assert_calculus_result_kind text_fallback
+assert_calculus_result_kind structured
 assert_calculus_result_exact integrate(sin(sin(x)),x)
 assert_calculus_tutor_status unavailable

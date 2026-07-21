@@ -20,6 +20,7 @@
 #include "CalculationEngine.h"
 #include "giac/EngineContracts.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -569,8 +570,12 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
 
         case EngineNodeKind::Symbol: {
             char c;
-            if (!mapSymbolChar(n.text, c)) return false;
-            row->appendChild(vpam::makeVariable(c));
+            if (mapSymbolChar(n.text, c))
+                row->appendChild(vpam::makeVariable(c));
+            else if (!n.text.empty())
+                row->appendChild(vpam::makeSymbol(n.text));
+            else
+                return false;
             return true;
         }
         case EngineNodeKind::Pi:
@@ -717,11 +722,23 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
         }
 
         case EngineNodeKind::Function: {
-            if (n.children.size() != 1) return false;
+            if (n.children.empty()) return false;
+            const std::string& f = n.text;
+            if (n.children.size() != 1) {
+                auto call = vpam::makeCall(f);
+                auto* callNode = static_cast<vpam::NodeCall*>(call.get());
+                for (const auto& child : n.children) {
+                    bool childOk = false;
+                    auto arg = convertToRow(child, depth + 1, childOk);
+                    if (!childOk) return false;
+                    callNode->appendArgument(std::move(arg));
+                }
+                row->appendChild(std::move(call));
+                return true;
+            }
             bool ok = false;
             auto arg = convertToRow(n.children[0], depth + 1, ok);
             if (!ok) return false;
-            const std::string& f = n.text;
             vpam::FuncKind kind;
             if      (f == "sin")   kind = vpam::FuncKind::Sin;
             else if (f == "cos")   kind = vpam::FuncKind::Cos;
@@ -742,18 +759,29 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
                     vpam::makeParen(std::move(arg), vpam::DelimKind::Bar));
                 return true;
             } else {
-                return false;
+                auto call = vpam::makeCall(f);
+                static_cast<vpam::NodeCall*>(call.get())->appendArgument(
+                    std::move(arg));
+                row->appendChild(std::move(call));
+                return true;
             }
             row->appendChild(vpam::makeFunction(kind, std::move(arg)));
             return true;
         }
 
-        case EngineNodeKind::Equation: {
+        case EngineNodeKind::Equation:
+        case EngineNodeKind::Assignment: {
             if (n.children.size() != 2) return false;
-            if (!appendConverted(n.children[0], row, PREC_NONE, depth + 1))
-                return false;
-            row->appendChild(vpam::makeRelation(vpam::OpKind::Eq));
-            return appendConverted(n.children[1], row, PREC_NONE, depth + 1);
+            bool lhsOk = false, rhsOk = false;
+            auto lhs = convertToRow(n.children[0], depth + 1, lhsOk);
+            auto rhs = convertToRow(n.children[1], depth + 1, rhsOk);
+            if (!lhsOk || !rhsOk) return false;
+            row->appendChild(vpam::makeEquation(
+                std::move(lhs), std::move(rhs),
+                n.kind == EngineNodeKind::Assignment
+                    ? vpam::EquationKind::Assignment
+                    : vpam::EquationKind::Equation));
+            return true;
         }
 
         case EngineNodeKind::Complex: {
@@ -764,6 +792,13 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
             if (im->kind == EngineNodeKind::Neg && im->children.size() == 1) {
                 imNeg = true;
                 im = &im->children[0];
+            }
+            EngineResultNode strippedIm;
+            if (numberIsNegative(*im)) {
+                imNeg = !imNeg;
+                strippedIm = *im;
+                strippedIm.text.erase(0, 1);
+                im = &strippedIm;
             }
             const bool reIsZero =
                 re.kind == EngineNodeKind::Integer && re.text == "0";
@@ -785,9 +820,112 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
         }
 
         case EngineNodeKind::PlusInfinity:
+            row->appendChild(vpam::makeSpecialValue(
+                vpam::SpecialValueKind::PositiveInfinity));
+            return true;
         case EngineNodeKind::MinusInfinity:
+            row->appendChild(vpam::makeSpecialValue(
+                vpam::SpecialValueKind::NegativeInfinity));
+            return true;
         case EngineNodeKind::UnsignedInfinity:
+            row->appendChild(vpam::makeSpecialValue(
+                vpam::SpecialValueKind::UnsignedInfinity));
+            return true;
+        case EngineNodeKind::Undefined:
+            row->appendChild(vpam::makeSpecialValue(
+                vpam::SpecialValueKind::Undefined));
+            return true;
+
         case EngineNodeKind::List:
+        case EngineNodeKind::Set: {
+            auto collection = vpam::makeCollection(
+                n.kind == EngineNodeKind::Set ? vpam::CollectionKind::Set
+                                              : vpam::CollectionKind::List);
+            auto* target = static_cast<vpam::NodeCollection*>(collection.get());
+            for (const auto& child : n.children) {
+                bool childOk = false;
+                auto element = convertToRow(child, depth + 1, childOk);
+                if (!childOk) return false;
+                target->appendElement(std::move(element));
+            }
+            row->appendChild(std::move(collection));
+            return true;
+        }
+
+        case EngineNodeKind::Matrix: {
+            if (n.rows == 0 || n.columns == 0 ||
+                n.children.size() != static_cast<size_t>(n.rows) * n.columns)
+                return false;
+            auto matrix = vpam::makeMatrix(n.rows, n.columns);
+            auto* target = static_cast<vpam::NodeMatrix*>(matrix.get());
+            for (uint8_t r = 0; r < n.rows; ++r) {
+                for (uint8_t c = 0; c < n.columns; ++c) {
+                    const size_t index = static_cast<size_t>(r) * n.columns + c;
+                    bool childOk = false;
+                    auto cell = convertToRow(n.children[index], depth + 1, childOk);
+                    if (!childOk || !target->setCell(r, c, std::move(cell)))
+                        return false;
+                }
+            }
+            row->appendChild(std::move(matrix));
+            return true;
+        }
+
+        case EngineNodeKind::Interval: {
+            if (n.children.size() != 2) return false;
+            bool lowerOk = false, upperOk = false;
+            auto lower = convertToRow(n.children[0], depth + 1, lowerOk);
+            auto upper = convertToRow(n.children[1], depth + 1, upperOk);
+            if (!lowerOk || !upperOk) return false;
+            const bool leftClosed = n.leftClosed &&
+                n.children[0].kind != EngineNodeKind::MinusInfinity &&
+                n.children[0].kind != EngineNodeKind::PlusInfinity &&
+                n.children[0].kind != EngineNodeKind::UnsignedInfinity;
+            const bool rightClosed = n.rightClosed &&
+                n.children[1].kind != EngineNodeKind::MinusInfinity &&
+                n.children[1].kind != EngineNodeKind::PlusInfinity &&
+                n.children[1].kind != EngineNodeKind::UnsignedInfinity;
+            row->appendChild(vpam::makeInterval(
+                std::move(lower), std::move(upper), leftClosed, rightClosed));
+            return true;
+        }
+
+        case EngineNodeKind::Piecewise: {
+            if (n.children.empty()) return false;
+            auto piecewise = vpam::makePiecewise();
+            auto* target = static_cast<vpam::NodePiecewise*>(piecewise.get());
+            const size_t paired = n.children.size() / 2;
+            for (size_t i = 0; i < paired; ++i) {
+                bool condOk = false, exprOk = false;
+                auto condition = convertToRow(n.children[i * 2], depth + 1, condOk);
+                auto expression = convertToRow(n.children[i * 2 + 1], depth + 1,
+                                               exprOk);
+                if (!condOk || !exprOk ||
+                    !target->appendBranch(std::move(expression),
+                                          std::move(condition), false))
+                    return false;
+            }
+            if ((n.children.size() & 1U) != 0U) {
+                bool exprOk = false;
+                auto expression = convertToRow(n.children.back(), depth + 1,
+                                               exprOk);
+                if (!exprOk || !target->appendBranch(
+                        std::move(expression), nullptr, true))
+                    return false;
+            }
+            row->appendChild(std::move(piecewise));
+            return true;
+        }
+
+        case EngineNodeKind::Unevaluated: {
+            if (n.children.size() != 1) return false;
+            bool childOk = false;
+            auto expression = convertToRow(n.children[0], depth + 1, childOk);
+            if (!childOk) return false;
+            row->appendChild(vpam::makeUnevaluated(std::move(expression)));
+            return true;
+        }
+
         case EngineNodeKind::Unsupported:
         default:
             return false;   // -> text fallback tier
@@ -803,9 +941,93 @@ vpam::NodePtr CalculationEngine::resultTreeToAST(const EngineResultNode& tree) {
     return row;
 }
 
+namespace {
+
+bool isElementWiseResult(EngineNodeKind kind) {
+    return kind == EngineNodeKind::List || kind == EngineNodeKind::Set ||
+           kind == EngineNodeKind::Matrix;
+}
+
+ResultReusePolicy reusePolicyFor(const EngineResultNode& tree) {
+    switch (tree.kind) {
+        case EngineNodeKind::Integer:
+        case EngineNodeKind::Decimal:
+        case EngineNodeKind::Rational:
+        case EngineNodeKind::Symbol:
+        case EngineNodeKind::Pi:
+        case EngineNodeKind::EulerE:
+        case EngineNodeKind::ImagUnit:
+        case EngineNodeKind::Add:
+        case EngineNodeKind::Neg:
+        case EngineNodeKind::Mul:
+        case EngineNodeKind::Inv:
+        case EngineNodeKind::Pow:
+        case EngineNodeKind::Sqrt:
+        case EngineNodeKind::Root:
+        case EngineNodeKind::Function:
+        case EngineNodeKind::Complex:
+            return ResultReusePolicy::FullyRoundTrippable;
+        case EngineNodeKind::Equation:
+        case EngineNodeKind::Assignment:
+        case EngineNodeKind::List:
+        case EngineNodeKind::Set:
+        case EngineNodeKind::Matrix:
+        case EngineNodeKind::Interval:
+        case EngineNodeKind::Piecewise:
+        case EngineNodeKind::Unevaluated:
+        case EngineNodeKind::PlusInfinity:
+        case EngineNodeKind::MinusInfinity:
+        case EngineNodeKind::UnsignedInfinity:
+            return ResultReusePolicy::DisplayOnly;
+        case EngineNodeKind::Undefined:
+        case EngineNodeKind::Unsupported:
+            return ResultReusePolicy::NonReusable;
+    }
+    return ResultReusePolicy::NonReusable;
+}
+
+ResultSToDPolicy sToDPolicyFor(const EngineResultNode& tree,
+                               bool hasApproximateTree) {
+    if (!hasApproximateTree) return ResultSToDPolicy::Unavailable;
+    if (isElementWiseResult(tree.kind)) return ResultSToDPolicy::ElementWise;
+    switch (tree.kind) {
+        case EngineNodeKind::Integer:
+        case EngineNodeKind::Decimal:
+        case EngineNodeKind::Rational:
+        case EngineNodeKind::Symbol:
+        case EngineNodeKind::Pi:
+        case EngineNodeKind::EulerE:
+        case EngineNodeKind::ImagUnit:
+        case EngineNodeKind::Add:
+        case EngineNodeKind::Neg:
+        case EngineNodeKind::Mul:
+        case EngineNodeKind::Inv:
+        case EngineNodeKind::Pow:
+        case EngineNodeKind::Sqrt:
+        case EngineNodeKind::Root:
+        case EngineNodeKind::Function:
+        case EngineNodeKind::Complex:
+            return ResultSToDPolicy::Scalar;
+        default:
+            return ResultSToDPolicy::Unavailable;
+    }
+}
+
+} // namespace
+
 // ════════════════════════════════════════════════════════════════════════════
 // Variable mirroring (NumOS VariableManager -> Giac context)
 // ════════════════════════════════════════════════════════════════════════════
+
+ResultReusePolicy CalculationEngine::reusePolicyForResult(
+    const EngineResultNode& tree) {
+    return reusePolicyFor(tree);
+}
+
+ResultSToDPolicy CalculationEngine::sToDPolicyForResult(
+    const EngineResultNode& tree, bool hasApproximateTree) {
+    return sToDPolicyFor(tree, hasApproximateTree);
+}
 
 int CalculationEngine::sessionIndex(char varName) {
     if (varName >= 'A' && varName <= 'F') return varName - 'A';
@@ -899,16 +1121,19 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
     ev.status = sr.base.status;
     ev.exactText = sr.base.exactText;
     ev.approximateText = sr.base.approximateText;
+    ev.fallbackReason = sr.fallbackReason;
     if (!sr.base.diagnostic.empty()) {
         if (!ev.diagnostic.empty()) ev.diagnostic += "\n";
         ev.diagnostic += sr.base.diagnostic;
     }
-    if (!ev.ok()) {
+    if (!ev.ok() && !(ev.status == MathEngineStatus::Undefined && sr.hasTree)) {
         ev.kind = CalcResultKind::None;
         return ev;
     }
 
     if (sr.hasTree) {
+        ev.reusePolicy = reusePolicyForResult(sr.tree);
+        ev.sToDPolicy = sToDPolicyForResult(sr.tree, sr.hasApproximateTree);
         if (resultTreeToExactVal(sr.tree, ev.exactVal)) {
             ev.exactValValid = true;
             ev.kind = CalcResultKind::Structured;
@@ -916,10 +1141,40 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
         }
         ev.exactAST = resultTreeToAST(sr.tree);
         if (ev.exactAST) {
+            ev.exactAST->calculateLayout(vpam::defaultFontMetrics());
+            const auto& layout = ev.exactAST->layout();
+            const int32_t height = static_cast<int32_t>(layout.ascent) +
+                                   layout.descent;
+#ifdef NUMOS_GIAC_HOST_HARNESS
+            GiacEngine::instance().debugRecordStructuredResultLayout(
+                static_cast<uint16_t>(std::max<int32_t>(0, layout.width)),
+                static_cast<uint16_t>(std::max<int32_t>(0, height)));
+#endif
+            if (layout.width > enginecontract::kMaxRenderedWidth ||
+                height > enginecontract::kMaxRenderedHeight) {
+                ev.exactAST.reset();
+                ev.fallbackReason = EngineFallbackReason::RenderedSizeLimit;
+                ev.sToDPolicy = ResultSToDPolicy::Unavailable;
+                if (!ev.diagnostic.empty()) ev.diagnostic += "\n";
+                ev.diagnostic += "structured fallback: rendered_size_limit";
+                ev.kind = CalcResultKind::TextFallback;
+                return ev;
+            }
+            if (sr.hasApproximateTree &&
+                ev.sToDPolicy != ResultSToDPolicy::Unavailable) {
+                ev.approximateAST = resultTreeToAST(sr.approximateTree);
+                if (!ev.approximateAST)
+                    ev.sToDPolicy = ResultSToDPolicy::Unavailable;
+            }
             ev.kind = CalcResultKind::Structured;
             return ev;
         }
     }
+    if (ev.fallbackReason == EngineFallbackReason::None)
+        ev.fallbackReason = EngineFallbackReason::AstConversionFailed;
+    if (!ev.diagnostic.empty()) ev.diagnostic += "\n";
+    ev.diagnostic += "structured fallback: ";
+    ev.diagnostic += engineFallbackReasonName(ev.fallbackReason);
     ev.kind = CalcResultKind::TextFallback;
     return ev;
 }

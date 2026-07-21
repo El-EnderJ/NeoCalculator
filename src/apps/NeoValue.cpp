@@ -603,6 +603,8 @@ std::string NeoValue::toString() const {
                         return "root(" + child(0) + ", " + child(1) + ")";
                     case EngineNodeKind::Equation:
                         return child(0) + " == " + child(1);
+                    case EngineNodeKind::Assignment:
+                        return child(0) + " := " + child(1);
                     case EngineNodeKind::Complex:
                         return "(" + child(0) + " + " + child(1) + "*i)";
                     case EngineNodeKind::Function: {
@@ -623,14 +625,26 @@ std::string NeoValue::toString() const {
                         }
                         return s + ")";
                     }
-                    case EngineNodeKind::List: {
-                        std::string s = "[";
+                    case EngineNodeKind::List:
+                    case EngineNodeKind::Set:
+                    case EngineNodeKind::Matrix: {
+                        const bool set = n.kind == EngineNodeKind::Set;
+                        std::string s = set ? "{" : "[";
                         for (size_t i = 0; i < n.children.size(); ++i) {
                             if (i) s += ", ";
                             s += child(i);
                         }
-                        return s + "]";
+                        return s + (set ? "}" : "]");
                     }
+                    case EngineNodeKind::Interval:
+                        return std::string(n.leftClosed ? "[" : "(") +
+                               child(0) + ", " + child(1) +
+                               (n.rightClosed ? "]" : ")");
+                    case EngineNodeKind::Piecewise:
+                        return "piecewise<" + std::to_string(n.children.size()) + ">";
+                    case EngineNodeKind::Unevaluated:
+                        return "<unevaluated:" + child(0) + ">";
+                    case EngineNodeKind::Undefined: return "undefined";
                     case EngineNodeKind::Unsupported:
                         return "<opaque:" + n.text + ">";
                 }

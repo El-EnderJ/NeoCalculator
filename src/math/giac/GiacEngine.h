@@ -99,21 +99,67 @@ enum class EngineNodeKind : uint8_t {
     MinusInfinity,
     UnsignedInfinity,
     Equation,          // children = { lhs, rhs }
+    Assignment,        // children = { variable, value }, display equality
     List,              // children = elements
+    Set,               // children = deterministic finite set elements
+    Matrix,            // rectangular row-major children; rows/columns metadata
+    Interval,          // children = { lower, upper }; endpoint flags
+    Piecewise,         // children = cond,expr pairs, optional final otherwise expr
     Complex,           // children = { re, im }
+    Unevaluated,       // 1 child: a valid call that Giac left unevaluated
+    Undefined,         // explicit undefined sentinel (never reusable)
     Unsupported        // shape outside this contract (text = printed form)
 };
+
+enum class EngineFallbackReason : uint8_t {
+    None,
+    DepthLimit,
+    NodeLimit,
+    ListLimit,
+    SetLimit,
+    MatrixDimensions,
+    MatrixNotRectangular,
+    PiecewiseBranchLimit,
+    CyclicStructure,
+    UnsupportedType,
+    UnsupportedSubtype,
+    UnsupportedFunction,
+    MalformedTypedStructure,
+    AstConversionFailed,
+    RenderedSizeLimit
+};
+
+const char* engineFallbackReasonName(EngineFallbackReason reason);
 
 struct EngineResultNode {
     EngineNodeKind kind = EngineNodeKind::Unsupported;
     std::string text;
     std::vector<EngineResultNode> children;
+    EngineFallbackReason fallbackReason = EngineFallbackReason::None;
+    uint8_t rows = 0;
+    uint8_t columns = 0;
+    bool leftClosed = false;
+    bool rightClosed = false;
+};
+
+struct StructuredResultDiagnostics {
+    uint32_t convertedByKind[static_cast<unsigned>(EngineNodeKind::Unsupported) + 1]{};
+    uint32_t fallbackByReason[static_cast<unsigned>(EngineFallbackReason::RenderedSizeLimit) + 1]{};
+    uint32_t fallbackCount = 0;
+    uint32_t rejectedOversized = 0;
+    uint16_t maximumDepth = 0;
+    uint16_t maximumNodeCount = 0;
+    uint16_t maximumRenderedWidth = 0;
+    uint16_t maximumRenderedHeight = 0;
 };
 
 struct StructuredEngineResult {
     MathEngineResult base;
-    bool hasTree = false;      // tree only meaningful when base.ok() && hasTree
+    bool hasTree = false;      // also meaningful for an explicit Undefined result
     EngineResultNode tree;
+    bool hasApproximateTree = false;
+    EngineResultNode approximateTree;
+    EngineFallbackReason fallbackReason = EngineFallbackReason::None;
 };
 
 enum class AlgebraTransform : uint8_t {
@@ -156,6 +202,7 @@ struct StructuredCalculusResult {
     std::string approximateText;
     std::string diagnostic;
     bool unevaluated = false;  // valid Giac diff/integrate form, not a failure
+    EngineFallbackReason fallbackReason = EngineFallbackReason::None;
 
     bool ok() const { return status == MathEngineStatus::Ok; }
 };
@@ -322,6 +369,9 @@ public:
     // Host-only structural seam: validates Giac equality/nested-list shapes
     // without exposing giac::gen outside GiacEngine.cpp.
     bool debugStructuredSolveAdapterForms();
+    StructuredResultDiagnostics debugStructuredResultDiagnostics() const;
+    void debugResetStructuredResultDiagnostics();
+    void debugRecordStructuredResultLayout(uint16_t width, uint16_t height);
 #endif
 
     /**

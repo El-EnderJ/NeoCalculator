@@ -71,6 +71,30 @@ static bool hasExact(const numos::StructuredSolveResult& result,
     return false;
 }
 
+static const vpam::MathNode* firstAstChild(const vpam::NodePtr& ast) {
+    if (!ast || ast->type() != vpam::NodeType::Row || ast->childCount() == 0)
+        return nullptr;
+    return ast->child(0);
+}
+
+static void checkStructuredKind(const char* expression,
+                                numos::EngineNodeKind expectedEngine,
+                                vpam::NodeType expectedAst,
+                                const char* label) {
+    const auto result =
+        numos::GiacEngine::instance().evaluateStructured(expression);
+    auto ast = result.hasTree
+        ? numos::CalculationEngine::resultTreeToAST(result.tree)
+        : vpam::NodePtr();
+    const vpam::MathNode* semantic = firstAstChild(ast);
+    check((result.base.ok() ||
+           result.base.status == numos::MathEngineStatus::Undefined) &&
+              result.hasTree && result.tree.kind == expectedEngine &&
+              semantic && semantic->type() == expectedAst,
+          label, result.base.exactText.empty() ? result.base.diagnostic
+                                               : result.base.exactText);
+}
+
 // Run one expression through the engine in evaluate or simplify mode and
 // assert the status (and optionally an exact-text substring).
 static void runCase(const char* expr, bool simplifyMode,
@@ -485,19 +509,21 @@ int main() {
                       ev.exactText == "x-2*x",
                   "b01-eval-free-symbol", ev.exactText);
         }
-        {   // 1/0 -> Giac infinity, honest text fallback tier
+        {   // Infinity and undefined retain semantic result nodes.
             auto r = rowPtr();
             asRow(r)->appendChild(makeFraction(numRow("1"), numRow("0")));
             auto ev = calc.evaluate(r.get());
-            check(ev.ok() &&
-                      ev.kind == numos::CalcResultKind::TextFallback &&
+            check(ev.ok() && ev.kind == numos::CalcResultKind::Structured &&
+                      ev.exactAST != nullptr &&
+                      firstAstChild(ev.exactAST)->type() == NodeType::SpecialValue &&
                       ev.exactText == "oo",
                   "b01-eval-one-over-zero-oo", ev.exactText);
             auto r2 = rowPtr();
             asRow(r2)->appendChild(makeFraction(numRow("0"), numRow("0")));
             auto ev2 = calc.evaluate(r2.get());
-            check(!ev2.ok() &&
-                      ev2.status == numos::MathEngineStatus::Undefined,
+            check(!ev2.ok() && ev2.displayable() &&
+                      ev2.status == numos::MathEngineStatus::Undefined &&
+                      firstAstChild(ev2.exactAST)->type() == NodeType::SpecialValue,
                   "b01-eval-zero-over-zero-undef", ev2.diagnostic);
         }
         {   // incomplete input: typed reject, never ambiguous text
@@ -527,13 +553,13 @@ int main() {
                   "b01-mirror-sqrt2-over-2", sr.base.exactText);
         }
         {   // solve/factor/diff/integrate keep their Giac meaning through
-            // the structured bridge (lists fall back honestly)
+            // the structured bridge.
             numos::StructuredEngineResult sr =
                 eng.evaluateStructured("solve(x^2-2=0,x)");
             check(sr.base.ok() && sr.hasTree &&
                       sr.tree.kind == numos::EngineNodeKind::List &&
-                      numos::CalculationEngine::resultTreeToAST(sr.tree) == nullptr,
-                  "b01-solve-list-fallback", sr.base.exactText);
+                      numos::CalculationEngine::resultTreeToAST(sr.tree) != nullptr,
+                  "math-results-solve-list-structured", sr.base.exactText);
             numos::StructuredEngineResult sf =
                 eng.evaluateStructured("factor(x^3-6*x^2+11*x-6)");
             check(sf.base.ok() && sf.hasTree &&
@@ -549,6 +575,279 @@ int main() {
             check(si.base.ok() && si.hasTree &&
                       numos::CalculationEngine::resultTreeToAST(si.tree) != nullptr,
                   "b01-integrate-structured", si.base.exactText);
+        }
+        {
+            // MATH-RESULTS-01 typed conversion fixtures. Assertions inspect
+            // Giac's result node and the semantic MathAST node, never print.
+            checkStructuredKind("[1,2,3]", numos::EngineNodeKind::List,
+                                NodeType::Collection, "results-finite-list");
+            checkStructuredKind("[[1],[2,3]]", numos::EngineNodeKind::List,
+                                NodeType::Collection, "results-nested-list");
+            checkStructuredKind("x=2", numos::EngineNodeKind::Equation,
+                                NodeType::Equation, "results-equation");
+            checkStructuredKind("[x=1,x=2]", numos::EngineNodeKind::List,
+                                NodeType::Collection, "results-equation-list");
+            checkStructuredKind("+infinity", numos::EngineNodeKind::PlusInfinity,
+                                NodeType::SpecialValue, "results-infinity");
+            checkStructuredKind("-oo", numos::EngineNodeKind::MinusInfinity,
+                                NodeType::SpecialValue, "results-negative-infinity");
+            checkStructuredKind("i", numos::EngineNodeKind::ImagUnit,
+                                NodeType::Constant, "results-complex-i");
+            checkStructuredKind("-i", numos::EngineNodeKind::Neg,
+                                NodeType::Operator, "results-complex-minus-i");
+            checkStructuredKind("2+3*i", numos::EngineNodeKind::Complex,
+                                NodeType::Number, "results-complex-plus");
+            checkStructuredKind("2-3*i", numos::EngineNodeKind::Complex,
+                                NodeType::Number, "results-complex-minus");
+            checkStructuredKind("sqrt(2)+sqrt(3)*i",
+                                numos::EngineNodeKind::Add,
+                                NodeType::Root, "results-complex-exact-symbolic");
+            checkStructuredKind("matrix([[1,2],[3,4]])", numos::EngineNodeKind::Matrix,
+                                NodeType::Matrix, "results-matrix-2x2");
+            checkStructuredKind("matrix([[1,2,3],[4,5,6]])",
+                                numos::EngineNodeKind::Matrix,
+                                NodeType::Matrix, "results-matrix-rectangular");
+            checkStructuredKind("matrix([[x,1/2],[sqrt(2),pi]])",
+                                numos::EngineNodeKind::Matrix,
+                                NodeType::Matrix, "results-matrix-symbolic");
+            checkStructuredKind("set[1,2,3]", numos::EngineNodeKind::Set,
+                                NodeType::Collection, "results-finite-set");
+            checkStructuredKind("1..2", numos::EngineNodeKind::Interval,
+                                NodeType::Interval, "results-closed-interval");
+            checkStructuredKind("(-infinity)..2", numos::EngineNodeKind::Interval,
+                                NodeType::Interval, "results-infinite-interval");
+            checkStructuredKind("piecewise(x<0,-x,x)",
+                                numos::EngineNodeKind::Piecewise,
+                                NodeType::Piecewise, "results-piecewise-two");
+            checkStructuredKind("piecewise(x<0,-x,x=0,0,x)",
+                                numos::EngineNodeKind::Piecewise,
+                                NodeType::Piecewise, "results-piecewise-three");
+            checkStructuredKind("0/0", numos::EngineNodeKind::Undefined,
+                                NodeType::SpecialValue, "results-undefined");
+
+            numos::EngineResultNode open;
+            open.kind = numos::EngineNodeKind::Interval;
+            open.leftClosed = false;
+            open.rightClosed = true;
+            open.children.resize(2);
+            open.children[0].kind = numos::EngineNodeKind::Integer;
+            open.children[0].text = "1";
+            open.children[1].kind = numos::EngineNodeKind::Integer;
+            open.children[1].text = "2";
+            auto openAst = numos::CalculationEngine::resultTreeToAST(open);
+            const auto* openNode = static_cast<const NodeInterval*>(
+                firstAstChild(openAst));
+            check(openNode && !openNode->leftClosed() && openNode->rightClosed(),
+                  "results-half-open-interval-node");
+
+            std::string oversized = "[";
+            for (int i = 0; i < 33; ++i) {
+                if (i) oversized += ',';
+                oversized += std::to_string(i);
+            }
+            oversized += ']';
+            auto large = eng.evaluateStructured(oversized.c_str());
+            check(large.base.ok() && large.hasTree &&
+                      large.tree.kind == numos::EngineNodeKind::Unsupported &&
+                      large.fallbackReason == numos::EngineFallbackReason::ListLimit,
+                  "results-oversized-list-reason",
+                  numos::engineFallbackReasonName(large.fallbackReason));
+
+            std::string maxSet = "set[";
+            for (int i = 0; i < 32; ++i) {
+                if (i) maxSet += ',';
+                maxSet += std::to_string(i);
+            }
+            maxSet += ']';
+            auto boundedSet = eng.evaluateStructured(maxSet.c_str());
+            check(boundedSet.base.ok() && boundedSet.hasTree &&
+                      boundedSet.tree.kind == numos::EngineNodeKind::Set &&
+                      boundedSet.tree.children.size() == 32,
+                  "results-max-set-32");
+            maxSet.insert(maxSet.size() - 1, ",32");
+            auto oversizedSet = eng.evaluateStructured(maxSet.c_str());
+            check(oversizedSet.base.ok() && oversizedSet.hasTree &&
+                      oversizedSet.fallbackReason ==
+                          numos::EngineFallbackReason::SetLimit,
+                  "results-oversized-set-reason",
+                  numos::engineFallbackReasonName(
+                      oversizedSet.fallbackReason));
+
+            auto maxPiecewise = eng.evaluateStructured(
+                "piecewise(x<0,0,x<1,1,x<2,2,x<3,3,x<4,4,5)");
+            check(maxPiecewise.base.ok() && maxPiecewise.hasTree &&
+                      maxPiecewise.tree.kind ==
+                          numos::EngineNodeKind::Piecewise,
+                  "results-max-piecewise-6");
+            auto oversizedPiecewise = eng.evaluateStructured(
+                "piecewise(x<0,0,x<1,1,x<2,2,x<3,3,x<4,4,x<5,5,6)");
+            check(oversizedPiecewise.base.ok() && oversizedPiecewise.hasTree &&
+                      oversizedPiecewise.fallbackReason ==
+                          numos::EngineFallbackReason::PiecewiseBranchLimit,
+                  "results-oversized-piecewise-reason",
+                  numos::engineFallbackReasonName(
+                      oversizedPiecewise.fallbackReason));
+
+            std::string maxDepth = "0";
+            for (int i = 0; i < 12; ++i) maxDepth = '[' + maxDepth + ']';
+            auto boundedDepth = eng.evaluateStructured(maxDepth.c_str());
+            check(boundedDepth.base.ok() && boundedDepth.hasTree &&
+                      boundedDepth.fallbackReason ==
+                          numos::EngineFallbackReason::None,
+                  "results-max-depth-12");
+            maxDepth = '[' + maxDepth + ']';
+            auto oversizedDepth = eng.evaluateStructured(maxDepth.c_str());
+            check(oversizedDepth.base.ok() && oversizedDepth.hasTree &&
+                      oversizedDepth.fallbackReason ==
+                          numos::EngineFallbackReason::DepthLimit,
+                  "results-oversized-depth-reason",
+                  numos::engineFallbackReasonName(
+                      oversizedDepth.fallbackReason));
+
+            std::string nodeBudget = "[";
+            for (int row = 0; row < 32; ++row) {
+                if (row) nodeBudget += ',';
+                nodeBudget += "[0,1,2,3,4,5,6,7]";
+            }
+            nodeBudget += ']';
+            auto oversizedNodes = eng.evaluateStructured(nodeBudget.c_str());
+            check(oversizedNodes.base.ok() && oversizedNodes.hasTree &&
+                      oversizedNodes.fallbackReason ==
+                          numos::EngineFallbackReason::NodeLimit,
+                  "results-oversized-node-budget-reason",
+                  numos::engineFallbackReasonName(
+                      oversizedNodes.fallbackReason));
+            auto unsupported = eng.evaluateStructured("\"typed string\"");
+            check(unsupported.base.ok() && unsupported.hasTree &&
+                      unsupported.tree.kind == numos::EngineNodeKind::Unsupported &&
+                      unsupported.fallbackReason ==
+                          numos::EngineFallbackReason::UnsupportedType,
+                  "results-unsupported-type-reason",
+                  numos::engineFallbackReasonName(unsupported.fallbackReason));
+
+            checkStructuredKind("matrix(6,6,0)",
+                                numos::EngineNodeKind::Matrix,
+                                NodeType::Matrix, "results-max-matrix-6x6");
+            auto layoutFixture = eng.evaluateStructured("matrix(6,6,0)");
+            auto layoutAst = layoutFixture.hasTree
+                ? numos::CalculationEngine::resultTreeToAST(layoutFixture.tree)
+                : NodePtr();
+            check(layoutAst != nullptr, "results-layout-benchmark-fixture");
+            constexpr int kLayoutIterations = 10000;
+            const auto layoutStart = Clock::now();
+            if (layoutAst) {
+                for (int i = 0; i < kLayoutIterations; ++i)
+                    layoutAst->calculateLayout(defaultFontMetrics());
+            }
+            const auto layoutNs = std::chrono::duration_cast<
+                std::chrono::nanoseconds>(Clock::now() - layoutStart).count();
+            std::printf("RESULT_LAYOUT|case=matrix_6x6|iterations=%d|avg_ns=%.1f\n",
+                        kLayoutIterations,
+                        static_cast<double>(layoutNs) / kLayoutIterations);
+            auto oversizedMatrix = eng.evaluateStructured("matrix(7,7,0)");
+            check(oversizedMatrix.base.ok() && oversizedMatrix.hasTree &&
+                      oversizedMatrix.fallbackReason ==
+                          numos::EngineFallbackReason::MatrixDimensions,
+                  "results-oversized-matrix-reason",
+                  numos::engineFallbackReasonName(
+                      oversizedMatrix.fallbackReason));
+
+            numos::EngineResultNode assignment;
+            assignment.kind = numos::EngineNodeKind::Assignment;
+            assignment.children.resize(2);
+            assignment.children[0].kind = numos::EngineNodeKind::Symbol;
+            assignment.children[0].text = "theta";
+            assignment.children[1].kind = numos::EngineNodeKind::Rational;
+            assignment.children[1].children.resize(2);
+            assignment.children[1].children[0].kind =
+                numos::EngineNodeKind::Integer;
+            assignment.children[1].children[0].text = "1";
+            assignment.children[1].children[1].kind =
+                numos::EngineNodeKind::Integer;
+            assignment.children[1].children[1].text = "2";
+            auto assignmentAst =
+                numos::CalculationEngine::resultTreeToAST(assignment);
+            check(firstAstChild(assignmentAst) &&
+                      firstAstChild(assignmentAst)->type() == NodeType::Equation,
+                  "results-variable-value-assignment");
+
+            numos::EngineResultNode scalar;
+            scalar.kind = numos::EngineNodeKind::Rational;
+            check(numos::CalculationEngine::reusePolicyForResult(scalar) ==
+                      numos::ResultReusePolicy::FullyRoundTrippable &&
+                      numos::CalculationEngine::sToDPolicyForResult(
+                          scalar, true) == numos::ResultSToDPolicy::Scalar,
+                  "results-scalar-roundtrip-and-stod-policy");
+            numos::EngineResultNode matrixPolicy;
+            matrixPolicy.kind = numos::EngineNodeKind::Matrix;
+            check(numos::CalculationEngine::reusePolicyForResult(matrixPolicy) ==
+                      numos::ResultReusePolicy::DisplayOnly &&
+                      numos::CalculationEngine::sToDPolicyForResult(
+                          matrixPolicy, true) ==
+                          numos::ResultSToDPolicy::ElementWise,
+                  "results-matrix-display-only-elementwise-policy");
+            numos::EngineResultNode equationPolicy;
+            equationPolicy.kind = numos::EngineNodeKind::Equation;
+            check(numos::CalculationEngine::reusePolicyForResult(equationPolicy) ==
+                      numos::ResultReusePolicy::DisplayOnly &&
+                      numos::CalculationEngine::sToDPolicyForResult(
+                          equationPolicy, true) ==
+                          numos::ResultSToDPolicy::Unavailable,
+                  "results-equation-display-only-policy");
+            numos::EngineResultNode undefinedPolicy;
+            undefinedPolicy.kind = numos::EngineNodeKind::Undefined;
+            check(numos::CalculationEngine::reusePolicyForResult(
+                      undefinedPolicy) == numos::ResultReusePolicy::NonReusable &&
+                      numos::CalculationEngine::sToDPolicyForResult(
+                          undefinedPolicy, true) ==
+                          numos::ResultSToDPolicy::Unavailable,
+                  "results-undefined-nonreusable-policy");
+
+            auto retainedResult = eng.evaluateStructured(
+                "piecewise(x<0,matrix([[1,2],[3,4]]),[x,1/2])");
+            auto retainedAst = retainedResult.hasTree
+                ? numos::CalculationEngine::resultTreeToAST(retainedResult.tree)
+                : NodePtr();
+            auto retainedClone = cloneNode(retainedAst.get());
+            eng.reset();
+            check(retainedClone && retainedClone->type() == NodeType::Row &&
+                      retainedClone->childCount() == 1 &&
+                      retainedClone->child(0)->type() == NodeType::Piecewise,
+                  "results-reset-lifetime-safe");
+            auto unsupportedAfterReset =
+                eng.evaluateStructured("\"typed string\"");
+            check(unsupportedAfterReset.fallbackReason ==
+                      numos::EngineFallbackReason::UnsupportedType,
+                  "results-fallback-reason-stable-after-reset",
+                  numos::engineFallbackReasonName(
+                      unsupportedAfterReset.fallbackReason));
+
+            const auto diag = eng.debugStructuredResultDiagnostics();
+            std::printf(
+                "STRUCTURED_RESULTS|list=%u|set=%u|matrix=%u|interval=%u|"
+                "piecewise=%u|equation=%u|complex=%u|infinity=%u|"
+                "undefined=%u|unevaluated=%u|fallback=%u|oversized=%u|"
+                "max_depth=%u|max_nodes=%u|max_width=%u|max_height=%u\n",
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::List)],
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::Set)],
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::Matrix)],
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::Interval)],
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::Piecewise)],
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::Equation)],
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::Complex)],
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::PlusInfinity)] +
+                    diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::MinusInfinity)] +
+                    diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::UnsignedInfinity)],
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::Undefined)],
+                diag.convertedByKind[static_cast<unsigned>(numos::EngineNodeKind::Unevaluated)],
+                diag.fallbackCount, diag.rejectedOversized,
+                diag.maximumDepth, diag.maximumNodeCount,
+                diag.maximumRenderedWidth, diag.maximumRenderedHeight);
+            check(diag.fallbackCount >= 2 && diag.rejectedOversized >= 1 &&
+                      diag.maximumDepth <= 13 && diag.maximumNodeCount <= 256 &&
+                      diag.maximumRenderedWidth <= 4096 &&
+                      diag.maximumRenderedHeight <= 1024,
+                  "results-diagnostic-counters");
         }
         {   // decimal input maps through fromDouble like the legacy engine
             auto r = rowPtr();

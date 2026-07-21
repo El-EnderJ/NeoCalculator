@@ -12,6 +12,7 @@
 #include <string>
 
 #include "math/AngleModeRuntime.h"
+#include "math/CalculationEngine.h"
 #include "math/giac/GiacEngine.h"
 
 // Production defines this setting in main.cpp/NativeHal.cpp. SingleSolver is
@@ -124,6 +125,9 @@ int main() {
     auto unevaluated = calculus(
         CalculusOperation::IntegrateIndefinite, "f(x)");
     check(unevaluated.ok() && unevaluated.unevaluated &&
+              unevaluated.hasTree &&
+              unevaluated.tree.kind == EngineNodeKind::Unevaluated &&
+              numos::CalculationEngine::resultTreeToAST(unevaluated.tree) &&
               !unevaluated.exactText.empty(),
           "valid-unevaluated-is-not-failure",
           unevaluated.exactText + "|" + unevaluated.diagnostic);

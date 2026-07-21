@@ -36,11 +36,12 @@
  *         its full legacy display pipeline (resultToAST + S<=>D + history +
  *         assert_result probes) so basic-arithmetic pixels do not move.
  *      2. exactAST       — structured MathAST built from the engine result
- *         tree (big integers, symbolic sums, powers, functions, equations,
- *         simple complex). Exact structure preserved; never rebuilt from
- *         lossy doubles.
+ *         tree (big integers, exact complex values, collections, matrices,
+ *         intervals, piecewise, infinities, undefined and unevaluated calls).
+ *         Exact structure is never rebuilt from doubles or printed output.
  *      3. TextFallback   — Giac's own printed exactText shown as plain text
- *         (infinities, lists, unsupported shapes).
+ *         only for bounded or genuinely unsupported typed shapes, carrying a
+ *         stable fallback reason.
  *  - Variables: NumOS VariableManager stays the persistent source of truth.
  *    A-F, Ans and PreAns are mirrored into the Giac context (exactly) before
  *    every evaluation; x, y, z deliberately remain FREE symbols so symbolic
@@ -69,6 +70,18 @@ enum class CalcResultKind : uint8_t {
     TextFallback   // presentation falls back to Giac's printed text
 };
 
+enum class ResultReusePolicy : uint8_t {
+    FullyRoundTrippable,
+    DisplayOnly,
+    NonReusable
+};
+
+enum class ResultSToDPolicy : uint8_t {
+    Scalar,
+    ElementWise,
+    Unavailable
+};
+
 struct CalculationEvaluation {
     MathEngineStatus status = MathEngineStatus::Unsupported;
     CalcResultKind kind = CalcResultKind::None;
@@ -78,13 +91,20 @@ struct CalculationEvaluation {
 
     vpam::NodePtr exactAST;          // tier 2: structured Symbolic display
                                      // (null on tier 1 and on TextFallback)
+    vpam::NodePtr approximateAST;    // typed evalf tree; never parsed text
 
     std::string serialized;          // what was sent to Giac (diagnostics)
     std::string exactText;           // Giac exact print (always set when Ok)
     std::string approximateText;     // numeric companion ("" when none)
     std::string diagnostic;          // engine/serializer messages
+    EngineFallbackReason fallbackReason = EngineFallbackReason::None;
+    ResultReusePolicy reusePolicy = ResultReusePolicy::NonReusable;
+    ResultSToDPolicy sToDPolicy = ResultSToDPolicy::Unavailable;
 
     bool ok() const { return status == MathEngineStatus::Ok; }
+    bool displayable() const {
+        return ok() || (status == MathEngineStatus::Undefined && exactAST);
+    }
 };
 
 class CalculationEngine {
@@ -116,6 +136,10 @@ public:
                                      vpam::ExactVal& out);
     /// Engine result tree -> MathAST row for Natural Display (strict).
     static vpam::NodePtr resultTreeToAST(const EngineResultNode& tree);
+    static ResultReusePolicy reusePolicyForResult(
+        const EngineResultNode& tree);
+    static ResultSToDPolicy sToDPolicyForResult(
+        const EngineResultNode& tree, bool hasApproximateTree);
 
 private:
     CalculationEngine() = default;

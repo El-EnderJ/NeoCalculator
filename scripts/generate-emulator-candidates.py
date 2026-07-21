@@ -40,6 +40,11 @@ CANDIDATES = [
     ("launcher_smoke", "tests/emulator/scripts/launcher_smoke.numos", 800),
     ("calc_1_plus_2", "tests/emulator/scripts/calc_1_plus_2.numos", 1400),
     ("calc_fraction_sum", "tests/emulator/scripts/calc_fraction_sum.numos", 1400),
+    # MATH-RESULTS-01: compact Calculation infinity output plus the full
+    # MathRenderer semantic-result sweep. The sweep writes the other focused
+    # candidate PPMs itself; this final entry validates its last frame too.
+    ("calc_structured_infinity", "tests/emulator/scripts/calc_error_div_by_zero.numos", 1400),
+    ("math_results_undefined_unevaluated", "tests/emulator/scripts/math_results_visuals.numos", 1400),
     # Phase 5A: additional safe apps (Settings + Math Showcase). Each script
     # opens its app via `open_app`, screenshots, and asserts the active app name;
     # a failed assert_app exits 4, which this generator reports as FAIL. No golden

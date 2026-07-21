@@ -979,6 +979,10 @@ ExactVal MathEvaluator::evalConstant(const NodeConstant* node) const {
             return ExactVal::fromPi(1, 1, 1);   // 1 * π
         case ConstKind::E:
             return ExactVal::fromE(1, 1, 1);     // 1 * e
+        case ConstKind::Imag:
+            // ExactVal is real-only. Complex authority remains the typed Giac
+            // result path; never coerce i through a double here.
+            return ExactVal::makeError("Math ERROR");
     }
     return ExactVal::makeError("Math ERROR");
 }

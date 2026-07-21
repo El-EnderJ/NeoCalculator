@@ -144,6 +144,10 @@ private:
     numos::CalcResultKind   _lastKind   = numos::CalcResultKind::None;
     bool                    _exactValValid = false;  ///< tier 1 (display legacy)
     vpam::NodePtr           _structuredResult;       ///< tier 2 master AST
+    vpam::NodePtr           _structuredApproxResult; ///< typed evalf AST
+    numos::ResultReusePolicy _reusePolicy = numos::ResultReusePolicy::NonReusable;
+    numos::ResultSToDPolicy _sToDPolicy = numos::ResultSToDPolicy::Unavailable;
+    numos::EngineFallbackReason _fallbackReason = numos::EngineFallbackReason::None;
     std::string             _exactText;              ///< Giac exact print
     std::string             _approxText;             ///< companion decimal
     lv_obj_t*               _resultTextLabel = nullptr;  ///< tier 3 fallback
@@ -157,6 +161,10 @@ private:
         numos::CalcResultKind   kind   = numos::CalcResultKind::Structured;
         bool                    exactValValid = true;
         vpam::NodePtr           resultAST;   ///< tier-2 clone (may be null)
+        vpam::NodePtr           approximateAST;
+        numos::ResultReusePolicy reusePolicy = numos::ResultReusePolicy::NonReusable;
+        numos::ResultSToDPolicy sToDPolicy = numos::ResultSToDPolicy::Unavailable;
+        numos::EngineFallbackReason fallbackReason = numos::EngineFallbackReason::None;
         std::string             exactText;
         std::string             approxText;
     };

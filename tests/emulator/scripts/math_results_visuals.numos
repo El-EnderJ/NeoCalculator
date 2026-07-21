@@ -1,0 +1,71 @@
+# MATH-RESULTS-01 candidate-only visual sweep. It opens the production
+# MathRenderer verification canvas, advances to the appended semantic-result
+# cases, and captures each case without touching accepted goldens or masks.
+
+wait 200
+open_app MathVisual
+wait 60
+assert_app MathVisual
+
+# Existing catalog has 21 cases before the appended MATH-RESULTS-01 set.
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_solution_short.ppm
+
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_solution_long.ppm
+key RIGHT
+key RIGHT
+wait 10
+screenshot out/emulator-candidates/math_results_solution_long_scrolled.ppm
+
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_nested_fraction_list.ppm
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_equation_list.ppm
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_complex.ppm
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_matrix_2x2.ppm
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_matrix_3x3.ppm
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_intervals.ppm
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_piecewise.ppm
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_nested_piecewise_matrix.ppm
+key DOWN
+wait 10
+screenshot out/emulator-candidates/math_results_undefined_unevaluated.ppm
+
+assert_app MathVisual

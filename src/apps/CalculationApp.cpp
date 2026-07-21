@@ -545,6 +545,10 @@ void CalculationApp::evaluateExpression() {
     _exactText      = ev.exactText;
     _approxText     = ev.approximateText;
     _structuredResult = std::move(ev.exactAST);
+    _structuredApproxResult = std::move(ev.approximateAST);
+    _reusePolicy = ev.reusePolicy;
+    _sToDPolicy = ev.sToDPolicy;
+    _fallbackReason = ev.fallbackReason;
 
     // ExactVal mirror: exact when tier 1; numeric fallback otherwise (probes,
     // FACT and the persistent Ans store still see a coherent value).
@@ -616,6 +620,11 @@ void CalculationApp::evaluateExpression() {
         entry.approxText = _approxText;
         if (_structuredResult)
             entry.resultAST = vpam::cloneNode(_structuredResult.get());
+        if (_structuredApproxResult)
+            entry.approximateAST = vpam::cloneNode(_structuredApproxResult.get());
+        entry.reusePolicy = _reusePolicy;
+        entry.sToDPolicy = _sToDPolicy;
+        entry.fallbackReason = _fallbackReason;
         _history.push_back(std::move(entry));
         if (static_cast<int>(_history.size()) > MAX_HISTORY) {
             _history.erase(_history.begin());
@@ -846,26 +855,26 @@ void CalculationApp::showResult() {
         _lastKind == numos::CalcResultKind::TextFallback) {
         // Tier 3: Giac's own printed result as plain text — honest fallback,
         // never a legacy re-evaluation.
-        showTextResult(_exactText);
+        std::string visible = "Giac text fallback (";
+        visible += numos::engineFallbackReasonName(_fallbackReason);
+        visible += "): ";
+        visible += _exactText;
+        showTextResult(visible);
         return;
     }
 
-    if (_lastStatus == numos::MathEngineStatus::Ok && !_exactValValid &&
+    if ((_lastStatus == numos::MathEngineStatus::Ok ||
+         _lastStatus == numos::MathEngineStatus::Undefined) && !_exactValValid &&
         _structuredResult) {
         // Tier 2: structured Giac result. Symbolic shows the exact tree;
         // the S<=>D states show the decimal companion when one exists.
-        if (_resultMode == vpam::ResultMode::Symbolic || _approxText.empty()) {
+        if (_resultMode == vpam::ResultMode::Symbolic ||
+            !_structuredApproxResult) {
             _resultNode = vpam::cloneNode(_structuredResult.get());
         } else {
-            auto row = vpam::makeRow();
-            auto* r = static_cast<vpam::NodeRow*>(row.get());
-            std::string digits = _approxText;
-            if (!digits.empty() && digits[0] == '-') {
-                r->appendChild(vpam::makeOperator(vpam::OpKind::Sub));
-                digits.erase(0, 1);
-            }
-            r->appendChild(vpam::makeNumber(digits));
-            _resultNode = std::move(row);
+            // WHY: S<=>D consumes Giac's typed evalf tree. Container and
+            // complex results are never reconstructed from formatted text.
+            _resultNode = vpam::cloneNode(_structuredApproxResult.get());
         }
         _resultRow = static_cast<vpam::NodeRow*>(_resultNode.get());
     } else {
@@ -914,6 +923,10 @@ void CalculationApp::clearResult() {
     _resultNode.reset();
     _resultRow = nullptr;
     _structuredResult.reset();
+    _structuredApproxResult.reset();
+    _reusePolicy = numos::ResultReusePolicy::NonReusable;
+    _sToDPolicy = numos::ResultSToDPolicy::Unavailable;
+    _fallbackReason = numos::EngineFallbackReason::None;
     _lastKind = numos::CalcResultKind::None;
     _exactValValid = false;
     _exactText.clear();
@@ -949,6 +962,8 @@ void CalculationApp::clearResult() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculationApp::toggleSD() {
+    if (!_exactValValid && _sToDPolicy == numos::ResultSToDPolicy::Unavailable)
+        return;
     switch (_resultMode) {
         case vpam::ResultMode::Symbolic:
             _resultMode = vpam::ResultMode::Periodic;
@@ -1034,6 +1049,12 @@ void CalculationApp::loadHistoryEntry(int index) {
     _structuredResult = entry.resultAST
                             ? vpam::cloneNode(entry.resultAST.get())
                             : vpam::NodePtr();
+    _structuredApproxResult = entry.approximateAST
+                            ? vpam::cloneNode(entry.approximateAST.get())
+                            : vpam::NodePtr();
+    _reusePolicy = entry.reusePolicy;
+    _sToDPolicy = entry.sToDPolicy;
+    _fallbackReason = entry.fallbackReason;
     showResult();
 }
 
@@ -1208,7 +1229,11 @@ void CalculationApp::closeStepViewer() {
     if (_hasResult) {
         if (_lastStatus == numos::MathEngineStatus::Ok &&
             _lastKind == numos::CalcResultKind::TextFallback) {
-            showTextResult(_exactText);
+            std::string visible = "Giac text fallback (";
+            visible += numos::engineFallbackReasonName(_fallbackReason);
+            visible += "): ";
+            visible += _exactText;
+            showTextResult(visible);
         } else {
             if (_resultCanvas.obj()) lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
             if (_resultSep) lv_obj_remove_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);

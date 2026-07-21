@@ -52,6 +52,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <array>
 #include <vector>
 #include <string>
 
@@ -87,6 +88,24 @@ enum class NodeType : uint8_t {
     Summation,        // Summation series: ∑[lower,upper] expr (var=n)
     Subscript,        // Generic subscript: base_subscript (e.g. x₁, x₂)
     BigOp,            // Generic large operator: ∏, ⋂, ⋃ (style-dependent limits)
+    Symbol,           // Engine-owned identifier of arbitrary bounded length
+    SpecialValue,     // ±infinity / unsigned infinity / undefined
+    Collection,       // Semantic finite list or set
+    Equation,         // Semantic equality or assignment-style pair
+    Matrix,           // Bounded rectangular matrix
+    Interval,         // Semantic interval with endpoint openness
+    Piecewise,        // Bounded expression/condition branches
+    Call,             // Named function call not covered by FuncKind
+    Unevaluated,      // Valid expression explicitly marked unevaluated
+};
+
+enum class CollectionKind : uint8_t { List, Set };
+enum class EquationKind : uint8_t { Equation, Assignment };
+enum class SpecialValueKind : uint8_t {
+    PositiveInfinity,
+    NegativeInfinity,
+    UnsignedInfinity,
+    Undefined
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1337,6 +1356,200 @@ private:
     bool      _useDisplayLimits;  ///< Computed during layout
 };
 
+// MATH-RESULTS-01 semantic result nodes.  Their owning vectors are populated
+// during typed conversion; calculateLayout() only traverses them and uses
+// fixed-capacity geometry, so the rendering hot path performs no allocation.
+
+class NodeSymbol : public MathNode {
+public:
+    explicit NodeSymbol(std::string name);
+    void calculateLayout(const FontMetrics& fm) override;
+    const std::string& name() const { return _name; }
+private:
+    std::string _name;
+};
+
+class NodeSpecialValue : public MathNode {
+public:
+    explicit NodeSpecialValue(SpecialValueKind kind);
+    void calculateLayout(const FontMetrics& fm) override;
+    SpecialValueKind specialKind() const { return _kind; }
+    const char* label() const;
+private:
+    SpecialValueKind _kind;
+};
+
+class NodeCollection : public MathNode {
+public:
+    explicit NodeCollection(CollectionKind kind);
+    void calculateLayout(const FontMetrics& fm) override;
+    MathClass mathClass() const override { return MathClass::INNER; }
+    MathClass leftMathClass() const override { return MathClass::OPEN; }
+    MathClass rightMathClass() const override { return MathClass::CLOSE; }
+    int childCount() const override;
+    MathNode* child(int index) const override;
+    CollectionKind collectionKind() const { return _kind; }
+    void appendElement(NodePtr element);
+    int16_t delimiterWidth() const { return _delimiterWidth; }
+    int16_t innerPad() const { return _innerPad; }
+    int16_t separatorWidth() const { return _separatorWidth; }
+    uint32_t leftCp() const { return _kind == CollectionKind::Set ? 0x007B : 0x005B; }
+    uint32_t rightCp() const { return _kind == CollectionKind::Set ? 0x007D : 0x005D; }
+private:
+    CollectionKind _kind;
+    std::vector<NodePtr> _elements;
+    int16_t _delimiterWidth = 0;
+    int16_t _innerPad = 0;
+    int16_t _separatorWidth = 0;
+};
+
+class NodeEquation : public MathNode {
+public:
+    NodeEquation(NodePtr lhs, NodePtr rhs,
+                 EquationKind kind = EquationKind::Equation);
+    void calculateLayout(const FontMetrics& fm) override;
+    MathClass mathClass() const override { return MathClass::INNER; }
+    int childCount() const override { return 2; }
+    MathNode* child(int index) const override;
+    MathNode* lhs() const { return _lhs.get(); }
+    MathNode* rhs() const { return _rhs.get(); }
+    EquationKind equationKind() const { return _kind; }
+    int16_t relationWidth() const { return _relationWidth; }
+    int16_t relationGap() const { return _relationGap; }
+private:
+    NodePtr _lhs;
+    NodePtr _rhs;
+    EquationKind _kind;
+    int16_t _relationWidth = 0;
+    int16_t _relationGap = 0;
+};
+
+class NodeMatrix : public MathNode {
+public:
+    static constexpr uint8_t kCapacity = 6;
+    NodeMatrix(uint8_t rows, uint8_t columns);
+    void calculateLayout(const FontMetrics& fm) override;
+    MathClass mathClass() const override { return MathClass::INNER; }
+    int childCount() const override;
+    MathNode* child(int index) const override;
+    uint8_t rows() const { return _rows; }
+    uint8_t columns() const { return _columns; }
+    MathNode* cell(uint8_t row, uint8_t column) const;
+    bool setCell(uint8_t row, uint8_t column, NodePtr cell);
+    int16_t delimiterWidth() const { return _delimiterWidth; }
+    int16_t horizontalPad() const { return _horizontalPad; }
+    int16_t verticalPad() const { return _verticalPad; }
+    int16_t columnWidth(uint8_t column) const;
+    int16_t rowBaseline(uint8_t row) const;
+private:
+    uint8_t _rows;
+    uint8_t _columns;
+    std::vector<NodePtr> _cells;
+    std::array<int16_t, kCapacity> _columnWidths{};
+    std::array<int16_t, kCapacity> _rowBaselines{};
+    std::array<int16_t, kCapacity> _rowAscents{};
+    std::array<int16_t, kCapacity> _rowDescents{};
+    int16_t _delimiterWidth = 0;
+    int16_t _horizontalPad = 0;
+    int16_t _verticalPad = 0;
+};
+
+class NodeInterval : public MathNode {
+public:
+    NodeInterval(NodePtr lower, NodePtr upper,
+                 bool leftClosed, bool rightClosed);
+    void calculateLayout(const FontMetrics& fm) override;
+    MathClass mathClass() const override { return MathClass::INNER; }
+    int childCount() const override { return 2; }
+    MathNode* child(int index) const override;
+    MathNode* lower() const { return _lower.get(); }
+    MathNode* upper() const { return _upper.get(); }
+    bool leftClosed() const { return _leftClosed; }
+    bool rightClosed() const { return _rightClosed; }
+    uint32_t leftCp() const { return _leftClosed ? 0x005B : 0x0028; }
+    uint32_t rightCp() const { return _rightClosed ? 0x005D : 0x0029; }
+    int16_t delimiterWidth() const { return _delimiterWidth; }
+    int16_t innerPad() const { return _innerPad; }
+    int16_t separatorWidth() const { return _separatorWidth; }
+private:
+    NodePtr _lower;
+    NodePtr _upper;
+    bool _leftClosed;
+    bool _rightClosed;
+    int16_t _delimiterWidth = 0;
+    int16_t _innerPad = 0;
+    int16_t _separatorWidth = 0;
+};
+
+class NodePiecewise : public MathNode {
+public:
+    static constexpr uint8_t kCapacity = 6;
+    struct Branch {
+        NodePtr expression;
+        NodePtr condition;
+        bool otherwise = false;
+    };
+    NodePiecewise();
+    bool appendBranch(NodePtr expression, NodePtr condition, bool otherwise);
+    void calculateLayout(const FontMetrics& fm) override;
+    MathClass mathClass() const override { return MathClass::INNER; }
+    int childCount() const override;
+    MathNode* child(int index) const override;
+    uint8_t branchCount() const { return static_cast<uint8_t>(_branches.size()); }
+    const Branch& branch(uint8_t index) const { return _branches[index]; }
+    int16_t braceWidth() const { return _braceWidth; }
+    int16_t expressionColumnWidth() const { return _expressionColumnWidth; }
+    int16_t columnGap() const { return _columnGap; }
+    int16_t bracePad() const { return _bracePad; }
+    int16_t rowBaseline(uint8_t row) const { return _rowBaselines[row]; }
+private:
+    std::vector<Branch> _branches;
+    std::array<int16_t, kCapacity> _rowBaselines{};
+    int16_t _braceWidth = 0;
+    int16_t _expressionColumnWidth = 0;
+    int16_t _conditionColumnWidth = 0;
+    int16_t _columnGap = 0;
+    int16_t _bracePad = 0;
+};
+
+class NodeCall : public MathNode {
+public:
+    explicit NodeCall(std::string name);
+    void appendArgument(NodePtr argument);
+    void calculateLayout(const FontMetrics& fm) override;
+    int childCount() const override;
+    MathNode* child(int index) const override;
+    const std::string& name() const { return _name; }
+    int16_t labelWidth() const { return _labelWidth; }
+    int16_t delimiterWidth() const { return _delimiterWidth; }
+    int16_t innerPad() const { return _innerPad; }
+    int16_t separatorWidth() const { return _separatorWidth; }
+    int16_t labelGap() const { return _labelGap; }
+private:
+    std::string _name;
+    std::vector<NodePtr> _arguments;
+    int16_t _labelWidth = 0;
+    int16_t _delimiterWidth = 0;
+    int16_t _innerPad = 0;
+    int16_t _separatorWidth = 0;
+    int16_t _labelGap = 0;
+};
+
+class NodeUnevaluated : public MathNode {
+public:
+    explicit NodeUnevaluated(NodePtr expression);
+    void calculateLayout(const FontMetrics& fm) override;
+    int childCount() const override { return 1; }
+    MathNode* child(int index) const override;
+    MathNode* expression() const { return _expression.get(); }
+    int16_t labelWidth() const { return _labelWidth; }
+    int16_t gap() const { return _gap; }
+private:
+    NodePtr _expression;
+    int16_t _labelWidth = 0;
+    int16_t _gap = 0;
+};
+
 // ════════════════════════════════════════════════════════════════════════════
 // Factory helpers — Creación rápida de nodos
 // ════════════════════════════════════════════════════════════════════════════
@@ -1378,6 +1591,17 @@ NodePtr makeConstant(ConstKind kind);
 
 /// Variable algebraica (x, y, z, A-F, Ans, PreAns)
 NodePtr makeVariable(char name);
+NodePtr makeSymbol(const std::string& name);
+NodePtr makeSpecialValue(SpecialValueKind kind);
+NodePtr makeCollection(CollectionKind kind);
+NodePtr makeEquation(NodePtr lhs, NodePtr rhs,
+                     EquationKind kind = EquationKind::Equation);
+NodePtr makeMatrix(uint8_t rows, uint8_t columns);
+NodePtr makeInterval(NodePtr lower, NodePtr upper,
+                     bool leftClosed, bool rightClosed);
+NodePtr makePiecewise();
+NodePtr makeCall(const std::string& name);
+NodePtr makeUnevaluated(NodePtr expression);
 
 /// Decimal periódico (solo para resultados)
 NodePtr makePeriodicDecimal(const std::string& intPart,

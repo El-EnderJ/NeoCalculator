@@ -156,13 +156,28 @@ static void drawStrokedDelimiter(lv_layer_t* layer, int16_t x,
         case 0x007D: {  // }
             const bool left = (delimCp == 0x007B);
             const int16_t midY  = static_cast<int16_t>((yTop + yBottom) / 2);
-            const int16_t spine = left ? static_cast<int16_t>(x + bulge / 2)
-                                       : static_cast<int16_t>(x + bulge / 2);
-            const int16_t tip   = left ? static_cast<int16_t>(x)
-                                       : static_cast<int16_t>(x + bulge);
-            strokeSeg(layer, spine, yTop, spine, midY, stroke, color);
-            strokeSeg(layer, spine, midY, spine, yBottom, stroke, color);
-            strokeSeg(layer, spine, midY, tip, midY, stroke, color);
+            const int16_t inner = left ? static_cast<int16_t>(x + bulge) : x;
+            const int16_t outer = left ? static_cast<int16_t>(x + inset)
+                                       : static_cast<int16_t>(x + bulge - inset);
+            const int16_t cusp = left ? x : static_cast<int16_t>(x + bulge);
+            const int16_t shoulder = std::max<int16_t>(2,
+                static_cast<int16_t>(H / 5));
+            const int16_t cuspHalf = std::max<int16_t>(1,
+                static_cast<int16_t>(H / 18));
+            // WHY: bounded segments form a recognisable scalable brace even
+            // when the compact STIX subset has no OpenType brace parts.
+            strokeSeg(layer, inner, yTop, outer,
+                      static_cast<int16_t>(yTop + shoulder), stroke, color);
+            strokeSeg(layer, outer, static_cast<int16_t>(yTop + shoulder),
+                      outer, static_cast<int16_t>(midY - cuspHalf), stroke, color);
+            strokeSeg(layer, outer, static_cast<int16_t>(midY - cuspHalf),
+                      cusp, midY, stroke, color);
+            strokeSeg(layer, cusp, midY, outer,
+                      static_cast<int16_t>(midY + cuspHalf), stroke, color);
+            strokeSeg(layer, outer, static_cast<int16_t>(midY + cuspHalf),
+                      outer, static_cast<int16_t>(yBottom - shoulder), stroke, color);
+            strokeSeg(layer, outer, static_cast<int16_t>(yBottom - shoulder),
+                      inner, yBottom, stroke, color);
             break;
         }
         default:
@@ -188,8 +203,26 @@ static bool drawDelimiterGlyph(lv_layer_t* layer,
                                int16_t emSizePx) {
     if (yBottom <= yTop || font == nullptr) return false;
 
+    const int16_t requestedHeight = static_cast<int16_t>(yBottom - yTop);
+    if ((delimCp == 0x007B || delimCp == 0x007D) &&
+        requestedHeight > static_cast<int16_t>(font->line_height)) {
+        drawStrokedDelimiter(layer, x, yTop, yBottom, delimCp, color, emSizePx);
+        return true;
+    }
+
     const MathVariantTable* table = lookupVariantTable(delimCp);
     if (!table) {
+        const int16_t totalH = static_cast<int16_t>(yBottom - yTop);
+        const bool scalableDelimiter =
+            delimCp == 0x0028 || delimCp == 0x0029 ||
+            delimCp == 0x005B || delimCp == 0x005D ||
+            delimCp == 0x007B || delimCp == 0x007D || delimCp == 0x007C;
+        if (scalableDelimiter &&
+            totalH > static_cast<int16_t>(font->line_height)) {
+            drawStrokedDelimiter(layer, x, yTop, yBottom, delimCp, color,
+                                 emSizePx);
+            return true;
+        }
         // ── Fallback A: no variant table → draw the base codepoint directly ──
         lv_font_glyph_dsc_t glyph;
         if (!lv_font_get_glyph_dsc(font, &glyph, delimCp, 0)) {
@@ -1586,6 +1619,44 @@ void MathCanvas::drawNodeBaseline(lv_layer_t* layer, const MathNode* node,
             drawBigOpBaseline(layer, static_cast<const NodeBigOp*>(node),
                       x, yBaseline, fm, font, depth);
             break;
+        case NodeType::Symbol:
+            drawSymbolBaseline(layer, static_cast<const NodeSymbol*>(node),
+                               x, yBaseline);
+            break;
+        case NodeType::SpecialValue:
+            drawSpecialValueBaseline(layer,
+                static_cast<const NodeSpecialValue*>(node), x, yBaseline);
+            break;
+        case NodeType::Collection:
+            drawCollectionBaseline(layer,
+                static_cast<const NodeCollection*>(node), x, yBaseline,
+                fm, font, depth);
+            break;
+        case NodeType::Equation:
+            drawEquationBaseline(layer, static_cast<const NodeEquation*>(node),
+                                 x, yBaseline, fm, font, depth);
+            break;
+        case NodeType::Matrix:
+            drawMatrixBaseline(layer, static_cast<const NodeMatrix*>(node),
+                               x, yBaseline, fm, font, depth);
+            break;
+        case NodeType::Interval:
+            drawIntervalBaseline(layer, static_cast<const NodeInterval*>(node),
+                                 x, yBaseline, fm, font, depth);
+            break;
+        case NodeType::Piecewise:
+            drawPiecewiseBaseline(layer, static_cast<const NodePiecewise*>(node),
+                                  x, yBaseline, fm, font, depth);
+            break;
+        case NodeType::Call:
+            drawCallBaseline(layer, static_cast<const NodeCall*>(node),
+                             x, yBaseline, fm, font, depth);
+            break;
+        case NodeType::Unevaluated:
+            drawUnevaluatedBaseline(layer,
+                static_cast<const NodeUnevaluated*>(node), x, yBaseline,
+                fm, font, depth);
+            break;
     }
 
     // ── Smart Highlighter: restore state after drawing the sub-tree ──
@@ -2414,6 +2485,187 @@ void MathCanvas::drawSubscriptBaseline(lv_layer_t* layer, const NodeSubscript* n
     int16_t subX = static_cast<int16_t>(x + baseL.width);
     int16_t subBaseline = static_cast<int16_t>(yBaseline + subDrop);
     drawNodeBaseline(layer, node->subscript(), subX, subBaseline, fmSub, _fontSmall, depth + 1);
+}
+
+void MathCanvas::drawSymbolBaseline(lv_layer_t* layer, const NodeSymbol* node,
+                                    int16_t x, int16_t yBaseline) {
+    const lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
+    drawTextBaseline(layer, x, yBaseline, node->name().c_str(),
+                     node->scriptLevel(), color);
+}
+
+void MathCanvas::drawSpecialValueBaseline(lv_layer_t* layer,
+                                          const NodeSpecialValue* node,
+                                          int16_t x, int16_t yBaseline) {
+    const lv_color_t color = _highlightActive
+        ? _highlightColor
+        : (node->specialKind() == SpecialValueKind::Undefined
+            ? lv_color_hex(0x9B1C1C) : lv_color_black());
+    drawTextBaseline(layer, x, yBaseline, node->label(), node->scriptLevel(), color);
+}
+
+void MathCanvas::drawCollectionBaseline(lv_layer_t* layer,
+                                        const NodeCollection* node,
+                                        int16_t x, int16_t yBaseline,
+                                        const FontMetrics& fm,
+                                        const lv_font_t* font, int depth) {
+    const auto& layout = node->layout();
+    const int16_t top = static_cast<int16_t>(yBaseline - layout.ascent);
+    const int16_t bottom = static_cast<int16_t>(yBaseline + layout.descent);
+    const lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
+    drawDelimiterGlyph(layer, x, top, bottom, node->leftCp(), color,
+                       font, fm.emSize);
+    int16_t childX = static_cast<int16_t>(x + node->delimiterWidth() +
+                                          node->innerPad());
+    for (int i = 0; i < node->childCount(); ++i) {
+        MathNode* element = node->child(i);
+        drawNodeBaseline(layer, element, childX, yBaseline, fm, font, depth + 1);
+        childX = static_cast<int16_t>(childX + element->layout().width);
+        if (i + 1 < node->childCount()) {
+            drawTextBaseline(layer, childX, yBaseline, ",",
+                             node->scriptLevel(), color);
+            childX = static_cast<int16_t>(childX + node->separatorWidth());
+        }
+    }
+    drawDelimiterGlyph(layer, static_cast<int16_t>(x + layout.width -
+        node->delimiterWidth()), top, bottom, node->rightCp(), color,
+        font, fm.emSize);
+}
+
+void MathCanvas::drawEquationBaseline(lv_layer_t* layer,
+                                      const NodeEquation* node,
+                                      int16_t x, int16_t yBaseline,
+                                      const FontMetrics& fm,
+                                      const lv_font_t* font, int depth) {
+    drawNodeBaseline(layer, node->lhs(), x, yBaseline, fm, font, depth + 1);
+    int16_t relationX = static_cast<int16_t>(x + node->lhs()->layout().width +
+                                             node->relationGap());
+    const lv_color_t color = _highlightActive ? _highlightColor : lv_color_hex(0x333333);
+    drawTextBaseline(layer, relationX, yBaseline, "=", node->scriptLevel(), color);
+    const int16_t rhsX = static_cast<int16_t>(relationX + node->relationWidth() +
+                                              node->relationGap());
+    drawNodeBaseline(layer, node->rhs(), rhsX, yBaseline, fm, font, depth + 1);
+}
+
+void MathCanvas::drawMatrixBaseline(lv_layer_t* layer, const NodeMatrix* node,
+                                    int16_t x, int16_t yBaseline,
+                                    const FontMetrics& fm,
+                                    const lv_font_t* font, int depth) {
+    const auto& layout = node->layout();
+    const int16_t top = static_cast<int16_t>(yBaseline - layout.ascent);
+    const int16_t bottom = static_cast<int16_t>(yBaseline + layout.descent);
+    const lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
+    drawDelimiterGlyph(layer, x, top, bottom, 0x005B, color, font, fm.emSize);
+    const int16_t contentX = static_cast<int16_t>(x + node->delimiterWidth());
+    for (uint8_t row = 0; row < node->rows(); ++row) {
+        int16_t columnX = contentX;
+        const int16_t rowBase = static_cast<int16_t>(yBaseline + node->rowBaseline(row));
+        for (uint8_t column = 0; column < node->columns(); ++column) {
+            MathNode* cell = node->cell(row, column);
+            const int16_t cellX = static_cast<int16_t>(columnX + node->horizontalPad() +
+                (node->columnWidth(column) - (cell ? cell->layout().width : 0)) / 2);
+            if (cell)
+                drawNodeBaseline(layer, cell, cellX, rowBase, fm, font, depth + 1);
+            columnX = static_cast<int16_t>(columnX + node->columnWidth(column) +
+                                           2 * node->horizontalPad());
+        }
+    }
+    drawDelimiterGlyph(layer, static_cast<int16_t>(x + layout.width -
+        node->delimiterWidth()), top, bottom, 0x005D, color, font, fm.emSize);
+}
+
+void MathCanvas::drawIntervalBaseline(lv_layer_t* layer,
+                                      const NodeInterval* node,
+                                      int16_t x, int16_t yBaseline,
+                                      const FontMetrics& fm,
+                                      const lv_font_t* font, int depth) {
+    const auto& layout = node->layout();
+    const int16_t top = static_cast<int16_t>(yBaseline - layout.ascent);
+    const int16_t bottom = static_cast<int16_t>(yBaseline + layout.descent);
+    const lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
+    drawDelimiterGlyph(layer, x, top, bottom, node->leftCp(), color, font, fm.emSize);
+    int16_t childX = static_cast<int16_t>(x + node->delimiterWidth() + node->innerPad());
+    drawNodeBaseline(layer, node->lower(), childX, yBaseline, fm, font, depth + 1);
+    childX = static_cast<int16_t>(childX + node->lower()->layout().width);
+    drawTextBaseline(layer, childX, yBaseline, ",", node->scriptLevel(), color);
+    childX = static_cast<int16_t>(childX + node->separatorWidth());
+    drawNodeBaseline(layer, node->upper(), childX, yBaseline, fm, font, depth + 1);
+    drawDelimiterGlyph(layer, static_cast<int16_t>(x + layout.width -
+        node->delimiterWidth()), top, bottom, node->rightCp(), color, font, fm.emSize);
+}
+
+void MathCanvas::drawPiecewiseBaseline(lv_layer_t* layer,
+                                       const NodePiecewise* node,
+                                       int16_t x, int16_t yBaseline,
+                                       const FontMetrics& fm,
+                                       const lv_font_t* font, int depth) {
+    const auto& layout = node->layout();
+    const int16_t top = static_cast<int16_t>(yBaseline - layout.ascent);
+    const int16_t bottom = static_cast<int16_t>(yBaseline + layout.descent);
+    const lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
+    drawDelimiterGlyph(layer, x, top, bottom, 0x007B, color, font, fm.emSize);
+    const int16_t expressionX = static_cast<int16_t>(x + node->braceWidth() +
+                                                     node->bracePad());
+    const int16_t conditionX = static_cast<int16_t>(expressionX +
+        node->expressionColumnWidth() + node->columnGap());
+    for (uint8_t row = 0; row < node->branchCount(); ++row) {
+        const auto& branch = node->branch(row);
+        const int16_t rowBase = static_cast<int16_t>(yBaseline + node->rowBaseline(row));
+        drawNodeBaseline(layer, branch.expression.get(), expressionX, rowBase,
+                         fm, font, depth + 1);
+        if (branch.otherwise) {
+            drawTextBaseline(layer, conditionX, rowBase, "otherwise",
+                             node->scriptLevel(), lv_color_hex(0x555555));
+        } else {
+            drawTextBaseline(layer, conditionX, rowBase, "if ",
+                             node->scriptLevel(), lv_color_hex(0x555555));
+            drawNodeBaseline(layer, branch.condition.get(),
+                static_cast<int16_t>(conditionX + fm.charWidth * 3), rowBase,
+                fm, font, depth + 1);
+        }
+    }
+}
+
+void MathCanvas::drawCallBaseline(lv_layer_t* layer, const NodeCall* node,
+                                  int16_t x, int16_t yBaseline,
+                                  const FontMetrics& fm,
+                                  const lv_font_t* font, int depth) {
+    const auto& layout = node->layout();
+    const lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
+    drawTextBaseline(layer, x, yBaseline, node->name().c_str(),
+                     node->scriptLevel(), color);
+    const int16_t leftX = static_cast<int16_t>(x + node->labelWidth() + node->labelGap());
+    const int16_t top = static_cast<int16_t>(yBaseline - layout.ascent);
+    const int16_t bottom = static_cast<int16_t>(yBaseline + layout.descent);
+    drawDelimiterGlyph(layer, leftX, top, bottom, 0x0028, color, font, fm.emSize);
+    int16_t argumentX = static_cast<int16_t>(leftX + node->delimiterWidth() +
+                                             node->innerPad());
+    for (int i = 0; i < node->childCount(); ++i) {
+        MathNode* argument = node->child(i);
+        drawNodeBaseline(layer, argument, argumentX, yBaseline, fm, font, depth + 1);
+        argumentX = static_cast<int16_t>(argumentX + argument->layout().width);
+        if (i + 1 < node->childCount()) {
+            drawTextBaseline(layer, argumentX, yBaseline, ",",
+                             node->scriptLevel(), color);
+            argumentX = static_cast<int16_t>(argumentX + node->separatorWidth());
+        }
+    }
+    drawDelimiterGlyph(layer, static_cast<int16_t>(x + layout.width -
+        node->delimiterWidth()), top, bottom, 0x0029, color, font, fm.emSize);
+}
+
+void MathCanvas::drawUnevaluatedBaseline(lv_layer_t* layer,
+                                         const NodeUnevaluated* node,
+                                         int16_t x, int16_t yBaseline,
+                                         const FontMetrics& fm,
+                                         const lv_font_t* font, int depth) {
+    const lv_color_t labelColor = _highlightActive
+        ? _highlightColor : lv_color_hex(0x7A5A00);
+    drawTextBaseline(layer, x, yBaseline, "unevaluated",
+                     node->scriptLevel(), labelColor);
+    drawNodeBaseline(layer, node->expression(),
+        static_cast<int16_t>(x + node->labelWidth() + node->gap()),
+        yBaseline, fm, font, depth + 1);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

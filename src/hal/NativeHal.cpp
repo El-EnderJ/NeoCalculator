@@ -117,6 +117,7 @@
 #include "../apps/SequencesApp.h"         // Phase 7A: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/RegressionApp.h"        // Phase 7C: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/GrapherApp.h"           // Phase 8G: LVGL-native grapher (RPN pipeline; no Giac/CAS)
+#include "../apps/MathRenderVisualTestApp.h" // Candidate-only renderer verification
 #if defined(NUMOS_NEO_APP_SMOKE)
 #include "../apps/NeoLanguageApp.h"        // GIAC-N01 opt-in lifecycle smoke only
 #endif
@@ -229,6 +230,7 @@ enum class AppMode : uint8_t {
     SEQUENCES,      // Secuencias (LVGL-native; Phase 7A, emulador)
     REGRESSION,     // Regresion (LVGL-native; Phase 7C, emulador)
     GRAPHER,        // Grapher (LVGL-native; Phase 8G, emulador)
+    MATH_VISUAL,    // Full MathRenderer verification canvas
 #if defined(NUMOS_NEO_APP_SMOKE)
     NEO_LANGUAGE    // Opt-in: excluded from the normal emulator whitelist
 #endif
@@ -284,6 +286,7 @@ static ProbabilityApp*  g_probApp  = nullptr;      // Phase 6A (emulador)
 static SequencesApp*    g_seqApp   = nullptr;      // Phase 7A (emulador)
 static RegressionApp*   g_regApp   = nullptr;      // Phase 7C (emulador)
 static GrapherApp*      g_grapherApp = nullptr;    // Phase 8G (emulador)
+static MathRenderVisualTestApp* g_mathVisualApp = nullptr;
 #if defined(NUMOS_NEO_APP_SMOKE)
 static NeoLanguageApp*  g_neoLangApp = nullptr;
 static uint32_t         g_neoGiacCountSnapshot = 0;
@@ -814,6 +817,21 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
+        case AppMode::MATH_VISUAL:
+            if (isDown && kc == KeyCode::MODE) {
+                returnToMenu();
+                break;
+            }
+            if (g_mathVisualApp) {
+                KeyEvent ke;
+                ke.code = kc;
+                ke.action = action;
+                ke.row = -1;
+                ke.col = -1;
+                g_mathVisualApp->handleKey(ke);
+            }
+            break;
+
 #if defined(NUMOS_NEO_APP_SMOKE)
         case AppMode::NEO_LANGUAGE:
             if (isDown && kc == KeyCode::MODE) {
@@ -991,6 +1009,7 @@ static void transitionToMenu()
     // el objeto (sin begin(), para no agotar el heap LVGL al arranque); su pantalla
     // se crea en el primer load() (GrapherApp::load() llama a begin() si hace falta).
     g_grapherApp = new GrapherApp();
+    g_mathVisualApp = new MathRenderVisualTestApp();
 #if defined(NUMOS_NEO_APP_SMOKE)
     // Opt-in only: the full Neo stack still contains native file() routes
     // outside the emulator LittleFS sandbox. This smoke never invokes them.
@@ -1084,6 +1103,14 @@ static void launchApp(int appId)
             }
             break;
 
+        case 20: // Full MathRenderer verification app
+            if (g_mathVisualApp) {
+                g_mathVisualApp->load();
+                g_mode = AppMode::MATH_VISUAL;
+                std::printf("[APP] Math Visual activa\n");
+            }
+            break;
+
         case 10: // Settings (LVGL-native; mismo id que la tarjeta del launcher)
             if (g_settingsApp) {
                 g_settingsApp->load();
@@ -1160,6 +1187,9 @@ static void performAppTeardown(AppMode m)
         case AppMode::GRAPHER:
             // Phase 8G: GrapherApp::load() vuelve a llamar begin() perezosamente.
             if (g_grapherApp) g_grapherApp->end();
+            break;
+        case AppMode::MATH_VISUAL:
+            if (g_mathVisualApp) g_mathVisualApp->end();
             break;
 #if defined(NUMOS_NEO_APP_SMOKE)
         case AppMode::NEO_LANGUAGE:
@@ -1728,6 +1758,8 @@ static const char* canonicalAppName(const std::string& name)
     if (lc == "settings")                         return "Settings";        // Phase 5A
     if (lc == "mathshowcase" || lc == "math_showcase" ||
         lc == "showcase")                         return "MathShowcase";    // Phase 5A
+    if (lc == "mathvisual" || lc == "math_visual" ||
+        lc == "visual")                           return "Math Visual";
     if (lc == "statistics" || lc == "stats")      return "Statistics";      // Phase 6A
     if (lc == "probability" || lc == "prob")      return "Probability";     // Phase 6A
     if (lc == "sequences" || lc == "seq")         return "Sequences";       // Phase 7A
@@ -1762,6 +1794,7 @@ static int scriptAppNameToId(const std::string& name)
 #endif
     if (lc == "mathshowcase" || lc == "math_showcase" || lc == "showcase")
                                                                       return APPID_MATH_SHOWCASE;
+    if (lc == "mathvisual" || lc == "math_visual" || lc == "visual") return 20;
     return -1;
 }
 
@@ -2506,6 +2539,7 @@ static const char* activeAppName()
          : (g_mode == AppMode::SEQUENCES)     ? "Sequences"
          : (g_mode == AppMode::REGRESSION)    ? "Regression"
          : (g_mode == AppMode::GRAPHER)       ? "Grapher"
+         : (g_mode == AppMode::MATH_VISUAL)   ? "Math Visual"
          : (g_mode == AppMode::EQUATIONS)     ? "Equations"
          : (g_mode == AppMode::CALCULUS)      ? "Calculus"
 #if defined(NUMOS_NEO_APP_SMOKE)

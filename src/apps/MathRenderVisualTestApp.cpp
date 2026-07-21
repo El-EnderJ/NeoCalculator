@@ -212,6 +212,15 @@ static const char* nodeTypeName(NodeType t) {
         case NodeType::Summation:      return "Sum";
         case NodeType::Subscript:      return "Sub";
         case NodeType::BigOp:          return "BigOp";
+        case NodeType::Symbol:         return "Symbol";
+        case NodeType::SpecialValue:   return "Special";
+        case NodeType::Collection:     return "Collection";
+        case NodeType::Equation:       return "Equation";
+        case NodeType::Matrix:         return "Matrix";
+        case NodeType::Interval:       return "Interval";
+        case NodeType::Piecewise:      return "Piecewise";
+        case NodeType::Call:           return "Call";
+        case NodeType::Unevaluated:    return "Unevaluated";
         case NodeType::Row:            return "Row";
         case NodeType::Empty:          return "Empty";
         default:                       return "?";

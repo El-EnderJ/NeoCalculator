@@ -2629,9 +2629,9 @@ void EquationsApp::buildGiacResultDisplay() {
     rows.reserve(rowCount);
     const bool indexGroups = _giacResult.groups.size() > 1;
     for (std::size_t groupIndex = 0;
-         groupIndex < _giacResult.groups.size(); ++groupIndex) {
+        groupIndex < _giacResult.groups.size(); ++groupIndex) {
         for (const auto& solution : _giacResult.groups[groupIndex].values) {
-            if (solution.variable.size() != 1) {
+            if (solution.variable.empty()) {
                 showTextFallback("Solutions:", _giacResult.rawExactText);
                 return;
             }
@@ -2645,20 +2645,23 @@ void EquationsApp::buildGiacResultDisplay() {
 
             auto row = makeRow();
             auto* resultRow = static_cast<NodeRow*>(row.get());
-            resultRow->appendChild(makeVariable(solution.variable[0]));
+            NodePtr variable = makeRow();
+            auto* variableRow = static_cast<NodeRow*>(variable.get());
+            variableRow->appendChild(solution.variable.size() == 1
+                ? makeVariable(solution.variable[0])
+                : makeSymbol(solution.variable));
             if (indexGroups) {
-                resultRow->appendChild(
+                auto index = makeRow();
+                static_cast<NodeRow*>(index.get())->appendChild(
                     makeNumber(std::to_string(groupIndex + 1)));
+                auto indexed = makeRow();
+                static_cast<NodeRow*>(indexed.get())->appendChild(
+                    makeSubscript(std::move(variable), std::move(index)));
+                variable = std::move(indexed);
             }
-            resultRow->appendChild(makeRelation(OpKind::Eq));
-            if (value->type() == NodeType::Row) {
-                auto* valueRow = static_cast<NodeRow*>(value.get());
-                while (valueRow->childCount() > 0) {
-                    resultRow->appendChild(valueRow->removeChild(0));
-                }
-            } else {
-                resultRow->appendChild(std::move(value));
-            }
+            resultRow->appendChild(makeEquation(
+                std::move(variable), std::move(value),
+                EquationKind::Assignment));
             rows.push_back(std::move(row));
         }
     }

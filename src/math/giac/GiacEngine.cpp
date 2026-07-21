@@ -55,6 +55,27 @@ void lexer_localization(int lang, const context* contextptr);
 
 namespace numos {
 
+const char* engineFallbackReasonName(EngineFallbackReason reason) {
+    switch (reason) {
+        case EngineFallbackReason::None: return "none";
+        case EngineFallbackReason::DepthLimit: return "depth_limit";
+        case EngineFallbackReason::NodeLimit: return "node_limit";
+        case EngineFallbackReason::ListLimit: return "list_limit";
+        case EngineFallbackReason::SetLimit: return "set_limit";
+        case EngineFallbackReason::MatrixDimensions: return "matrix_dimensions";
+        case EngineFallbackReason::MatrixNotRectangular: return "matrix_not_rectangular";
+        case EngineFallbackReason::PiecewiseBranchLimit: return "piecewise_branch_limit";
+        case EngineFallbackReason::CyclicStructure: return "cyclic_structure";
+        case EngineFallbackReason::UnsupportedType: return "unsupported_type";
+        case EngineFallbackReason::UnsupportedSubtype: return "unsupported_subtype";
+        case EngineFallbackReason::UnsupportedFunction: return "unsupported_function";
+        case EngineFallbackReason::MalformedTypedStructure: return "malformed_typed_structure";
+        case EngineFallbackReason::AstConversionFailed: return "ast_conversion_failed";
+        case EngineFallbackReason::RenderedSizeLimit: return "rendered_size_limit";
+    }
+    return "unknown";
+}
+
 // ---------------------------------------------------------------------------
 // Engine state
 // ---------------------------------------------------------------------------
@@ -65,6 +86,24 @@ struct GiacEngine::State {
 };
 
 namespace {
+
+StructuredResultDiagnostics g_structuredDiagnostics;
+
+const void* g_conversionPath[enginecontract::kMaxResultDepth + 1]{};
+int g_conversionPathCount = 0;
+
+struct ConversionPathGuard {
+    bool pushed = false;
+    explicit ConversionPathGuard(const void* identity) {
+        if (identity && g_conversionPathCount <= enginecontract::kMaxResultDepth) {
+            g_conversionPath[g_conversionPathCount++] = identity;
+            pushed = true;
+        }
+    }
+    ~ConversionPathGuard() {
+        if (pushed) --g_conversionPathCount;
+    }
+};
 
 // Mirrors the historical GiacBridge initGiac() configuration so the shared
 // context behaves identically for the UART path during the transition.
@@ -130,8 +169,8 @@ MathEngineResult rejectedReentrant() {
 // away. Every giac type stays inside this TU.
 // ---------------------------------------------------------------------------
 
-constexpr int kTreeMaxDepth = enginecontract::kMaxTreeDepth;
-constexpr int kTreeNodeBudget = enginecontract::kMaxTreeNodes;
+constexpr int kTreeMaxDepth = enginecontract::kMaxResultDepth;
+constexpr int kTreeNodeBudget = enginecontract::kMaxResultNodes;
 constexpr size_t kCalculusMaxSerializedLength =
     enginecontract::kMaxSourceBytes;
 constexpr int kCalculusInputNodeBudget = enginecontract::kMaxTreeNodes;
@@ -152,14 +191,103 @@ void childrenFromFeuille(const giac::gen& f, giac::context* ctx,
     }
 }
 
+bool countStructuredTreeBounded(const EngineResultNode& node,
+                                uint16_t& count) {
+    if (++count > enginecontract::kMaxResultNodes) return false;
+    for (const auto& child : node.children) {
+        if (!countStructuredTreeBounded(child, count)) return false;
+    }
+    return true;
+}
+
+void recordStructuredTreeImpl(const EngineResultNode& node, uint16_t depth,
+                              uint16_t& count) {
+    ++count;
+    g_structuredDiagnostics.maximumDepth =
+        std::max(g_structuredDiagnostics.maximumDepth, depth);
+    const unsigned kind = static_cast<unsigned>(node.kind);
+    if (kind <= static_cast<unsigned>(EngineNodeKind::Unsupported))
+        ++g_structuredDiagnostics.convertedByKind[kind];
+    if (node.kind == EngineNodeKind::Unsupported) {
+        ++g_structuredDiagnostics.fallbackCount;
+        const unsigned reason = static_cast<unsigned>(node.fallbackReason);
+        if (reason <= static_cast<unsigned>(EngineFallbackReason::RenderedSizeLimit))
+            ++g_structuredDiagnostics.fallbackByReason[reason];
+    }
+    for (const auto& child : node.children)
+        recordStructuredTreeImpl(child, static_cast<uint16_t>(depth + 1), count);
+}
+
+void recordStructuredTree(EngineResultNode& node) {
+    uint16_t boundedCount = 0;
+    if (!countStructuredTreeBounded(node, boundedCount)) {
+        // WHY: parents reserve their typed arity before child conversion. If
+        // the global node budget expires mid-container, collapse the partial
+        // tree so even the fallback object remains inside the hard cap.
+        node = EngineResultNode{};
+        node.kind = EngineNodeKind::Unsupported;
+        node.fallbackReason = EngineFallbackReason::NodeLimit;
+    }
+    uint16_t count = 0;
+    recordStructuredTreeImpl(node, 0, count);
+    g_structuredDiagnostics.maximumNodeCount =
+        std::max(g_structuredDiagnostics.maximumNodeCount, count);
+}
+
+EngineFallbackReason firstFallbackReason(const EngineResultNode& node) {
+    if (node.fallbackReason != EngineFallbackReason::None)
+        return node.fallbackReason;
+    for (const auto& child : node.children) {
+        const auto reason = firstFallbackReason(child);
+        if (reason != EngineFallbackReason::None) return reason;
+    }
+    return EngineFallbackReason::None;
+}
+
 void genToNode(const giac::gen& g, giac::context* ctx,
                EngineResultNode& out, int depth, int& budget) {
-    if (depth > kTreeMaxDepth || --budget < 0) {
+    if (depth == 0) g_conversionPathCount = 0;
+    if (depth > kTreeMaxDepth) {
         out.kind = EngineNodeKind::Unsupported;
+        out.fallbackReason = EngineFallbackReason::DepthLimit;
+        ++g_structuredDiagnostics.rejectedOversized;
         return;
     }
-    if (giac::is_undef(g)) {  // shouldn't reach here (non-Ok upstream)
+    if (budget <= 0) {
         out.kind = EngineNodeKind::Unsupported;
+        out.fallbackReason = EngineFallbackReason::NodeLimit;
+        if (budget == 0) ++g_structuredDiagnostics.rejectedOversized;
+        budget = -1;
+        return;
+    }
+    --budget;
+    const void* identity = nullptr;
+    if (g.type == giac::_VECT) identity = g._VECTptr;
+    else if (g.type == giac::_SYMB) identity = g._SYMBptr;
+    else if (g.type == giac::_FRAC) identity = g._FRACptr;
+    else if (g.type == giac::_CPLX) identity = g._CPLXptr;
+    if (identity) {
+        for (int i = 0; i < g_conversionPathCount; ++i) {
+            if (g_conversionPath[i] == identity) {
+                out.kind = EngineNodeKind::Unsupported;
+                out.fallbackReason = EngineFallbackReason::CyclicStructure;
+                return;
+            }
+        }
+    }
+    ConversionPathGuard pathGuard(identity);
+    if (giac::is_undef(g)) {  // shouldn't reach here (non-Ok upstream)
+        out.kind = EngineNodeKind::Undefined;
+        return;
+    }
+    if (g == giac::cst_i) {
+        out.kind = EngineNodeKind::ImagUnit;
+        return;
+    }
+    if (g == -giac::cst_i) {
+        out.kind = EngineNodeKind::Neg;
+        out.children.resize(1);
+        out.children[0].kind = EngineNodeKind::ImagUnit;
         return;
     }
     if (g == giac::unsigned_inf) { out.kind = EngineNodeKind::UnsignedInfinity; return; }
@@ -196,9 +324,82 @@ void genToNode(const giac::gen& g, giac::context* ctx,
             return;
         }
         case giac::_VECT: {
-            out.kind = EngineNodeKind::List;
-            out.children.resize(g._VECTptr->size());
-            for (size_t i = 0; i < g._VECTptr->size(); ++i)
+            const size_t count = g._VECTptr->size();
+            if (g.subtype == giac::_MATRIX__VECT) {
+                const size_t rows = count;
+                size_t columns = 0;
+                if (rows == 0 || rows > enginecontract::kMaxMatrixRows) {
+                    out.kind = EngineNodeKind::Unsupported;
+                    out.fallbackReason = EngineFallbackReason::MatrixDimensions;
+                    ++g_structuredDiagnostics.rejectedOversized;
+                    return;
+                }
+                for (const auto& row : *g._VECTptr) {
+                    if (row.type != giac::_VECT) {
+                        out.kind = EngineNodeKind::Unsupported;
+                        out.fallbackReason = EngineFallbackReason::MatrixNotRectangular;
+                        return;
+                    }
+                    if (columns == 0) columns = row._VECTptr->size();
+                    if (row._VECTptr->size() != columns || columns == 0 ||
+                        columns > enginecontract::kMaxMatrixColumns ||
+                        rows * columns > enginecontract::kMaxMatrixCells) {
+                        out.kind = EngineNodeKind::Unsupported;
+                        out.fallbackReason = row._VECTptr->size() != columns
+                            ? EngineFallbackReason::MatrixNotRectangular
+                            : EngineFallbackReason::MatrixDimensions;
+                        ++g_structuredDiagnostics.rejectedOversized;
+                        return;
+                    }
+                }
+                out.kind = EngineNodeKind::Matrix;
+                out.rows = static_cast<uint8_t>(rows);
+                out.columns = static_cast<uint8_t>(columns);
+                out.children.resize(rows * columns);
+                size_t target = 0;
+                for (const auto& row : *g._VECTptr)
+                    for (const auto& value : *row._VECTptr)
+                        genToNode(value, ctx, out.children[target++], depth + 1, budget);
+                return;
+            }
+            if (g.subtype == giac::_INTERVAL__VECT) {
+                if (count != 2) {
+                    out.kind = EngineNodeKind::Unsupported;
+                    out.fallbackReason = EngineFallbackReason::MalformedTypedStructure;
+                    return;
+                }
+                out.kind = EngineNodeKind::Interval;
+                out.leftClosed = true;
+                out.rightClosed = true;
+                out.children.resize(2);
+                genToNode(g._VECTptr->front(), ctx, out.children[0], depth + 1, budget);
+                genToNode(g._VECTptr->back(), ctx, out.children[1], depth + 1, budget);
+                return;
+            }
+            const bool isSet = g.subtype == giac::_SET__VECT;
+            const size_t limit = isSet ? enginecontract::kMaxSetElements
+                                       : enginecontract::kMaxListElements;
+            const bool supportedListSubtype =
+                g.subtype == 0 || g.subtype == giac::_LIST__VECT ||
+                g.subtype == giac::_SEQ__VECT ||
+                g.subtype == giac::_TUPLE__VECT ||
+                g.subtype == giac::_VECTOR__VECT;
+            if (!isSet && !supportedListSubtype) {
+                out.kind = EngineNodeKind::Unsupported;
+                out.fallbackReason = EngineFallbackReason::UnsupportedSubtype;
+                out.text = g.print(ctx);
+                return;
+            }
+            if (count > limit) {
+                out.kind = EngineNodeKind::Unsupported;
+                out.fallbackReason = isSet ? EngineFallbackReason::SetLimit
+                                           : EngineFallbackReason::ListLimit;
+                ++g_structuredDiagnostics.rejectedOversized;
+                return;
+            }
+            out.kind = isSet ? EngineNodeKind::Set : EngineNodeKind::List;
+            out.children.resize(count);
+            for (size_t i = 0; i < count; ++i)
                 genToNode((*g._VECTptr)[i], ctx, out.children[i], depth + 1, budget);
             return;
         }
@@ -274,6 +475,40 @@ void genToNode(const giac::gen& g, giac::context* ctx,
                 genToNode(f._VECTptr->back(), ctx, out.children[1], depth + 1, budget);
                 return;
             }
+            if (s == giac::at_sto && f.type == giac::_VECT &&
+                f._VECTptr->size() == 2) {
+                out.kind = EngineNodeKind::Assignment;
+                out.children.resize(2);
+                // Giac stores value first and destination second for sto().
+                genToNode(f._VECTptr->back(), ctx, out.children[0], depth + 1, budget);
+                genToNode(f._VECTptr->front(), ctx, out.children[1], depth + 1, budget);
+                return;
+            }
+            if (s == giac::at_interval && f.type == giac::_VECT &&
+                f._VECTptr->size() == 2) {
+                out.kind = EngineNodeKind::Interval;
+                out.leftClosed = true;
+                out.rightClosed = true;
+                out.children.resize(2);
+                genToNode(f._VECTptr->front(), ctx, out.children[0], depth + 1, budget);
+                genToNode(f._VECTptr->back(), ctx, out.children[1], depth + 1, budget);
+                return;
+            }
+            if (s == giac::at_piecewise && f.type == giac::_VECT) {
+                const size_t valueCount = f._VECTptr->size();
+                const size_t branches = valueCount / 2 + valueCount % 2;
+                if (branches == 0 || branches > enginecontract::kMaxPiecewiseBranches) {
+                    out.kind = EngineNodeKind::Unsupported;
+                    out.fallbackReason = EngineFallbackReason::PiecewiseBranchLimit;
+                    ++g_structuredDiagnostics.rejectedOversized;
+                    return;
+                }
+                out.kind = EngineNodeKind::Piecewise;
+                out.children.resize(valueCount);
+                for (size_t i = 0; i < valueCount; ++i)
+                    genToNode((*f._VECTptr)[i], ctx, out.children[i], depth + 1, budget);
+                return;
+            }
             // Generic named function call (sin, cos, ln, log10, abs, ...).
             const char* name = s.ptr() ? s.ptr()->s : nullptr;
             if (name && *name) {
@@ -284,11 +519,13 @@ void genToNode(const giac::gen& g, giac::context* ctx,
             }
             out.kind = EngineNodeKind::Unsupported;
             out.text = g.print(ctx);
+            out.fallbackReason = EngineFallbackReason::UnsupportedFunction;
             return;
         }
         default:
             out.kind = EngineNodeKind::Unsupported;
             out.text = g.print(ctx);
+            out.fallbackReason = EngineFallbackReason::UnsupportedType;
             return;
     }
 }
@@ -436,9 +673,12 @@ static void syncAngleMode(giac::context* ctx) {
 static MathEngineResult runTextual(giac::context* ctx, const char* expression,
                                    bool simplifyMode,
                                    EngineResultNode* outTree = nullptr,
-                                   bool* outHasTree = nullptr) {
+                                   bool* outHasTree = nullptr,
+                                   EngineResultNode* outApproximateTree = nullptr,
+                                   bool* outHasApproximateTree = nullptr) {
     MathEngineResult r;
     if (outHasTree) *outHasTree = false;
+    if (outHasApproximateTree) *outHasApproximateTree = false;
     if (!expression || !*expression) {
         r.status = MathEngineStatus::ParseError;
         r.diagnostic = "empty expression";
@@ -470,6 +710,13 @@ static MathEngineResult runTextual(giac::context* ctx, const char* expression,
             r.status = (r.diagnostic.find("rror") != std::string::npos)
                            ? MathEngineStatus::EvaluationError
                            : MathEngineStatus::Undefined;
+            if (r.status == MathEngineStatus::Undefined && outTree && outHasTree) {
+                *outTree = EngineResultNode{};
+                outTree->kind = EngineNodeKind::Undefined;
+                r.exactText = "undefined";
+                recordStructuredTree(*outTree);
+                *outHasTree = true;
+            }
             return r;
         }
 
@@ -480,6 +727,7 @@ static MathEngineResult runTextual(giac::context* ctx, const char* expression,
         if (outTree && outHasTree) {
             int budget = kTreeNodeBudget;
             genToNode(out, ctx, *outTree, 0, budget);
+            recordStructuredTree(*outTree);
             *outHasTree = true;
         }
 
@@ -488,7 +736,17 @@ static MathEngineResult runTextual(giac::context* ctx, const char* expression,
             giac::gen approx = giac::evalf(out, 1, ctx);
             if (!giac::is_undef(approx)) {
                 std::string printed = approx.print(ctx);
-                if (printed != r.exactText) r.approximateText = printed;
+                if (printed != r.exactText) {
+                    r.approximateText = printed;
+                    if (outApproximateTree && outHasApproximateTree) {
+                        int approximateBudget = kTreeNodeBudget;
+                        genToNode(approx, ctx, *outApproximateTree, 0,
+                                  approximateBudget);
+                        *outHasApproximateTree =
+                            firstFallbackReason(*outApproximateTree) ==
+                            EngineFallbackReason::None;
+                    }
+                }
             }
         } catch (...) {
             // exact result stands on its own
@@ -760,7 +1018,9 @@ StructuredEngineResult GiacEngine::evaluateStructured(const char* expression) {
     }
     syncAngleMode(_state->ctx);
     sr.base = runTextual(_state->ctx, expression, /*simplifyMode=*/false,
-                         &sr.tree, &sr.hasTree);
+                         &sr.tree, &sr.hasTree,
+                         &sr.approximateTree, &sr.hasApproximateTree);
+    if (sr.hasTree) sr.fallbackReason = firstFallbackReason(sr.tree);
     return sr;
 }
 
@@ -813,7 +1073,9 @@ StructuredEngineResult GiacEngine::transformStructured(
         sr.base.diagnostic = capture.text();
         int budget = kTreeNodeBudget;
         genToNode(exact, _state->ctx, sr.tree, 0, budget);
+        recordStructuredTree(sr.tree);
         sr.hasTree = true;
+        sr.fallbackReason = firstFallbackReason(sr.tree);
         giac::gen approximate = giac::evalf(exact, 1, _state->ctx);
         if (!giac::is_undef(approximate)) {
             const std::string printed = approximate.print(_state->ctx);
@@ -893,7 +1155,9 @@ StructuredEngineResult GiacEngine::taylorStructured(
         sr.base.diagnostic = capture.text();
         int budget = kTreeNodeBudget;
         genToNode(exact, _state->ctx, sr.tree, 0, budget);
+        recordStructuredTree(sr.tree);
         sr.hasTree = true;
+        sr.fallbackReason = firstFallbackReason(sr.tree);
     } catch (const std::bad_alloc&) {
         sr.base.status = MathEngineStatus::OutOfMemory;
         sr.base.diagnostic = "allocation failure inside Giac Taylor expansion";
@@ -931,7 +1195,15 @@ StructuredCalculusResult GiacEngine::evaluateCalculusStructured(
     result.exactText = exact.print(_state->ctx);
     int treeBudget = kTreeNodeBudget;
     genToNode(exact, _state->ctx, result.tree, 0, treeBudget);
+    if (result.unevaluated) {
+        EngineResultNode expression = std::move(result.tree);
+        result.tree = EngineResultNode{};
+        result.tree.kind = EngineNodeKind::Unevaluated;
+        result.tree.children.push_back(std::move(expression));
+    }
+    recordStructuredTree(result.tree);
     result.hasTree = true;
+    result.fallbackReason = firstFallbackReason(result.tree);
 
     try {
         giac::gen approximate = giac::evalf(exact, 1, _state->ctx);
@@ -1449,6 +1721,7 @@ StructuredSolveResult runStructuredSolve(
                 int treeBudget = kTreeNodeBudget;
                 genToNode(rawGroup.values[i], ctx, solution.exactValue, 0,
                           treeBudget);
+                recordStructuredTree(solution.exactValue);
                 solution.hasApproximateReal = realApproximation(
                     rawGroup.values[i], ctx, solution.approximateReal,
                     solution.approximateText);
@@ -1543,6 +1816,23 @@ bool GiacEngine::debugStructuredSolveAdapterForms() {
            group.values.size() == 2 &&
            exactEquivalent(group.values[0], giac::gen(2), ctx) &&
            exactEquivalent(group.values[1], giac::gen(1), ctx);
+}
+
+StructuredResultDiagnostics
+GiacEngine::debugStructuredResultDiagnostics() const {
+    return g_structuredDiagnostics;
+}
+
+void GiacEngine::debugResetStructuredResultDiagnostics() {
+    g_structuredDiagnostics = StructuredResultDiagnostics{};
+}
+
+void GiacEngine::debugRecordStructuredResultLayout(uint16_t width,
+                                                   uint16_t height) {
+    g_structuredDiagnostics.maximumRenderedWidth = std::max(
+        g_structuredDiagnostics.maximumRenderedWidth, width);
+    g_structuredDiagnostics.maximumRenderedHeight = std::max(
+        g_structuredDiagnostics.maximumRenderedHeight, height);
 }
 #endif
 

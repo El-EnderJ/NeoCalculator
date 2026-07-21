@@ -325,6 +325,13 @@ bool NeoMathBackend::serializeTree(const numos::EngineResultNode& tree,
             return true;
         }
         case EngineNodeKind::Unsupported:
+        case EngineNodeKind::Assignment:
+        case EngineNodeKind::Set:
+        case EngineNodeKind::Matrix:
+        case EngineNodeKind::Interval:
+        case EngineNodeKind::Piecewise:
+        case EngineNodeKind::Unevaluated:
+        case EngineNodeKind::Undefined:
             diagnostic = "opaque Neo math value cannot be re-evaluated";
             return false;
     }

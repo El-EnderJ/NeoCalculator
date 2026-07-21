@@ -236,7 +236,10 @@ private:
     static constexpr uint32_t EMPTY_COLOR   = 0xD1D1D1;  ///< Color del placeholder
     static constexpr uint32_t CURSOR_COLOR  = 0x000000;  ///< Color del cursor (negro puro, máximo contraste)
     static constexpr int16_t  EMPTY_SIZE    = 8;    ///< Tamaño del cuadrado placeholder
-    static constexpr int      MAX_RENDER_DEPTH = 12;  ///< Limit recursion depth to avoid stack overflow
+    // Typed result nodes introduce an owning semantic node plus slot Row at
+    // each engine level. 28 bounds that 2x expansion while remaining below
+    // the UI task's stack budget (no draw-frame allocations).
+    static constexpr int      MAX_RENDER_DEPTH = 28;
 
     // ── Event callback (estático → instancia) ────────────────────────────
     static void drawEventCb(lv_event_t* e);
@@ -361,6 +364,42 @@ private:
                            int16_t x, int16_t yBaseline,
                            const FontMetrics& fm, const lv_font_t* font,
                            int depth = 0);
+
+    void drawSymbolBaseline(lv_layer_t* layer, const NodeSymbol* node,
+                            int16_t x, int16_t yBaseline);
+    void drawSpecialValueBaseline(lv_layer_t* layer,
+                                  const NodeSpecialValue* node,
+                                  int16_t x, int16_t yBaseline);
+    void drawCollectionBaseline(lv_layer_t* layer,
+                                const NodeCollection* node,
+                                int16_t x, int16_t yBaseline,
+                                const FontMetrics& fm, const lv_font_t* font,
+                                int depth);
+    void drawEquationBaseline(lv_layer_t* layer, const NodeEquation* node,
+                              int16_t x, int16_t yBaseline,
+                              const FontMetrics& fm, const lv_font_t* font,
+                              int depth);
+    void drawMatrixBaseline(lv_layer_t* layer, const NodeMatrix* node,
+                            int16_t x, int16_t yBaseline,
+                            const FontMetrics& fm, const lv_font_t* font,
+                            int depth);
+    void drawIntervalBaseline(lv_layer_t* layer, const NodeInterval* node,
+                              int16_t x, int16_t yBaseline,
+                              const FontMetrics& fm, const lv_font_t* font,
+                              int depth);
+    void drawPiecewiseBaseline(lv_layer_t* layer, const NodePiecewise* node,
+                               int16_t x, int16_t yBaseline,
+                               const FontMetrics& fm, const lv_font_t* font,
+                               int depth);
+    void drawCallBaseline(lv_layer_t* layer, const NodeCall* node,
+                          int16_t x, int16_t yBaseline,
+                          const FontMetrics& fm, const lv_font_t* font,
+                          int depth);
+    void drawUnevaluatedBaseline(lv_layer_t* layer,
+                                 const NodeUnevaluated* node,
+                                 int16_t x, int16_t yBaseline,
+                                 const FontMetrics& fm, const lv_font_t* font,
+                                 int depth);
 
     // ── N-ary operator glyph rendering (native STIX Two Math glyphs) ─────
 

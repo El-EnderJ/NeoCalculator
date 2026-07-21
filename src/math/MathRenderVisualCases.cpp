@@ -154,6 +154,102 @@ NodePtr buildWideScroll() {
                op(OpKind::Add), xSquared());
 }
 
+NodePtr assignment(const char* name, NodePtr value) {
+    return makeEquation(row(makeSymbol(name)), std::move(value),
+                        EquationKind::Assignment);
+}
+
+NodePtr buildResultSolutionShort() {
+    auto list = makeCollection(CollectionKind::List);
+    auto* c = static_cast<NodeCollection*>(list.get());
+    c->appendElement(row(assignment("x", row(n("1")))));
+    c->appendElement(row(assignment("x", row(n("2")))));
+    return row(std::move(list));
+}
+
+NodePtr buildResultSolutionLong() {
+    auto list = makeCollection(CollectionKind::List);
+    auto* c = static_cast<NodeCollection*>(list.get());
+    for (int i = 1; i <= 8; ++i)
+        c->appendElement(row(assignment("x", row(n(std::to_string(i).c_str())))));
+    return row(std::move(list));
+}
+
+NodePtr buildResultNestedFractionList() {
+    auto list = makeCollection(CollectionKind::List);
+    auto* c = static_cast<NodeCollection*>(list.get());
+    c->appendElement(row(frac(row(n("1")), row(n("2")))));
+    auto numerator = row(n("1"), op(OpKind::Add),
+                         frac(row(n("2")), row(n("3"))));
+    auto denominator = row(v('x'), op(OpKind::Add), n("1"));
+    c->appendElement(row(frac(std::move(numerator),
+                              std::move(denominator))));
+    return row(std::move(list));
+}
+
+NodePtr buildResultEquationList() {
+    auto list = makeCollection(CollectionKind::List);
+    auto* c = static_cast<NodeCollection*>(list.get());
+    c->appendElement(row(makeEquation(row(v('x')), row(n("2")))));
+    c->appendElement(row(makeEquation(row(v('y')), row(frac(row(n("1")), row(n("3")))))));
+    return row(std::move(list));
+}
+
+NodePtr buildResultComplexValues() {
+    return row(n("2"), op(OpKind::Add), n("3"), op(OpKind::Mul),
+               makeConstant(ConstKind::Imag), op(OpKind::Add),
+               makeParen(row(n("2"), op(OpKind::Sub), makeRoot(row(n("3"))),
+                             op(OpKind::Mul), makeConstant(ConstKind::Imag))));
+}
+
+NodePtr matrixCase(uint8_t size) {
+    auto matrix = makeMatrix(size, size);
+    auto* m = static_cast<NodeMatrix*>(matrix.get());
+    for (uint8_t r = 0; r < size; ++r)
+        for (uint8_t c = 0; c < size; ++c)
+            m->setCell(r, c, row(n(std::to_string(r * size + c + 1).c_str())));
+    return row(std::move(matrix));
+}
+
+NodePtr buildResultMatrix2() { return matrixCase(2); }
+NodePtr buildResultMatrix3() { return matrixCase(3); }
+
+NodePtr buildResultIntervals() {
+    return row(makeInterval(row(n("0")), row(n("1")), false, false),
+               op(OpKind::Add),
+               makeInterval(row(n("1")), row(n("2")), true, false),
+               op(OpKind::Add),
+               makeInterval(row(makeSpecialValue(SpecialValueKind::NegativeInfinity)),
+                            row(n("3")), false, true));
+}
+
+NodePtr buildResultPiecewise() {
+    auto piece = makePiecewise();
+    auto* p = static_cast<NodePiecewise*>(piece.get());
+    p->appendBranch(row(op(OpKind::Sub), v('x')),
+                    row(v('x'), rel(OpKind::Lt), n("0")), false);
+    p->appendBranch(row(n("0")), row(v('x'), rel(OpKind::Eq), n("0")), false);
+    p->appendBranch(row(v('x')), nullptr, true);
+    return row(std::move(piece));
+}
+
+NodePtr buildResultNestedPiecewiseMatrix() {
+    auto piece = makePiecewise();
+    auto* p = static_cast<NodePiecewise*>(piece.get());
+    p->appendBranch(matrixCase(2), row(v('x'), rel(OpKind::Ge), n("0")), false);
+    p->appendBranch(row(makeSpecialValue(SpecialValueKind::Undefined)), nullptr, true);
+    return row(std::move(piece));
+}
+
+NodePtr buildResultUndefinedUnevaluated() {
+    auto call = makeCall("integrate");
+    auto* fn = static_cast<NodeCall*>(call.get());
+    fn->appendArgument(row(makeSymbol("f"), makeParen(row(v('x')))));
+    fn->appendArgument(row(v('x')));
+    return row(makeSpecialValue(SpecialValueKind::Undefined),
+               op(OpKind::Add), makeUnevaluated(std::move(call)));
+}
+
 static constexpr MathRenderVisualCase kCases[] = {
     { "power_2_squared", "2^2", MathStyle::TEXT, buildTwoSquared },
     { "power_x_squared", "x^2", MathStyle::TEXT, buildXSquared },
@@ -176,6 +272,17 @@ static constexpr MathRenderVisualCase kCases[] = {
     { "long_periodic_prefix", "0.12345678901234567890 overline(6)", MathStyle::DISPLAY_STYLE, buildLongPeriodicPrefix },
     { "summation_limits", "sum n=1..10 (n^2+1)", MathStyle::DISPLAY_STYLE, buildSummationLimits },
     { "wide_scroll", "wide horizontal scroll case", MathStyle::DISPLAY_STYLE, buildWideScroll },
+    { "result_solution_short", "structured short solution list", MathStyle::DISPLAY_STYLE, buildResultSolutionShort },
+    { "result_solution_long", "structured long solution list", MathStyle::DISPLAY_STYLE, buildResultSolutionLong },
+    { "result_nested_fraction_list", "nested fractions in list", MathStyle::DISPLAY_STYLE, buildResultNestedFractionList },
+    { "result_equation_list", "semantic equation list", MathStyle::DISPLAY_STYLE, buildResultEquationList },
+    { "result_complex_values", "exact complex values", MathStyle::DISPLAY_STYLE, buildResultComplexValues },
+    { "result_matrix_2x2", "2 by 2 matrix", MathStyle::DISPLAY_STYLE, buildResultMatrix2 },
+    { "result_matrix_3x3", "3 by 3 matrix", MathStyle::DISPLAY_STYLE, buildResultMatrix3 },
+    { "result_intervals", "open closed and infinite intervals", MathStyle::DISPLAY_STYLE, buildResultIntervals },
+    { "result_piecewise", "three branch piecewise", MathStyle::DISPLAY_STYLE, buildResultPiecewise },
+    { "result_nested_piecewise_matrix", "matrix nested in piecewise", MathStyle::DISPLAY_STYLE, buildResultNestedPiecewiseMatrix },
+    { "result_undefined_unevaluated", "undefined and unevaluated", MathStyle::DISPLAY_STYLE, buildResultUndefinedUnevaluated },
 };
 
 } // namespace

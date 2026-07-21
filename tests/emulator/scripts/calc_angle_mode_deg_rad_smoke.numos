@@ -1,10 +1,10 @@
-# calc_angle_mode_deg_rad_smoke.numos — AM-01: CalculationApp's evaluator
-# (vpam::MathEvaluator) follows the runtime angle mode: sin(90) is 1 in DEG
+# calc_angle_mode_deg_rad_smoke.numos — AM-01: CalculationApp's Giac engine
+# follows the runtime angle mode: sin(90) is 1 in DEG
 # and ~0.8939966636 in RAD.
 #
 # Assert-only smoke: NO screenshot, NO golden. set_angle_mode writes the same
-# runtime truth (vpam::g_angleMode) the Settings row toggles; MathEvaluator
-# reads it directly at evaluation time. AC is required between evaluations
+# runtime truth (vpam::g_angleMode) the Settings row toggles; CalculationEngine
+# synchronizes it at evaluation time. AC is required between evaluations
 # (clearResult keeps the expression otherwise — Phase 8C quirk).
 #
 # Run: program --headless --deterministic --script <this> --frames 1600 --quiet

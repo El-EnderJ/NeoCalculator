@@ -185,7 +185,6 @@ private:
     TutorStatus        _tutorStatus;
     std::string        _serializedInput;
     std::string        _tutorDiagnostic;
-    std::string        _legacyExactText;
 #ifdef NATIVE_SIM
     bool               _debugForceTutorDisagreement;
 #endif

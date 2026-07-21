@@ -20,7 +20,8 @@
  *   · MathAST           — Árbol de sintaxis abstracta (la expresión)
  *   · CursorController  — Cursor estructural + inserción VPAM
  *   · MathCanvas        — Renderizado LVGL pixel-perfect
- *   · MathEvaluator     — Evaluador simbólico + decimal (S⇔D)
+ *   · CalculationEngine — Autoridad Giac estructurada
+ *   · MathEvaluator     — Conversión de resultado para S⇔D
  *
  * La app crea una pantalla LVGL propia con:
  *   · Header naranja con título "Calculation"
@@ -52,9 +53,8 @@
 #include "../math/CursorController.h"
 #include "../math/MathEvaluator.h"
 #include "../math/VariableManager.h"
-// GIAC-B01: Giac is the default Calculation engine. The legacy MathEvaluator
-// path remains ONLY behind -DNUMOS_CALC_LEGACY_ENGINE (explicit rollback
-// build); there is no silent per-expression fallback.
+// Giac is the sole Calculation answer engine. MathEvaluator remains included
+// only for the presentation helpers used by ExactVal/S<=>D rendering.
 #include "../math/CalculationEngine.h"
 #include "../math/cas/CASStepLogger.h"
 #include "../math/cas/SymExpr.h"
@@ -111,13 +111,7 @@ public:
     const vpam::ExactVal& debugLastResult() const { return _lastResult; }
 
     // ── GIAC-B01 probes (assert_calc_engine / _result_kind / _status) ────
-    const char* debugCalcEngine() const {
-#ifdef NUMOS_CALC_LEGACY_ENGINE
-        return "legacy";
-#else
-        return "giac";
-#endif
-    }
+    const char* debugCalcEngine() const { return "giac"; }
     const char* debugCalcResultKind() const;   // "structured"|"text_fallback"|"none"
     const char* debugCalcStatus() const;       // "ok"|"undefined"|"parse_error"|...
     const std::string& debugCalcExactText() const;
@@ -135,8 +129,6 @@ private:
     vpam::NodePtr              _rootNode;    ///< Nodo raíz del AST (owned)
     vpam::NodeRow*             _rootRow;     ///< Puntero directo al NodeRow raíz
     vpam::CursorController     _cursor;      ///< Controlador de cursor
-    vpam::MathEvaluator        _evaluator;   ///< Evaluador simbólico
-
     // ── Estado del resultado ─────────────────────────────────────────────
     bool                   _hasResult;       ///< Hay un resultado visible
     bool                   _showDecimal;     ///< Legacy (conservado)

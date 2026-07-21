@@ -7,9 +7,9 @@ that rollback support may be removed.
 
 ## 1. Obsolete Calculation primary-result rollback
 
-In `src/apps/CalculationApp.cpp`, remove only the
-`NUMOS_CALC_LEGACY_ENGINE` primary evaluation `#else` branch in
-`evaluateExpression()` and collapse the normal Giac branch. Remove the matching
+In `src/apps/CalculationApp.cpp`, remove only the former Calculation
+compile-time primary evaluation branch in `evaluateExpression()` and collapse
+the normal Giac branch. Remove the matching
 conditional wrappers around Giac result/history/display/store behavior.
 
 In `src/apps/CalculationApp.h`, remove `debugCalcEngine()`’s legacy answer and
@@ -41,9 +41,9 @@ cases, retained-reset tests, 1-D/2-D host sweeps and all Grapher goldens.
 
 ## 3. Obsolete Equations primary solver branch
 
-In `src/apps/EquationsApp.cpp`, remove the
-`NUMOS_EQUATIONS_LEGACY_ENGINE` dispatcher branch that calls `solveOmni()` or
-`solveSystem()` as the answer. Remove legacy-only result presentation paths
+In `src/apps/EquationsApp.cpp`, remove the former Equations compile-time
+dispatcher branch that calls `solveOmni()` or `solveSystem()` as the answer.
+Remove legacy-only result presentation paths
 only where a use graph proves they cannot be reached by the retained tutor.
 
 In `src/apps/EquationsApp.h`, remove legacy-only state/methods, but retain
@@ -55,9 +55,9 @@ host solve adapter forms, tutor agreement/disagreement and goldens.
 
 ## 4. Obsolete Calculus primary-result branch
 
-In `src/apps/CalculusApp.cpp`, remove the
-`NUMOS_CALCULUS_LEGACY_ENGINE` primary branch in `computeResult()` and the
-legacy `_legacyExactText` answer path. Do **not** remove
+In `src/apps/CalculusApp.cpp`, remove the former Calculus compile-time primary
+branch in `computeResult()` and the legacy `_legacyExactText` answer path.
+Do **not** remove
 `runNativeTutor`, `computeDerivative`, `computeIntegral`, `ASTFlattener`,
 `SymDiff`, `SymIntegrate`, `SymSimplify`, step logging or Giac tutor
 verification: those remain normal-build tutor infrastructure.
@@ -70,20 +70,10 @@ disagreement, angle restoration, unevaluated results and goldens.
 
 ## 5. Dedicated rollback environments and scripts
 
-After categories 1–4 are accepted, delete these four sections from
-`platformio.ini`:
+After categories 1–4 are accepted, delete the four dedicated Calculation,
+Grapher, Equations, and Calculus rollback sections from `platformio.ini`.
 
-- `emulator_pc_calculation_legacy`;
-- `emulator_pc_grapher_legacy`;
-- `emulator_pc_equations_legacy`;
-- `emulator_pc_calculus_legacy`.
-
-Delete:
-
-- `tests/emulator/scripts/calc_legacy_rollback_basic.numos`;
-- `tests/emulator/scripts/grapher_legacy_rollback_explicit.numos`;
-- `tests/emulator/scripts/equations_legacy_rollback_linear.numos`;
-- `tests/emulator/scripts/calculus_legacy_rollback_x2.numos`.
+Delete their four focused rollback scripts from `tests/emulator/scripts/`.
 
 Remove any CI/document references in the same change. Keep normal, Neo smoke,
 giacdiag and mathdiag environments.
@@ -171,3 +161,9 @@ reduce code size.
 7. Reject any mathematical, serialization, result-tree, UI pixel, memory or
    context-generation regression.
 
+## GIAC-F02 execution status
+
+The four category gates passed independently. Their compile-time rollback
+branches, dedicated environments, focused scripts, and macro definitions were
+then removed. Tutor, Grapher classifier/probe, Neo Native, and historical
+dead-app policy boundaries remain in force.

@@ -85,7 +85,7 @@ public:
     // never observe a different evaluator than the renderer.
     const char* debugGraphEngine() const { return grapher::GraphModel::debugEngineName(); }
     bool  debugSlotCompileOk(int i) const;
-    int   debugSlotCompileCount(int i) const;   // -1 in the legacy build
+    int   debugSlotCompileCount(int i) const;
     float debugSlotEvalParam(int i, float t);       // NAN = invalid sample
     float debugSlotEvalResidual(int i, float x, float y);
 #endif

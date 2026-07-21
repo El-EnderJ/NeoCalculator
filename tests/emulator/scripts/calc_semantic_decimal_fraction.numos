@@ -3,8 +3,8 @@
 # Phase 8D semantic smoke. NO screenshot, NO golden.
 #
 # Verifies the Phase 8D decimal-point input fix: typing a decimal point now lands
-# in the number node, and MathEvaluator::evalNumber converts the decimal literal to
-# an EXACT rational (e.g. 0.5 -> 1/2, 0.25 -> 1/4) via integer arithmetic — no
+# in the number node, and the Giac serializer preserves the decimal literal as
+# an EXACT rational (e.g. 0.5 -> 1/2, 0.25 -> 1/4) — no
 # floating-point rounding. This stays strictly in the small-int / exact-fraction
 # domain (no approximate output), so the assertions are byte-stable.
 #

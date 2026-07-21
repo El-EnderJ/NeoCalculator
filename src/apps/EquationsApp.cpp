@@ -115,19 +115,10 @@ const char* EquationsApp::randomSolvingMessage() {
 
 #ifdef NATIVE_SIM
 const char* EquationsApp::debugEngineName() const {
-#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
-    return "legacy";
-#else
     return "giac";
-#endif
 }
 
 const char* EquationsApp::debugStatusName() const {
-#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
-    if (_isOmniSolve) return _omniResult.ok ? "ok" : "unsupported";
-    if (_isNLSolve) return _nlResult.ok ? "ok" : "unsupported";
-    return _systemResult.ok ? "ok" : "unsupported";
-#else
     if (_giacResult.status == numos::MathEngineStatus::Ok) {
         if (_giacResult.setKind == numos::SolutionSetKind::NoSolution)
             return "no_solution";
@@ -145,32 +136,15 @@ const char* EquationsApp::debugStatusName() const {
         case numos::MathEngineStatus::OutOfMemory: return "out_of_memory";
         default: return "unsupported";
     }
-#endif
 }
 
 int EquationsApp::debugSolutionCount() const {
-#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
-    if (_isOmniSolve)
-        return _omniResult.hasComplexRoots
-            ? 2 : static_cast<int>(_omniResult.solutions.size());
-    if (_isNLSolve) return static_cast<int>(_nlResult.solutions.size());
-    return _systemResult.ok ? 1 : 0;
-#else
     return static_cast<int>(_giacResult.groups.size());
-#endif
 }
 
 bool EquationsApp::debugSolutionNear(const std::string& variable, int index,
                                      double expected,
                                      double epsilon) const {
-#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
-    if (!_isOmniSolve || variable != "x" || index < 0 ||
-        index >= static_cast<int>(_omniResult.solutions.size())) {
-        return false;
-    }
-    return std::fabs(_omniResult.solutions[static_cast<std::size_t>(index)]
-                         .numeric - expected) <= epsilon;
-#else
     if (index < 0 || index >= static_cast<int>(_giacResult.groups.size()))
         return false;
     const auto& group = _giacResult.groups[static_cast<std::size_t>(index)];
@@ -191,22 +165,10 @@ bool EquationsApp::debugSolutionNear(const std::string& variable, int index,
                std::fabs(actual - expected) <= epsilon;
     }
     return false;
-#endif
 }
 
 bool EquationsApp::debugSolutionExact(const std::string& variable, int index,
                                       const std::string& expected) const {
-#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
-    if (!_isOmniSolve || variable != "x" || index < 0 ||
-        index >= static_cast<int>(_omniResult.solutions.size())) {
-        return false;
-    }
-    const auto& solution =
-        _omniResult.solutions[static_cast<std::size_t>(index)];
-    return solution.isExact &&
-           numos::CalculationEngine::exactValToGiacText(solution.exact) ==
-               expected;
-#else
     if (index < 0 || index >= static_cast<int>(_giacResult.groups.size()))
         return false;
     const auto& group = _giacResult.groups[static_cast<std::size_t>(index)];
@@ -214,22 +176,10 @@ bool EquationsApp::debugSolutionExact(const std::string& variable, int index,
         if (value.variable == variable) return value.exactText == expected;
     }
     return false;
-#endif
 }
 
 std::string EquationsApp::debugSolutionExactText(
     const std::string& variable, int index) const {
-#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
-    if (!_isOmniSolve || variable != "x" || index < 0 ||
-        index >= static_cast<int>(_omniResult.solutions.size())) {
-        return {};
-    }
-    const auto& solution =
-        _omniResult.solutions[static_cast<std::size_t>(index)];
-    return solution.isExact
-        ? numos::CalculationEngine::exactValToGiacText(solution.exact)
-        : std::string();
-#else
     if (index < 0 || index >= static_cast<int>(_giacResult.groups.size()))
         return {};
     for (const auto& value :
@@ -237,19 +187,14 @@ std::string EquationsApp::debugSolutionExactText(
         if (value.variable == variable) return value.exactText;
     }
     return {};
-#endif
 }
 
 const char* EquationsApp::debugResultKindName() const {
-#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
-    return "structured";
-#else
     switch (_resultKind) {
         case ResultKind::Structured: return "structured";
         case ResultKind::TextFallback: return "text_fallback";
         default: return "none";
     }
-#endif
 }
 
 const char* EquationsApp::debugTutorStatusName() const {
@@ -1206,7 +1151,6 @@ void EquationsApp::showSteps() {
         return;
     }
 
-#ifndef NUMOS_EQUATIONS_LEGACY_ENGINE
     // WHY: tutor rendering is fail-closed. The authoritative Giac answer
     // remains visible in RESULT even when the retained tutor disagrees.
     if (_tutorStatus != TutorStatus::Agreed) {
@@ -1220,7 +1164,6 @@ void EquationsApp::showSteps() {
         lv_obj_invalidate(_screen);
         return;
     }
-#endif
 
     logStepBudget(0);
     _stepsProgressLabel = nullptr;
@@ -1237,21 +1180,11 @@ void EquationsApp::showSteps() {
                                     LV_PART_MAIN);
     }
 
-#ifndef NUMOS_EQUATIONS_LEGACY_ENGINE
     // WHY: the consistency gate compared Giac specifically with
     // _omniResult/_systemResult. Render only that candidate's own logged
     // steps; starting a second tutor pipeline here would introduce an
     // unverified mathematical source after the gate.
     _stepsSource = StepsSource::LEGACY_LOG;
-#else
-    if (_numEquations == 2 && _eqRowData[0] && _eqRowData[1]) {
-        _stepsSource = StepsSource::SYSTEM_CAS;
-    } else if (_isOmniSolve && _numEquations == 1 && _eqRowData[0]) {
-        _stepsSource = StepsSource::SINGLE_CAS;
-    } else {
-        _stepsSource = StepsSource::LEGACY_LOG;
-    }
-#endif
 
     _stepsStage = StepsStage::PARSE;
     _stepsPipelineActive = true;
@@ -2372,30 +2305,16 @@ cas::LinEq EquationsApp::symEquationToLinEq(const cas::SymEquation& eq,
 
 void EquationsApp::solveEquations() {
     _solveEpoch = 0;
-#ifdef NUMOS_EQUATIONS_LEGACY_ENGINE
-    _tutorStatus = TutorStatus::Disabled;
-    _tutorDiagnostic = "legacy rollback build";
-    if (_numEquations == 1) {
-        _isOmniSolve = true;
-        solveOmni();
-    } else {
-        _isOmniSolve = false;
-        solveSystem();
-    }
-#else
     solveWithGiac();
-#endif
 
     // Mark solve data as coherent with the current equation generation.
     _solveEpoch = _equationEpoch;
 }
 
-#ifndef NUMOS_EQUATIONS_LEGACY_ENGINE
 void EquationsApp::solveWithGiac() {
     showSolving();
 
     _isOmniSolve = (_numEquations == 1);
-    _isNLSolve = false;
     _resultKind = ResultKind::None;
     _tutorStatus = TutorStatus::Unavailable;
     _tutorDiagnostic.clear();
@@ -2474,8 +2393,6 @@ void EquationsApp::generateTutorCandidate() {
     _arena.reset();
     _omniResult = cas::OmniResult();
     _systemResult = cas::SystemResult();
-    _nlResult = cas::NLSystemResult();
-    _isNLSolve = false;
 
     cas::ASTFlattener flattener;
     flattener.setArena(&_arena);
@@ -2608,189 +2525,6 @@ bool EquationsApp::tutorCandidateAgrees() const {
         }
     }
     return true;
-}
-#endif
-
-// ════════════════════════════════════════════════════════════════════════════
-// solveOmni — OmniSolver pipeline
-// ════════════════════════════════════════════════════════════════════════════
-
-void EquationsApp::solveOmni() {
-    showSolving();
-
-    _arena.reset();
-
-    cas::ASTFlattener flattener;
-    flattener.setArena(&_arena);
-
-    NodePtr lhs, rhs;
-    splitAtEquals(_eqRowData[0], lhs, rhs);
-
-    cas::SymExpr* lhsExpr = flattener.flattenToExpr(lhs.get());
-    cas::SymExpr* rhsExpr = flattener.flattenToExpr(rhs.get());
-
-    if (!lhsExpr || !rhsExpr) {
-        _omniResult = cas::OmniResult();
-        _omniResult.ok = false;
-        _omniResult.error = "Syntax error";
-        showResult();
-        return;
-    }
-
-    char var = 'x';
-
-    cas::OmniSolver solver;
-    _omniResult = solver.solve(lhsExpr, rhsExpr, var, _arena);
-
-    if (!_omniResult.ok) {
-        _statusBar.setTitle("No solution");
-        _statusBar.update();
-    }
-
-    showResult();
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// solveSystem — System of equations pipeline
-// ════════════════════════════════════════════════════════════════════════════
-
-void EquationsApp::solveSystem() {
-    _isNLSolve = false;
-    cas::ASTFlattener flattener;
-
-    int numEqs = _numEquations;
-    const char vars2[] = {'x', 'y'};
-    const char vars3[] = {'x', 'y', 'z'};
-    const char* vars = (numEqs == 2) ? vars2 : vars3;
-    int numVars = numEqs;
-
-    showSolving();
-
-    // ── Try linear path first ───────────────────────────────────────
-    cas::LinEq linEqs[3];
-    bool linearOk = true;
-
-    for (int i = 0; i < numEqs; ++i) {
-        NodePtr lhs, rhs;
-        splitAtEquals(_eqRowData[i], lhs, rhs);
-
-        if (!_eqRowData[i]) {
-            _systemResult = cas::SystemResult();
-            _systemResult.ok = false;
-            _systemResult.error = "Empty equation";
-            showResult();
-            return;
-        }
-
-        auto eqResult = flattener.flattenEquation(lhs.get(), rhs.get());
-        if (!eqResult.ok) {
-            linearOk = false;
-            break;
-        }
-
-        linEqs[i] = symEquationToLinEq(
-            cas::SymEquation(eqResult.eq.lhs, eqResult.eq.rhs),
-            vars, numVars);
-    }
-
-    if (linearOk) {
-        cas::SystemSolver sysSolver;
-        if (numEqs == 2) {
-            _arena.reset();
-            _systemResult = sysSolver.solve2x2(linEqs[0], linEqs[1], 'x', 'y', &_arena);
-        } else {
-            _systemResult = sysSolver.solve3x3(
-                linEqs[0], linEqs[1], linEqs[2]);
-        }
-
-        if (_systemResult.ok) {
-            showResult();
-            return;
-        }
-    }
-
-    // ── Nonlinear fallback for 2×2 systems ──────────────────────────
-    if (numEqs == 2) {
-        _arena.reset();
-        flattener.setArena(&_arena);
-
-        cas::SymExpr* exprs[2] = {nullptr, nullptr};
-        for (int i = 0; i < 2; ++i) {
-            NodePtr lhs, rhs;
-            splitAtEquals(_eqRowData[i], lhs, rhs);
-
-            cas::SymExpr* lhsExpr = flattener.flattenToExpr(lhs.get());
-            cas::SymExpr* rhsExpr = flattener.flattenToExpr(rhs.get());
-
-            if (!lhsExpr || !rhsExpr) {
-                _systemResult = cas::SystemResult();
-                _systemResult.ok = false;
-                _systemResult.error = "Syntax error";
-                showResult();
-                return;
-            }
-
-            exprs[i] = symAdd(_arena, lhsExpr, symNeg(_arena, rhsExpr));
-        }
-
-        cas::SystemSolver sysSolver;
-        _nlResult = sysSolver.solveNonlinear2x2(
-            exprs[0], exprs[1], 'x', 'y', _arena);
-        _isNLSolve = true;
-
-        if (!_nlResult.ok) {
-            _statusBar.setTitle(_nlResult.error.empty()
-                                    ? "No solution" : "Error");
-            _statusBar.update();
-        }
-        showResult();
-        return;
-    }
-
-    // ── Linear path failed, nonlinear fallback for 3×3 ────────────
-    if (numEqs == 3) {
-        _arena.reset();
-        flattener.setArena(&_arena);
-
-        cas::SymExpr* exprs[3] = {nullptr, nullptr, nullptr};
-        bool exprOk = true;
-        for (int i = 0; i < 3; ++i) {
-            NodePtr lhs, rhs;
-            splitAtEquals(_eqRowData[i], lhs, rhs);
-
-            cas::SymExpr* lhsExpr = flattener.flattenToExpr(lhs.get());
-            cas::SymExpr* rhsExpr = flattener.flattenToExpr(rhs.get());
-
-            if (!lhsExpr || !rhsExpr) {
-                exprOk = false;
-                break;
-            }
-
-            exprs[i] = symAdd(_arena, lhsExpr, symNeg(_arena, rhsExpr));
-        }
-
-        if (exprOk) {
-            cas::SystemSolver sysSolver;
-            _nlResult = sysSolver.solveNonlinear3x3(
-                exprs[0], exprs[1], exprs[2], 'x', 'y', 'z', _arena);
-            _isNLSolve = true;
-
-            if (!_nlResult.ok) {
-                _statusBar.setTitle(_nlResult.error.empty()
-                                        ? "No solution" : "Error");
-                _statusBar.update();
-            }
-            showResult();
-            return;
-        }
-    }
-
-    if (!_systemResult.ok) {
-        _statusBar.setTitle(_systemResult.error.empty()
-                                ? "No solution" : "Error");
-        _statusBar.update();
-    }
-    showResult();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2935,7 +2669,6 @@ void EquationsApp::buildGiacResultDisplay() {
 }
 
 void EquationsApp::buildResultDisplay() {
-#ifndef NUMOS_EQUATIONS_LEGACY_ENGINE
     buildGiacResultDisplay();
     if (!_resultHint || lv_obj_get_parent(_resultHint) != _resultContainer) {
         _resultHint = lv_label_create(_resultContainer);
@@ -2945,344 +2678,6 @@ void EquationsApp::buildResultDisplay() {
     }
     lv_label_set_text(_resultHint, "STEPS: View steps    AC: Back");
     lv_obj_set_pos(_resultHint, PAD, SCREEN_H - BAR_H - 22);
-    return;
-#else
-    // Clear previous results
-    for (int i = 0; i < MAX_RESULTS; ++i) {
-        _resultCanvas[i].stopCursorBlink();
-        lv_obj_add_flag(_resultCanvas[i].obj(), LV_OBJ_FLAG_HIDDEN);
-        _resultNode[i].reset();
-        _resultRow[i] = nullptr;
-    }
-    _resultCount = 0;
-
-    if (_isOmniSolve) {
-        // ── OmniSolver result ──────────────────────────────────────
-        if (!_omniResult.ok) {
-            lv_label_set_text(_resultTitle,
-                _omniResult.error.empty() ? "No real solution"
-                                          : _omniResult.error.c_str());
-            goto addHint;
-        }
-
-        // Handle complex roots (negative discriminant)
-        if (_omniResult.hasComplexRoots) {
-            lv_label_set_text(_resultTitle, "Complex roots:");
-
-            const auto& re = _omniResult.complexReal;
-            const auto& im = _omniResult.complexImagMag;
-
-            // Helper: append ExactVal nodes from SymToAST into a row
-            auto appendExactNodes = [](NodeRow* r, const vpam::ExactVal& val) {
-                NodePtr node = cas::SymToAST::fromExactVal(val);
-                if (node->type() == NodeType::Row) {
-                    auto* vr = static_cast<NodeRow*>(node.get());
-                    while (vr->childCount() > 0)
-                        r->appendChild(vr->removeChild(0));
-                } else {
-                    r->appendChild(std::move(node));
-                }
-            };
-
-            // Root 1: x₁ = re + im·𝑖
-            {
-                auto row = makeRow();
-                auto* r = static_cast<NodeRow*>(row.get());
-                r->appendChild(makeVariable(_omniResult.variable));
-                r->appendChild(makeNumber("1"));
-                r->appendChild(makeRelation(OpKind::Eq));
-
-                // Real part
-                appendExactNodes(r, re);
-
-                // + operator
-                r->appendChild(makeOperator(OpKind::Add));
-
-                // Imaginary magnitude (rendered as fraction/radical)
-                appendExactNodes(r, im);
-
-                // Italic 'i' — mathematical constant style
-                r->appendChild(makeConstant(ConstKind::Imag));
-
-                _resultNode[0] = std::move(row);
-                _resultRow[0]  = static_cast<NodeRow*>(_resultNode[0].get());
-
-                lv_obj_set_pos(_resultCanvas[0].obj(), PAD + 20, 28);
-                lv_obj_set_size(_resultCanvas[0].obj(), SCREEN_W - 2 * PAD - 20, 38);
-                lv_obj_remove_flag(_resultCanvas[0].obj(), LV_OBJ_FLAG_HIDDEN);
-                _resultCanvas[0].setExpression(_resultRow[0], nullptr);
-                _resultRow[0]->calculateLayout(_resultCanvas[0].normalMetrics());
-                _resultCanvas[0].invalidate();
-                ++_resultCount;
-            }
-
-            // Root 2: x₂ = re - im·𝑖
-            {
-                auto row = makeRow();
-                auto* r = static_cast<NodeRow*>(row.get());
-                r->appendChild(makeVariable(_omniResult.variable));
-                r->appendChild(makeNumber("2"));
-                r->appendChild(makeRelation(OpKind::Eq));
-
-                // Real part
-                appendExactNodes(r, re);
-
-                // - operator
-                r->appendChild(makeOperator(OpKind::Sub));
-
-                // Imaginary magnitude
-                appendExactNodes(r, im);
-
-                // Italic 'i'
-                r->appendChild(makeConstant(ConstKind::Imag));
-
-                _resultNode[1] = std::move(row);
-                _resultRow[1]  = static_cast<NodeRow*>(_resultNode[1].get());
-
-                lv_obj_set_pos(_resultCanvas[1].obj(), PAD + 20, 72);
-                lv_obj_set_size(_resultCanvas[1].obj(), SCREEN_W - 2 * PAD - 20, 38);
-                lv_obj_remove_flag(_resultCanvas[1].obj(), LV_OBJ_FLAG_HIDDEN);
-                _resultCanvas[1].setExpression(_resultRow[1], nullptr);
-                _resultRow[1]->calculateLayout(_resultCanvas[1].normalMetrics());
-                _resultCanvas[1].invalidate();
-                ++_resultCount;
-            }
-
-            goto addHint;
-        }
-
-        // Handle ok=true but no solutions (identity 0=0)
-        if (_omniResult.solutions.empty()) {
-            lv_label_set_text(_resultTitle, "Identity: infinite solutions");
-            goto addHint;
-        }
-
-        {
-            const char* clsName = cas::equationClassName(_omniResult.classification);
-            bool isNumeric = (_omniResult.classification ==
-                              cas::EquationClass::MixedTranscendental);
-
-            if (isNumeric) {
-                lv_label_set_text(_resultTitle, "Numeric root:");
-            } else {
-                char titleBuf[80];
-                snprintf(titleBuf, sizeof(titleBuf), "Solution (%s):", clsName);
-                lv_label_set_text(_resultTitle, titleBuf);
-            }
-
-            int numSols = static_cast<int>(_omniResult.solutions.size());
-            if (numSols > MAX_RESULTS) numSols = MAX_RESULTS;
-
-            for (int i = 0; i < numSols; ++i) {
-                const auto& sol = _omniResult.solutions[i];
-                auto row = makeRow();
-                auto* r = static_cast<NodeRow*>(row.get());
-
-                r->appendChild(makeVariable(_omniResult.variable));
-                if (numSols > 1) {
-                    r->appendChild(makeNumber(std::to_string(i + 1)));
-                }
-                r->appendChild(makeRelation(OpKind::Eq));
-
-                if (sol.symbolic) {
-                    NodePtr valNode = cas::SymExprToAST::convert(sol.symbolic);
-                    if (valNode->type() == NodeType::Row) {
-                        auto* vr = static_cast<NodeRow*>(valNode.get());
-                        while (vr->childCount() > 0) {
-                            r->appendChild(vr->removeChild(0));
-                        }
-                    } else {
-                        r->appendChild(std::move(valNode));
-                    }
-                } else if (sol.isExact) {
-                    NodePtr valNode = cas::SymToAST::fromExactVal(sol.exact);
-                    if (valNode->type() == NodeType::Row) {
-                        auto* vr = static_cast<NodeRow*>(valNode.get());
-                        while (vr->childCount() > 0) {
-                            r->appendChild(vr->removeChild(0));
-                        }
-                    } else {
-                        r->appendChild(std::move(valNode));
-                    }
-                } else {
-                    char numBuf[32];
-                    snprintf(numBuf, sizeof(numBuf), "%.10g", sol.numeric);
-                    r->appendChild(makeNumber(numBuf));
-                }
-
-                _resultNode[i] = std::move(row);
-                _resultRow[i]  = static_cast<NodeRow*>(_resultNode[i].get());
-
-                int y = 28 + i * 44;
-                lv_obj_set_pos(_resultCanvas[i].obj(), PAD + 20, y);
-                lv_obj_set_size(_resultCanvas[i].obj(), SCREEN_W - 2 * PAD - 20, 38);
-                lv_obj_remove_flag(_resultCanvas[i].obj(), LV_OBJ_FLAG_HIDDEN);
-
-                _resultCanvas[i].setExpression(_resultRow[i], nullptr);
-                _resultRow[i]->calculateLayout(_resultCanvas[i].normalMetrics());
-                _resultCanvas[i].invalidate();
-                ++_resultCount;
-            }
-        }
-
-    } else if (_isNLSolve) {
-        // ── Nonlinear system result ────────────────────────────────
-        if (!_nlResult.ok) {
-            lv_label_set_text(_resultTitle,
-                _nlResult.error.empty() ? "System has no solution"
-                                        : _nlResult.error.c_str());
-            goto addHint;
-        }
-
-        lv_label_set_text(_resultTitle, "System solutions:");
-
-        int numSols = static_cast<int>(_nlResult.solutions.size());
-        int varsPerSol = _nlResult.numVars;   // 2 or 3
-        int maxSols = MAX_RESULTS / varsPerSol;
-        if (numSols > maxSols) numSols = maxSols;
-
-        for (int i = 0; i < numSols && _resultCount + (varsPerSol - 1) < MAX_RESULTS; ++i) {
-            const auto& sol = _nlResult.solutions[i];
-
-            // Helper: append expr or numeric fallback
-            auto appendSolNode = [](NodeRow* r, cas::SymExpr* expr, double num) {
-                if (expr) {
-                    NodePtr valNode = cas::SymExprToAST::convert(expr);
-                    if (valNode->type() == NodeType::Row) {
-                        auto* vr = static_cast<NodeRow*>(valNode.get());
-                        while (vr->childCount() > 0)
-                            r->appendChild(vr->removeChild(0));
-                    } else {
-                        r->appendChild(std::move(valNode));
-                    }
-                } else {
-                    char buf[32];
-                    snprintf(buf, sizeof(buf), "%.10g", num);
-                    r->appendChild(makeNumber(buf));
-                }
-            };
-
-            // Row for var1 (x)
-            {
-                auto row = makeRow();
-                auto* r = static_cast<NodeRow*>(row.get());
-                r->appendChild(makeVariable(_nlResult.var1));
-                if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
-                r->appendChild(makeRelation(OpKind::Eq));
-                appendSolNode(r, sol.exprX, sol.numX);
-
-                int idx = _resultCount;
-                _resultNode[idx] = std::move(row);
-                _resultRow[idx] = static_cast<NodeRow*>(_resultNode[idx].get());
-
-                int y = 28 + idx * 30;
-                lv_obj_set_pos(_resultCanvas[idx].obj(), PAD + 20, y);
-                lv_obj_set_size(_resultCanvas[idx].obj(), SCREEN_W - 2 * PAD - 20, 26);
-                lv_obj_remove_flag(_resultCanvas[idx].obj(), LV_OBJ_FLAG_HIDDEN);
-                _resultCanvas[idx].setExpression(_resultRow[idx], nullptr);
-                _resultRow[idx]->calculateLayout(_resultCanvas[idx].normalMetrics());
-                _resultCanvas[idx].invalidate();
-                ++_resultCount;
-            }
-
-            // Row for var2 (y)
-            {
-                auto row = makeRow();
-                auto* r = static_cast<NodeRow*>(row.get());
-                r->appendChild(makeVariable(_nlResult.var2));
-                if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
-                r->appendChild(makeRelation(OpKind::Eq));
-                appendSolNode(r, sol.exprY, sol.numY);
-
-                int idx = _resultCount;
-                _resultNode[idx] = std::move(row);
-                _resultRow[idx] = static_cast<NodeRow*>(_resultNode[idx].get());
-
-                int y = 28 + idx * 30;
-                lv_obj_set_pos(_resultCanvas[idx].obj(), PAD + 20, y);
-                lv_obj_set_size(_resultCanvas[idx].obj(), SCREEN_W - 2 * PAD - 20, 26);
-                lv_obj_remove_flag(_resultCanvas[idx].obj(), LV_OBJ_FLAG_HIDDEN);
-                _resultCanvas[idx].setExpression(_resultRow[idx], nullptr);
-                _resultRow[idx]->calculateLayout(_resultCanvas[idx].normalMetrics());
-                _resultCanvas[idx].invalidate();
-                ++_resultCount;
-            }
-
-            // Row for var3 (z) — only for 3×3 systems
-            if (varsPerSol >= 3 && _resultCount < MAX_RESULTS) {
-                auto row = makeRow();
-                auto* r = static_cast<NodeRow*>(row.get());
-                r->appendChild(makeVariable(_nlResult.var3));
-                if (numSols > 1) r->appendChild(makeNumber(std::to_string(i + 1)));
-                r->appendChild(makeRelation(OpKind::Eq));
-                appendSolNode(r, sol.exprZ, sol.numZ);
-
-                int idx = _resultCount;
-                _resultNode[idx] = std::move(row);
-                _resultRow[idx] = static_cast<NodeRow*>(_resultNode[idx].get());
-
-                int y = 28 + idx * 30;
-                lv_obj_set_pos(_resultCanvas[idx].obj(), PAD + 20, y);
-                lv_obj_set_size(_resultCanvas[idx].obj(), SCREEN_W - 2 * PAD - 20, 26);
-                lv_obj_remove_flag(_resultCanvas[idx].obj(), LV_OBJ_FLAG_HIDDEN);
-                _resultCanvas[idx].setExpression(_resultRow[idx], nullptr);
-                _resultRow[idx]->calculateLayout(_resultCanvas[idx].normalMetrics());
-                _resultCanvas[idx].invalidate();
-                ++_resultCount;
-            }
-        }
-    } else {
-        // ── System result ──────────────────────────────────────────
-        if (!_systemResult.ok) {
-            lv_label_set_text(_resultTitle,
-                _systemResult.error.empty() ? "Incompatible system"
-                                            : _systemResult.error.c_str());
-            goto addHint;
-        }
-
-        lv_label_set_text(_resultTitle, "System solution:");
-
-        for (int i = 0; i < _systemResult.numVars && i < MAX_RESULTS; ++i) {
-            auto row = makeRow();
-            auto* r = static_cast<NodeRow*>(row.get());
-            r->appendChild(makeVariable(_systemResult.vars[i]));
-            r->appendChild(makeRelation(OpKind::Eq));
-
-            NodePtr valNode = cas::SymToAST::fromExactVal(
-                _systemResult.solutions[i]);
-            if (valNode->type() == NodeType::Row) {
-                auto* vr = static_cast<NodeRow*>(valNode.get());
-                while (vr->childCount() > 0) {
-                    r->appendChild(vr->removeChild(0));
-                }
-            } else {
-                r->appendChild(std::move(valNode));
-            }
-
-            _resultNode[i] = std::move(row);
-            _resultRow[i]  = static_cast<NodeRow*>(_resultNode[i].get());
-
-            int y = 28 + i * 44;
-            lv_obj_set_pos(_resultCanvas[i].obj(), PAD + 20, y);
-            lv_obj_set_size(_resultCanvas[i].obj(), SCREEN_W - 2 * PAD - 20, 38);
-            lv_obj_remove_flag(_resultCanvas[i].obj(), LV_OBJ_FLAG_HIDDEN);
-
-            _resultCanvas[i].setExpression(_resultRow[i], nullptr);
-            _resultRow[i]->calculateLayout(_resultCanvas[i].normalMetrics());
-            _resultCanvas[i].invalidate();
-            ++_resultCount;
-        }
-    }
-
-addHint:
-    if (!_resultHint || lv_obj_get_parent(_resultHint) != _resultContainer) {
-        _resultHint = lv_label_create(_resultContainer);
-        lv_obj_set_style_text_font(_resultHint, &stix_math_18, LV_PART_MAIN);
-        lv_obj_set_style_text_color(_resultHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    }
-    lv_label_set_text(_resultHint, "STEPS: View steps    AC: Back");
-    lv_obj_set_pos(_resultHint, PAD, SCREEN_H - BAR_H - 22);
-#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3299,8 +2694,7 @@ void EquationsApp::buildStepsDisplay() {
     _stepRenderers.clear();
 
     const cas::CASStepLogger& log = _isOmniSolve
-        ? _omniResult.steps
-        : (_isNLSolve ? _nlResult.steps : _systemResult.steps);
+        ? _omniResult.steps : _systemResult.steps;
 
     const auto& steps = log.steps();
 

@@ -18,8 +18,7 @@
  *
  * GIAC-E01: Giac is the sole normal-build answer authority for the enabled
  * first-derivative and indefinite-integral modes. The native symbolic
- * engines remain available only for consistency-gated educational steps and
- * the explicit NUMOS_CALCULUS_LEGACY_ENGINE diagnostic build.
+ * engines remain available only for consistency-gated educational steps.
  *
  * Normal results reuse CalculationEngine's authored-AST serializer and
  * structured result adapter; unsupported Giac presentation shapes retain
@@ -125,17 +124,10 @@ CalculusApp::~CalculusApp() {
 }
 
 const char* CalculusApp::debugEngineName() const {
-#ifdef NUMOS_CALCULUS_LEGACY_ENGINE
-    return "legacy";
-#else
     return "giac";
-#endif
 }
 
 const char* CalculusApp::debugStatusName() const {
-#ifdef NUMOS_CALCULUS_LEGACY_ENGINE
-    return _resultExpr ? "ok" : "unsupported";
-#else
     switch (_giacResult.status) {
         case numos::MathEngineStatus::Ok:              return "ok";
         case numos::MathEngineStatus::Undefined:       return "undefined";
@@ -145,7 +137,6 @@ const char* CalculusApp::debugStatusName() const {
         case numos::MathEngineStatus::OutOfMemory:     return "out_of_memory";
     }
     return "unsupported";
-#endif
 }
 
 const char* CalculusApp::debugResultKindName() const {
@@ -172,21 +163,13 @@ const char* CalculusApp::debugOperationName() const {
 }
 
 const std::string& CalculusApp::debugExactText() const {
-#ifdef NUMOS_CALCULUS_LEGACY_ENGINE
-    return _legacyExactText;
-#else
     return _giacResult.exactText;
-#endif
 }
 
 bool CalculusApp::debugResultNear(double expected, double epsilon) const {
     const std::string& exact = debugExactText();
-#ifndef NUMOS_CALCULUS_LEGACY_ENGINE
     const std::string& candidate = _giacResult.approximateText.empty()
         ? exact : _giacResult.approximateText;
-#else
-    const std::string& candidate = exact;
-#endif
     if (candidate.empty() || epsilon < 0.0) return false;
     char* end = nullptr;
     const double actual = std::strtod(candidate.c_str(), &end);
@@ -249,7 +232,6 @@ void CalculusApp::end() {
     _tutorStatus = TutorStatus::Disabled;
     _serializedInput.clear();
     _tutorDiagnostic.clear();
-    _legacyExactText.clear();
     _casSteps.clear();
     _arena.reset();
 }
@@ -896,48 +878,7 @@ void CalculusApp::computeResult() {
     _resultExpr = nullptr;
     _integralFound = false;
     _resultKind = ResultKind::None;
-    _legacyExactText.clear();
-
-#ifdef NUMOS_CALCULUS_LEGACY_ENGINE
-    _tutorStatus = TutorStatus::Disabled;
-    // Step 1: Flatten MathAST → SymExpr
-    _casSteps.logNote("Converting expression to symbolic form");
-
-    cas::ASTFlattener flattener;
-    flattener.setArena(&_arena);
-    cas::SymExpr* expr = flattener.flattenToExpr(_inputRow);
-
-    if (!expr) {
-        _casSteps.logNote("Error: could not interpret the expression");
-        _resultExpr = nullptr;
-        showResult();
-        return;
-    }
-
-    // Step 2: Detect variable
-    _variable = detectVariable(expr);
-    if (_variable == 0) _variable = 'x';
-
-    // Render original expression via MathCanvas (no toString)
-    _casSteps.logExpr("Original expression:", expr);
-
-    // Step 3: Dispatch to derivative or integral
-    if (_calcMode == CalcMode::DERIVATIVE) {
-        computeDerivative(expr);
-    } else {
-        computeIntegral(expr);
-    }
-
-    if (_resultExpr) {
-        NodePtr legacyAst = cas::SymExprToAST::convert(_resultExpr);
-        std::string ignored;
-        numos::CalculationEngine::serializeForGiac(
-            legacyAst.get(), _legacyExactText, ignored);
-    }
-    showResult();
-#else
     computeGiacResult();
-#endif
 }
 
 void CalculusApp::computeGiacResult() {
@@ -1132,7 +1073,6 @@ void CalculusApp::buildResultDisplay() {
     _originalNode.reset();
     _originalRow = nullptr;
 
-#ifndef NUMOS_CALCULUS_LEGACY_ENGINE
     // Show the authored expression independently of result success.
     if (_inputRow) {
         _originalNode = cloneNode(_inputRow);
@@ -1207,115 +1147,6 @@ void CalculusApp::buildResultDisplay() {
     lv_label_set_text(_resultFallback, visible.c_str());
     lv_obj_remove_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
     _resultKind = ResultKind::TextFallback;
-    return;
-#else
-    if (!_resultExpr) {
-        // Error case
-        if (_calcMode == CalcMode::DERIVATIVE) {
-            lv_label_set_text(_resultTitle, "Error de derivacion");
-        } else {
-            lv_label_set_text(_resultTitle, "Error de integracion");
-        }
-        lv_label_set_text(_resultLabel, "");
-        return;
-    }
-    _resultKind = ResultKind::Structured;
-
-    // Show original expression (small)
-    if (_inputRow) {
-        _originalNode = cloneNode(_inputRow);
-        _originalRow = static_cast<NodeRow*>(_originalNode.get());
-
-        char fLabel[16];
-        snprintf(fLabel, sizeof(fLabel), "f(%c) =", _variable);
-        lv_label_set_text(_originalLabel, fLabel);
-
-        lv_obj_remove_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
-        _originalCanvas.setExpression(_originalRow, nullptr);
-        _originalRow->calculateLayout(_originalCanvas.normalMetrics());
-        _originalCanvas.invalidate();
-    }
-
-    // ── Derivative mode ──
-    if (_calcMode == CalcMode::DERIVATIVE) {
-        lv_label_set_text(_resultTitle, "Symbolic Derivative");
-        lv_obj_set_style_text_color(_resultTitle, lv_color_hex(COL_DERIV_HEX), LV_PART_MAIN);
-
-        char dLabel[16];
-        snprintf(dLabel, sizeof(dLabel), "f'(%c) =", _variable);
-        lv_label_set_text(_resultLabel, dLabel);
-
-        NodePtr derivAST = cas::SymExprToAST::convert(_resultExpr);
-        if (derivAST) {
-            if (derivAST->type() == NodeType::Row) {
-                _resultNode = std::move(derivAST);
-            } else {
-                auto row = makeRow();
-                static_cast<NodeRow*>(row.get())->appendChild(std::move(derivAST));
-                _resultNode = std::move(row);
-            }
-            _resultRow = static_cast<NodeRow*>(_resultNode.get());
-
-            lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
-            _resultCanvas.setExpression(_resultRow, nullptr);
-            _resultRow->calculateLayout(_resultCanvas.normalMetrics());
-            _resultCanvas.invalidate();
-        }
-    }
-    // ── Integral mode ──
-    else {
-        lv_obj_set_style_text_color(_resultTitle, lv_color_hex(COL_INTEG_HEX), LV_PART_MAIN);
-
-        if (_integralFound) {
-            lv_label_set_text(_resultTitle, "Symbolic Integral");
-
-            char iLabel[24];
-            snprintf(iLabel, sizeof(iLabel), "F(%c) =", _variable);
-            lv_label_set_text(_resultLabel, iLabel);
-
-            NodePtr integAST = cas::SymExprToAST::convertIntegral(_resultExpr);
-            if (integAST) {
-                if (integAST->type() == NodeType::Row) {
-                    _resultNode = std::move(integAST);
-                } else {
-                    auto row = makeRow();
-                    static_cast<NodeRow*>(row.get())->appendChild(std::move(integAST));
-                    _resultNode = std::move(row);
-                }
-                _resultRow = static_cast<NodeRow*>(_resultNode.get());
-
-                lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
-                _resultCanvas.setExpression(_resultRow, nullptr);
-                _resultRow->calculateLayout(_resultCanvas.normalMetrics());
-                _resultCanvas.invalidate();
-            }
-        } else {
-            lv_label_set_text(_resultTitle, "Unevaluated Integral");
-
-            char iLabel[32];
-            snprintf(iLabel, sizeof(iLabel),
-                     "\xe2\x88\xab" "f(%c)d%c =", _variable, _variable);
-            lv_label_set_text(_resultLabel, iLabel);
-
-            NodePtr exprAST = cas::SymExprToAST::convert(_resultExpr);
-            if (exprAST) {
-                if (exprAST->type() == NodeType::Row) {
-                    _resultNode = std::move(exprAST);
-                } else {
-                    auto row = makeRow();
-                    static_cast<NodeRow*>(row.get())->appendChild(std::move(exprAST));
-                    _resultNode = std::move(row);
-                }
-                _resultRow = static_cast<NodeRow*>(_resultNode.get());
-
-                lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
-                _resultCanvas.setExpression(_resultRow, nullptr);
-                _resultRow->calculateLayout(_resultCanvas.normalMetrics());
-                _resultCanvas.invalidate();
-            }
-        }
-    }
-#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1327,7 +1158,6 @@ void CalculusApp::buildStepsDisplay() {
     _stepRenderers.clear();
     lv_obj_clean(_stepsContainer);
 
-#ifndef NUMOS_CALCULUS_LEGACY_ENGINE
     if (_tutorStatus != TutorStatus::Agreed) {
         lv_obj_t* lbl = lv_label_create(_stepsContainer);
         std::string message = "Steps unavailable.";
@@ -1343,7 +1173,6 @@ void CalculusApp::buildStepsDisplay() {
             lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
         return;
     }
-#endif
 
     const auto& steps = _casSteps.steps();
 

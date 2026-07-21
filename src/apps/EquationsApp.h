@@ -245,9 +245,7 @@ private:
     cas::SymExprArena  _arena;
     cas::OmniResult    _omniResult;
     cas::SystemResult  _systemResult;
-    cas::NLSystemResult _nlResult;
     bool               _isOmniSolve;
-    bool               _isNLSolve = false;
 
     // ── Algebraic TRS state (single-equation CAS step view) ──────────
     std::unique_ptr<cas::CasMemoryPool> _casPool;
@@ -286,8 +284,6 @@ private:
 
     // ── Solving logic ────────────────────────────────────────────────
     void solveEquations();
-    void solveOmni();
-    void solveSystem();
     void solveWithGiac();
     void generateTutorCandidate();
     bool tutorCandidateAgrees() const;

@@ -25,6 +25,10 @@
 #include "math/MathAST.h"
 #include "math/VariableManager.h"
 
+// Production defines this setting in main.cpp/NativeHal.cpp. SingleSolver is
+// part of the host link closure, so a clean host build needs the same global.
+bool setting_complex_enabled = true;
+
 // Defined in host_rss_probe.cpp — its own TU because <windows.h> cannot
 // coexist with NumOS headers (INPUT/TokenType collisions).
 size_t hostCurrentRssKb();

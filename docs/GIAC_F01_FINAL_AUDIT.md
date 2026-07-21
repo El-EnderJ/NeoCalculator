@@ -31,9 +31,8 @@ Baseline PlatformIO environments (11):
 `esp32s3_n16r8`, `esp32s3_n16r8_validate`,
 `esp32s3_n16r8_giacdiag`, `esp32s3_n16r8_giacfeas_baseline`,
 `esp32s3_n16r8_validate_overlay`, `esp32s3_n16r8_validate_sup1`,
-`esp32s3_n16r8_validate_usbcdc`, `emulator_pc`,
-`emulator_pc_equations_legacy`, `emulator_pc_calculus_legacy`, and
-`emulator_pc_neo_smoke`.
+`esp32s3_n16r8_validate_usbcdc`, `emulator_pc`, two dedicated rollback
+diagnostic environments, and `emulator_pc_neo_smoke`.
 
 ## 2. Complete authority matrix
 
@@ -42,19 +41,19 @@ graph. “Tutor/probe” never means primary-result authority.
 
 | Caller and operation | Reachability | Normal authority | Explicit rollback/native authority | Tutor/probe role | Guard | UI | Coverage |
 |---|---|---|---|---|---|---|---|
-| `CalculationApp::evaluateExpression` ENTER | Normal firmware/emulator | `CalculationEngine` → `GiacEngine` | `MathEvaluator` | None for result | `NUMOS_CALC_LEGACY_ENGINE` | Yes | 135-case host suite; 33 Calculation scripts; rollback script |
-| Calculation result-tree/ExactVal/MathAST presentation | Normal | Existing Giac result only; no re-evaluation | Legacy display consumes legacy `ExactVal` | Presentation only | Same compile branch | Yes | Serializer/structured fixtures; 18 masked goldens |
+| `CalculationApp::evaluateExpression` ENTER | Normal firmware/emulator | `CalculationEngine` → `GiacEngine` | None | None for result | Unconditional | Yes | 135-case host suite; 33 Calculation scripts |
+| Calculation result-tree/ExactVal/MathAST presentation | Normal | Existing Giac result only; no re-evaluation | None | Presentation only | Result-kind dispatch | Yes | Serializer/structured fixtures; 18 masked goldens |
 | Calculation educational steps | Setting-dependent after successful Giac result | Giac remains displayed answer | Same custom step generator | `ASTFlattener` + `SymSimplify` produce optional steps only | `setting_edu_steps && ev.ok()` | Steps only; never replaces result/history | CAS suites and Calculation regressions |
 | `GraphModel::preCacheRPN` classifier | Every committed graph slot | RPN parser/evaluator is a structural acceptance probe | Same probe | Classifier/dry-run only | Always | Valid/invalid state, not sample value | Grapher classifier scripts |
-| `GraphModel::evalAt` explicit `y=f(x)` | Normal | Retained Giac 1-D handle | RPN evaluator | None | `NUMOS_GRAPHER_LEGACY_ENGINE` | Yes | Giac retained host sweeps; Grapher scripts; rollback script |
-| `GraphModel::evalImplicit` residual/inequality | Normal | Retained Giac 2-D handle | RPN evaluator | None | Same macro | Yes | 2-D host sweeps and Grapher implicit/inequality scripts |
-| `GraphModel::evalAtY` explicit `x=f(y)` | Normal | Retained Giac 1-D handle | RPN evaluator | None | Same macro | Yes | `grapher_giac_xfy_implicit_ineq` and graph corpus |
-| Grapher POI, trace, table, shading and drawing consumers | Normal | Values returned by the three Giac-backed model entry points | Values returned by rollback entry points | No independent solver | Model compile guard | Yes | Full Grapher/GRBUG corpus |
-| `EquationsApp::solveEquations`, one equation | Normal | `GiacEngine::solveStructured` | `OmniSolver` | Native candidate after Giac only | `NUMOS_EQUATIONS_LEGACY_ENGINE` | Yes | 135-case host suite; 19 normal scripts; rollback |
-| `EquationsApp::solveEquations`, 2×2/3×3 | Normal | `GiacEngine::solveSystemStructured` | `SystemSolver` | Native candidate after Giac only | Same macro | Yes | Host systems matrix and emulator systems scripts |
-| Equations steps/tutor | Successful ordinary Giac solution only | `_giacResult` remains immutable answer | Native result is answer in rollback | Custom candidate must normalize equal to Giac; otherwise steps unavailable | Runtime `tutorCandidateAgrees()` | Steps only | Agreement/disagreement and tutor-status assertions |
-| `CalculusApp::computeResult`, derivative/integral | Normal | `GiacEngine::evaluateCalculusStructured` | `ASTFlattener` + `SymDiff`/`SymIntegrate`/`SymSimplify` | Native candidate after Giac | `NUMOS_CALCULUS_LEGACY_ENGINE` | Yes | 26-case host suite; 16 normal scripts; rollback |
-| Calculus steps/tutor | Successful Giac result only | `_giacResult` is sole displayed result | Native result is answer in rollback | Giac verifies derivative equality or antiderivative modulo a constant; fail closed | `verifyCalculusTutor` | Steps only | Host agreement/disagreement plus emulator assertions |
+| `GraphModel::evalAt` explicit `y=f(x)` | Normal | Retained Giac 1-D handle | None | None | Unconditional retained compile/freshness check | Yes | Giac retained host sweeps; Grapher scripts |
+| `GraphModel::evalImplicit` residual/inequality | Normal | Retained Giac 2-D handle | None | None | Unconditional retained compile/freshness check | Yes | 2-D host sweeps and Grapher implicit/inequality scripts |
+| `GraphModel::evalAtY` explicit `x=f(y)` | Normal | Retained Giac 1-D handle | None | None | Unconditional retained compile/freshness check | Yes | `grapher_giac_xfy_implicit_ineq` and graph corpus |
+| Grapher POI, trace, table, shading and drawing consumers | Normal | Values returned by the three Giac-backed model entry points | None | No independent solver | Model validity | Yes | Full Grapher/GRBUG corpus |
+| `EquationsApp::solveEquations`, one equation | Normal | `GiacEngine::solveStructured` | None | Native candidate after Giac only | Unconditional Giac answer; runtime tutor agreement | Yes | 135-case host suite; 19 normal scripts |
+| `EquationsApp::solveEquations`, 2×2/3×3 | Normal | `GiacEngine::solveSystemStructured` | None | Native candidate after Giac only | Unconditional Giac answer; runtime tutor agreement | Yes | Host systems matrix and emulator systems scripts |
+| Equations steps/tutor | Successful ordinary Giac solution only | `_giacResult` remains immutable answer | None | Custom candidate must normalize equal to Giac; otherwise steps unavailable | Runtime `tutorCandidateAgrees()` | Steps only | Agreement/disagreement and tutor-status assertions |
+| `CalculusApp::computeResult`, derivative/integral | Normal | `GiacEngine::evaluateCalculusStructured` | None | Native candidate after Giac | Unconditional Giac answer; runtime tutor verification | Yes | 26-case host suite; 16 normal scripts |
+| Calculus steps/tutor | Successful Giac result only | `_giacResult` is sole displayed result | None | Giac verifies derivative equality or antiderivative modulo a constant; fail closed | `verifyCalculusTutor` | Steps only | Host agreement/disagreement plus emulator assertions |
 | `NeoMathBackend` symbol, constant, binary, negate, function, equation, evaluate | Normal Neo session | `GiacEngine::instance()` | Custom CAS/value operations | None | `_engine == Native` checked before every Native call | Yes | Neo 44-case host suite; app lifecycle smoke; mathdiag |
 | Neo simplify/expand/factor | Normal Neo session | Typed Giac transform | Custom CAS transform | None | `_engine == Native` | Yes | Neo host suite and mathdiag |
 | Neo differentiate/integrate | Normal Neo session | Typed Giac calculus | `SymDiff`/`SymIntegrate` | None | `_engine == Native` | Yes | Neo host suite and mathdiag |
@@ -64,7 +63,6 @@ graph. “Tutor/probe” never means primary-result authority.
 | `NeoStdLib` math built-ins | Normal Neo execution | Immediate return through `NeoMathBackend` | Backend selection controls authority | None | Backend contract | Yes | Neo host/app suites |
 | Old native tails in `NeoStdLib` after unconditional backend returns | Not reachable | None | None | Historical code | Unconditional return precedes code | No | Static reachability audit; separate cleanup decision |
 | `SerialBridge` solve command | Firmware serial input | `solveWithGiac` → `GiacBridge` borrowing engine context | None | None | Serial command routing | Serial UI | Giac host and bridge audit |
-| `MathEvaluator::evaluateWithGiac` compatibility helper | Reachable only if called | `solveWithGiac` borrowing engine context | None | Compatibility helper | Call-site dependent | Potential | Static audit; Giac host suite |
 | `TutorApp` | Not registered by `SystemApp` or normal emulator | None | Custom CAS only if separately resurrected | Historical tutor app | Unreachable from launcher | No | Static reachability audit |
 | `IntegralApp` | Not registered by `SystemApp` or normal emulator | None | Custom CAS only if separately resurrected | Historical app | Unreachable from launcher | No | Static reachability audit |
 | `SystemApp::_equationSolver` / `EquationSolver` | Constructed and angle-synced, never invoked | None | None | Historical member | No solve call | No | Static call-site audit |
@@ -80,7 +78,7 @@ Every production-tree custom-CAS call belongs to exactly one audit category:
 | Category | Exact sites/roles |
 |---|---|
 | Consistency-gated tutor | Calculation educational-step generation is gated on a successful authoritative result and cannot write the result/history; Equations candidates require `tutorCandidateAgrees()`; Calculus candidates require `verifyCalculusTutor()` and are discarded on disagreement. |
-| Compile-time rollback | Calculation `_evaluator.evaluate`; Grapher RPN sampling/full-parse fallback; Equations `solveOmni`/`solveSystem`; Calculus primary native derivative/integral branch. |
+| Compile-time rollback | **None.** GIAC-F02 removed the four primary-answer branches, their macros, environments, and focused scripts after independent gates passed. |
 | Explicit Neo Native selection | Every custom call in `NeoMathBackend` at the Native branches for values, transforms, calculus, solving, Taylor, plot compile/evaluate and numeric conversion. |
 | Grapher classifier/numeric probe | `GraphModel::dryRunStructural` and the RPN classifier evaluation used during commit in both builds. It cannot supply a normal sample. |
 | Debug/test | CAS host suites, host parity/probe code, emulator assertion hooks, Giac diagnostics, mathdiag Native counter-isolation case. |
@@ -169,21 +167,12 @@ Exact locked fixtures remained unchanged:
 The fresh host harness passed 135/135 Giac fixtures, 26/26 Calculus fixtures,
 44/44 Neo fixtures and 14/14 cross-app fixtures.
 
-## 8. Rollback environments
+## 8. Historical rollback environments
 
-Four independent opt-in emulator environments now exist:
-
-- `emulator_pc_calculation_legacy` defines only
-  `NUMOS_CALC_LEGACY_ENGINE`;
-- `emulator_pc_grapher_legacy` defines only
-  `NUMOS_GRAPHER_LEGACY_ENGINE`;
-- `emulator_pc_equations_legacy` defines only
-  `NUMOS_EQUATIONS_LEGACY_ENGINE`;
-- `emulator_pc_calculus_legacy` defines only
-  `NUMOS_CALCULUS_LEGACY_ENGINE`.
-
-Their focused scripts assert the expected engine and result/sample. All four
-build and pass. They write no repository-root generated artifacts.
+GIAC-F01 supplied four independent opt-in emulator rollback environments and
+focused scripts. All four built and passed without repository-root generated
+artifacts. GIAC-F02 removed those temporary build surfaces after their four
+application categories independently cleared the approved deletion gates.
 
 ## 9. Mathdiag and physical soak
 
@@ -307,4 +296,3 @@ Normal static DRAM, BSS and IRAM are unchanged. Normal firmware keeps an
    decision.
 5. Hardware evidence is strong but rollback removal is explicitly deferred to
    GIAC-F02 review; this audit deletes nothing.
-

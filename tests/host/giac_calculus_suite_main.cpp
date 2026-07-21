@@ -14,6 +14,10 @@
 #include "math/AngleModeRuntime.h"
 #include "math/giac/GiacEngine.h"
 
+// Production defines this setting in main.cpp/NativeHal.cpp. SingleSolver is
+// part of the shared host link closure even though this suite tests calculus.
+bool setting_complex_enabled = true;
+
 size_t hostCurrentRssKb();
 
 using Clock = std::chrono::steady_clock;

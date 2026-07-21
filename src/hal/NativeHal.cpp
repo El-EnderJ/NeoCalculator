@@ -1576,7 +1576,7 @@ static bool saveScreenshotPPM(const char* path)
 //   assert_angle_mode M       · (AM-01) aserta la verdad runtime (vpam::g_angleMode)
 //   assert_statusbar_angle M  · (AM-01) aserta el texto REAL del badge de la barra activa
 //   assert_graph_angle_mode M · (AM-01) aserta el modo del Evaluator del GraphModel
-//   assert_graph_engine E             · (GIAC-C01) motor de muestreo (giac|legacy)
+//   assert_graph_engine giac          · (GIAC-C01) motor de muestreo
 //   assert_graph_compile_status S ok|error · estado de compilacion Giac del slot S
 //   assert_graph_compile_count S N    · pases de compilacion acumulados del slot S
 //   assert_graph_eval_valid S T [Y]   · muestra valida via GraphModel (1 coord =
@@ -1630,7 +1630,7 @@ enum class ScriptCmdType : uint8_t {
     AssertGraphAngleMode,      // assert_graph_angle_mode deg|rad (modo del Evaluator del GraphModel)
     // GIAC-B01: Calculation engine probes (which engine produced the result,
     // presentation tier, typed status, and Giac's exact printed text).
-    AssertCalcEngine,          // assert_calc_engine giac|legacy
+    AssertCalcEngine,          // assert_calc_engine giac
     AssertCalcResultKind,      // assert_calc_result_kind structured|text_fallback|none
     AssertCalcStatus,          // assert_calc_status ok|undefined|parse_error|evaluation_error|unsupported|out_of_memory
     AssertCalcExact,           // assert_calc_exact TEXT (igualdad exacta con exactText)
@@ -1656,7 +1656,7 @@ enum class ScriptCmdType : uint8_t {
     //   forma de 1 coordenada: funcion mono-parametro del slot
     //     (y=f(x): parametro x, resultado y; x=f(y): parametro y, resultado x)
     //   forma de 2 coordenadas: residual implicito G(x,y)=lhs-rhs
-    AssertGraphEngine,         // assert_graph_engine giac|legacy
+    AssertGraphEngine,         // assert_graph_engine giac
     AssertGraphCompileStatus,  // assert_graph_compile_status SLOT ok|error
     AssertGraphCompileCount,   // assert_graph_compile_count SLOT N (N en fArgs[0])
     AssertGraphEvalValid,      // assert_graph_eval_valid SLOT T [Y]      (fArgs)
@@ -2050,10 +2050,10 @@ static bool loadScript(const char* path)
         // ── GIAC-B01: aserciones del motor de Calculation ────────────────
         else if (lc == "assert_calc_engine") {
             std::string mode, extra;
-            if (!(iss >> mode)) return scriptErr(path, lineNo, "assert_calc_engine requiere giac|legacy");
+            if (!(iss >> mode)) return scriptErr(path, lineNo, "assert_calc_engine requiere giac");
             if (iss >> extra)   return scriptErr(path, lineNo, "assert_calc_engine: demasiados argumentos");
-            if (mode != "giac" && mode != "legacy")
-                return scriptErr(path, lineNo, "assert_calc_engine: valor desconocido (giac|legacy)");
+            if (mode != "giac")
+                return scriptErr(path, lineNo, "assert_calc_engine: valor desconocido (giac)");
             sc.type   = ScriptCmdType::AssertCalcEngine;
             sc.strArg = mode;
         }
@@ -2119,9 +2119,9 @@ static bool loadScript(const char* path)
                 return scriptErr(path, lineNo,
                     "calculus hook requiere exactamente un valor");
             if (lc == "assert_calculus_engine") {
-                if (value != "giac" && value != "legacy")
+                if (value != "giac")
                     return scriptErr(path, lineNo,
-                        "assert_calculus_engine requiere giac|legacy");
+                        "assert_calculus_engine requiere giac");
                 sc.type = ScriptCmdType::AssertCalculusEngine;
             } else if (lc == "assert_calculus_status") {
                 if (value != "ok" && value != "undefined" &&
@@ -2199,9 +2199,9 @@ static bool loadScript(const char* path)
                 return scriptErr(path, lineNo,
                     "assert_equations_* requiere exactamente un valor");
             if (lc == "assert_equations_engine") {
-                if (value != "giac" && value != "legacy")
+                if (value != "giac")
                     return scriptErr(path, lineNo,
-                        "assert_equations_engine requiere giac|legacy");
+                        "assert_equations_engine requiere giac");
                 sc.type = ScriptCmdType::AssertEquationsEngine;
             } else if (lc == "assert_equations_status") {
                 if (value != "ok" && value != "no_solution" &&
@@ -2286,10 +2286,10 @@ static bool loadScript(const char* path)
         }
         else if (lc == "assert_graph_engine") {
             std::string mode, extra;
-            if (!(iss >> mode)) return scriptErr(path, lineNo, "assert_graph_engine requiere giac|legacy");
+            if (!(iss >> mode)) return scriptErr(path, lineNo, "assert_graph_engine requiere giac");
             if (iss >> extra)   return scriptErr(path, lineNo, "assert_graph_engine: demasiados argumentos");
-            if (mode != "giac" && mode != "legacy")
-                return scriptErr(path, lineNo, "assert_graph_engine: valor desconocido (giac|legacy)");
+            if (mode != "giac")
+                return scriptErr(path, lineNo, "assert_graph_engine: valor desconocido (giac)");
             sc.type   = ScriptCmdType::AssertGraphEngine;
             sc.strArg = mode;
         }

@@ -312,7 +312,6 @@ bool GraphModel::dryRunStructural(const std::vector<Token>& rpn, CartesianFuncti
     return false;
 }
 
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
 // ── GIAC-C01: classifier RPN → Giac text → retained compiled handles ───────
 
 bool GraphModel::rpnToGiacText(const std::vector<Token>& rpn, std::string& out) {
@@ -459,8 +458,6 @@ bool GraphModel::ensureGiacFresh(CartesianFunction& fn) {
     // deterministic recompile from the retained classifier RPNs.
     return compileGiacHandles(fn);
 }
-#endif // !NUMOS_GRAPHER_LEGACY_ENGINE
-
 // ── preCacheRPN ────────────────────────────────────────────────────────────
 //
 // Classifies the committed expression per the classifier contract
@@ -498,14 +495,12 @@ void GraphModel::preCacheRPN(CartesianFunction& fn) {
     fn.valid = false;
     fn.invalidReason  = InvalidReason::None;
     fn.reasonDetail[0] = '\0';
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
     // GIAC-C01: drop any previously compiled handles up front so an edited
     // slot can never sample a stale expression (rejected commits included).
     fn.giacF  = numos::CompiledExpression();
     fn.giacG  = numos::CompiledExpression();
     fn.giacFy = numos::CompiledExpression();
     fn.giacFValid = fn.giacGValid = fn.giacFyValid = false;
-#endif
 
     if (fn.len <= 0) return;   // R0: empty — not classified, not invalid
 
@@ -552,9 +547,7 @@ void GraphModel::preCacheRPN(CartesianFunction& fn) {
             if (!dryRunStructural(fn.rpn, fn)) return;
             fn.rpnValid = true;
             fn.valid    = true;
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
             compileGiacHandles(fn);
-#endif
             return;
         }
         // Implicit contour with an implicit "= 0": G = <expr>.
@@ -563,9 +556,7 @@ void GraphModel::preCacheRPN(CartesianFunction& fn) {
         fn.rpnLValid = true;
         fn.implicit  = true;
         fn.valid     = true;
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
         compileGiacHandles(fn);
-#endif
         return;
     }
 
@@ -616,9 +607,7 @@ void GraphModel::preCacheRPN(CartesianFunction& fn) {
         fn.rpnValid  = true;
         fn.implicit  = true;
         fn.valid     = true;
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
         compileGiacHandles(fn);
-#endif
         return;
     }
 
@@ -633,9 +622,7 @@ void GraphModel::preCacheRPN(CartesianFunction& fn) {
         if (!dryRunStructural(fn.rpn, fn)) return;
         fn.rpnValid = true;
         fn.valid    = true;
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
         compileGiacHandles(fn);
-#endif
         return;
     }
     if (isJustY(rhs) && !lhsHasY) {
@@ -643,9 +630,7 @@ void GraphModel::preCacheRPN(CartesianFunction& fn) {
         if (!dryRunStructural(fn.rpn, fn)) return;
         fn.rpnValid = true;
         fn.valid    = true;
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
         compileGiacHandles(fn);
-#endif
         return;
     }
 
@@ -680,15 +665,13 @@ void GraphModel::preCacheRPN(CartesianFunction& fn) {
         fn.explicitY = compileExpr(lhs.c_str(), fn.rpnY);
         fn.rpnYValid = fn.explicitY;
     }
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
     compileGiacHandles(fn);   // giacG residual + optional giacFy refinement
-#endif
 }
 
 // ── evalAt ─────────────────────────────────────────────────────────────────
 
 float GraphModel::evalAt(CartesianFunction& fn, float x) {
-    // Synced in BOTH builds: the classifier Evaluator's mode doubles as the
+    // The classifier Evaluator's mode doubles as the
     // emulator's debugAngleMode mirror (last-sync semantics, AM-01 smoke).
     _eval.setAngleMode(numos::legacyAngleMode());
     if (!fn.valid) return NAN;
@@ -696,7 +679,6 @@ float GraphModel::evalAt(CartesianFunction& fn, float x) {
     // Trace/table/auto-fit call evalAt and gracefully skip a NAN result.
     if (fn.implicit) return NAN;
 
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
     // GIAC-C01: retained-handle sampling; no reparse, no context writes.
     // Non-finite (pole) and non-numeric (domain/symbolic) outcomes are gaps
     // — never converted to 0.
@@ -706,27 +688,6 @@ float GraphModel::evalAt(CartesianFunction& fn, float x) {
         return NAN;
     if (std::isnan(y) || std::isinf(y)) return NAN;
     return (float)y;
-#else
-    _vars.setVar('x', (double)x);
-
-    // Fast path: use pre-compiled RPN
-    if (fn.rpnValid && !fn.rpn.empty()) {
-        EvalResult er = _eval.evaluateRPN(fn.rpn, _vars);
-        return er.ok ? (float)er.value : NAN;
-    }
-
-    // Fallback: full parse (shouldn't normally be reached after preCacheRPN)
-    const char* rhs = getExprRHS(fn.text);
-    if (!rhs) return NAN;
-
-    std::string expr = normalizeLeadingUnary(rhs);
-    TokenizeResult tr = _tok.tokenize(expr.c_str());
-    if (!tr.ok) return NAN;
-    ParseResult pr = _par.toRPN(tr.tokens);
-    if (!pr.ok) return NAN;
-    EvalResult er = _eval.evaluateRPN(pr.outputRPN, _vars);
-    return er.ok ? (float)er.value : NAN;
-#endif
 }
 
 // ── evalImplicit: G(x,y) = lhs(x,y) - rhs(x,y) ─────────────────────────────
@@ -735,7 +696,6 @@ float GraphModel::evalImplicit(CartesianFunction& fn, float x, float y) {
     _eval.setAngleMode(numos::legacyAngleMode());
     if (!fn.implicit) return NAN;
 
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
     // GIAC-C01: the retained residual handle covers contour drawing,
     // inequality shading, implicit trace, gradients and 2-D intersections —
     // one evaluator for every consumer. Simultaneous x,y substitution; the
@@ -747,25 +707,6 @@ float GraphModel::evalImplicit(CartesianFunction& fn, float x, float y) {
         return NAN;
     if (std::isnan(g) || std::isinf(g)) return NAN;
     return (float)g;
-#else
-    _vars.setVar('x', (double)x);
-    _vars.setVar('y', (double)y);
-
-    double lv = 0.0, rv = 0.0;
-    if (fn.rpnLValid && !fn.rpnL.empty()) {
-        EvalResult er = _eval.evaluateRPN(fn.rpnL, _vars);
-        if (!er.ok) return NAN;
-        lv = er.value;
-    }
-    if (fn.rpnValid && !fn.rpn.empty()) {
-        EvalResult er = _eval.evaluateRPN(fn.rpn, _vars);
-        if (!er.ok) return NAN;
-        rv = er.value;
-    }
-    double g = lv - rv;
-    if (std::isnan(g) || std::isinf(g)) return NAN;
-    return (float)g;
-#endif
 }
 
 // ── evalAtY: x = f(y) for an explicit-in-y slot ────────────────────────────
@@ -773,7 +714,6 @@ float GraphModel::evalImplicit(CartesianFunction& fn, float x, float y) {
 float GraphModel::evalAtY(CartesianFunction& fn, float y) {
     _eval.setAngleMode(numos::legacyAngleMode());
     if (!fn.explicitY || !fn.rpnYValid || fn.rpnY.empty()) return NAN;
-#ifndef NUMOS_GRAPHER_LEGACY_ENGINE
     if (!ensureGiacFresh(fn) || !fn.giacFyValid) return NAN;
     double xv = NAN;
     if (!numos::GiacEngine::instance().evaluateNumeric(fn.giacFy, (double)y,
@@ -781,13 +721,6 @@ float GraphModel::evalAtY(CartesianFunction& fn, float y) {
         return NAN;
     if (std::isnan(xv) || std::isinf(xv)) return NAN;
     return (float)xv;
-#else
-    _vars.setVar('y', (double)y);
-    EvalResult er = _eval.evaluateRPN(fn.rpnY, _vars);
-    if (!er.ok) return NAN;
-    float x = (float)er.value;
-    return (std::isnan(x) || std::isinf(x)) ? NAN : x;
-#endif
 }
 
 // ── Difference function: f1(x) - f2(x) ────────────────────────────────────

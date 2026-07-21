@@ -20,7 +20,7 @@
  *   Fase 1: AST dinámico (MathAST) ✓
  *   Fase 2: Cursor + Inserción VPAM (CursorController) ✓
  *   Fase 3: Renderizado LVGL pixel-perfect (MathCanvas) ✓
- *   Fase 4: Evaluador Simbólico + Decimal (MathEvaluator) ✓
+ *   Fase 4: Autoridad Giac + presentación exacta/decimal ✓
  *
  * La pantalla es 100% LVGL (no TFT directo). Dos widgets MathCanvas:
  *   · Expresión (arriba): editable, con cursor parpadeante
@@ -529,11 +529,10 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 void CalculationApp::evaluateExpression() {
     if (!_rootRow) return;
 
-#ifndef NUMOS_CALC_LEGACY_ENGINE
-    // ── GIAC-B01: Giac is the mathematical authority for Calculation ────
+    // Giac is the mathematical authority for Calculation.
     // Serialize the authored VPAM tree, mirror A-F/Ans/PreAns into the Giac
     // context, evaluate, and receive the presentation tiers. NO legacy
-    // re-evaluation happens on any path (rollback is compile-time only).
+    // re-evaluation happens on any path.
     numos::CalculationEvaluation ev =
         numos::CalculationEngine::instance().evaluate(_rootRow);
 
@@ -634,65 +633,6 @@ void CalculationApp::evaluateExpression() {
     }
 
     showResult();
-    return;
-#else
-    // Evaluar
-    _lastResult  = _evaluator.evaluate(_rootRow);
-    _hasResult   = true;
-
-    // ── Default display mode ────────────────────────────────────────────────
-    // Exact results (integers, small fractions, radicals, π/e multiples) stay in
-    // Symbolic form. But a transcendental or irrational-combination result comes
-    // back from the evaluator as a rational *approximation* with a large
-    // power-of-10 denominator (ExactVal::fromDouble truncates to ≤10 decimals),
-    // e.g. sin(30) → -9880316241/10000000000. Rendering that as a fraction is
-    // unreadable, so default those to the decimal (Periodic) form instead — the
-    // user can still toggle back to Symbolic with S⇔D. The raw ExactVal (and thus
-    // the emulator's assert_result probe) is unchanged; only the display differs.
-    constexpr int64_t kDecimalDenThreshold = 100000;  // 10^5
-    if (_lastResult.ok && _lastResult.isRational() &&
-        _lastResult.den >= kDecimalDenThreshold) {
-        _resultMode  = vpam::ResultMode::Periodic;
-        _showDecimal = true;
-    } else {
-        _resultMode  = vpam::ResultMode::Symbolic;
-        _showDecimal = false;
-    }
-
-    // Guardar en Ans (rota Ans → PreAns)
-    if (_lastResult.ok) {
-        vpam::VariableManager::instance().updateAns(_lastResult);
-    }
-
-    // ── Guardar en historial ─────────────────────────────────────────
-    {
-        HistoryEntry entry;
-        entry.exprAST = vpam::cloneNode(_rootRow);
-        entry.result  = _lastResult;
-        _history.push_back(std::move(entry));
-
-        // Limitar historial
-        if (static_cast<int>(_history.size()) > MAX_HISTORY) {
-            _history.erase(_history.begin());
-        }
-    }
-    _historyIndex = -1;  // volver a modo "nueva expresión"
-
-    // Ocultar cursor de la expresión
-    _mathCanvas.stopCursorBlink();
-    _mathCanvas.setExpression(_rootRow, nullptr);
-
-    // Generate educational steps if enabled
-    _eduStepLogger.clear();
-    _eduArena.reset();
-    _hasEduSteps = false;
-    if (setting_edu_steps && _lastResult.ok) {
-        generateEduSteps();
-    }
-
-    // Mostrar resultado
-    showResult();
-#endif // NUMOS_CALC_LEGACY_ENGINE
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -884,7 +824,6 @@ void CalculationApp::showResult() {
         _mathCanvas.stopCursorBlink();
     }
 
-#ifndef NUMOS_CALC_LEGACY_ENGINE
     hideTextResult();
 
     if (_lastStatus == numos::MathEngineStatus::Ok &&
@@ -929,22 +868,6 @@ void CalculationApp::showResult() {
         }
         _resultRow = static_cast<vpam::NodeRow*>(_resultNode.get());
     }
-#else
-    // Generar el AST del resultado según el estado
-    switch (_resultMode) {
-        case vpam::ResultMode::Symbolic:
-            _resultNode = vpam::MathEvaluator::resultToAST(_lastResult);
-            break;
-        case vpam::ResultMode::Periodic:
-            _resultNode = vpam::MathEvaluator::resultToPeriodicAST(_lastResult);
-            break;
-        case vpam::ResultMode::Extended:
-            _resultNode = vpam::MathEvaluator::resultToExtendedAST(_lastResult, 200);
-            break;
-    }
-    _resultRow = static_cast<vpam::NodeRow*>(_resultNode.get());
-#endif // NUMOS_CALC_LEGACY_ENGINE
-
     // Conectar al canvas de resultado (sin cursor)
     _resultCanvas.setExpression(_resultRow, nullptr);
     _resultCanvas.resetScroll();   // Resetear scroll al cambiar de estado
@@ -1087,7 +1010,6 @@ void CalculationApp::loadHistoryEntry(int index) {
     _hasResult   = true;
     _showDecimal = false;
     _resultMode  = vpam::ResultMode::Symbolic;
-#ifndef NUMOS_CALC_LEGACY_ENGINE
     _lastStatus    = entry.status;
     _lastKind      = entry.kind;
     _exactValValid = entry.exactValValid;
@@ -1096,7 +1018,6 @@ void CalculationApp::loadHistoryEntry(int index) {
     _structuredResult = entry.resultAST
                             ? vpam::cloneNode(entry.resultAST.get())
                             : vpam::NodePtr();
-#endif
     showResult();
 }
 
@@ -1136,11 +1057,9 @@ void CalculationApp::executeStore(char varName) {
     // Intentar persistir en flash
     vm.saveToFlash();
 
-#ifndef NUMOS_CALC_LEGACY_ENGINE
     // Keep the Giac session's exact text coherent with the store (A-F only;
     // x/y/z stay free symbols on the Giac side).
     numos::CalculationEngine::instance().noteVariableStored(varName);
-#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1271,7 +1190,6 @@ void CalculationApp::closeStepViewer() {
     // Restore main UI
     if (_mathCanvas.obj()) lv_obj_remove_flag(_mathCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
     if (_hasResult) {
-#ifndef NUMOS_CALC_LEGACY_ENGINE
         if (_lastStatus == numos::MathEngineStatus::Ok &&
             _lastKind == numos::CalcResultKind::TextFallback) {
             showTextResult(_exactText);
@@ -1279,10 +1197,6 @@ void CalculationApp::closeStepViewer() {
             if (_resultCanvas.obj()) lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
             if (_resultSep) lv_obj_remove_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
         }
-#else
-        if (_resultCanvas.obj()) lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
-        if (_resultSep) lv_obj_remove_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
-#endif
         _statusBar.setTitle("F2: View Steps");
     } else {
         _statusBar.setTitle("Calculation");
@@ -1381,9 +1295,7 @@ void CalculationApp::buildStepsDisplay() {
 
 #ifdef NATIVE_SIM
 // ════════════════════════════════════════════════════════════════════════════
-// GIAC-B01 emulator probes — read-only accessors for the .numos runner.
-// Under -DNUMOS_CALC_LEGACY_ENGINE the fields keep their defaults, so
-// assert_calc_engine legacy / assert_calc_result_kind none stay truthful.
+// Calculation emulator probes — read-only accessors for the .numos runner.
 // ════════════════════════════════════════════════════════════════════════════
 
 const char* CalculationApp::debugCalcResultKind() const {

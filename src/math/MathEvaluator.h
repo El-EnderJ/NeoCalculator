@@ -91,14 +91,6 @@ class MathEvaluator {
 public:
     MathEvaluator() = default;
 
-#ifdef ARDUINO
-    /**
-     * Helper bridge for LVGL apps that want full CAS evaluation through Giac.
-     * It normalizes line endings and delegates to solveWithGiac().
-     */
-    static String evaluateWithGiac(String input);
-#endif
-
     // ── Evaluación principal ─────────────────────────────────────────────
 
     /**

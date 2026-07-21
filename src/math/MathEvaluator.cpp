@@ -41,9 +41,6 @@
 #include <sstream>
 #include <iomanip>
 #include <limits>
-#ifdef ARDUINO
-#include "giac/GiacBridge.h"
-#endif
 
 namespace vpam {
 
@@ -511,15 +508,6 @@ ExactVal exactSqrt(const ExactVal& a) {
 // ════════════════════════════════════════════════════════════════════════════
 // MathEvaluator — Evaluación recursiva
 // ════════════════════════════════════════════════════════════════════════════
-
-#ifdef ARDUINO
-String MathEvaluator::evaluateWithGiac(String input) {
-    input.replace("\r", "");
-    input.replace("\n", "");
-    input.trim();
-    return solveWithGiac(input);
-}
-#endif
 
 ExactVal MathEvaluator::evaluate(const MathNode* root) const {
     if (!root) return ExactVal::makeError("Math ERROR");

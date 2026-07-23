@@ -200,6 +200,15 @@ bool countStructuredTreeBounded(const EngineResultNode& node,
     return true;
 }
 
+bool enforceStructuredTreeNodeLimit(EngineResultNode& node) {
+    uint16_t boundedCount = 0;
+    if (countStructuredTreeBounded(node, boundedCount)) return true;
+    node = EngineResultNode{};
+    node.kind = EngineNodeKind::Unsupported;
+    node.fallbackReason = EngineFallbackReason::NodeLimit;
+    return false;
+}
+
 void recordStructuredTreeImpl(const EngineResultNode& node, uint16_t depth,
                               uint16_t& count) {
     ++count;
@@ -219,15 +228,10 @@ void recordStructuredTreeImpl(const EngineResultNode& node, uint16_t depth,
 }
 
 void recordStructuredTree(EngineResultNode& node) {
-    uint16_t boundedCount = 0;
-    if (!countStructuredTreeBounded(node, boundedCount)) {
-        // WHY: parents reserve their typed arity before child conversion. If
-        // the global node budget expires mid-container, collapse the partial
-        // tree so even the fallback object remains inside the hard cap.
-        node = EngineResultNode{};
-        node.kind = EngineNodeKind::Unsupported;
-        node.fallbackReason = EngineFallbackReason::NodeLimit;
-    }
+    // WHY: parents reserve their typed arity before child conversion. If the
+    // global node budget expires mid-container, collapse the partial tree so
+    // even the fallback object remains inside the hard cap.
+    enforceStructuredTreeNodeLimit(node);
     uint16_t count = 0;
     recordStructuredTreeImpl(node, 0, count);
     g_structuredDiagnostics.maximumNodeCount =
@@ -742,6 +746,7 @@ static MathEngineResult runTextual(giac::context* ctx, const char* expression,
                         int approximateBudget = kTreeNodeBudget;
                         genToNode(approx, ctx, *outApproximateTree, 0,
                                   approximateBudget);
+                        enforceStructuredTreeNodeLimit(*outApproximateTree);
                         *outHasApproximateTree =
                             firstFallbackReason(*outApproximateTree) ==
                             EngineFallbackReason::None;

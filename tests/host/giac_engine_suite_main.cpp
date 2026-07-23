@@ -717,6 +717,29 @@ int main() {
                   "results-oversized-node-budget-reason",
                   numos::engineFallbackReasonName(
                       oversizedNodes.fallbackReason));
+
+            std::string approximateNodeBudget = "[";
+            for (int row = 0; row < 32; ++row) {
+                if (row) approximateNodeBudget += ',';
+                approximateNodeBudget += '[';
+                for (int column = 0; column < 8; ++column) {
+                    if (column) approximateNodeBudget += ',';
+                    approximateNodeBudget += "sqrt(2)";
+                }
+                approximateNodeBudget += ']';
+            }
+            approximateNodeBudget += ']';
+            auto oversizedApproximate =
+                eng.evaluateStructured(approximateNodeBudget.c_str());
+            check(!oversizedApproximate.hasApproximateTree &&
+                      oversizedApproximate.approximateTree.kind ==
+                          numos::EngineNodeKind::Unsupported &&
+                      oversizedApproximate.approximateTree.children.empty() &&
+                      oversizedApproximate.approximateTree.fallbackReason ==
+                          numos::EngineFallbackReason::NodeLimit,
+                  "results-oversized-approximate-tree-collapsed",
+                  numos::engineFallbackReasonName(
+                      oversizedApproximate.approximateTree.fallbackReason));
             auto unsupported = eng.evaluateStructured("\"typed string\"");
             check(unsupported.base.ok() && unsupported.hasTree &&
                       unsupported.tree.kind == numos::EngineNodeKind::Unsupported &&

@@ -1,0 +1,44 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #101317;
+  color: #e8edf2;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+}
+
+main {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+}
+
+#canvas {
+  display: block;
+  width: 640px;
+  height: 480px;
+  max-width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  outline: 2px solid transparent;
+  touch-action: none;
+}
+
+#canvas:focus {
+  outline-color: #79b8ff;
+}
+
+#numos-status {
+  min-height: 1.25rem;
+  margin: 0;
+  font-size: 0.875rem;
+  color: #aab5c0;
+}

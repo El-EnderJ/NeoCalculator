@@ -260,6 +260,22 @@ struct StructuredSolveResult {
     bool ok() const { return status == MathEngineStatus::Ok; }
 };
 
+#ifdef NATIVE_SIM
+// Read-only production-path evidence for emulator/browser acceptance tests.
+// This is compiled out of every firmware target and exposes no Giac type.
+struct GiacRuntimeDiagnostics {
+    uint32_t contextsCreated = 0;
+    uint32_t contextsDestroyed = 0;
+    uint32_t activeContexts = 0;
+    uint32_t structuredEvaluations = 0;
+    uint32_t structuredSolves = 0;
+    uint32_t retainedCompiles = 0;
+    uint32_t numericSamples = 0;
+    uint32_t liveRetainedHandles = 0;
+    uint32_t generation = 0;
+};
+#endif
+
 /**
  * Opaque handle to a parse-once/evaluate-many numeric expression
  * (Grapher-shaped). Movable, non-copyable; owns its Giac-side state
@@ -429,6 +445,10 @@ public:
     /// Monotonic context generation, exposed as an engine-neutral diagnostic.
     /// It changes only when reset() invalidates every retained handle.
     uint32_t generation() const { return _generation; }
+
+#ifdef NATIVE_SIM
+    GiacRuntimeDiagnostics runtimeDiagnostics() const;
+#endif
 
     GiacEngine(const GiacEngine&) = delete;
     GiacEngine& operator=(const GiacEngine&) = delete;

@@ -26,3 +26,12 @@ if env.get("PIOPLATFORM") == "native":
         # non-Windows branch of Giac's access() guard still calls POSIX
         # access(); force the declaration in every Giac TU.
         env.Append(CCFLAGS=["-include", "unistd.h"])
+        if sys.platform == "darwin":
+            # Apple libc++ removed the legacy binder declarations that this
+            # vendored Giac snapshot still names. Restore declarations only;
+            # keep emulator_pc's C++17/optimization/link semantics unchanged.
+            env.Append(CPPDEFINES=[
+                "_LIBCPP_ENABLE_CXX17_REMOVED_BINDERS",
+                ("SIZEOF_VOID_P", 4),
+            ])
+            env.Append(CXXFLAGS=["-Wno-register", "-Wno-c++11-narrowing"])

@@ -95,7 +95,14 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>   // FIX-01: sandbox del filesystem emulado (C++17)
+#include <algorithm>
 #include "FileSystem.h" // FIX-01: LittleFSClass::setRoot (raíz configurable)
+
+#ifdef __EMSCRIPTEN__
+    #include <emscripten.h>
+    #include <emscripten/heap.h>
+    #include <malloc.h>
+#endif
 
 #ifdef _WIN32
     #include <process.h>
@@ -245,6 +252,28 @@ static SDL_Texture*  g_texture    = nullptr;
 static bool          g_quit       = false;
 static AppMode       g_mode       = AppMode::SPLASH;
 static bool          g_splashDone = false;   // Flag para transición diferida
+static bool          g_initialized = false;
+static bool          g_shutdownComplete = false;
+static uint32_t      g_loopCount = 0;
+static uint32_t      g_startTicks = 0;
+static uint32_t      g_launcherReadyTicks = 0;
+static uint32_t      g_appLaunchCount = 0;
+static uint32_t      g_menuReturnCount = 0;
+static double        g_frameTimesMs[512]{};
+static uint32_t      g_frameTimeCount = 0;
+static uint32_t      g_frameTimeCursor = 0;
+
+// In the browser, SDL mouse/touch coordinates are converted into the immutable
+// logical 320x240 coordinate space before LVGL sees them. The pointer indev is
+// registered only by the Emscripten build, preserving desktop input semantics.
+static lv_indev_t*   g_pointerIndev = nullptr;
+static lv_point_t    g_pointerPoint = {0, 0};
+static bool          g_pointerPressed = false;
+static bool          g_pointerReleasePending = false;
+static bool          g_pointerPressObserved = false;
+static uint32_t      g_pointerReadCount = 0;
+static uint32_t      g_pointerPressReadCount = 0;
+static uint32_t      g_pointerDownEventCount = 0;
 
 // ── Teardown diferido al volver al launcher (Phase 9F) ───────────────────────
 // El firmware NO destruye la app inmediatamente al volver al menu: arranca la
@@ -349,6 +378,40 @@ static void sdl_flush_cb(lv_display_t* disp,
     g_needsPresent = true;
 
     lv_display_flush_ready(disp);
+}
+
+static void sdl_pointer_read_cb(lv_indev_t*, lv_indev_data_t* data)
+{
+    ++g_pointerReadCount;
+    if (g_pointerPressed) {
+        ++g_pointerPressReadCount;
+        g_pointerPressObserved = true;
+    }
+    data->point = g_pointerPoint;
+    data->state = g_pointerPressed ? LV_INDEV_STATE_PRESSED
+                                   : LV_INDEV_STATE_RELEASED;
+}
+
+static void updateLogicalPointer(int windowX, int windowY, bool pressed)
+{
+    float logicalX = 0.0f;
+    float logicalY = 0.0f;
+    if (g_renderer) {
+#ifdef __EMSCRIPTEN__
+        // SDL's Emscripten backend has already scaled DOM coordinates by the
+        // canvas CSS/backing-store ratio before placing them in SDL_Event.
+        logicalX = static_cast<float>(windowX);
+        logicalY = static_cast<float>(windowY);
+#else
+        SDL_RenderWindowToLogical(g_renderer, windowX, windowY,
+                                  &logicalX, &logicalY);
+#endif
+        g_pointerPoint.x = static_cast<lv_coord_t>(std::max(
+            0.0f, std::min(static_cast<float>(SCREEN_W - 1), logicalX)));
+        g_pointerPoint.y = static_cast<lv_coord_t>(std::max(
+            0.0f, std::min(static_cast<float>(SCREEN_H - 1), logicalY)));
+    }
+    g_pointerPressed = pressed;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -881,6 +944,31 @@ static void processSdlEvents()
             return;
         }
 
+#ifdef __EMSCRIPTEN__
+        if (ev.type == SDL_MOUSEMOTION) {
+            updateLogicalPointer(ev.motion.x, ev.motion.y, g_pointerPressed);
+            continue;
+        }
+        if (ev.type == SDL_MOUSEBUTTONDOWN ||
+            ev.type == SDL_MOUSEBUTTONUP) {
+            if (ev.button.button == SDL_BUTTON_LEFT) {
+                if (ev.type == SDL_MOUSEBUTTONDOWN) {
+                    ++g_pointerDownEventCount;
+                    g_pointerReleasePending = false;
+                    g_pointerPressObserved = false;
+                    updateLogicalPointer(ev.button.x, ev.button.y, true);
+                } else {
+                    // Browser click down/up commonly coalesce before LVGL's
+                    // next read. Preserve PRESS for this frame; release after
+                    // lv_timer_handler so LVGL observes both edges.
+                    updateLogicalPointer(ev.button.x, ev.button.y, true);
+                    g_pointerReleasePending = true;
+                }
+            }
+            continue;
+        }
+#endif
+
         // ── Entrada de TEXTO (SDL_TEXTINPUT) ────────────────────────────────
         // El SO ya resolvió la distribución de teclado, SHIFT, AltGr y dead-keys:
         // aquí llega el CARÁCTER final. Traducimos dígitos y símbolos matemáticos
@@ -1035,6 +1123,7 @@ static void transitionToMenu()
 static void launchApp(int appId)
 {
     std::printf("[APP] Lanzando app %d\n", appId);
+    ++g_appLaunchCount;
 
     // Si volvimos al menu hace poco y aun queda un teardown diferido, resuelvelo
     // antes de lanzar otra app (no dejar la pantalla anterior a medias).
@@ -1204,11 +1293,19 @@ static void performAppTeardown(AppMode m)
     }
 }
 
+static bool screenTransitionIdle()
+{
+    lv_display_t* display = lv_display_get_default();
+    return !display ||
+           (lv_display_get_screen_loading(display) == nullptr &&
+            lv_display_get_screen_prev(display) == nullptr);
+}
+
 // Si hay un teardown diferido pendiente, ejecutalo YA (la pantalla de la app ya
 // no es la activa). Se llama antes de lanzar otra app o al cerrar.
 static void flushPendingTeardown()
 {
-    if (!g_teardownPending) return;
+    if (!g_teardownPending || !screenTransitionIdle()) return;
     g_teardownPending = false;
     performAppTeardown(g_teardownMode);
 }
@@ -1223,6 +1320,7 @@ static void flushPendingTeardown()
  */
 static void returnToMenu()
 {
+    ++g_menuReturnCount;
     std::printf("[APP] Volviendo al launcher\n");
 
     // Salvaguarda: si quedara un teardown pendiente de una vuelta anterior,
@@ -1465,6 +1563,22 @@ static bool        g_fsSandboxEphemeral = false; // borrar al salir con exit 0
 static bool resolveFsRoot()
 {
     namespace fs = std::filesystem;
+#ifdef __EMSCRIPTEN__
+    // Browser feasibility storage is deliberately temporary. /numos lives in
+    // Emscripten MEMFS and is the only root handed to the existing LittleFS
+    // shim; a future persistence task can mount IDBFS at this boundary.
+    g_fsRootResolved = "/numos";
+    std::error_code webEc;
+    fs::create_directories(g_fsRootResolved, webEc);
+    if (webEc) {
+        std::fprintf(stderr, "[FS] no se pudo crear MEMFS /numos: %s\n",
+                     webEc.message().c_str());
+        return false;
+    }
+    LittleFSClass::setRoot(g_fsRootResolved.c_str());
+    std::printf("[FS] root=/numos mode=memfs (temporal; reload clears data)\n");
+    return true;
+#endif
     const int nFlags = (g_opts.fsRoot ? 1 : 0) +
                        (g_opts.fsSandboxDir ? 1 : 0) +
                        (g_opts.fsSandbox ? 1 : 0);
@@ -3312,9 +3426,9 @@ static void scriptCaptureIfPending()
 // ════════════════════════════════════════════════════════════════════════════
 //   main() — Punto de entrada para la simulación nativa en PC
 // ════════════════════════════════════════════════════════════════════════════
-int main(int argc, char** argv)
+static int emulatorInitialize(int argc, char** argv)
 {
-    if (!parseArgs(argc, argv, g_opts)) return 0;   // --help → salida limpia
+    if (!parseArgs(argc, argv, g_opts)) return -1;  // --help → salida limpia
 
     // Phase 4A: cargar y validar el script de entrada ANTES de inicializar SDL.
     // Un script malformado falla rapido (exit 2) sin tocar SDL/LVGL.
@@ -3368,8 +3482,15 @@ int main(int argc, char** argv)
     // teclado español Shift+«+» da «*»), sin que el emulador "finja" SHIFT.
     SDL_StartTextInput();
 
-    g_renderer = SDL_CreateRenderer(g_window, -1,
-                                    SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    uint32_t rendererFlags = SDL_RENDERER_SOFTWARE;
+#ifndef __EMSCRIPTEN__
+    // Desktop keeps its existing accelerated/vsync semantics. The browser uses
+    // SDL's software canvas path because EGL tries to configure Emscripten's
+    // timing before the asynchronous main loop has been installed.
+    rendererFlags = SDL_RENDERER_ACCELERATED;
+    rendererFlags |= SDL_RENDERER_PRESENTVSYNC;
+#endif
+    g_renderer = SDL_CreateRenderer(g_window, -1, rendererFlags);
     if (!g_renderer) {
         // Fallback a software renderer
         g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_SOFTWARE);
@@ -3460,6 +3581,13 @@ int main(int argc, char** argv)
     LvglKeypad::init();
     std::printf("[LVGL] Keypad indev registrado\n");
 
+#ifdef __EMSCRIPTEN__
+    g_pointerIndev = lv_indev_create();
+    lv_indev_set_type(g_pointerIndev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(g_pointerIndev, sdl_pointer_read_cb);
+    std::printf("[LVGL] Pointer indev registrado (logical 320x240)\n");
+#endif
+
     // ── 4. Inicializar filesystem emulado ───────────────────────────────
     {
         extern bool nativeFS_init();
@@ -3484,9 +3612,29 @@ int main(int argc, char** argv)
     // lv_tick_set_cb), UN solo punto de sleep (FRAME_DELAY_MS) y presentacion
     // diferida tras lv_timer_handler(). Sin busy-spin. El modo auto-salida
     // (--frames/--run-for-ms) solo añade una comprobacion de fin al final.
-    uint32_t       loopCount  = 0;
-    const uint32_t startTicks = SDL_GetTicks();   // referencia para --run-for-ms
-    while (!g_quit) {
+    g_loopCount = 0;
+    g_startTicks = SDL_GetTicks();
+    g_launcherReadyTicks = 0;
+    g_appLaunchCount = 0;
+    g_menuReturnCount = 0;
+    g_pointerPoint = {0, 0};
+    g_pointerPressed = false;
+    g_pointerReleasePending = false;
+    g_pointerPressObserved = false;
+    g_pointerReadCount = 0;
+    g_pointerPressReadCount = 0;
+    g_pointerDownEventCount = 0;
+    g_frameTimeCount = 0;
+    g_frameTimeCursor = 0;
+    g_initialized = true;
+    g_shutdownComplete = false;
+    return 0;
+}
+
+static void emulatorRunFrame()
+{
+    if (!g_initialized || g_shutdownComplete || g_quit) return;
+    const uint64_t frameStart = SDL_GetPerformanceCounter();
         // Phase 4A: inyecta el comando de script de este frame ANTES de la
         // entrada SDL, para que la tecla sea visible al tick y a
         // lv_timer_handler() de ESTE mismo frame. Inerte sin --script.
@@ -3515,6 +3663,10 @@ int main(int argc, char** argv)
             g_equationsApp->update();
         }
         lv_timer_handler();
+        if (g_pointerReleasePending && g_pointerPressObserved) {
+            g_pointerReleasePending = false;
+            g_pointerPressed = false;
+        }
 
         // Presentar el frame en pantalla (fuera de lv_timer_handler)
         if (g_needsPresent) {
@@ -3533,7 +3685,8 @@ int main(int argc, char** argv)
         // termino (medido con lv_tick, igual que la animacion), de modo que la
         // pantalla de la app ya no es la activa cuando se borra.
         if (g_teardownPending &&
-            lv_tick_elaps(g_teardownStartTick) >= TEARDOWN_DELAY_MS) {
+            lv_tick_elaps(g_teardownStartTick) >= TEARDOWN_DELAY_MS &&
+            screenTransitionIdle()) {
             g_teardownPending = false;
             performAppTeardown(g_teardownMode);
         }
@@ -3545,36 +3698,51 @@ int main(int argc, char** argv)
             lv_tick_elaps(g_splashTeardownStartTick) >= TEARDOWN_DELAY_MS) {
             g_splashTeardownPending = false;
             if (g_splash) g_splash->destroy();
+            if (g_launcherReadyTicks == 0) {
+                g_launcherReadyTicks = SDL_GetTicks() - g_startTicks;
+            }
         }
 
-        // En modo determinista NO dormimos: el tick es sintetico, así que el
-        // ritmo de pared es irrelevante y conviene terminar rapido (CI). En uso
-        // interactivo cedemos CPU como siempre (~200 fps techo).
-        if (!g_opts.deterministic) {
-            SDL_Delay(FRAME_DELAY_MS);   // cede CPU (ver politica de temporizacion)
-        }
-
-        ++loopCount;
+        ++g_loopCount;
 
         // Heartbeat de depuracion (silenciable con --quiet).
-        if (!g_opts.quiet && loopCount % 200 == 0) {
+        if (!g_opts.quiet && g_loopCount % 200 == 0) {
             const char* modeStr = (g_mode == AppMode::SPLASH) ? "SPLASH"
                                 : (g_mode == AppMode::MENU)   ? "MENU"
                                                               : "CALC";
-            std::printf("[LOOP] iter=%u mode=%s\n", loopCount, modeStr);
+            std::printf("[LOOP] iter=%u mode=%s\n", g_loopCount, modeStr);
         }
 
         // ── Auto-salida (smoke-tests / CI) — inerte en uso interactivo ──────
-        if (g_opts.maxFrames >= 0 && static_cast<long>(loopCount) >= g_opts.maxFrames) {
+        if (g_opts.maxFrames >= 0 && static_cast<long>(g_loopCount) >= g_opts.maxFrames) {
             std::printf("[SIM] auto-exit: %ld frames alcanzados\n", g_opts.maxFrames);
             g_quit = true;
         }
         if (g_opts.maxMs >= 0 &&
-            static_cast<long>(SDL_GetTicks() - startTicks) >= g_opts.maxMs) {
+            static_cast<long>(SDL_GetTicks() - g_startTicks) >= g_opts.maxMs) {
             std::printf("[SIM] auto-exit: %ld ms alcanzados\n", g_opts.maxMs);
             g_quit = true;
         }
-    }
+    const uint64_t frameEnd = SDL_GetPerformanceCounter();
+    const uint64_t frequency = SDL_GetPerformanceFrequency();
+    const double elapsedMs = frequency
+        ? (1000.0 * static_cast<double>(frameEnd - frameStart) /
+           static_cast<double>(frequency))
+        : 0.0;
+    g_frameTimesMs[g_frameTimeCursor] = elapsedMs;
+    g_frameTimeCursor = (g_frameTimeCursor + 1) % 512;
+    if (g_frameTimeCount < 512) ++g_frameTimeCount;
+}
+
+static void emulatorRequestShutdown()
+{
+    g_quit = true;
+}
+
+static int emulatorShutdown()
+{
+    if (g_shutdownComplete) return g_exitCode;
+    g_shutdownComplete = true;
 
     // ── Screenshot opcional (Phase 3B) ──────────────────────────────────
     // Tras el ultimo frame y ANTES del teardown: g_lvBuf aun contiene la imagen
@@ -3588,45 +3756,250 @@ int main(int argc, char** argv)
 
     // ── 7. Cleanup ──────────────────────────────────────────────────────
     std::printf("\n[SIM] Cerrando...\n");
-    if (g_calcApp) { g_calcApp->end(); delete g_calcApp; }
+    if (g_calcApp) {
+        g_calcApp->end();
+        delete g_calcApp;
+        g_calcApp = nullptr;
+    }
     if (g_calculusApp) {
         g_calculusApp->end();
         delete g_calculusApp;
+        g_calculusApp = nullptr;
     }
     if (g_equationsApp) {
         g_equationsApp->end();
         delete g_equationsApp;
+        g_equationsApp = nullptr;
     }
-    if (g_settingsApp) { g_settingsApp->end(); delete g_settingsApp; }  // Phase 5A
-    if (g_statsApp) { g_statsApp->end(); delete g_statsApp; }           // Phase 6A
-    if (g_probApp)  { g_probApp->end();  delete g_probApp;  }           // Phase 6A
-    if (g_seqApp)   { g_seqApp->end();   delete g_seqApp;   }           // Phase 7A
-    if (g_regApp)   { g_regApp->end();   delete g_regApp;   }           // Phase 7C
+    if (g_settingsApp) {
+        g_settingsApp->end();
+        delete g_settingsApp;
+        g_settingsApp = nullptr;
+    }
+    if (g_statsApp) {
+        g_statsApp->end();
+        delete g_statsApp;
+        g_statsApp = nullptr;
+    }
+    if (g_probApp) {
+        g_probApp->end();
+        delete g_probApp;
+        g_probApp = nullptr;
+    }
+    if (g_seqApp) {
+        g_seqApp->end();
+        delete g_seqApp;
+        g_seqApp = nullptr;
+    }
+    if (g_regApp) {
+        g_regApp->end();
+        delete g_regApp;
+        g_regApp = nullptr;
+    }
+    if (g_grapherApp) {
+        g_grapherApp->end();
+        delete g_grapherApp;
+        g_grapherApp = nullptr;
+    }
+    if (g_mathVisualApp) {
+        g_mathVisualApp->end();
+        delete g_mathVisualApp;
+        g_mathVisualApp = nullptr;
+    }
 #if defined(NUMOS_NEO_APP_SMOKE)
     if (g_neoLangApp) {
         g_neoLangApp->end();
         delete g_neoLangApp;
+        g_neoLangApp = nullptr;
     }
 #endif
     showcaseEnd();                                                      // Phase 5A (no-op si inactiva)
     delete g_menu;
+    g_menu = nullptr;
     delete g_splash;
+    g_splash = nullptr;
 
     // Liberar LVGL por completo (objetos, displays, indev). Importante para
     // ejecuciones headless repetidas (CI) y para no dejar fugas al salir.
     lv_deinit();
 
     SDL_DestroyTexture(g_texture);
+    g_texture = nullptr;
     SDL_DestroyRenderer(g_renderer);
+    g_renderer = nullptr;
     SDL_DestroyWindow(g_window);
+    g_window = nullptr;
     SDL_Quit();
 
     // FIX-01: sandbox temporal borrado en salida limpia, retenido si hubo error.
     cleanupFsSandbox(g_exitCode);
 
+    g_initialized = false;
+    g_pointerIndev = nullptr;
     std::printf("[SIM] Bye!\n");
     return g_exitCode;
 }
+
+#ifdef __EMSCRIPTEN__
+static std::string jsonEscaped(const std::string& value)
+{
+    std::string escaped;
+    escaped.reserve(value.size() + 8);
+    for (unsigned char c : value) {
+        switch (c) {
+            case '\\': escaped += "\\\\"; break;
+            case '"': escaped += "\\\""; break;
+            case '\n': escaped += "\\n"; break;
+            case '\r': escaped += "\\r"; break;
+            case '\t': escaped += "\\t"; break;
+            default:
+                if (c >= 0x20) escaped += static_cast<char>(c);
+                break;
+        }
+    }
+    return escaped;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int numos_is_ready()
+{
+    return g_initialized && g_launcherReadyTicks != 0 &&
+           !g_shutdownComplete;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void numos_request_shutdown()
+{
+    emulatorRequestShutdown();
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int numos_send_logical_key(int keyCode,
+                                                             int actionCode)
+{
+    if (!g_initialized || g_shutdownComplete || keyCode <= 0 ||
+        keyCode > static_cast<int>(KeyCode::GREATER) ||
+        actionCode < static_cast<int>(KeyAction::PRESS) ||
+        actionCode > static_cast<int>(KeyAction::REPEAT)) {
+        return 0;
+    }
+    const KeyAction action = static_cast<KeyAction>(actionCode);
+    dispatchKey(static_cast<KeyCode>(keyCode), action,
+                action != KeyAction::RELEASE);
+    return 1;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE const char* numos_diagnostic_state()
+{
+    static std::string json;
+    const numos::GiacRuntimeDiagnostics giac =
+        numos::GiacEngine::instance().runtimeDiagnostics();
+
+    std::vector<double> frameTimes(g_frameTimesMs,
+                                   g_frameTimesMs + g_frameTimeCount);
+    std::sort(frameTimes.begin(), frameTimes.end());
+    const auto percentile = [&frameTimes](double fraction) {
+        if (frameTimes.empty()) return 0.0;
+        const std::size_t index = static_cast<std::size_t>(
+            fraction * static_cast<double>(frameTimes.size() - 1));
+        return frameTimes[index];
+    };
+
+    const std::size_t heapBytes = emscripten_get_heap_size();
+    const struct mallinfo memory = mallinfo();
+    std::ostringstream out;
+    out << "{\"ready\":" << (numos_is_ready() ? "true" : "false")
+        << ",\"running\":" << (!g_quit ? "true" : "false")
+        << ",\"shutdown\":" << (g_shutdownComplete ? "true" : "false")
+        << ",\"app\":\"" << activeAppName() << "\""
+        << ",\"logicalWidth\":" << SCREEN_W
+        << ",\"logicalHeight\":" << SCREEN_H
+        << ",\"frameCount\":" << g_loopCount
+        << ",\"launcherMs\":" << g_launcherReadyTicks
+        << ",\"appLaunches\":" << g_appLaunchCount
+        << ",\"menuReturns\":" << g_menuReturnCount
+        << ",\"pointer\":{\"x\":" << g_pointerPoint.x
+        << ",\"y\":" << g_pointerPoint.y
+        << ",\"pressed\":" << (g_pointerPressed ? "true" : "false")
+        << ",\"reads\":" << g_pointerReadCount
+        << ",\"pressReads\":" << g_pointerPressReadCount
+        << ",\"downEvents\":" << g_pointerDownEventCount << "}"
+        << ",\"heapBytes\":" << heapBytes
+        << ",\"usedHeapBytes\":" << memory.uordblks
+        << ",\"frameMs\":{\"samples\":" << g_frameTimeCount
+        << ",\"p50\":" << percentile(0.50)
+        << ",\"p95\":" << percentile(0.95)
+        << ",\"max\":" << percentile(1.0) << "}"
+        << ",\"giac\":{\"activeContexts\":" << giac.activeContexts
+        << ",\"contextsCreated\":" << giac.contextsCreated
+        << ",\"contextsDestroyed\":" << giac.contextsDestroyed
+        << ",\"generation\":" << giac.generation
+        << ",\"structuredEvaluations\":" << giac.structuredEvaluations
+        << ",\"structuredSolves\":" << giac.structuredSolves
+        << ",\"retainedCompiles\":" << giac.retainedCompiles
+        << ",\"numericSamples\":" << giac.numericSamples
+        << ",\"liveRetainedHandles\":" << giac.liveRetainedHandles << "}"
+        << ",\"calculation\":{\"engine\":\""
+        << (g_calcApp ? g_calcApp->debugCalcEngine() : "")
+        << "\",\"status\":\""
+        << (g_calcApp ? g_calcApp->debugCalcStatus() : "")
+        << "\",\"resultKind\":\""
+        << (g_calcApp ? g_calcApp->debugCalcResultKind() : "")
+        << "\",\"exact\":\""
+        << jsonEscaped(g_calcApp ? g_calcApp->debugCalcExactText()
+                                 : std::string()) << "\"}"
+        << ",\"grapher\":{\"engine\":\""
+        << (g_grapherApp ? g_grapherApp->debugGraphEngine() : "")
+        << "\",\"relations\":"
+        << (g_grapherApp ? g_grapherApp->debugRelationCount() : 0)
+        << ",\"slot0CompileOk\":"
+        << (g_grapherApp && g_grapherApp->debugSlotCompileOk(0)
+                ? "true" : "false")
+        << ",\"slot0CompileCount\":"
+        << (g_grapherApp ? g_grapherApp->debugSlotCompileCount(0) : 0) << "}"
+        << ",\"equations\":{\"engine\":\""
+        << (g_equationsApp ? g_equationsApp->debugEngineName() : "")
+        << "\",\"status\":\""
+        << (g_equationsApp ? g_equationsApp->debugStatusName() : "")
+        << "\",\"resultKind\":\""
+        << (g_equationsApp ? g_equationsApp->debugResultKindName() : "")
+        << "\",\"solutionCount\":"
+        << (g_equationsApp ? g_equationsApp->debugSolutionCount() : 0)
+        << ",\"x0Exact\":\""
+        << jsonEscaped(g_equationsApp
+                           ? g_equationsApp->debugSolutionExactText("x", 0)
+                           : std::string()) << "\"}}";
+    json = out.str();
+    return json.c_str();
+}
+
+static void browserMainLoop()
+{
+    emulatorRunFrame();
+    if (g_quit) {
+        emscripten_cancel_main_loop();
+        emulatorShutdown();
+    }
+}
+
+int main(int argc, char** argv)
+{
+    const int initStatus = emulatorInitialize(argc, argv);
+    if (initStatus != 0) return initStatus < 0 ? 0 : initStatus;
+    emscripten_set_main_loop(browserMainLoop, 0, false);
+    return 0;
+}
+#else
+int main(int argc, char** argv)
+{
+    const int initStatus = emulatorInitialize(argc, argv);
+    if (initStatus != 0) return initStatus < 0 ? 0 : initStatus;
+    while (!g_quit) {
+        emulatorRunFrame();
+        if (!g_opts.deterministic && !g_quit) {
+            SDL_Delay(FRAME_DELAY_MS);
+        }
+    }
+    return emulatorShutdown();
+}
+#endif
 
 // ── Helper para FileSystem init (llamado arriba) ────────────────────────────
 #include "FileSystem.h"

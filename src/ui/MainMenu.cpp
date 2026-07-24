@@ -460,6 +460,11 @@ lv_obj_t* MainMenu::buildCard(lv_obj_t* parent, const AppEntry& app)
     lv_label_set_text(name, app.name);
     lv_obj_add_style(name, &_styleAppName, LV_PART_MAIN);
     lv_obj_set_style_pad_top(name, 4, 0);
+#ifdef __EMSCRIPTEN__
+    // Browser pointer input should activate the compound card even when the
+    // pointer lands on its label rather than on the card background.
+    lv_obj_remove_flag(name, LV_OBJ_FLAG_CLICKABLE);
+#endif
 
     return card;
 }
@@ -476,6 +481,11 @@ void MainMenu::createAppIcon(lv_obj_t* parent, const AppEntry& app) {
     lv_obj_t* iconBox = lv_obj_create(parent);
     lv_obj_set_size(iconBox, ICON_SIZE, ICON_SIZE);
     lv_obj_clear_flag(iconBox, LV_OBJ_FLAG_SCROLLABLE);
+#ifdef __EMSCRIPTEN__
+    // Keep the icon visual-only so SDL pointer hits reach the card's CLICKED
+    // handler. This is browser-only and does not change desktop or hardware.
+    lv_obj_remove_flag(iconBox, LV_OBJ_FLAG_CLICKABLE);
+#endif
     lv_obj_add_style(iconBox, &_styleIconBox, LV_PART_MAIN);
 
     // Per-app primary colour
@@ -1046,4 +1056,3 @@ void MainMenu::onCardFocused(lv_event_t* e) {
     // Auto-scroll the grid so the focused card is always visible
     lv_obj_scroll_to_view(card, LV_ANIM_ON);
 }
-

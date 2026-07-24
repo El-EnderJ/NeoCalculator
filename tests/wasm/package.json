@@ -1,0 +1,11 @@
+{
+  "name": "numos-wasm-smoke",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "node smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.54.1"
+  }
+}

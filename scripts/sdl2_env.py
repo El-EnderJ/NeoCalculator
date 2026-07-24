@@ -165,5 +165,20 @@ def _configure_unix():
 # ---------------------------------------------------------------------------
 if _is_windows():
     _configure_windows()
+    env.Append(LINKFLAGS=["-Wl,--gc-sections"])
 else:
     _configure_unix()
+    if _is_macos():
+        # The project Giac seam includes vendored headers even though it is not
+        # compiled as a library TU, so it needs the same Apple-libc++ C++17
+        # declaration compatibility as lib/giac/extra_script.py.
+        env.Append(CPPDEFINES=[
+            "_LIBCPP_ENABLE_CXX17_REMOVED_BINDERS",
+            ("SIZEOF_VOID_P", 4),
+        ])
+        env.Append(CXXFLAGS=["-Wno-register"])
+        env.Append(LIBS=["intl"])
+        # Preserve section garbage collection with the Darwin linker spelling.
+        env.Append(LINKFLAGS=["-Wl,-dead_strip"])
+    else:
+        env.Append(LINKFLAGS=["-Wl,--gc-sections"])

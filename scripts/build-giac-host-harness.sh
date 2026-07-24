@@ -39,6 +39,16 @@ CFLAGS="-O1 -ffunction-sections -fdata-sections -D_USE_MATH_DEFINES -Ilib/libtom
 PROJ_CXXFLAGS="-std=gnu++17 -O1 -Wall -Wextra -Wno-unused-parameter -ffunction-sections -fdata-sections -D_USE_MATH_DEFINES -DNUMOS_GIAC_HOST_HARNESS=1 -Isrc"
 LDFLAGS="-Wl,--gc-sections"
 case "$(uname -s)" in
+  Darwin)
+    GETTEXT_PREFIX=$(brew --prefix gettext 2>/dev/null || true)
+    if [[ -z "$GETTEXT_PREFIX" || ! -f "$GETTEXT_PREFIX/include/libintl.h" ]]; then
+      echo "Homebrew gettext is required for the macOS Giac host harness" >&2
+      exit 2
+    fi
+    GIAC_CXXFLAGS="$GIAC_CXXFLAGS -include unistd.h -I$GETTEXT_PREFIX/include -D_LIBCPP_ENABLE_CXX17_REMOVED_BINDERS -DSIZEOF_VOID_P=4 -Wno-register -Wno-c++11-narrowing"
+    PROJ_CXXFLAGS="$PROJ_CXXFLAGS -I$GETTEXT_PREFIX/include -D_LIBCPP_ENABLE_CXX17_REMOVED_BINDERS -DSIZEOF_VOID_P=4 -Wno-register"
+    LDFLAGS="-Wl,-dead_strip -L$GETTEXT_PREFIX/lib -lintl"
+    ;;
   MINGW*|MSYS*|CYGWIN*)
     # -static: avoid Git Bash's mismatched libstdc++-6.dll (segfaults in
     # iostreams); -lpsapi for the RSS probe. -D__MINGW_H: Giac guards its
@@ -76,20 +86,30 @@ compile_one() {
   obj="$OUT/obj/$(basename "$src").o"
   if [[ -f "$obj" && "$obj" -nt "$src" ]]; then return 0; fi
   echo "CC $src"
-  $compiler $flags -c "$src" -o "$obj"
+  if ! $compiler $flags -c "$src" -o "$obj"; then
+    : > "$OUT/compile.failed"
+    return 1
+  fi
 }
 export -f compile_one
 export OUT
+export GIAC_HOST_CFLAGS="$CFLAGS"
+export GIAC_HOST_GIAC_CXXFLAGS="$GIAC_CXXFLAGS"
+export GIAC_HOST_PROJ_CXXFLAGS="$PROJ_CXXFLAGS"
+export GIAC_HOST_ENGINE_CXXFLAGS="$PROJ_CXXFLAGS $GIAC_DEFS $INC -Wno-deprecated-declarations"
+export GIAC_HOST_CC="$CC"
+export GIAC_HOST_CXX="$CXX"
 
 # --- compile Giac + libtommath (parallel, cached) ---
+rm -f "$OUT/compile.failed"
 printf '%s\n' "${tommath_srcs[@]}" | \
-  xargs -P "$JOBS" -I{} bash -c "compile_one {} '$CFLAGS' '$CC'"
+  xargs -P "$JOBS" -I{} bash -c 'compile_one "$1" "$GIAC_HOST_CFLAGS" "$GIAC_HOST_CC"' _ {}
 printf '%s\n' "${giac_srcs[@]}" | \
-  xargs -P "$JOBS" -I{} bash -c "compile_one {} '$GIAC_CXXFLAGS' '$CXX'"
+  xargs -P "$JOBS" -I{} bash -c 'compile_one "$1" "$GIAC_HOST_GIAC_CXXFLAGS" "$GIAC_HOST_CXX"' _ {}
 
 # --- production engine + host stubs (Giac-aware project TUs) ---
 printf '%s\n' src/math/giac/GiacEngine.cpp src/math/giac/GiacHostStubs.cpp | \
-  xargs -P "$JOBS" -I{} bash -c "compile_one {} '$PROJ_CXXFLAGS $GIAC_DEFS $INC -Wno-deprecated-declarations' '$CXX'"
+  xargs -P "$JOBS" -I{} bash -c 'compile_one "$1" "$GIAC_HOST_ENGINE_CXXFLAGS" "$GIAC_HOST_CXX"' _ {}
 
 # --- vpam::g_angleMode link closure (production MathEvaluator + deps; the
 # --- same subset emulator_pc links, proving CAS/Giac coexistence) ---
@@ -105,7 +125,11 @@ proj_srcs=(
 )
 for f in src/math/cas/*.cpp; do proj_srcs+=("$f"); done
 printf '%s\n' "${proj_srcs[@]}" | \
-  xargs -P "$JOBS" -I{} bash -c "compile_one {} '$PROJ_CXXFLAGS' '$CXX'"
+  xargs -P "$JOBS" -I{} bash -c 'compile_one "$1" "$GIAC_HOST_PROJ_CXXFLAGS" "$GIAC_HOST_CXX"' _ {}
+if [[ -f "$OUT/compile.failed" ]]; then
+  echo "Giac host harness compilation failed" >&2
+  exit 1
+fi
 
 compile_one tests/host/giac_engine_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
 compile_one tests/host/giac_calculus_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"

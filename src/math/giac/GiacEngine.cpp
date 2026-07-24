@@ -89,6 +89,10 @@ namespace {
 
 StructuredResultDiagnostics g_structuredDiagnostics;
 
+#ifdef NATIVE_SIM
+GiacRuntimeDiagnostics g_runtimeDiagnostics;
+#endif
+
 const void* g_conversionPath[enginecontract::kMaxResultDepth + 1]{};
 int g_conversionPathCount = 0;
 
@@ -600,7 +604,13 @@ struct CompiledExpression::Impl {
 };
 
 CompiledExpression::CompiledExpression() : _impl(nullptr) {}
-CompiledExpression::~CompiledExpression() { delete _impl; }
+CompiledExpression::~CompiledExpression() {
+#ifdef NATIVE_SIM
+    if (_impl && _impl->parsedOk && g_runtimeDiagnostics.liveRetainedHandles > 0)
+        --g_runtimeDiagnostics.liveRetainedHandles;
+#endif
+    delete _impl;
+}
 
 CompiledExpression::CompiledExpression(CompiledExpression&& other) noexcept
     : _impl(other._impl) {
@@ -610,6 +620,10 @@ CompiledExpression::CompiledExpression(CompiledExpression&& other) noexcept
 CompiledExpression& CompiledExpression::operator=(
     CompiledExpression&& other) noexcept {
     if (this != &other) {
+#ifdef NATIVE_SIM
+        if (_impl && _impl->parsedOk && g_runtimeDiagnostics.liveRetainedHandles > 0)
+            --g_runtimeDiagnostics.liveRetainedHandles;
+#endif
         delete _impl;
         _impl = other._impl;
         other._impl = nullptr;
@@ -643,6 +657,11 @@ bool GiacEngine::begin() {
     try {
         if (!_state) _state = new State();
         _state->ctx = new giac::context;
+#ifdef NATIVE_SIM
+        ++g_runtimeDiagnostics.contextsCreated;
+        ++g_runtimeDiagnostics.activeContexts;
+        g_runtimeDiagnostics.generation = _generation;
+#endif
         configureContext(_state->ctx);
         s_sharedCtx = _state->ctx;
         s_generationForHandles = _generation;
@@ -658,11 +677,21 @@ bool GiacEngine::begin() {
 void GiacEngine::reset() {
     if (_inCall) return;  // contract: never yank the context mid-call
     if (_state) {
+#ifdef NATIVE_SIM
+        if (_state->ctx) {
+            ++g_runtimeDiagnostics.contextsDestroyed;
+            if (g_runtimeDiagnostics.activeContexts > 0)
+                --g_runtimeDiagnostics.activeContexts;
+        }
+#endif
         delete _state->ctx;
         _state->ctx = nullptr;
         s_sharedCtx = nullptr;
     }
     ++_generation;
+#ifdef NATIVE_SIM
+    g_runtimeDiagnostics.generation = _generation;
+#endif
     s_generationForHandles = _generation;
     begin();
 }
@@ -1010,6 +1039,9 @@ MathEngineResult GiacEngine::simplify(const char* expression) {
 }
 
 StructuredEngineResult GiacEngine::evaluateStructured(const char* expression) {
+#ifdef NATIVE_SIM
+    ++g_runtimeDiagnostics.structuredEvaluations;
+#endif
     StructuredEngineResult sr;
     CallGuard guard(_inCall);
     if (!guard.entered()) {
@@ -1758,6 +1790,9 @@ StructuredSolveResult runStructuredSolve(
 StructuredSolveResult GiacEngine::solveStructured(
     const SolveEquation& equation, const std::string& variable,
     SolveDomainPolicy policy) {
+#ifdef NATIVE_SIM
+    ++g_runtimeDiagnostics.structuredSolves;
+#endif
     CallGuard guard(_inCall);
     if (!guard.entered()) return rejectedSolveReentrant();
     if (!begin()) {
@@ -1774,6 +1809,9 @@ StructuredSolveResult GiacEngine::solveSystemStructured(
     const std::vector<SolveEquation>& equations,
     const std::vector<std::string>& solveVariables,
     SolveDomainPolicy policy) {
+#ifdef NATIVE_SIM
+    ++g_runtimeDiagnostics.structuredSolves;
+#endif
     CallGuard guard(_inCall);
     if (!guard.entered()) return rejectedSolveReentrant();
     if (!begin()) {
@@ -1923,6 +1961,10 @@ CompiledExpression GiacEngine::compileNumeric(const char* expression,
             }
         }
         handle._impl->parsedOk = true;
+#ifdef NATIVE_SIM
+        ++g_runtimeDiagnostics.retainedCompiles;
+        ++g_runtimeDiagnostics.liveRetainedHandles;
+#endif
     } catch (const std::exception& e) {
         handle._impl->diag = e.what();
     } catch (...) {
@@ -1974,6 +2016,10 @@ CompiledExpression GiacEngine::compileNumeric2D(const char* expression,
         }
         handle._impl->expr = parsed;
         handle._impl->parsedOk = true;
+#ifdef NATIVE_SIM
+        ++g_runtimeDiagnostics.retainedCompiles;
+        ++g_runtimeDiagnostics.liveRetainedHandles;
+#endif
     } catch (const std::exception& e) {
         handle._impl->diag = e.what();
     } catch (...) {
@@ -2004,6 +2050,9 @@ static bool classifyNumericResult(const giac::gen& num, double& out) {
 
 bool GiacEngine::evaluateNumeric(const CompiledExpression& expr, double x,
                                  double& out) {
+#ifdef NATIVE_SIM
+    ++g_runtimeDiagnostics.numericSamples;
+#endif
     out = NAN;
     if (!expr.valid() || expr._impl->twoVars) return false;
 
@@ -2023,6 +2072,9 @@ bool GiacEngine::evaluateNumeric(const CompiledExpression& expr, double x,
 
 bool GiacEngine::evaluateNumeric2D(const CompiledExpression& expr, double a,
                                    double b, double& out) {
+#ifdef NATIVE_SIM
+    ++g_runtimeDiagnostics.numericSamples;
+#endif
     out = NAN;
     if (!expr.valid() || !expr._impl->twoVars) return false;
 
@@ -2045,6 +2097,14 @@ bool GiacEngine::evaluateNumeric2D(const CompiledExpression& expr, double a,
         return false;
     }
 }
+
+#ifdef NATIVE_SIM
+GiacRuntimeDiagnostics GiacEngine::runtimeDiagnostics() const {
+    GiacRuntimeDiagnostics diagnostics = g_runtimeDiagnostics;
+    diagnostics.generation = _generation;
+    return diagnostics;
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // Transition access for the legacy GiacBridge UART path

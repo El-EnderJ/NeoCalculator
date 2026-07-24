@@ -25,6 +25,12 @@
 #include "../Config.h"
 #include "../math/AngleModeRuntime.h"
 
+#ifdef __EMSCRIPTEN__
+#include "../hal/FileSystem.h"
+#include <cstdint>
+#include <cstring>
+#endif
+
 using namespace vpam;
 
 // ══ Color palette (matches system theme) ═════════════════════════════
@@ -42,6 +48,59 @@ static constexpr uint32_t COL_HINT       = 0x808080;
 // ══ Precision options ════════════════════════════════════════════════
 static const int PRECISIONS[] = {6, 8, 10, 12};
 static constexpr int NUM_PREC  = 4;
+
+#ifdef __EMSCRIPTEN__
+namespace {
+constexpr const char* SETTINGS_PATH = "/settings.dat";
+constexpr uint32_t SETTINGS_MAGIC = 0x53543031;  // "ST01"
+constexpr uint8_t SETTINGS_FORMAT_VERSION = 1;
+constexpr size_t SETTINGS_RECORD_SIZE = 10;
+}
+
+bool SettingsApp::savePersistentState() {
+    uint8_t record[SETTINGS_RECORD_SIZE] = {};
+    std::memcpy(record, &SETTINGS_MAGIC, sizeof(SETTINGS_MAGIC));
+    record[4] = SETTINGS_FORMAT_VERSION;
+    record[5] = numos::angleModeIsDeg() ? 1 : 0;
+    record[6] = setting_complex_enabled ? 1 : 0;
+    record[7] = setting_edu_steps ? 1 : 0;
+    record[8] = static_cast<uint8_t>(setting_decimal_precision);
+    record[9] = 0;
+
+    File file = LittleFS.open(SETTINGS_PATH, "w");
+    if (!file) return false;
+    const bool complete = file.write(record, sizeof(record)) == sizeof(record);
+    file.close();
+    return complete;
+}
+
+bool SettingsApp::loadPersistentState() {
+    File file = LittleFS.open(SETTINGS_PATH, "r");
+    if (!file) return false;  // normal first run
+
+    uint8_t record[SETTINGS_RECORD_SIZE] = {};
+    const bool complete = file.read(record, sizeof(record)) == sizeof(record);
+    file.close();
+    if (!complete) return false;
+
+    uint32_t magic = 0;
+    std::memcpy(&magic, record, sizeof(magic));
+    if (magic != SETTINGS_MAGIC || record[4] != SETTINGS_FORMAT_VERSION)
+        return false;
+
+    const int precision = static_cast<int>(record[8]);
+    if (precision != 6 && precision != 8 &&
+        precision != 10 && precision != 12) {
+        return false;
+    }
+    numos::setAngleMode(record[5] ? vpam::AngleMode::DEG
+                                  : vpam::AngleMode::RAD);
+    setting_complex_enabled = record[6] != 0;
+    setting_edu_steps = record[7] != 0;
+    setting_decimal_precision = precision;
+    return true;
+}
+#endif
 
 // ════════════════════════════════════════════════════════════════════════════
 // Constructor / Destructor
@@ -275,6 +334,11 @@ void SettingsApp::toggleCurrent() {
     }
 
     updateValues();
+#ifdef __EMSCRIPTEN__
+    // One compact record per completed user action. FileSystem marks the
+    // successful close dirty; JavaScript coalesces repeated actions.
+    savePersistentState();
+#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -316,6 +380,9 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
                 idx = (idx - 1 + NUM_PREC) % NUM_PREC;
                 setting_decimal_precision = PRECISIONS[idx];
                 updateValues();
+#ifdef __EMSCRIPTEN__
+                savePersistentState();
+#endif
             }
             break;
 
@@ -330,4 +397,3 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
             break;
     }
 }
-

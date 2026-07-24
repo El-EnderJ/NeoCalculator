@@ -74,6 +74,7 @@ public:
     //   * debugCardNameById()     — canonical card name for an id, or nullptr if the
     //                               id is out of range (for friendly diagnostics).
     int                debugFocusedCardId() const { return focusedCardId(); }
+    bool               debugFocusedCardCenter(int& x, int& y) const;
     static int         debugResolveCardToken(const char* token);
     static const char* debugCardNameById(int id);
 #endif

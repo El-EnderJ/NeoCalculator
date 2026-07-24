@@ -27,12 +27,21 @@
 #include "FileSystem.h"
 #include <cstdio>
 
+#ifdef __EMSCRIPTEN__
+    #include <emscripten.h>
+
+EM_JS(void, numosFilesystemDidMutate, (int operation), {
+    const callback = Module['numosPersistenceDirty'];
+    if (typeof callback === 'function') callback(operation);
+});
+#endif
+
 #ifdef _WIN32
     #include <direct.h>
-    #define MKDIR_P(path) _mkdir(path)
+    #define MKDIR_P(path) ::_mkdir(path)
 #else
     #include <sys/stat.h>
-    #define MKDIR_P(path) mkdir(path, 0755)
+    #define MKDIR_P(path) ::mkdir(path, 0755)
 #endif
 
 // Raíz configurable (FIX-01): por defecto el comportamiento histórico
@@ -83,20 +92,48 @@ File LittleFSClass::open(const char* path, const char* mode) {
     if (!_initialized) return File();
 
     // Forzar modo binario (LittleFS siempre es binario)
-    std::string bmode = mode;
+    std::string bmode = mode ? mode : "r";
     if (bmode.find('b') == std::string::npos) {
         bmode += 'b';
     }
 
     std::string fp = fullPath(path);
     FILE* f = std::fopen(fp.c_str(), bmode.c_str());
-    return File(f);
+    const bool mutating = bmode.find('w') != std::string::npos ||
+                          bmode.find('a') != std::string::npos ||
+                          bmode.find('+') != std::string::npos;
+    return File(f, mutating);
 }
 
 // ── remove — Elimina un archivo ─────────────────────────────────────────────
 bool LittleFSClass::remove(const char* path) {
     std::string fp = fullPath(path);
-    return std::remove(fp.c_str()) == 0;
+    const bool removed = std::remove(fp.c_str()) == 0;
+#ifdef __EMSCRIPTEN__
+    if (removed) numosFilesystemDidMutate(2);
+#endif
+    return removed;
+}
+
+// ── rename — Renombra dentro de la raíz emulada ─────────────────────────────
+bool LittleFSClass::rename(const char* from, const char* to) {
+    const std::string source = fullPath(from);
+    const std::string destination = fullPath(to);
+    const bool renamed = std::rename(source.c_str(), destination.c_str()) == 0;
+#ifdef __EMSCRIPTEN__
+    if (renamed) numosFilesystemDidMutate(4);
+#endif
+    return renamed;
+}
+
+// ── mkdir — Crea un directorio dentro de la raíz emulada ────────────────────
+bool LittleFSClass::mkdir(const char* path) {
+    const std::string fp = fullPath(path);
+    const bool created = MKDIR_P(fp.c_str()) == 0;
+#ifdef __EMSCRIPTEN__
+    if (created) numosFilesystemDidMutate(3);
+#endif
+    return created;
 }
 
 #endif // !ARDUINO

@@ -18,7 +18,7 @@
  *
  * LVGL-native app with clean NumWorks-inspired UI:
  *   - Angle mode toggle (Radians/Degrees) — writes the runtime source of
- *     truth (AngleModeRuntime.h); no persistence yet (GS-02)
+ *     truth (AngleModeRuntime.h)
  *   - Complex roots toggle (ON/OFF)
  *   - Decimal precision selector (6/8/10/12)
  *   - Step-by-step educational mode toggle (ON/OFF)
@@ -44,6 +44,15 @@ public:
     void handleKey(const KeyEvent& ev);
 
     bool isActive() const { return _screen != nullptr; }
+
+#ifdef __EMSCRIPTEN__
+    /**
+     * Browser-only storage boundary. These use the production LittleFS shim,
+     * whose root is /numos after the JavaScript runtime has hydrated IDBFS.
+     */
+    static bool loadPersistentState();
+    static bool savePersistentState();
+#endif
 
 private:
     static constexpr int NUM_ITEMS = 4;

@@ -74,6 +74,7 @@ public:
 #if defined(NUMOS_NEO_APP_SMOKE)
     // Opt-in emulator smoke seams. Program execution still enters via F5.
     void debugSetSource(const char* source);
+    const char* debugSourceText() const;
     const char* debugConsoleText() const;
     const char* debugMathEngine() const { return _mathBackend.engineName(); }
     uint32_t debugMathOperationTotal(NeoMathEngine engine) const;

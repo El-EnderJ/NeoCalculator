@@ -23,6 +23,14 @@ if(NOT SOURCE_RESULT EQUAL 0)
 endif()
 include("${CMAKE_BINARY_DIR}/generated/emulator_sources.cmake")
 
+# NeoLanguage's production app/runtime closure is the repository's existing
+# emulator_pc_neo_smoke extension. It remains web-only here; emulator_pc's
+# source filter and compiler semantics are not changed.
+file(GLOB NUMOS_NEO_SOURCES CONFIGURE_DEPENDS
+    "${NUMOS_ROOT}/src/apps/Neo*.cpp"
+)
+list(APPEND NUMOS_EMULATOR_SOURCES ${NUMOS_NEO_SOURCES})
+
 set(LVGL_SOURCE_DIR "${NUMOS_ROOT}/.pio/libdeps/emulator_pc/lvgl")
 if(NOT EXISTS "${LVGL_SOURCE_DIR}/CMakeLists.txt")
     message(FATAL_ERROR
@@ -88,7 +96,7 @@ target_include_directories(emulator_web PRIVATE
     "${NUMOS_ROOT}/lib/libtommath"
 )
 target_compile_definitions(emulator_web PRIVATE
-    NATIVE_SIM _USE_MATH_DEFINES LV_CONF_INCLUDE_SIMPLE
+    NATIVE_SIM NUMOS_NEO_APP_SMOKE=1 _USE_MATH_DEFINES LV_CONF_INCLUDE_SIMPLE
     LV_USE_DRAW_SW_ASM=0 LV_DRAW_SW_ASM_NONE=0 LV_DRAW_SW_ASM_NEON=1
     LV_DRAW_SW_ASM_HELIUM=2 LV_USE_STDLIB_MALLOC=LV_STDLIB_CLIB
     HAVE_CONFIG_H DOUBLEVAL GIAC_KHICAS NO_GUI GIAC_GENERIC EMBEDDED UMAP NO_BSD
@@ -102,6 +110,36 @@ target_link_libraries(emulator_web PRIVATE lvgl numos_giac numos_tommath)
 
 string(TOLOWER "${CMAKE_BUILD_TYPE}" NUMOS_CONFIG_LOWER)
 set(NUMOS_OUTPUT_DIR "${NUMOS_ROOT}/out/wasm/${NUMOS_CONFIG_LOWER}")
+execute_process(
+    COMMAND git rev-parse --short=12 HEAD
+    WORKING_DIRECTORY "${NUMOS_ROOT}"
+    OUTPUT_VARIABLE NUMOS_GIT_REVISION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT NUMOS_GIT_REVISION)
+    set(NUMOS_GIT_REVISION "unknown")
+endif()
+execute_process(
+    COMMAND git status --porcelain --untracked-files=no
+    WORKING_DIRECTORY "${NUMOS_ROOT}"
+    OUTPUT_VARIABLE NUMOS_GIT_DIRTY
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NUMOS_GIT_DIRTY)
+    set(NUMOS_DIRTY_SUFFIX "-dirty")
+else()
+    set(NUMOS_DIRTY_SUFFIX "")
+endif()
+set(NUMOS_BUILD_IDENTITY
+    "${NUMOS_GIT_REVISION}-${NUMOS_CONFIG_LOWER}${NUMOS_DIRTY_SUFFIX}")
+file(MAKE_DIRECTORY "${NUMOS_OUTPUT_DIR}")
+configure_file(
+    "${CMAKE_CURRENT_LIST_DIR}/numos-build.js.in"
+    "${NUMOS_OUTPUT_DIR}/numos-build.js"
+    @ONLY
+)
 set_target_properties(emulator_web PROPERTIES
     OUTPUT_NAME "numos-emulator"
     SUFFIX ".js"
@@ -116,13 +154,14 @@ target_link_options(emulator_web PRIVATE
     -sEXPORT_NAME=createNumosModule
     -sENVIRONMENT=web
     -sFILESYSTEM=1
+    -lidbfs.js
     -sALLOW_MEMORY_GROWTH=1
     -sINITIAL_MEMORY=67108864
     -sMAXIMUM_MEMORY=536870912
     -sSTACK_SIZE=1048576
     -sEXIT_RUNTIME=0
     "-sEXPORTED_FUNCTIONS=['_main','_numos_is_ready','_numos_request_shutdown','_numos_send_logical_key','_numos_diagnostic_state']"
-    "-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString']"
+    "-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString','callMain','FS','IDBFS']"
     -Wl,--gc-sections
 )
 
@@ -143,10 +182,15 @@ add_custom_command(TARGET emulator_web POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "${CMAKE_CURRENT_LIST_DIR}/numos-shell.js" "${NUMOS_OUTPUT_DIR}/numos-shell.js"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${CMAKE_CURRENT_LIST_DIR}/numos-persistence.js"
+            "${NUMOS_OUTPUT_DIR}/numos-persistence.js"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "${CMAKE_CURRENT_LIST_DIR}/numos.css" "${NUMOS_OUTPUT_DIR}/numos.css"
 )
 set_property(TARGET emulator_web APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_LIST_DIR}/index.html"
     "${CMAKE_CURRENT_LIST_DIR}/numos-shell.js"
+    "${CMAKE_CURRENT_LIST_DIR}/numos-persistence.js"
+    "${CMAKE_CURRENT_LIST_DIR}/numos-build.js.in"
     "${CMAKE_CURRENT_LIST_DIR}/numos.css"
 )

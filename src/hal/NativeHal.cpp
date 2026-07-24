@@ -1564,9 +1564,9 @@ static bool resolveFsRoot()
 {
     namespace fs = std::filesystem;
 #ifdef __EMSCRIPTEN__
-    // Browser feasibility storage is deliberately temporary. /numos lives in
-    // Emscripten MEMFS and is the only root handed to the existing LittleFS
-    // shim; a future persistence task can mount IDBFS at this boundary.
+    // JavaScript has already created /numos and either hydrated an IDBFS mount
+    // or selected a MEMFS fallback before it invokes main(). C++ remains
+    // unaware of IndexedDB and only receives the established LittleFS root.
     g_fsRootResolved = "/numos";
     std::error_code webEc;
     fs::create_directories(g_fsRootResolved, webEc);
@@ -1576,7 +1576,7 @@ static bool resolveFsRoot()
         return false;
     }
     LittleFSClass::setRoot(g_fsRootResolved.c_str());
-    std::printf("[FS] root=/numos mode=memfs (temporal; reload clears data)\n");
+    std::printf("[FS] root=/numos mode=browser-managed\n");
     return true;
 #endif
     const int nFlags = (g_opts.fsRoot ? 1 : 0) +
@@ -3756,6 +3756,15 @@ static int emulatorShutdown()
 
     // ── 7. Cleanup ──────────────────────────────────────────────────────
     std::printf("\n[SIM] Cerrando...\n");
+    // Never delete the active LVGL screen out from under the display. This is
+    // normally avoided by returnToMenu(), but browser shutdown is valid from
+    // any app (including NeoLanguage). Move synchronously to the retained
+    // launcher before app teardown; no animation or extra frame is required.
+    if (g_menu && g_menu->screen() &&
+        lv_screen_active() != g_menu->screen()) {
+        lv_screen_load(g_menu->screen());
+    }
+    g_teardownPending = false;
     if (g_calcApp) {
         g_calcApp->end();
         delete g_calcApp;
@@ -3904,6 +3913,11 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* numos_diagnostic_state()
 
     const std::size_t heapBytes = emscripten_get_heap_size();
     const struct mallinfo memory = mallinfo();
+    int menuFocusX = -1;
+    int menuFocusY = -1;
+    if (g_mode == AppMode::MENU && g_menu) {
+        g_menu->debugFocusedCardCenter(menuFocusX, menuFocusY);
+    }
     std::ostringstream out;
     out << "{\"ready\":" << (numos_is_ready() ? "true" : "false")
         << ",\"running\":" << (!g_quit ? "true" : "false")
@@ -3915,6 +3929,26 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* numos_diagnostic_state()
         << ",\"launcherMs\":" << g_launcherReadyTicks
         << ",\"appLaunches\":" << g_appLaunchCount
         << ",\"menuReturns\":" << g_menuReturnCount
+        << ",\"menuFocus\":"
+        << ((g_mode == AppMode::MENU && g_menu)
+                ? g_menu->debugFocusedCardId() : -1)
+        << ",\"menuFocusPoint\":{\"x\":" << menuFocusX
+        << ",\"y\":" << menuFocusY << "}"
+        << ",\"storage\":{\"angleMode\":\"" << numos::angleModeName()
+        << "\",\"complexEnabled\":"
+        << (setting_complex_enabled ? "true" : "false")
+        << ",\"decimalPrecision\":" << setting_decimal_precision
+        << ",\"eduSteps\":" << (setting_edu_steps ? "true" : "false")
+        << ",\"variableX\":\""
+        << jsonEscaped(formatExactVal(
+               vpam::VariableManager::instance().getVariable('x'))) << "\""
+#if defined(NUMOS_NEO_APP_SMOKE)
+        << ",\"neoSource\":\""
+        << jsonEscaped(g_neoLangApp
+                           ? std::string(g_neoLangApp->debugSourceText())
+                           : std::string()) << "\""
+#endif
+        << "}"
         << ",\"pointer\":{\"x\":" << g_pointerPoint.x
         << ",\"y\":" << g_pointerPoint.y
         << ",\"pressed\":" << (g_pointerPressed ? "true" : "false")
@@ -4008,6 +4042,9 @@ int main(int argc, char** argv)
 bool nativeFS_init() {
     if (LittleFS.begin(true)) {
         vpam::VariableManager::instance().loadFromFlash();
+#ifdef __EMSCRIPTEN__
+        SettingsApp::loadPersistentState();
+#endif
         std::printf("[FS] %s OK, variables cargadas\n", LittleFSClass::root());
         return true;
     }

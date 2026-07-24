@@ -265,6 +265,16 @@ int MainMenu::debugResolveCardToken(const char* token) {
     return -1;
 }
 
+bool MainMenu::debugFocusedCardCenter(int& x, int& y) const {
+    lv_obj_t* card = cardById(focusedCardId());
+    if (!card) return false;
+    lv_area_t area;
+    lv_obj_get_coords(card, &area);
+    x = (area.x1 + area.x2) / 2;
+    y = (area.y1 + area.y2) / 2;
+    return true;
+}
+
 const char* MainMenu::debugCardNameById(int id) {
     for (int i = 0; i < APP_COUNT; ++i) {
         if (APPS[i].id == id) return APPS[i].name;

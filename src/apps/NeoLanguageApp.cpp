@@ -828,6 +828,10 @@ void NeoLanguageApp::debugSetSource(const char* source) {
     if (_editor) lv_textarea_set_text(_editor, source ? source : "");
 }
 
+const char* NeoLanguageApp::debugSourceText() const {
+    return _editor ? lv_textarea_get_text(_editor) : "";
+}
+
 const char* NeoLanguageApp::debugConsoleText() const {
     return _console ? lv_textarea_get_text(_console) : "";
 }
@@ -962,12 +966,18 @@ void NeoLanguageApp::saveToFlash() {
     const char* src = lv_textarea_get_text(_editor);
     if (!src) return;
 
-#ifdef ARDUINO
+#if defined(ARDUINO)
     if (!LittleFS.begin(true)) {
         appendConsole("[save] LittleFS unavailable.\n");
         return;
     }
     File f = LittleFS.open(NEOLANG_FILE, "w");
+#elif defined(__EMSCRIPTEN__)
+    // Web persistence uses a same-directory temporary plus rename. IDBFS
+    // observes both through the existing LittleFS-compatible shim, while a
+    // reload sees either the previous complete source or the new one.
+    static constexpr const char* NEOLANG_TEMP_FILE = "/neolang.nl.tmp";
+    File f = LittleFS.open(NEOLANG_TEMP_FILE, "w");
 #else
     File f = LittleFS.open(NEOLANG_FILE, "w");
 #endif
@@ -976,8 +986,20 @@ void NeoLanguageApp::saveToFlash() {
         return;
     }
     size_t len = strlen(src);
+#ifdef __EMSCRIPTEN__
+    const size_t written = f.write((const uint8_t*)src, len);
+#else
     f.write((const uint8_t*)src, len);
+#endif
     f.close();
+
+#ifdef __EMSCRIPTEN__
+    if (written != len || !LittleFS.rename(NEOLANG_TEMP_FILE, NEOLANG_FILE)) {
+        LittleFS.remove(NEOLANG_TEMP_FILE);
+        appendConsole("[save] Could not replace file.\n");
+        return;
+    }
+#endif
 
     char buf[64];
     std::snprintf(buf, sizeof(buf), "[save] %zu bytes to %s\n", len, NEOLANG_FILE);
@@ -1018,4 +1040,3 @@ void NeoLanguageApp::loadFromFlash() {
     free(buf);
 #endif
 }
-

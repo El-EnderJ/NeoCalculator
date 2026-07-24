@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "smoke": "node smoke.mjs"
+    "smoke": "node smoke.mjs",
+    "persistence": "node persistence.mjs"
   },
   "devDependencies": {
     "playwright": "1.54.1"

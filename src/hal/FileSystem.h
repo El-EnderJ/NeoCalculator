@@ -41,26 +41,54 @@
 #include <cstring>
 #include <string>
 
+#ifdef __EMSCRIPTEN__
+/**
+ * Notify the private browser persistence controller after a successful
+ * filesystem mutation. The implementation calls a Module-private callback;
+ * it never exposes Emscripten FS or Wasm memory on window.numos.
+ */
+extern "C" void numosFilesystemDidMutate(int operation);
+#endif
+
 // ════════════════════════════════════════════════════════════════════════════
 // File — Wrapper sobre FILE* compatible con Arduino File
 // ════════════════════════════════════════════════════════════════════════════
 class File {
 public:
-    File()         : _fp(nullptr) {}
-    File(FILE* fp) : _fp(fp) {}
+    File()         : _fp(nullptr), _mutating(false) {}
+    File(FILE* fp, bool mutating = false) : _fp(fp), _mutating(mutating) {}
     ~File()        { close(); }
 
     // Move semantics (Arduino File es copiable, pero para native mover es suficiente)
-    File(File&& other) noexcept : _fp(other._fp) { other._fp = nullptr; }
+    File(File&& other) noexcept
+        : _fp(other._fp), _mutating(other._mutating) {
+        other._fp = nullptr;
+        other._mutating = false;
+    }
     File& operator=(File&& other) noexcept {
-        if (this != &other) { close(); _fp = other._fp; other._fp = nullptr; }
+        if (this != &other) {
+            close();
+            _fp = other._fp;
+            _mutating = other._mutating;
+            other._fp = nullptr;
+            other._mutating = false;
+        }
         return *this;
     }
 
     explicit operator bool() const { return _fp != nullptr; }
 
     void close() {
-        if (_fp) { std::fclose(_fp); _fp = nullptr; }
+        if (_fp) {
+            const bool notify = _mutating && std::fclose(_fp) == 0;
+            _fp = nullptr;
+            _mutating = false;
+#ifdef __EMSCRIPTEN__
+            if (notify) numosFilesystemDidMutate(1);  // write/close
+#else
+            (void)notify;
+#endif
+        }
     }
 
     size_t write(const uint8_t* buf, size_t len) {
@@ -72,6 +100,12 @@ public:
     size_t read(uint8_t* buf, size_t len) {
         if (!_fp) return 0;
         return std::fread(buf, 1, len, _fp);
+    }
+
+    /// Lectura de un byte compatible con Arduino File::read().
+    int read() {
+        if (!_fp) return -1;
+        return std::fgetc(_fp);
     }
 
     /// Tamaño total del archivo (seek al final y volver)
@@ -101,6 +135,7 @@ public:
 
 private:
     FILE* _fp;
+    bool  _mutating;
 
     // No copyable
     File(const File&) = delete;
@@ -141,6 +176,12 @@ public:
 
     /** Elimina un archivo. */
     bool remove(const char* path);
+
+    /** Renombra un archivo dentro de la raíz emulada. */
+    bool rename(const char* from, const char* to);
+
+    /** Crea un directorio dentro de la raíz emulada. */
+    bool mkdir(const char* path);
 
 private:
     std::string fullPath(const char* path) const;

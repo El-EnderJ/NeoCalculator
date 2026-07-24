@@ -28,6 +28,9 @@
 #if defined(ARDUINO)
   #include <LittleFS.h>
   #define NEO_IO_USE_LITTLEFS 1
+#elif defined(__EMSCRIPTEN__)
+  #include "../hal/FileSystem.h"
+  #define NEO_IO_USE_LITTLEFS 1
 #else
   #include <cstdio>
   #define NEO_IO_USE_LITTLEFS 0

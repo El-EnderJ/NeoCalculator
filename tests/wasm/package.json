@@ -8,7 +8,8 @@
     "keycode-catalog": "node keycode-catalog.mjs",
     "component": "node component.mjs",
     "screenshots": "node screenshots.mjs",
-    "performance": "node performance.mjs"
+    "performance": "node performance.mjs",
+    "math": "node math.mjs"
   },
   "devDependencies": {
     "playwright": "1.54.1"

@@ -597,6 +597,10 @@ struct CompiledExpression::Impl {
     giac::gen expr;
     giac::gen var;
     giac::gen var2;         // second sampling variable (2D handles only)
+#ifdef NUMOS_MATH_HEADLESS_WASM
+    std::string variableName;
+    std::string variableName2;
+#endif
     uint32_t generation = 0;
     bool parsedOk = false;
     bool twoVars = false;   // compiled via compileNumeric2D
@@ -1953,6 +1957,9 @@ CompiledExpression GiacEngine::compileNumeric(const char* expression,
     try {
         DiagnosticCapture capture(_state->ctx);
         handle._impl->var = giac::gen(giac::identificateur(variable));
+#ifdef NUMOS_MATH_HEADLESS_WASM
+        handle._impl->variableName = variable;
+#endif
         giac::gen parsed(std::string(expression), _state->ctx);
         if (giac::is_undef(parsed)) {
             handle._impl->diag = capture.text();
@@ -2019,6 +2026,10 @@ CompiledExpression GiacEngine::compileNumeric2D(const char* expression,
         DiagnosticCapture capture(_state->ctx);
         handle._impl->var  = giac::gen(giac::identificateur(variableA));
         handle._impl->var2 = giac::gen(giac::identificateur(variableB));
+#ifdef NUMOS_MATH_HEADLESS_WASM
+        handle._impl->variableName = variableA;
+        handle._impl->variableName2 = variableB;
+#endif
         handle._impl->twoVars = true;
         giac::gen parsed(std::string(expression), _state->ctx);
         if (giac::is_undef(parsed)) {
@@ -2084,8 +2095,18 @@ bool GiacEngine::evaluateNumeric(const CompiledExpression& expr, double x,
     if (!begin()) return false;
     syncAngleMode(_state->ctx);
     try {
+#ifdef NUMOS_MATH_HEADLESS_WASM
+        // Recreate the identifier at sample time. The isolated khicas Wasm
+        // link can otherwise retain a parser-owned identifier instance whose
+        // address does not alias the separately constructed compile-time key.
+        const giac::gen variable(
+            giac::identificateur(expr._impl->variableName));
+        giac::gen sub = giac::subst(expr._impl->expr, variable,
+                                    giac::gen(x), false, _state->ctx);
+#else
         giac::gen sub = giac::subst(expr._impl->expr, expr._impl->var,
                                     giac::gen(x), false, _state->ctx);
+#endif
         giac::gen num = giac::evalf_double(sub, 1, _state->ctx);
         return classifyNumericResult(num, out);
     } catch (...) {
@@ -2106,14 +2127,29 @@ bool GiacEngine::evaluateNumeric2D(const CompiledExpression& expr, double a,
     if (!begin()) return false;
     syncAngleMode(_state->ctx);
     try {
+#ifdef NUMOS_MATH_HEADLESS_WASM
         // Simultaneous substitution of both sampling variables — the shared
         // context is never written, so a stored x/y value cannot capture the
         // graph variables and no per-sample assignment state accumulates.
+        // Both replacements are numeric and the authored variables are
+        // distinct, so sequential substitution is semantically simultaneous.
+        // The scalar overload also avoids a khicas/Emscripten vector-subst
+        // no-op observed in the isolated headless link.
+        const giac::gen variableA(
+            giac::identificateur(expr._impl->variableName));
+        const giac::gen variableB(
+            giac::identificateur(expr._impl->variableName2));
+        giac::gen sub = giac::subst(expr._impl->expr, variableA,
+                                    giac::gen(a), false, _state->ctx);
+        sub = giac::subst(sub, variableB, giac::gen(b), false,
+                          _state->ctx);
+#else
         giac::vecteur vars(2), vals(2);
         vars[0] = expr._impl->var;  vars[1] = expr._impl->var2;
         vals[0] = giac::gen(a);     vals[1] = giac::gen(b);
         giac::gen sub = giac::subst(expr._impl->expr, vars, vals, false,
                                     _state->ctx);
+#endif
         giac::gen num = giac::evalf_double(sub, 1, _state->ctx);
         return classifyNumericResult(num, out);
     } catch (...) {

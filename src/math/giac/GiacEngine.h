@@ -312,6 +312,18 @@ public:
     /// Destroy + rebuild the context. See header contract.
     void reset();
 
+#ifdef NATIVE_SIM
+    /**
+     * Destroy the owned context without rebuilding it.
+     *
+     * Browser and native-emulator shutdown call this only after every
+     * CompiledExpression owner has been destroyed. A later public operation
+     * remains valid because begin() lazily creates a fresh context. This seam
+     * is native-only so firmware retains its existing code path and image.
+     */
+    void shutdown();
+#endif
+
     /// Plain Giac eval of one expression. No implicit simplification.
     MathEngineResult evaluate(const char* expression);
 

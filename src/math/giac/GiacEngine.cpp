@@ -696,6 +696,29 @@ void GiacEngine::reset() {
     begin();
 }
 
+#ifdef NATIVE_SIM
+void GiacEngine::shutdown() {
+    if (_inCall) return;  // never yank the context mid-call
+    bool destroyedContext = false;
+    if (_state) {
+        if (_state->ctx) {
+            ++g_runtimeDiagnostics.contextsDestroyed;
+            if (g_runtimeDiagnostics.activeContexts > 0)
+                --g_runtimeDiagnostics.activeContexts;
+            destroyedContext = true;
+        }
+        delete _state->ctx;
+        _state->ctx = nullptr;
+        s_sharedCtx = nullptr;
+    }
+    if (destroyedContext) {
+        ++_generation;
+        g_runtimeDiagnostics.generation = _generation;
+        s_generationForHandles = _generation;
+    }
+}
+#endif
+
 // Reads vpam::g_angleMode (AngleModeRuntime single source of truth) into the
 // shared context. Giac contexts default to radians, matching the vpam boot
 // default; this keeps them aligned when the user flips DEG.

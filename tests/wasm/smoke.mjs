@@ -5,7 +5,7 @@ import { chromium } from "playwright";
 const variant = process.env.NUMOS_WASM_VARIANT || "release";
 const port = Number(process.env.NUMOS_WASM_PORT ||
                     (variant === "debug" ? 4174 : 4173));
-const root = new URL(`../../out/wasm/${variant}/`, import.meta.url).pathname;
+const root = new URL(`../../out/wasm/dist/${variant}/`, import.meta.url).pathname;
 const server = spawn("python3", ["-m", "http.server", String(port),
                                  "--bind", "127.0.0.1", "--directory", root], {
   stdio: ["ignore", "pipe", "pipe"],
@@ -52,7 +52,7 @@ try {
   assert.equal(ready.logicalWidth, 320);
   assert.equal(ready.logicalHeight, 240);
 
-  const canvas = page.locator("#canvas");
+  const canvas = page.locator("numos-emulator").locator("canvas");
   await canvas.focus();
   const clickLogical = async (x, y) => {
     const box = await canvas.boundingBox();
@@ -187,8 +187,8 @@ try {
   state = await diagnostics();
   assert.equal(fatalErrors.length, 0, fatalErrors.join("\n"));
   const measurements = {
-    moduleReadyMs: ready.moduleReadyMs,
-    browserLauncherMs: ready.browserLauncherMs,
+    moduleReadyMs: ready.timings.moduleFactoryMs,
+    browserLauncherMs: ready.timings.startToLauncherMs,
     launcherWallMs,
     firstGiacMs,
     heapSamples,
@@ -201,9 +201,20 @@ try {
   };
   console.log(JSON.stringify(measurements, null, 2));
 
-  await page.evaluate(() => window.numos.requestShutdown());
+  const shutdownDetail = await page.evaluate(async () => {
+    const emulator = document.querySelector("numos-emulator");
+    const eventPromise = new Promise((resolve) =>
+      emulator.addEventListener("numos-shutdown",
+        (event) => resolve(event.detail), { once: true }));
+    await window.numos.requestShutdown();
+    return eventPromise;
+  });
+  assert.equal(shutdownDetail.giacContexts, 0,
+               "native shutdown must destroy the Giac context");
   await page.waitForFunction(() => !window.numos.isReady(), null,
                              { timeout: 10000 });
+  assert.equal(await page.locator("numos-emulator").locator("canvas").count(), 0,
+               "component shutdown must release its canvas");
   await delay(100);
   assert.equal(fatalErrors.length, 0, fatalErrors.join("\n"));
 } finally {

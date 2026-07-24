@@ -4,7 +4,11 @@
   "type": "module",
   "scripts": {
     "smoke": "node smoke.mjs",
-    "persistence": "node persistence.mjs"
+    "persistence": "node persistence.mjs",
+    "keycode-catalog": "node keycode-catalog.mjs",
+    "component": "node component.mjs",
+    "screenshots": "node screenshots.mjs",
+    "performance": "node performance.mjs"
   },
   "devDependencies": {
     "playwright": "1.54.1"

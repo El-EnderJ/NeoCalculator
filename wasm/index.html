@@ -5,14 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
   <title>NumOS Web Emulator</title>
-  <link rel="stylesheet" href="./numos.css">
+  <style>
+    :root { color-scheme: dark; background: #080c11; }
+    body { min-height: 100vh; margin: 0; padding: clamp(.5rem, 2vw, 1.5rem); }
+  </style>
 </head>
 <body>
-  <main>
-    <canvas id="canvas" width="640" height="480" tabindex="0"
-            aria-label="NumOS calculator emulator"></canvas>
-    <p id="numos-status" role="status">Loading NumOS…</p>
-  </main>
+  <numos-emulator autostart controls="auto"></numos-emulator>
   <script type="module" src="./numos-shell.js"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@ import { chromium } from "playwright";
 const variant = process.env.NUMOS_WASM_VARIANT || "release";
 const port = Number(process.env.NUMOS_WASM_PERSIST_PORT ||
                     (variant === "debug" ? 4184 : 4183));
-const root = new URL(`../../out/wasm/${variant}/`, import.meta.url).pathname;
+const root = new URL(`../../out/wasm/dist/${variant}/`, import.meta.url).pathname;
 const origin = `http://127.0.0.1:${port}`;
 const server = spawn("python3", ["-m", "http.server", String(port),
                                  "--bind", "127.0.0.1", "--directory", root], {
@@ -42,6 +42,7 @@ try {
     if (message.type() === "error") fatalErrors.push(
       `console: ${message.text()}`);
   });
+  page.on("dialog", (dialog) => dialog.accept());
 
   const diagnostics = () =>
     page.evaluate(() => window.numos.diagnosticState());
@@ -55,7 +56,7 @@ try {
   const waitForApp = (name) => page.waitForFunction(
     (expected) => window.numos?.diagnosticState().app === expected,
     name, { timeout: 30000 });
-  const canvas = page.locator("#canvas");
+  const canvas = page.locator("numos-emulator").locator("canvas");
   const clickLogical = async (x, y) => {
     const box = await canvas.boundingBox();
     assert.ok(box, "canvas must have a layout box");
@@ -142,7 +143,7 @@ try {
   assert.equal(firstLaunch.ready.ready, true);
   assert.equal(firstLaunch.ready.persistence.state, "persistent_ready");
   assert.equal(firstLaunch.ready.persistence.metadataStatus, "first_run");
-  const emptyHydrationMs = firstLaunch.ready.hydrationMs;
+  const emptyHydrationMs = firstLaunch.ready.timings.hydrationMs;
 
   // Real setting: open Settings and toggle the production angle-mode source.
   await openApp(10, "Settings");
@@ -219,7 +220,8 @@ try {
   await openApp(18, "NeoLanguage");
   state = await diagnostics();
   assert.equal(state.storage.neoSource, "3+3");
-  const representativeHydrationMs = representativeReload.ready.hydrationMs;
+  const representativeHydrationMs =
+    representativeReload.ready.timings.hydrationMs;
 
   // Modify all representative state again. The Neo save exercises another
   // production temp-file rename, satisfying file modification/rename coverage.
@@ -326,12 +328,17 @@ try {
   // Explicit reset clears only /numos. A normal reload is a clean first run.
   phase = "explicit-reset";
   await reloadReady(`${origin}/index.html`);
-  await page.evaluate(async () => window.numos.resetPersistentStorage());
-  assert.equal((await persistenceState()).state, "disabled");
+  const resetReady = await page.evaluate(async () =>
+    window.numos.resetPersistentStorage());
+  assert.equal(resetReady.persistence.metadataStatus, "first_run");
+  assert.equal((await persistenceState()).state, "persistent_ready");
+  state = await diagnostics();
+  assert.equal(state.storage.angleMode, "rad");
+  assert.equal(state.storage.variableX, "0");
   const cleanReload = await reloadReady(`${origin}/index.html`);
   phase = "clean-first-run-verification";
   state = await diagnostics();
-  assert.equal(cleanReload.ready.persistence.metadataStatus, "first_run");
+  assert.equal(cleanReload.ready.persistence.metadataStatus, "current");
   assert.equal(state.storage.angleMode, "rad");
   assert.equal(state.storage.variableX, "0");
   await openApp(18, "NeoLanguage");

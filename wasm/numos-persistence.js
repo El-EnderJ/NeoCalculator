@@ -13,19 +13,17 @@ function errorMessage(error) {
   return String(error);
 }
 
-function queryConfiguration() {
-  const parameters = new URLSearchParams(window.location.search);
-  const injected = parameters.get("persistenceTest") || "";
-  return {
-    disabled: parameters.get("persistence") === "disabled",
+export function createPersistenceController(buildIdentity, options = {}) {
+  const injected = options.testMode || "";
+  const configuration = {
+    disabled: options.disabled === true,
     denyIndexedDB: injected === "indexeddb-denied",
     failHydration: injected === "hydrate-failure",
     failNextFlush: injected === "flush-failure",
   };
-}
-
-export function createPersistenceController(buildIdentity) {
-  const configuration = queryConfiguration();
+  const onChange = typeof options.onChange === "function"
+    ? options.onChange
+    : () => {};
   let module;
   let mounted = false;
   let resetSelected = false;
@@ -36,6 +34,7 @@ export function createPersistenceController(buildIdentity) {
   let metadata = null;
   let metadataWritable = true;
   let failNextFlush = configuration.failNextFlush;
+  let disposed = false;
 
   const detail = {
     state: "disabled",
@@ -76,6 +75,14 @@ export function createPersistenceController(buildIdentity) {
       error: detail.lastError,
     });
     if (detail.history.length > 16) detail.history.shift();
+    notify();
+  }
+
+  function notify() {
+    if (disposed) return;
+    queueMicrotask(() => {
+      if (!disposed) onChange(snapshot());
+    });
   }
 
   function ensureRoot() {
@@ -208,10 +215,12 @@ export function createPersistenceController(buildIdentity) {
         detail.state !== "persistent_ready") {
       return;
     }
-    timer = window.setTimeout(() => {
+    timer = globalThis.setTimeout(() => {
       timer = null;
       detail.pendingTimer = false;
-      void flushPersistence();
+      flushPersistence().catch(() => {
+        // State and bounded diagnostics are reported through onChange.
+      });
     }, DEFAULT_DEBOUNCE_MS);
     detail.pendingTimer = true;
   }
@@ -229,6 +238,7 @@ export function createPersistenceController(buildIdentity) {
     dirtyGeneration += 1;
     detail.dirty = true;
     scheduleFlush();
+    notify();
   }
 
   async function fallback(error, state = "ephemeral_fallback") {
@@ -245,6 +255,7 @@ export function createPersistenceController(buildIdentity) {
   }
 
   async function initialize(nextModule) {
+    if (disposed) throw new Error("persistence controller is disposed");
     module = nextModule;
     const started = performance.now();
     ensureRoot();
@@ -253,12 +264,14 @@ export function createPersistenceController(buildIdentity) {
       detail.mode = "ephemeral";
       transition("disabled");
       detail.hydrationMs = performance.now() - started;
+      notify();
       return snapshot();
     }
     if (configuration.denyIndexedDB || !globalThis.indexedDB ||
         !module.IDBFS) {
       await fallback(new Error("IndexedDB/IDBFS unavailable"));
       detail.hydrationMs = performance.now() - started;
+      notify();
       return snapshot();
     }
 
@@ -276,6 +289,7 @@ export function createPersistenceController(buildIdentity) {
       await fallback(error);
     }
     detail.hydrationMs = performance.now() - started;
+    notify();
     return snapshot();
   }
 
@@ -293,10 +307,12 @@ export function createPersistenceController(buildIdentity) {
         detail.state === "disabled" ||
         detail.state === "ephemeral_fallback") {
       refreshStorageBytes();
+      notify();
       return Promise.resolve(snapshot());
     }
     if (!detail.dirty) {
       refreshStorageBytes();
+      notify();
       return Promise.resolve(snapshot());
     }
 
@@ -324,6 +340,7 @@ export function createPersistenceController(buildIdentity) {
           metadata?.lastSuccessfulSync || new Date().toISOString();
         transition("persistent_ready");
         refreshStorageBytes();
+        notify();
         return snapshot();
       })
       .catch((error) => {
@@ -415,21 +432,57 @@ export function createPersistenceController(buildIdentity) {
     detail.metadataStatus = "reset";
     transition("disabled");
     refreshStorageBytes();
+    notify();
     return snapshot();
   }
 
   function snapshot() {
     return Object.freeze({
-      ...detail,
+      state: detail.state,
+      mode: detail.mode,
+      schemaVersion: detail.schemaVersion,
+      storageFormatVersion: detail.storageFormatVersion,
+      buildIdentity: detail.buildIdentity,
+      metadataStatus: detail.metadataStatus,
       dirty: dirtyGeneration > syncedGeneration,
       pendingTimer: Boolean(timer),
       flushInProgress: Boolean(inFlight),
+      dirtyNotifications: detail.dirtyNotifications,
       mutationNotifications: { ...detail.mutationNotifications },
+      hydrationMs: detail.hydrationMs,
+      lastFlushMs: detail.lastFlushMs,
+      lastFlushAt: detail.lastFlushAt,
+      flushCount: detail.flushCount,
+      coalescedFlushCalls: detail.coalescedFlushCalls,
+      storageBytes: detail.storageBytes,
+      lastError: detail.lastError,
       history: detail.history.map((entry) => ({ ...entry })),
-      metadata: metadata ? { ...metadata } : null,
       debounceMs: DEFAULT_DEBOUNCE_MS,
-      singleActiveTab: true,
+      multiTabSafety: "not_provided",
     });
+  }
+
+  async function dispose() {
+    if (disposed) return;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+      detail.pendingTimer = false;
+    }
+    if (inFlight) {
+      try {
+        await inFlight;
+      } catch {
+        // The caller already receives/report the flush failure.
+      }
+    }
+    const cached = module?.IDBFS?.dbs?.[DATABASE_NAME];
+    if (cached) {
+      cached.close();
+      delete module.IDBFS.dbs[DATABASE_NAME];
+    }
+    disposed = true;
+    module = null;
   }
 
   return Object.freeze({
@@ -438,5 +491,6 @@ export function createPersistenceController(buildIdentity) {
     flushPersistence,
     resetPersistentStorage,
     snapshot,
+    dispose,
   });
 }

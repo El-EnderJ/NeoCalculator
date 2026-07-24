@@ -171,7 +171,11 @@ void DisplayDriver::lvglFlushCb(lv_display_t*, const lv_area_t*, uint8_t*) {}
 // ════════════════════════════════════════════════════════════════════════════
 static constexpr int SCREEN_W             = 320;  // ancho logico (NO tocar)
 static constexpr int SCREEN_H             = 240;  // alto  logico (NO tocar)
+#ifdef __EMSCRIPTEN__
+static constexpr int DEFAULT_WINDOW_SCALE = 1;    // canvas backing store 320×240
+#else
 static constexpr int DEFAULT_WINDOW_SCALE = 2;    // factor por defecto (×2)
+#endif
 
 // Politica de temporizacion del bucle nativo (ver bucle principal):
 //  · El reloj de LVGL es lv_tick_set_cb(SDL_GetTicks) → tiempo de pared real.
@@ -3462,6 +3466,13 @@ static int emulatorInitialize(int argc, char** argv)
 
     // Calidad de escalado: 0 = nearest-neighbor (pixeles nitidos al escalar ×N).
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+#ifdef __EMSCRIPTEN__
+    // SDL's Emscripten backend otherwise attaches keyboard callbacks to
+    // `window`. The web component supplies its canvas as private
+    // `Module.canvas`; the link-time event-target compatibility setting maps
+    // SDL's `#canvas` selector to that object even inside Shadow DOM.
+    SDL_SetHint(SDL_HINT_EMSCRIPTEN_KEYBOARD_ELEMENT, "#canvas");
+#endif
 
     g_window = SDL_CreateWindow(
         "NumOS Simulator",
@@ -3827,6 +3838,12 @@ static int emulatorShutdown()
     g_menu = nullptr;
     delete g_splash;
     g_splash = nullptr;
+
+    // All retained expressions are gone now, so the singleton context can be
+    // destroyed without orphaning a live handle. EXIT_RUNTIME remains off in
+    // the browser; relying on a static destructor would therefore leak the
+    // active context for the lifetime of the page.
+    numos::GiacEngine::instance().shutdown();
 
     // Liberar LVGL por completo (objetos, displays, indev). Importante para
     // ejecuciones headless repetidas (CI) y para no dejar fugas al salir.

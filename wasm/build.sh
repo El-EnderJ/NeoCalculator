@@ -19,3 +19,4 @@ configuration_lower=$(printf '%s' "$configuration" | tr '[:upper:]' '[:lower:]')
 build_dir="out/wasm/build-${configuration_lower}"
 emcmake cmake -S wasm -B "$build_dir" -DCMAKE_BUILD_TYPE="$configuration"
 cmake --build "$build_dir" --target emulator_web --parallel "${JOBS:-8}"
+node wasm/package.mjs "$configuration"

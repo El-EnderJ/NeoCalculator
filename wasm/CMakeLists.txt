@@ -153,6 +153,7 @@ target_link_options(emulator_web PRIVATE
     -sEXPORT_ES6=1
     -sEXPORT_NAME=createNumosModule
     -sENVIRONMENT=web
+    "-sINCOMING_MODULE_JS_API=['canvas','noInitialRun','locateFile','print','printErr','onAbort','wasmBinary']"
     -sFILESYSTEM=1
     -lidbfs.js
     -sALLOW_MEMORY_GROWTH=1
@@ -160,6 +161,7 @@ target_link_options(emulator_web PRIVATE
     -sMAXIMUM_MEMORY=536870912
     -sSTACK_SIZE=1048576
     -sEXIT_RUNTIME=0
+    -sDISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=0
     "-sEXPORTED_FUNCTIONS=['_main','_numos_is_ready','_numos_request_shutdown','_numos_send_logical_key','_numos_diagnostic_state']"
     "-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString','callMain','FS','IDBFS']"
     -Wl,--gc-sections
@@ -182,15 +184,24 @@ add_custom_command(TARGET emulator_web POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "${CMAKE_CURRENT_LIST_DIR}/numos-shell.js" "${NUMOS_OUTPUT_DIR}/numos-shell.js"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${CMAKE_CURRENT_LIST_DIR}/numos-emulator-element.js"
+            "${NUMOS_OUTPUT_DIR}/numos-emulator-element.js"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${CMAKE_CURRENT_LIST_DIR}/numos-keypad.js"
+            "${NUMOS_OUTPUT_DIR}/numos-keypad.js"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "${CMAKE_CURRENT_LIST_DIR}/numos-persistence.js"
             "${NUMOS_OUTPUT_DIR}/numos-persistence.js"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "${CMAKE_CURRENT_LIST_DIR}/numos.css" "${NUMOS_OUTPUT_DIR}/numos.css"
+            "${CMAKE_CURRENT_LIST_DIR}/numos-component.css"
+            "${NUMOS_OUTPUT_DIR}/numos-component.css"
 )
 set_property(TARGET emulator_web APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_LIST_DIR}/index.html"
     "${CMAKE_CURRENT_LIST_DIR}/numos-shell.js"
+    "${CMAKE_CURRENT_LIST_DIR}/numos-emulator-element.js"
+    "${CMAKE_CURRENT_LIST_DIR}/numos-keypad.js"
     "${CMAKE_CURRENT_LIST_DIR}/numos-persistence.js"
     "${CMAKE_CURRENT_LIST_DIR}/numos-build.js.in"
-    "${CMAKE_CURRENT_LIST_DIR}/numos.css"
+    "${CMAKE_CURRENT_LIST_DIR}/numos-component.css"
 )

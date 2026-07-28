@@ -1,5 +1,7 @@
 #pragma once
 
+class Keyboard;
+
 namespace numos::hardware {
 
 // Bring-up only: wait no more than three seconds for initial CDC enumeration.
@@ -11,5 +13,9 @@ void waitForProductionBringupSerial();
 // matrix, starts radios, or blocks.
 void startProductionBringupReporting();
 void serviceProductionBringupReporting();
+
+// Opt-in command service. Raw logging is disabled until the host sends
+// "KEYPAD RAW ON"; ordinary mapped keypad input remains active throughout.
+void serviceProductionBringupKeypad(::Keyboard& keyboard);
 
 } // namespace numos::hardware

@@ -115,6 +115,7 @@ enum class OpKind : uint8_t {
     Add,       // +
     Sub,       // −  (resta, no signo negativo)
     Mul,       // ×
+    Div,       // ÷ (linear division; distinct from NodeFraction)
     PlusMinus, // ±  (plus-minus, for quadratic formula)
     // ── Relations (MathClass::REL) ──
     Eq,        // =

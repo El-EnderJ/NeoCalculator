@@ -4,10 +4,13 @@
     NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
 
 #include <Arduino.h>
+#include <cstring>
 #include <esp_partition.h>
 #include <esp_system.h>
 #include "BoardProfile.h"
+#include "../drivers/Keyboard.h"
 #include "../input/NumosSerialBackend.h"
+#include "../input/generated/ProductionKeypadMap.generated.h"
 
 #ifndef NUMOS_BUILD_REVISION
 #define NUMOS_BUILD_REVISION __DATE__ " " __TIME__
@@ -19,6 +22,11 @@ namespace {
 
 constexpr uint32_t kMaximumSerialWaitMs = 3000U;
 bool g_reportDeliveredToConnectedHost = false;
+bool g_rawKeypadDiagnostic = false;
+char g_keypadCommand[32]{};
+uint8_t g_keypadCommandLength = 0;
+bool g_lastRaw[50]{};
+bool g_lastDebounced[50]{};
 
 const char* partitionTypeName(const uint8_t type) {
     return type == ESP_PARTITION_TYPE_APP ? "app" :
@@ -83,6 +91,79 @@ void emitProductionBringupReport() {
     serial.println("[PCBA] END report; LCD/key matrix remain physically unvalidated");
 }
 
+void emitActivePositions(const Keyboard& keyboard) {
+    auto& serial = NUMOS_SERIAL;
+    serial.print("[KEYPAD-RAW] active=");
+    bool any = false;
+    for (uint8_t row = 0; row < 5; ++row) {
+        const uint16_t mask = keyboard.diagnosticActiveColumns(row);
+        for (uint8_t column = 0; column < 10; ++column) {
+            if ((mask & (1U << column)) == 0) continue;
+            serial.printf("%sR%uC%u", any ? "," : "", row, column);
+            any = true;
+        }
+    }
+    if (!any) serial.print("none");
+    serial.println();
+}
+
+void emitRawRecord(const Keyboard& keyboard,
+                   const uint8_t row,
+                   const uint8_t column,
+                   const char* transition) {
+    constexpr auto& board = kProductionBoard;
+    const std::size_t index = static_cast<std::size_t>(row) * 10U + column;
+    const auto& mapping = numos::input::kProductionKeypadMap[index];
+    const auto& state = keyboard.diagnosticState(row, column);
+    const int rowGpio =
+        board.electricalMatrix.rowOutputs[
+            board.electricalMatrix.rowOrder[row]];
+    const int columnGpio =
+        board.electricalMatrix.columnInputs[
+            board.electricalMatrix.columnOrder[column]];
+    NUMOS_SERIAL.printf(
+        "[KEYPAD-RAW] eR=%u eC=%u row_gpio=%d col_gpio=%d SW%u "
+        "visual=r%uc%u pcb_um=(%ld,%ld) rotation_deg=%d "
+        "keycode=%u label=\"%s\" raw=%u debounced=%u "
+        "transition=%s integrator=%u overflow=%lu\n",
+        row, column, rowGpio, columnGpio, mapping.switchNumber,
+        mapping.visualRow, mapping.visualColumn,
+        static_cast<long>(mapping.pcbXUm),
+        static_cast<long>(mapping.pcbYUm),
+        static_cast<int>(mapping.rotationDegrees),
+        static_cast<unsigned>(mapping.keyCode), mapping.primaryLabel,
+        state.raw, state.debounced, transition, state.integrator,
+        static_cast<unsigned long>(keyboard.overflowCount()));
+}
+
+bool commandEquals(const char* expected) {
+    return strcmp(g_keypadCommand, expected) == 0;
+}
+
+void processKeypadCommand() {
+    auto& serial = NUMOS_SERIAL;
+    if (commandEquals("KEYPAD RAW ON")) {
+        g_rawKeypadDiagnostic = true;
+        for (std::size_t i = 0; i < 50; ++i) {
+            g_lastRaw[i] = false;
+            g_lastDebounced[i] = false;
+        }
+        serial.println(
+            "[KEYPAD-RAW] enabled; press visual keys top-left to bottom-right");
+    } else if (commandEquals("KEYPAD RAW OFF")) {
+        g_rawKeypadDiagnostic = false;
+        serial.println("[KEYPAD-RAW] disabled; mapped input remains enabled");
+    } else if (commandEquals("KEYPAD RAW STATUS")) {
+        serial.printf("[KEYPAD-RAW] enabled=%u layout_sha=%s\n",
+                      g_rawKeypadDiagnostic,
+                      numos::input::kProductionLayoutSha256);
+    } else if (commandEquals("KEYPAD HELP")) {
+        serial.println(
+            "[KEYPAD] commands: KEYPAD RAW ON | KEYPAD RAW OFF | "
+            "KEYPAD RAW STATUS");
+    }
+}
+
 } // namespace
 
 void waitForProductionBringupSerial() {
@@ -104,6 +185,52 @@ void serviceProductionBringupReporting() {
     }
     emitProductionBringupReport();
     g_reportDeliveredToConnectedHost = true;
+}
+
+void serviceProductionBringupKeypad(Keyboard& keyboard) {
+    auto& serial = NUMOS_SERIAL;
+    while (serial.available() > 0) {
+        const int value = serial.read();
+        if (value < 0) break;
+        const char ch = static_cast<char>(value);
+        if (ch == '\r' || ch == '\n') {
+            if (g_keypadCommandLength > 0) {
+                g_keypadCommand[g_keypadCommandLength] = '\0';
+                processKeypadCommand();
+                g_keypadCommandLength = 0;
+            }
+            continue;
+        }
+        if (g_keypadCommandLength + 1U >= sizeof(g_keypadCommand)) {
+            g_keypadCommandLength = 0;
+            continue;
+        }
+        g_keypadCommand[g_keypadCommandLength++] =
+            (ch >= 'a' && ch <= 'z') ? static_cast<char>(ch - 32) : ch;
+    }
+
+    if (!g_rawKeypadDiagnostic || !keyboard.initialized()) return;
+    bool changed = false;
+    for (uint8_t row = 0; row < 5; ++row) {
+        for (uint8_t column = 0; column < 10; ++column) {
+            const std::size_t index =
+                static_cast<std::size_t>(row) * 10U + column;
+            const auto& state = keyboard.diagnosticState(row, column);
+            if (state.raw != g_lastRaw[index]) {
+                emitRawRecord(keyboard, row, column,
+                              state.raw ? "raw-down" : "raw-up");
+                g_lastRaw[index] = state.raw;
+                changed = true;
+            }
+            if (state.debounced != g_lastDebounced[index]) {
+                emitRawRecord(keyboard, row, column,
+                              state.debounced ? "down" : "up");
+                g_lastDebounced[index] = state.debounced;
+                changed = true;
+            }
+        }
+    }
+    if (changed) emitActivePositions(keyboard);
 }
 
 } // namespace numos::hardware

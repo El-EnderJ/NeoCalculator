@@ -74,17 +74,21 @@ inline constexpr uint16_t SCREEN_HEIGHT =
     numos::hardware::kProductionBoard.display.logicalHeight;
 inline constexpr uint8_t SCREEN_ROTATION = 1;
 
-// Electrical matrix coordinates only. No visual position or KeyCode identity
-// exists for the production PCBA in this milestone.
+// Electrical coordinates remain independent from the generated visual/logical
+// map. GPIO ownership stays in BoardProfile.
 inline constexpr auto& KBD_ROW_PINS =
     numos::hardware::kProductionBoard.electricalMatrix.rowOutputs;
 inline constexpr auto& KBD_COL_PINS =
     numos::hardware::kProductionBoard.electricalMatrix.columnInputs;
 inline constexpr uint8_t KBD_ROWS = 5;
 inline constexpr uint8_t KBD_COLS = 10;
-inline constexpr uint8_t KBD_CONNECTED_COLS = 0;
+inline constexpr uint8_t KBD_CONNECTED_COLS = 10;
 
-#define NUMOS_PRODUCTION_KEYPAD_MAPPING_READY 0
+#ifndef NUMOS_PRODUCTION_KEYPAD_MAPPING_READY
+#define NUMOS_PRODUCTION_KEYPAD_MAPPING_READY 1
+#endif
+static_assert(NUMOS_PRODUCTION_KEYPAD_MAPPING_READY == 1,
+              "Production keypad mapping must be generated and validated");
 
 #if defined(TFT_MISO)
 static_assert(TFT_MISO == PIN_TFT_MISO, "TFT MISO/profile mismatch");

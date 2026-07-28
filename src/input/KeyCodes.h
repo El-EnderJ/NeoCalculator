@@ -114,6 +114,20 @@ enum class KeyCode : uint8_t {
     // del enum para no desplazar ningún valor existente.
     LESS,        // <
     GREATER,     // >
+
+    // Production Revision-C physical concepts. Append-only: all pre-existing
+    // numeric values above remain stable for serial scripts and the web ABI.
+    HOME,        // Return to launcher; distinct from legacy MODE
+    BACK,        // Contextual back/cancel without clearing input
+    VAR,         // Open variable picker; distinct from VAR_X
+    TOOLBOX,     // Open contextual toolbox
+    FRAC,        // Structured fraction template; distinct from division
+    DIVIDE,      // Physical mathematical/code division operator
+    SQUARE,      // Structured x^2 shortcut
+    FORMAT,      // Toggle/choose result representation
+    COMMA,       // Comma token
+    EQUAL,       // Equality token; distinct from FREE_EQ exact/decimal toggle
+    EXP,         // Scientific exponent (×10^x) template
 };
 
 // ── Mapeo de tecla numérica → valor de dígito ────────────────────────────
@@ -146,4 +160,7 @@ struct KeyEvent {
     KeyAction action = KeyAction::NONE;
     int       row    = -1;
     int       col    = -1;
+    // Optional generated semantic payload. Legacy backends leave these zeroed.
+    uint16_t  semanticId = 0;
+    const char* text = nullptr;
 };

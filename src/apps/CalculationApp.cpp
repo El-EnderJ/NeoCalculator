@@ -32,6 +32,7 @@
 
 #include "CalculationApp.h"
 #include "../input/KeyCodes.h"
+#include "../input/generated/ProductionKeypadMap.generated.h"
 #include "../Config.h"
 #include <cmath>
 #include <cstdlib>
@@ -258,6 +259,37 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 
     auto& km = vpam::KeyboardManager::instance();
 
+    const auto semantic =
+        static_cast<numos::input::SemanticId>(ev.semanticId);
+    if (semantic >= numos::input::SemanticId::alpha_A &&
+        semantic <= numos::input::SemanticId::alpha_Z) {
+        const char variable = static_cast<char>(
+            'A' + static_cast<int>(semantic) -
+            static_cast<int>(numos::input::SemanticId::alpha_A));
+        clearResult();
+        _cursor.insertVariable(variable);
+        _statusBar.update();
+        _mathCanvas.resetCursorBlink();
+        refreshExpression();
+        return;
+    }
+    if (semantic == numos::input::SemanticId::asin ||
+        semantic == numos::input::SemanticId::acos ||
+        semantic == numos::input::SemanticId::atan) {
+        clearResult();
+        const auto function =
+            semantic == numos::input::SemanticId::asin
+                ? vpam::FuncKind::ArcSin
+                : semantic == numos::input::SemanticId::acos
+                    ? vpam::FuncKind::ArcCos
+                    : vpam::FuncKind::ArcTan;
+        _cursor.insertFunction(function);
+        _statusBar.update();
+        _mathCanvas.resetCursorBlink();
+        refreshExpression();
+        return;
+    }
+
     // ── Modificadores: SHIFT / ALPHA / STO ──────────────────────────────
     if (ev.code == KeyCode::SHIFT) {
         km.pressShift();
@@ -347,12 +379,32 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
         case KeyCode::ADD: clearResult(); _cursor.insertOperator(vpam::OpKind::Add); break;
         case KeyCode::SUB: clearResult(); _cursor.insertOperator(vpam::OpKind::Sub); break;
         case KeyCode::MUL: clearResult(); _cursor.insertOperator(vpam::OpKind::Mul); break;
+        case KeyCode::DIVIDE: clearResult(); _cursor.insertOperator(vpam::OpKind::Div); break;
 
         // ── Estructuras VPAM ──
-        case KeyCode::DIV:    clearResult(); _cursor.insertFraction(); break;
+        case KeyCode::DIV:
+        case KeyCode::FRAC:   clearResult(); _cursor.insertFraction(); break;
         case KeyCode::POW:    clearResult(); _cursor.insertPower();    break;
+        case KeyCode::SQUARE:
+            clearResult();
+            _cursor.insertPower();
+            _cursor.insertDigit('2');
+            break;
         case KeyCode::SQRT:   clearResult(); _cursor.insertRoot();     break;
         case KeyCode::LPAREN: clearResult(); _cursor.insertParen();    break;
+        case KeyCode::RPAREN: clearResult(); _cursor.moveRight();      break;
+        case KeyCode::COMMA:  clearResult(); _cursor.insertVariable(','); break;
+        case KeyCode::EQUAL:
+            clearResult();
+            _cursor.insertOperator(vpam::OpKind::Eq);
+            break;
+        case KeyCode::EXP:
+            clearResult();
+            _cursor.insertOperator(vpam::OpKind::Mul);
+            _cursor.insertDigit('1');
+            _cursor.insertDigit('0');
+            _cursor.insertPower();
+            break;
 
         // ── Funciones trigonométricas / logarítmicas ──
         case KeyCode::SIN:
@@ -488,6 +540,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 
         // ── S⇔D: alternar exacto / decimal ──
         case KeyCode::FREE_EQ:
+        case KeyCode::FORMAT:
             if (_hasResult) {
                 toggleSD();
             }

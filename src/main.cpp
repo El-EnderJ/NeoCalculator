@@ -248,6 +248,12 @@ void setup() {
     // -- 7. SystemApp (carga launcher, LittleFS, etc.) --
     g_app.begin();
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // Deliberate GPIO ownership point. Safe startup leaves every matrix pin
+    // untouched until the complete generated mapping is compiled.
+    g_keypad.begin();
+#endif
+
     // -- 7b. Splash teardown (MT-03) --
     // Lifetime order: g_app.begin() already called _mainMenu.load(), which
     // starts a 200 ms FADE_IN screen animation (MainMenu.cpp). While that
@@ -290,6 +296,18 @@ void setup() {
 static unsigned long _lastHeartbeat = 0;
 
 void loop() {
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // WHY: the production scanner is serviced before any potentially long
+    // LVGL, serial, or CAS work. A row-select phase yields immediately, and
+    // the next loop iteration samples and restores that row before other
+    // subsystems run. Giac stalls therefore pause scanning with every row
+    // inactive instead of stretching an active-low phase.
+    g_keypad.update();
+    if (g_keypad.rowSelected()) {
+        return;
+    }
+#endif
+
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
     // O(1), non-blocking readiness check. If CDC was absent during setup(),
     // the bounded report is emitted once when a host later enumerates.
@@ -301,6 +319,10 @@ void loop() {
     }
 
     g_app.update();
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
+    numos::hardware::serviceProductionBringupKeypad(g_keypad);
+#endif
 
     KeyEvent serialEv;
     while (g_serial.pollEvent(serialEv)) {
@@ -322,7 +344,11 @@ void loop() {
 #endif
     }
 
+#if !NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // The CAM driver retains its historical polling cadence. Production uses
+    // the timestamped phased scanner and must revisit it without delay().
     delay(KEY_SCAN_INTERVAL_MS);
+#endif
 }
 
 #endif // ARDUINO

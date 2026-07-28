@@ -30,12 +30,175 @@
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 
-// The final PCB electrical coordinates are known, but switch-to-KeyCode
-// identity is not. Production therefore compiles a zero-state, zero-I/O
-// keyboard seam until the audited logical map is supplied.
-void Keyboard::begin() {}
-void Keyboard::update() {}
-bool Keyboard::pollEvent(KeyEvent&) { return false; }
+#include "../hardware/BoardProfile.h"
+#include "../input/KeySemanticResolver.h"
+
+#if !defined(NUMOS_PRODUCTION_KEYPAD_MAPPING_READY) || \
+    !NUMOS_PRODUCTION_KEYPAD_MAPPING_READY
+#error "Production keyboard requires the generated and validated mapping"
+#endif
+
+namespace {
+
+bool elapsedAtLeast(const uint32_t now,
+                    const uint32_t then,
+                    const uint32_t duration) {
+    return static_cast<uint32_t>(now - then) >= duration;
+}
+
+bool deadlineReached(const uint32_t now, const uint32_t deadline) {
+    return static_cast<int32_t>(now - deadline) >= 0;
+}
+
+int levelFor(const numos::hardware::ActiveLevel level) {
+    return level == numos::hardware::ActiveLevel::Low ? LOW : HIGH;
+}
+
+} // namespace
+
+void Keyboard::driveAllRowsInactive() {
+    const auto& matrix =
+        numos::hardware::kProductionBoard.electricalMatrix;
+    const int inactive = levelFor(matrix.inactiveRowLevel);
+    for (const int gpio : matrix.rowOutputs) {
+        digitalWrite(gpio, inactive);
+    }
+}
+
+void Keyboard::begin() {
+    const auto& matrix =
+        numos::hardware::kProductionBoard.electricalMatrix;
+    const int inactive = levelFor(matrix.inactiveRowLevel);
+
+    // WHY: preload every output latch before output enable so no row can emit
+    // an active-low glitch while GPIO ownership transfers to the scanner.
+    for (const int gpio : matrix.rowOutputs) {
+        digitalWrite(gpio, inactive);
+    }
+    for (const int gpio : matrix.rowOutputs) {
+        pinMode(gpio, OUTPUT);
+        digitalWrite(gpio, inactive);
+    }
+    for (const int gpio : matrix.columnInputs) {
+        pinMode(gpio, INPUT_PULLUP);
+    }
+
+    _productionScanner.reset();
+    _currentRow = 0;
+    _scanPhase = ScanPhase::WaitingToSelect;
+    _nextSelectUs = micros();
+    _scanStartedUs = _nextSelectUs;
+    _phaseStartedUs = _nextSelectUs;
+    _initialized = true;
+    _enabled = true;
+}
+
+void Keyboard::selectCurrentRow() {
+    const auto& matrix =
+        numos::hardware::kProductionBoard.electricalMatrix;
+    driveAllRowsInactive();
+    const uint8_t pinIndex = matrix.rowOrder[_currentRow];
+    digitalWrite(matrix.rowOutputs[pinIndex],
+                 levelFor(matrix.selectedRowLevel));
+}
+
+uint16_t Keyboard::sampleColumns() const {
+    const auto& matrix =
+        numos::hardware::kProductionBoard.electricalMatrix;
+    const int pressed = levelFor(matrix.pressedColumnLevel);
+    uint16_t mask = 0;
+    for (uint8_t logicalColumn = 0; logicalColumn < COLS; ++logicalColumn) {
+        const uint8_t pinIndex = matrix.columnOrder[logicalColumn];
+        if (digitalRead(matrix.columnInputs[pinIndex]) == pressed) {
+            mask |= static_cast<uint16_t>(1U << logicalColumn);
+        }
+    }
+    return mask;
+}
+
+void Keyboard::update() {
+    if (!_initialized || !_enabled) return;
+    const auto& matrix =
+        numos::hardware::kProductionBoard.electricalMatrix;
+    const uint32_t nowUs = micros();
+
+    if (_scanPhase == ScanPhase::WaitingToSelect) {
+        if (!deadlineReached(nowUs, _nextSelectUs)) return;
+        if (_currentRow == 0) _scanStartedUs = nowUs;
+        selectCurrentRow();
+        _phaseStartedUs = nowUs;
+        _scanPhase = ScanPhase::Settling;
+        return;
+    }
+
+    if (!elapsedAtLeast(nowUs, _phaseStartedUs,
+                        matrix.settlingDurationUs)) {
+        return;
+    }
+
+    const uint16_t pressedColumns = sampleColumns();
+    driveAllRowsInactive();
+    _productionScanner.ingestRow(
+        _currentRow, pressedColumns, millis());
+
+    ++_currentRow;
+    if (_currentRow == ROWS) {
+        _currentRow = 0;
+        _nextSelectUs = _scanStartedUs + matrix.fullScanIntervalUs;
+        if (deadlineReached(nowUs, _nextSelectUs)) {
+            _nextSelectUs = nowUs;
+        }
+    } else {
+        _nextSelectUs = nowUs;
+    }
+    _scanPhase = ScanPhase::WaitingToSelect;
+}
+
+bool Keyboard::pollEvent(KeyEvent& event) {
+    return _productionScanner.pollEvent(event);
+}
+
+void Keyboard::setEnabled(const bool enabled) {
+    if (!_initialized || _enabled == enabled) return;
+    if (!enabled) {
+        driveAllRowsInactive();
+        _productionScanner.forceReleaseAll(millis());
+        numos::input::KeySemanticResolver::reset();
+        _enabled = false;
+        return;
+    }
+    driveAllRowsInactive();
+    _currentRow = 0;
+    _scanPhase = ScanPhase::WaitingToSelect;
+    _nextSelectUs = micros();
+    _enabled = true;
+}
+
+void Keyboard::forceReleaseAll() {
+    if (!_initialized) return;
+    driveAllRowsInactive();
+    _productionScanner.forceReleaseAll(millis());
+    numos::input::KeySemanticResolver::reset();
+}
+
+bool Keyboard::initialized() const { return _initialized; }
+bool Keyboard::enabled() const { return _enabled; }
+bool Keyboard::rowSelected() const {
+    return _initialized && _enabled && _scanPhase == ScanPhase::Settling;
+}
+uint32_t Keyboard::overflowCount() const {
+    return _productionScanner.overflowCount();
+}
+
+const numos::input::ProductionKeyState& Keyboard::diagnosticState(
+    const uint8_t row,
+    const uint8_t column) const {
+    return _productionScanner.state(row, column);
+}
+
+uint16_t Keyboard::diagnosticActiveColumns(const uint8_t row) const {
+    return _productionScanner.activeColumns(row);
+}
 
 #else
 
@@ -202,5 +365,12 @@ void Keyboard::pushEvent(const KeyEvent& ev) {
     _queue[_qTail] = ev;
     _qTail = nextTail;
 }
+
+void Keyboard::setEnabled(bool) {}
+void Keyboard::forceReleaseAll() {}
+bool Keyboard::initialized() const { return true; }
+bool Keyboard::enabled() const { return CONNECTED_COLS > 0; }
+bool Keyboard::rowSelected() const { return false; }
+uint32_t Keyboard::overflowCount() const { return 0; }
 
 #endif

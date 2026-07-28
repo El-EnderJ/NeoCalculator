@@ -20,6 +20,7 @@
  * since LV_USE_CANVAS / LV_USE_TABLE / LV_USE_TABVIEW = 0.
  */
 #include "GrapherApp.h"
+#include "../input/generated/ProductionKeypadMap.generated.h"
 #include "../utils/HwUxProbe.h"
 #include <cstring>
 #include <cmath>
@@ -1198,6 +1199,7 @@ static void serializeNode(const vpam::MathNode* node, char* buf, int& pos, int m
                 case OpKind::Add: c = '+'; break;
                 case OpKind::Sub: c = '-'; break;
                 case OpKind::Mul: c = '*'; break;
+                case OpKind::Div: c = '/'; break;
                 // Phase 9F: the '=' of a template is a NodeRelation (OpKind::Eq),
                 // NOT a NodeVariable like manual FREE_EQ entry. Without this case it
                 // fell through to '+', so "y=2*x+3" serialized as "y+2*x+3": no '='
@@ -3119,6 +3121,36 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
     };
     static constexpr int MAX_NEST = 8;
 
+    const auto semantic =
+        static_cast<numos::input::SemanticId>(ev.semanticId);
+    if (semantic >= numos::input::SemanticId::alpha_A &&
+        semantic <= numos::input::SemanticId::alpha_Z) {
+        const char variable = static_cast<char>(
+            'A' + static_cast<int>(semantic) -
+            static_cast<int>(numos::input::SemanticId::alpha_A));
+        cur.insertVariable(variable);
+        _exprCanvas[idx].resetCursorBlink();
+        refreshVPAMExpr(idx);
+        refreshTemplateButtons();
+        return;
+    }
+    if (cursorDepth() < MAX_NEST &&
+        (semantic == numos::input::SemanticId::asin ||
+         semantic == numos::input::SemanticId::acos ||
+         semantic == numos::input::SemanticId::atan)) {
+        const auto function =
+            semantic == numos::input::SemanticId::asin
+                ? FuncKind::ArcSin
+                : semantic == numos::input::SemanticId::acos
+                    ? FuncKind::ArcCos
+                    : FuncKind::ArcTan;
+        cur.insertFunction(function);
+        _exprCanvas[idx].resetCursorBlink();
+        refreshVPAMExpr(idx);
+        refreshTemplateButtons();
+        return;
+    }
+
     switch (ev.code) {
         // ── Digits ──
         case KeyCode::NUM_0: cur.insertDigit('0'); break;
@@ -3137,6 +3169,7 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
         case KeyCode::ADD: cur.insertOperator(OpKind::Add); break;
         case KeyCode::SUB: cur.insertOperator(OpKind::Sub); break;
         case KeyCode::MUL: cur.insertOperator(OpKind::Mul); break;
+        case KeyCode::DIVIDE: cur.insertOperator(OpKind::Div); break;
         // Both the keypad minus (NEG) and the dedicated (−) sign key (NEGATE)
         // insert a minus; at expression start the parser reads it as unary, so
         // "−x" plots y=−x. NEGATE was previously unhandled here (a no-op).
@@ -3144,8 +3177,17 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
         case KeyCode::NEGATE: cur.insertOperator(OpKind::Sub); break;
 
         // ── VPAM structures (depth-limited) ──
-        case KeyCode::DIV:    if (cursorDepth() < MAX_NEST) cur.insertFraction(); else changed = false; break;
+        case KeyCode::DIV:
+        case KeyCode::FRAC:   if (cursorDepth() < MAX_NEST) cur.insertFraction(); else changed = false; break;
         case KeyCode::POW:    if (cursorDepth() < MAX_NEST) cur.insertPower();    else changed = false; break;
+        case KeyCode::SQUARE:
+            if (cursorDepth() < MAX_NEST) {
+                cur.insertPower();
+                cur.insertDigit('2');
+            } else {
+                changed = false;
+            }
+            break;
         case KeyCode::SQRT:   if (cursorDepth() < MAX_NEST) cur.insertRoot();     else changed = false; break;
         case KeyCode::LPAREN: if (cursorDepth() < MAX_NEST) cur.insertParen();    else changed = false; break;
 
@@ -3165,7 +3207,9 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
 
         // ── Equation sign (FREE_EQ = '=' key) ──
         // VPAM renders '=' via NodeOperator with OpKind::Eq (MathClass::REL for TeX spacing).
-        case KeyCode::FREE_EQ: cur.insertVariable('='); break;
+        case KeyCode::FREE_EQ:
+        case KeyCode::EQUAL: cur.insertOperator(OpKind::Eq); break;
+        case KeyCode::COMMA: cur.insertVariable(','); break;
 
         // ── Inequality operators (Grapher inecuaciones) ──
         // Inserted as a plain NodeVariable carrying the '<'/'>' glyph; serializeNode

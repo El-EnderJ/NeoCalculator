@@ -27,6 +27,11 @@ export const NUMOS_LOGICAL_KEYS = Object.freeze([
   ["ALPHA_D", 62, "Alpha D"], ["ALPHA_E", 63, "Alpha E"], ["ALPHA_F", 64, "Alpha F"],
   ["NEGATE", 65, "Negate"], ["FACT", 66, "Factor"], ["LESS", 67, "Less than"],
   ["GREATER", 68, "Greater than"],
+  ["HOME", 69, "Home"], ["BACK", 70, "Back"], ["VAR", 71, "Variables"],
+  ["TOOLBOX", 72, "Toolbox"], ["FRAC", 73, "Fraction template"],
+  ["DIVIDE", 74, "Divide"], ["SQUARE", 75, "Square"],
+  ["FORMAT", 76, "Format result"], ["COMMA", 77, "Comma"],
+  ["EQUAL", 78, "Equals"], ["EXP", 79, "Scientific exponent"],
 ].map(([id, code, ariaLabel]) => Object.freeze({
   id,
   code,
@@ -49,13 +54,15 @@ const byId = new Map(NUMOS_LOGICAL_KEYS.map((key) => [key.id, key]));
 // Functional web groupings only. Their ordering is a touch-UI choice and has
 // no relationship to CAM/WROOM rows, columns, pins, or the production PCBA.
 export const NUMOS_WEB_KEYPAD_LAYOUT = Object.freeze([
-  ["system", ["SHIFT", "ALPHA", "MODE", "SETUP", "AC", "DEL", "ENTER"]],
+  ["system", ["SHIFT", "ALPHA", "HOME", "BACK", "VAR", "TOOLBOX",
+    "FORMAT", "MODE", "SETUP", "AC", "DEL", "ENTER"]],
   ["navigation", ["LEFT", "UP", "DOWN", "RIGHT", "F1", "F2", "F3", "F4", "F5"]],
   ["apps", ["GRAPH", "TABLE", "ZOOM", "TRACE", "SHOW_STEPS", "SOLVE", "EXE"]],
   ["numbers", ["NUM_7", "NUM_8", "NUM_9", "NUM_4", "NUM_5", "NUM_6",
     "NUM_1", "NUM_2", "NUM_3", "NUM_0", "DOT"]],
-  ["operators", ["ADD", "SUB", "MUL", "DIV", "POW", "SQRT", "LPAREN",
-    "RPAREN", "FREE_EQ", "NEG", "NEGATE", "LESS", "GREATER"]],
+  ["operators", ["ADD", "SUB", "MUL", "DIV", "DIVIDE", "FRAC", "POW",
+    "SQUARE", "SQRT", "LPAREN", "RPAREN", "COMMA", "EQUAL", "EXP",
+    "FREE_EQ", "NEG", "NEGATE", "LESS", "GREATER"]],
   ["functions", ["SIN", "COS", "TAN", "LN", "LOG", "LOG_BASE", "FACT",
     "CONST_PI", "CONST_E"]],
   ["variables", ["VAR_X", "VAR_Y", "ANS", "PREANS", "STO", "ON",
@@ -65,4 +72,4 @@ export const NUMOS_WEB_KEYPAD_LAYOUT = Object.freeze([
   keys: Object.freeze(ids.map((id) => byId.get(id))),
 })));
 
-export const NUMOS_LOGICAL_KEY_MAX = 68;
+export const NUMOS_LOGICAL_KEY_MAX = 79;

@@ -63,9 +63,13 @@ struct DisplayProfile {
 struct MatrixElectricalProfile {
     std::array<int8_t, 5> rowOutputs;
     std::array<int8_t, 10> columnInputs;
+    std::array<uint8_t, 5> rowOrder;
+    std::array<uint8_t, 10> columnOrder;
     ActiveLevel selectedRowLevel;
     ActiveLevel inactiveRowLevel;
     ActiveLevel pressedColumnLevel;
+    uint32_t fullScanIntervalUs;
+    uint32_t settlingDurationUs;
     bool columnsUseInternalPullups;
     bool perKeyDiodesFitted;
     bool logicalMappingReady;
@@ -119,12 +123,16 @@ inline constexpr ProductionBoardProfile kProductionBoard = {
     {
         {9, 21, 47, 48, 11},
         {4, 5, 6, 7, 15, 16, 17, 18, 8, 10},
+        {0, 1, 2, 3, 4},
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
         ActiveLevel::Low,
         ActiveLevel::High,
         ActiveLevel::Low,
+        5'000U,
+        10U,
         true,
         true,
-        false
+        true
     },
     {"native USB D-", 19, Direction::Reserved, ActiveLevel::None, Pull::None},
     {"native USB D+", 20, Direction::Reserved, ActiveLevel::None, Pull::None},
@@ -216,7 +224,7 @@ static_assert(!contains(kProductionNormalPeripheralGpios, 12) &&
               !contains(kProductionNormalPeripheralGpios, 36) &&
               !contains(kProductionNormalPeripheralGpios, 37),
               "Milestone-reserved unconnected GPIOs must remain unassigned");
-static_assert(!kProductionBoard.electricalMatrix.logicalMappingReady);
+static_assert(kProductionBoard.electricalMatrix.logicalMappingReady);
 static_assert(!kProductionBoard.capabilities.batteryAdc);
 static_assert(!kProductionBoard.capabilities.softwareRegulatorControl);
 static_assert(!kProductionBoard.capabilities.chargerStatusGpios);

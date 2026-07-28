@@ -30,6 +30,10 @@
 #include "input/KeyboardManager.h"
 #include "utils/MemProbe.h"
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#include "input/KeySemanticResolver.h"
+#endif
+
 #ifdef ARDUINO
 #include <esp_sleep.h>
 #include <LittleFS.h>
@@ -254,7 +258,9 @@ void SystemApp::update() {
         Serial.println("[RTM] Deferred teardown complete.");
     }
 
+#if !NUMOS_BOARD_PROD_WROOM1U_N16R8
     _keypad.update();
+#endif
 
     KeyEvent ev;
     while (_keypad.pollEvent(ev)) {
@@ -461,9 +467,38 @@ void SystemApp::renderMenu() {
 // ═════════════════════════════════════════════════
 // handleKey() — Global input dispatcher
 // ═════════════════════════════════════════════════
-void SystemApp::handleKey(const KeyEvent &ev) {
+void SystemApp::handleKey(const KeyEvent &rawEvent) {
     // Only act on PRESS and REPEAT (no duplicate processing)
-    if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
+    if (rawEvent.action != KeyAction::PRESS &&
+        rawEvent.action != KeyAction::REPEAT) {
+        return;
+    }
+
+    KeyEvent ev = rawEvent;
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // WHY: electrical scanning only emits the stable physical KeyCode. Plane
+    // and context resolution stays here at the shared application seam, so
+    // editor-specific strings never enter the GPIO scanner.
+    if (ev.row >= 0) {
+        numos::input::InputContext context =
+            numos::input::InputContext::Math;
+        if (_mode == Mode::APP_PYTHON ||
+            _mode == Mode::APP_NEO_LANGUAGE ||
+            _mode == Mode::APP_CIRCUIT_CORE) {
+            context = numos::input::InputContext::Code;
+        }
+        const auto resolved = numos::input::KeySemanticResolver::resolve(
+            ev.code, context, ev.action);
+        auto& modifierStatus = vpam::KeyboardManager::instance();
+        _shiftActive = modifierStatus.isShift();
+        _alphaActive = modifierStatus.isAlpha();
+        if (!resolved.dispatch) return;
+        ev.code = resolved.code;
+        ev.semanticId = static_cast<uint16_t>(resolved.semantic);
+        ev.text = resolved.text;
+    }
+#endif
 
     // Debug: log key events de teclado físico (row>=0) para detectar ghosts.
     // Eventos de SerialBridge (row=-1) ya se logean en SerialBridge.cpp.
@@ -473,6 +508,21 @@ void SystemApp::handleKey(const KeyEvent &ev) {
     }
 
     auto& km = vpam::KeyboardManager::instance();
+
+    // Production HOME is a hard navigation boundary: release all logical
+    // keys and clear modifiers before changing the active application.
+    if (ev.code == KeyCode::HOME) {
+        _keypad.forceReleaseAll();
+        km.reset();
+        _shiftActive = false;
+        _alphaActive = false;
+        if (_mode != Mode::MENU) returnToMenu();
+        return;
+    }
+    if (ev.code == KeyCode::BACK) {
+        if (_mode != Mode::MENU) returnToMenu();
+        return;
+    }
 
     // ── SHIFT + AC → Apagado del sistema (DESACTIVADO mientras USB conectado) ──
     // Deep sleep deshabilitado temporalmente: con cable USB conectado
@@ -1057,7 +1107,9 @@ void SystemApp::renderGraphMode() {
 void SystemApp::powerOff() {
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     // Production OFF semantics are deliberately deferred until the physical
-    // keypad/wake audit. The only currently safe action is a dark display.
+    // keypad/wake audit. Restore the matrix idle state and release all logical
+    // input before the only currently safe action: a dark display.
+    _keypad.setEnabled(false);
     _display.forceBacklightOff();
     Serial.println("[SYSTEM] Production OFF deferred: backlight off; no wake source selected");
     return;

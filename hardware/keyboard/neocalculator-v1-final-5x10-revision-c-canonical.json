@@ -1,0 +1,2886 @@
+{
+  "version": 3,
+  "schema": "neocalculator.keyboard-layout",
+  "name": "NeoCalculator v1 final 5x10 · revision C canonical",
+  "matrix": {
+    "visualRows": 10,
+    "visualCols": 5,
+    "electricalMapping": "separate-from-visual-layout"
+  },
+  "modifierPolicy": {
+    "precedence": [
+      "shiftAlpha",
+      "shift",
+      "alpha",
+      "primary"
+    ],
+    "shift": {
+      "mode": "one-shot-with-lock",
+      "lockGesture": "second-press-or-long-press"
+    },
+    "alpha": {
+      "mode": "one-shot-with-lock",
+      "lockGesture": "second-press-or-long-press"
+    },
+    "combined": {
+      "plane": "shiftAlpha",
+      "math": "ALPHA remains uppercase; SHIFT+ALPHA uses explicit combined definitions or SHIFT precedence",
+      "code": "ALPHA letters are lowercase; SHIFT+ALPHA letters are uppercase"
+    },
+    "nonConsumingActions": [
+      "cursor_up",
+      "cursor_down",
+      "cursor_left",
+      "cursor_right",
+      "cursor_page_up",
+      "cursor_page_down",
+      "cursor_line_home",
+      "cursor_line_end",
+      "go_home",
+      "go_back",
+      "open_variable_picker",
+      "open_toolbox",
+      "format_result",
+      "delete",
+      "clear",
+      "execute",
+      "approximate"
+    ],
+    "states": [
+      "off",
+      "once",
+      "locked"
+    ],
+    "stateTransitions": {
+      "shortPressShift": {
+        "off": "once",
+        "once": "locked",
+        "locked": "off"
+      },
+      "longPressShift": {
+        "off": "locked",
+        "once": "locked",
+        "locked": "off"
+      },
+      "shortPressAlpha": {
+        "off": "once",
+        "once": "locked",
+        "locked": "off"
+      },
+      "longPressAlpha": {
+        "off": "locked",
+        "once": "locked",
+        "locked": "off"
+      }
+    },
+    "planeSelection": [
+      {
+        "when": {
+          "shift": [
+            "once",
+            "locked"
+          ],
+          "alpha": [
+            "once",
+            "locked"
+          ]
+        },
+        "plane": "shiftAlpha"
+      },
+      {
+        "when": {
+          "shift": [
+            "once",
+            "locked"
+          ],
+          "alpha": [
+            "off"
+          ]
+        },
+        "plane": "shift"
+      },
+      {
+        "when": {
+          "shift": [
+            "off"
+          ],
+          "alpha": [
+            "once",
+            "locked"
+          ]
+        },
+        "plane": "alpha"
+      },
+      {
+        "when": {
+          "shift": [
+            "off"
+          ],
+          "alpha": [
+            "off"
+          ]
+        },
+        "plane": "primary"
+      }
+    ],
+    "consumption": {
+      "rule": "A plane consumes only the one-shot modifiers it actually uses when the resolved key definition has consumesModifier=true. Locked modifiers persist.",
+      "shiftPlaneConsumes": [
+        "shift"
+      ],
+      "alphaPlaneConsumes": [
+        "alpha"
+      ],
+      "shiftAlphaPlaneConsumes": [
+        "shift",
+        "alpha"
+      ],
+      "primaryPlaneConsumes": []
+    },
+    "clearOnActions": [
+      "go_home",
+      "power_off",
+      "shutdown",
+      "reset",
+      "force_release_all",
+      "boot_recovery",
+      "fatal_error_recovery"
+    ],
+    "preserveOnActions": [
+      "approximate",
+      "clear",
+      "cursor_down",
+      "cursor_left",
+      "cursor_line_end",
+      "cursor_line_home",
+      "cursor_page_down",
+      "cursor_page_up",
+      "cursor_right",
+      "cursor_up",
+      "delete",
+      "execute",
+      "format_result",
+      "go_back",
+      "go_home",
+      "open_toolbox",
+      "open_variable_picker"
+    ],
+    "lostReleasePolicy": "Modifier state is logical and press-triggered; any scanner force-release clears physical held state. HOME, shutdown, reset and recovery clear both modifiers."
+  },
+  "legend": {
+    "primary": "main keycap legend",
+    "shift": "amber upper-left printed legend",
+    "alpha": "orange upper-right printed legend",
+    "shiftAlpha": "combined logical plane; not printed as a fourth physical legend"
+  },
+  "notes": [
+    "Visual coordinates are not the production PCBA electrical row/column mapping.",
+    "Toolbox is contextual; SHIFT+Toolbox opens the full searchable catalog.",
+    "VAR opens the quick variable picker; SHIFT+VAR opens the variable manager.",
+    "FORMAT changes result representation; SHIFT+FORMAT opens TABLE.",
+    "The hidden SHIFT+1…6 actions remain context-sensitive soft keys but are not printed on the production keycaps.",
+    "SHIFT+LEFT/RIGHT jump to the beginning/end of the current expression; SHIFT+UP/DOWN page through long views using the compact ↥ and ↧ legends.",
+    "The contextual x,t,θ,n key inserts the active independent variable; SHIFT inserts y.",
+    "ALPHA programming punctuation includes {, }, #, ⎵, _, quotes, @, backslash, ampersand and vertical bar.",
+    "Code context maps the mathematical power key to ^, multiply to *, divide to /, and shifted comparisons to !=, <= and >=.",
+    "ALPHA letters are uppercase mathematical variables; in code context ALPHA produces lowercase and SHIFT+ALPHA produces uppercase.",
+    "SHIFT+AC enters the normal deep-sleep OFF state; the separate hardware switch performs true power isolation.",
+    "Hyperbolic trigonometric functions live in the trig long-press family and Toolbox rather than on permanent printed legends."
+  ],
+  "keys": [
+    {
+      "id": "r0c0",
+      "visual": {
+        "row": 0,
+        "col": 0
+      },
+      "category": "modifier",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "SHIFT",
+          "kind": "modifier",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "shift_once",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "",
+          "kind": "modifier",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "shift_lock",
+          "printLegend": false
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "modifier",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "shift_lock",
+          "printLegend": false
+        }
+      },
+      "notes": "SHIFT is one-shot. A second press or long press locks it; lock status is shown on-screen, not printed as a secondary legend."
+    },
+    {
+      "id": "r0c1",
+      "visual": {
+        "row": 0,
+        "col": 1
+      },
+      "category": "modifier",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "ALPHA",
+          "kind": "modifier",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "alpha_once",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "",
+          "kind": "modifier",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "alpha_once",
+          "printLegend": false
+        },
+        "alpha": {
+          "label": "",
+          "kind": "modifier",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "alpha_lock",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "modifier",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "alpha_lock",
+          "printLegend": false
+        }
+      },
+      "notes": "ALPHA is one-shot. A second press or long press locks it. With SHIFT also armed, the combined SHIFT+ALPHA plane is used."
+    },
+    {
+      "id": "r0c2",
+      "visual": {
+        "row": 0,
+        "col": 2
+      },
+      "category": "navigation",
+      "repeatPolicy": "hold",
+      "planes": {
+        "primary": {
+          "label": "↑",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "cursor_up",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "↥",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "cursor_page_up",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      },
+      "notes": "SHIFT pages upward in long history, menus, editors, or result views."
+    },
+    {
+      "id": "r0c3",
+      "visual": {
+        "row": 0,
+        "col": 3
+      },
+      "category": "system",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "HOME",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "go_home",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "SETUP",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "open_settings",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r0c4",
+      "visual": {
+        "row": 0,
+        "col": 4
+      },
+      "category": "system",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "BACK",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "go_back",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      },
+      "notes": "BACK has no separate SHIFT function; an armed modifier is preserved."
+    },
+    {
+      "id": "r1c0",
+      "visual": {
+        "row": 1,
+        "col": 0
+      },
+      "category": "system",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "VAR",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "open_variable_picker",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "MGR",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "open_variable_manager",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r1c1",
+      "visual": {
+        "row": 1,
+        "col": 1
+      },
+      "category": "navigation",
+      "repeatPolicy": "hold",
+      "planes": {
+        "primary": {
+          "label": "←",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "cursor_left",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "↤",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "cursor_line_home",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      },
+      "notes": "SHIFT jumps to the beginning of the current expression or line."
+    },
+    {
+      "id": "r1c2",
+      "visual": {
+        "row": 1,
+        "col": 2
+      },
+      "category": "navigation",
+      "repeatPolicy": "hold",
+      "planes": {
+        "primary": {
+          "label": "↓",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "cursor_down",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "↧",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "cursor_page_down",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      },
+      "notes": "SHIFT pages downward in long history, menus, editors, or result views."
+    },
+    {
+      "id": "r1c3",
+      "visual": {
+        "row": 1,
+        "col": 3
+      },
+      "category": "navigation",
+      "repeatPolicy": "hold",
+      "planes": {
+        "primary": {
+          "label": "→",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "cursor_right",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "↦",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "cursor_line_end",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      },
+      "notes": "SHIFT jumps to the end of the current expression or line."
+    },
+    {
+      "id": "r1c4",
+      "visual": {
+        "row": 1,
+        "col": 4
+      },
+      "category": "system",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "TOOLS",
+          "kind": "command",
+          "legendType": "icon",
+          "consumesModifier": false,
+          "action": "open_toolbox",
+          "iconId": "toolbox",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "CATALOG",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "open_catalog",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      },
+      "notes": "Contextual toolbox; SHIFT opens the complete searchable catalog."
+    },
+    {
+      "id": "r2c0",
+      "visual": {
+        "row": 2,
+        "col": 0
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "x,t,θ,n",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "x",
+          "semanticId": "context_independent_variable",
+          "contextValues": [
+            "x",
+            "t",
+            "theta",
+            "n"
+          ],
+          "printLegend": false
+        },
+        "shift": {
+          "label": "y",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "y",
+          "semanticId": "variable_y",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "A",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "A",
+          "semanticId": "alpha_A",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "a",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "a",
+              "semanticId": "code_a"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "A",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "A",
+          "semanticId": "code_A",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      },
+      "notes": "Primary inserts the context-selected independent variable (x/t/θ/n); SHIFT inserts y."
+    },
+    {
+      "id": "r2c1",
+      "visual": {
+        "row": 2,
+        "col": 1
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "\\frac{\\square}{\\square}",
+          "kind": "insert",
+          "legendType": "math",
+          "consumesModifier": true,
+          "insert": "\\frac{¶}{}",
+          "semanticId": "fraction_template",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "\\square\\frac{\\square}{\\square}",
+          "kind": "insert",
+          "legendType": "math",
+          "consumesModifier": true,
+          "insert": "{¶}\\frac{}{}",
+          "semanticId": "mixed_fraction_template",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "B",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "B",
+          "semanticId": "alpha_B",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "b",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "b",
+              "semanticId": "code_b"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "B",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "B",
+          "semanticId": "code_B",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      },
+      "notes": "Math legends show the natural fraction and mixed-number templates."
+    },
+    {
+      "id": "r2c2",
+      "visual": {
+        "row": 2,
+        "col": 2
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "\\sqrt{\\square}",
+          "kind": "insert",
+          "legendType": "math",
+          "consumesModifier": true,
+          "insert": "\\sqrt{¶}",
+          "semanticId": "square_root",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "\\lvert\\square\\rvert",
+          "kind": "insert",
+          "legendType": "math",
+          "consumesModifier": true,
+          "insert": "\\left|¶\\right|",
+          "semanticId": "absolute_value",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "C",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "C",
+          "semanticId": "alpha_C",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "c",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "c",
+              "semanticId": "code_c"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "C",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "C",
+          "semanticId": "code_C",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      },
+      "notes": "SHIFT inserts an absolute-value template instead of the redundant cube-root shortcut."
+    },
+    {
+      "id": "r2c3",
+      "visual": {
+        "row": 2,
+        "col": 3
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "x^{\\square}",
+          "kind": "insert",
+          "legendType": "math",
+          "consumesModifier": true,
+          "insert": "^{¶}",
+          "semanticId": "power_template",
+          "printLegend": false,
+          "contextOverrides": {
+            "code": {
+              "label": "^",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "^",
+              "semanticId": "code_power_caret"
+            }
+          }
+        },
+        "shift": {
+          "label": "\\sqrt[\\square]{\\,}",
+          "kind": "insert",
+          "legendType": "math",
+          "consumesModifier": true,
+          "insert": "\\sqrt[¶]{}",
+          "semanticId": "nth_root_template",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "D",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "D",
+          "semanticId": "alpha_D",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "d",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "d",
+              "semanticId": "code_d"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "D",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "D",
+          "semanticId": "code_D",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      },
+      "notes": "General power is primary; SHIFT inserts an editable-index root."
+    },
+    {
+      "id": "r2c4",
+      "visual": {
+        "row": 2,
+        "col": 4
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "x^2",
+          "kind": "insert",
+          "legendType": "math",
+          "consumesModifier": true,
+          "insert": "^{2}",
+          "semanticId": "square",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "x^{-1}",
+          "kind": "insert",
+          "legendType": "math",
+          "consumesModifier": true,
+          "insert": "^{-1}",
+          "semanticId": "reciprocal",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "E",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "E",
+          "semanticId": "alpha_E",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "e",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "e",
+              "semanticId": "code_e"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "E",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "E",
+          "semanticId": "code_E",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      },
+      "notes": "Square is primary; SHIFT inserts the reciprocal exponent −1."
+    },
+    {
+      "id": "r3c0",
+      "visual": {
+        "row": 3,
+        "col": 0
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "log",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\log(¶)",
+          "semanticId": "log10",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "10ˣ",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "10^{¶}",
+          "semanticId": "pow10",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "F",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "F",
+          "semanticId": "alpha_F",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "f",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "f",
+              "semanticId": "code_f"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "F",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "F",
+          "semanticId": "code_F",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r3c1",
+      "visual": {
+        "row": 3,
+        "col": 1
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "ln",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\ln(¶)",
+          "semanticId": "ln",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "eˣ",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "e^{¶}",
+          "semanticId": "pow_e",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "G",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "G",
+          "semanticId": "alpha_G",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "g",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "g",
+              "semanticId": "code_g"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "G",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "G",
+          "semanticId": "code_G",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r3c2",
+      "visual": {
+        "row": 3,
+        "col": 2
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "sin",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\sin(¶)",
+          "semanticId": "sin",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "sin⁻¹",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\sin^{-1}(¶)",
+          "semanticId": "asin",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "H",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "H",
+          "semanticId": "alpha_H",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "h",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "h",
+              "semanticId": "code_h"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "H",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "H",
+          "semanticId": "code_H",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      },
+      "longPress": {
+        "action": "open_trig_family",
+        "family": "sin",
+        "items": [
+          "sin",
+          "asin",
+          "sinh",
+          "asinh"
+        ]
+      }
+    },
+    {
+      "id": "r3c3",
+      "visual": {
+        "row": 3,
+        "col": 3
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "cos",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\cos(¶)",
+          "semanticId": "cos",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "cos⁻¹",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\cos^{-1}(¶)",
+          "semanticId": "acos",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "I",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "I",
+          "semanticId": "alpha_I",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "i",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "i",
+              "semanticId": "code_i"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "I",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "I",
+          "semanticId": "code_I",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      },
+      "longPress": {
+        "action": "open_trig_family",
+        "family": "cos",
+        "items": [
+          "cos",
+          "acos",
+          "cosh",
+          "acosh"
+        ]
+      }
+    },
+    {
+      "id": "r3c4",
+      "visual": {
+        "row": 3,
+        "col": 4
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "tan",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\tan(¶)",
+          "semanticId": "tan",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "tan⁻¹",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\tan^{-1}(¶)",
+          "semanticId": "atan",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "J",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "J",
+          "semanticId": "alpha_J",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "j",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "j",
+              "semanticId": "code_j"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "J",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "J",
+          "semanticId": "code_J",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      },
+      "longPress": {
+        "action": "open_trig_family",
+        "family": "tan",
+        "items": [
+          "tan",
+          "atan",
+          "tanh",
+          "atanh"
+        ]
+      }
+    },
+    {
+      "id": "r4c0",
+      "visual": {
+        "row": 4,
+        "col": 0
+      },
+      "category": "system",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "STO→",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "store",
+          "semanticId": "store",
+          "previewInsert": "\\to ",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "RCL",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "recall",
+          "semanticId": "recall",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "K",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "K",
+          "semanticId": "alpha_K",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "k",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "k",
+              "semanticId": "code_k"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "K",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "K",
+          "semanticId": "code_K",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r4c1",
+      "visual": {
+        "row": 4,
+        "col": 1
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "π",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\pi ",
+          "semanticId": "constant_pi",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "i",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "i",
+          "semanticId": "imaginary_unit",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "L",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "L",
+          "semanticId": "alpha_L",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "l",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "l",
+              "semanticId": "code_l"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "L",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "L",
+          "semanticId": "code_L",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r4c2",
+      "visual": {
+        "row": 4,
+        "col": 2
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "e",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "e",
+          "semanticId": "constant_e",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "∞",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\infty ",
+          "semanticId": "infinity",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "M",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "M",
+          "semanticId": "alpha_M",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "m",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "m",
+              "semanticId": "code_m"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "M",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "M",
+          "semanticId": "code_M",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r4c3",
+      "visual": {
+        "row": 4,
+        "col": 3
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "(",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "(",
+          "semanticId": "left_parenthesis",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "[",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "[",
+          "semanticId": "left_bracket",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "N",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "N",
+          "semanticId": "alpha_N",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "n",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "n",
+              "semanticId": "code_n"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "N",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "N",
+          "semanticId": "code_N",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r4c4",
+      "visual": {
+        "row": 4,
+        "col": 4
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": ")",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": ")",
+          "semanticId": "right_parenthesis",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "]",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "]",
+          "semanticId": "right_bracket",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "O",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "O",
+          "semanticId": "alpha_O",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "o",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "o",
+              "semanticId": "code_o"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "O",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "O",
+          "semanticId": "code_O",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r5c0",
+      "visual": {
+        "row": 5,
+        "col": 0
+      },
+      "category": "system",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "FORMAT",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "format_result",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "TABLE",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "open_table",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "P",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "P",
+          "semanticId": "alpha_P",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "p",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "p",
+              "semanticId": "code_p"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "P",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "P",
+          "semanticId": "code_P",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      },
+      "longPress": {
+        "action": "open_format_menu"
+      }
+    },
+    {
+      "id": "r5c1",
+      "visual": {
+        "row": 5,
+        "col": 1
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": ",",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": ",",
+          "semanticId": "comma",
+          "printLegend": false
+        },
+        "shift": {
+          "label": ";",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": ";",
+          "semanticId": "semicolon",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "Q",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "Q",
+          "semanticId": "alpha_Q",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "q",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "q",
+              "semanticId": "code_q"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "Q",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "Q",
+          "semanticId": "code_Q",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r5c2",
+      "visual": {
+        "row": 5,
+        "col": 2
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "=",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "=",
+          "semanticId": "equal",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "≠",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\neq ",
+          "semanticId": "not_equal",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "!=",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "!=",
+              "semanticId": "code_not_equal"
+            }
+          }
+        },
+        "alpha": {
+          "label": "R",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "R",
+          "semanticId": "alpha_R",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "r",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "r",
+              "semanticId": "code_r"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "R",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "R",
+          "semanticId": "code_R",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r5c3",
+      "visual": {
+        "row": 5,
+        "col": 3
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "<",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "<",
+          "semanticId": "less_than",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "≤",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\leq ",
+          "semanticId": "less_equal",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "<=",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "<=",
+              "semanticId": "code_less_equal"
+            }
+          }
+        },
+        "alpha": {
+          "label": "S",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "S",
+          "semanticId": "alpha_S",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "s",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "s",
+              "semanticId": "code_s"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "S",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "S",
+          "semanticId": "code_S",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r5c4",
+      "visual": {
+        "row": 5,
+        "col": 4
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": ">",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": ">",
+          "semanticId": "greater_than",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "≥",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\geq ",
+          "semanticId": "greater_equal",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": ">=",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": ">=",
+              "semanticId": "code_greater_equal"
+            }
+          }
+        },
+        "alpha": {
+          "label": "T",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "T",
+          "semanticId": "alpha_T",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "t",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "t",
+              "semanticId": "code_t"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "T",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "T",
+          "semanticId": "code_T",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r6c0",
+      "visual": {
+        "row": 6,
+        "col": 0
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "7",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "7",
+          "semanticId": "digit_7",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "nPr",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\operatorname{nPr}(¶,)",
+          "semanticId": "permutation",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "U",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "U",
+          "semanticId": "alpha_U",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "u",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "u",
+              "semanticId": "code_u"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "U",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "U",
+          "semanticId": "code_U",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r6c1",
+      "visual": {
+        "row": 6,
+        "col": 1
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "8",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "8",
+          "semanticId": "digit_8",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "nCr",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\operatorname{nCr}(¶,)",
+          "semanticId": "combination",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "V",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "V",
+          "semanticId": "alpha_V",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "v",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "v",
+              "semanticId": "code_v"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "V",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "V",
+          "semanticId": "code_V",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r6c2",
+      "visual": {
+        "row": 6,
+        "col": 2
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "9",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "9",
+          "semanticId": "digit_9",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "rand",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\operatorname{rand}()",
+          "semanticId": "random",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "W",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "W",
+          "semanticId": "alpha_W",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "w",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "w",
+              "semanticId": "code_w"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "W",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "W",
+          "semanticId": "code_W",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r6c3",
+      "visual": {
+        "row": 6,
+        "col": 3
+      },
+      "category": "system",
+      "repeatPolicy": "hold",
+      "planes": {
+        "primary": {
+          "label": "DEL",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "delete",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "UNDO",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "undo",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r6c4",
+      "visual": {
+        "row": 6,
+        "col": 4
+      },
+      "category": "system",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "AC",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "clear",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "OFF",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "enter_deep_sleep",
+          "printLegend": true,
+          "semanticId": "deep_sleep_off"
+        },
+        "alpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "primary",
+          "printLegend": false
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "shift",
+          "printLegend": false
+        }
+      },
+      "notes": "SHIFT+AC enters the normal ultra-low-power OFF/deep-sleep state for instant wake. The separate hardware switch performs full power isolation."
+    },
+    {
+      "id": "r7c0",
+      "visual": {
+        "row": 7,
+        "col": 0
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "4",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "4",
+          "semanticId": "digit_4",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "F4",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "soft_4",
+          "printLegend": false
+        },
+        "alpha": {
+          "label": "X",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "X",
+          "semanticId": "alpha_X",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "x",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "x",
+              "semanticId": "code_x"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "X",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "X",
+          "semanticId": "code_X",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r7c1",
+      "visual": {
+        "row": 7,
+        "col": 1
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "5",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "5",
+          "semanticId": "digit_5",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "F5",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "soft_5",
+          "printLegend": false
+        },
+        "alpha": {
+          "label": "Y",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "Y",
+          "semanticId": "alpha_Y",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "y",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "y",
+              "semanticId": "code_y"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "Y",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "Y",
+          "semanticId": "code_Y",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r7c2",
+      "visual": {
+        "row": 7,
+        "col": 2
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "6",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "6",
+          "semanticId": "digit_6",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "F6",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "soft_6",
+          "printLegend": false
+        },
+        "alpha": {
+          "label": "Z",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "Z",
+          "semanticId": "alpha_Z",
+          "printLegend": true,
+          "contextOverrides": {
+            "code": {
+              "label": "z",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "z",
+              "semanticId": "code_z"
+            }
+          }
+        },
+        "shiftAlpha": {
+          "label": "Z",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "Z",
+          "semanticId": "code_Z",
+          "printLegend": false,
+          "contextOnly": "code"
+        }
+      }
+    },
+    {
+      "id": "r7c3",
+      "visual": {
+        "row": 7,
+        "col": 3
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "×",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\times ",
+          "semanticId": "multiply",
+          "printLegend": false,
+          "contextOverrides": {
+            "code": {
+              "label": "*",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "*",
+              "semanticId": "code_multiply"
+            }
+          }
+        },
+        "shift": {
+          "label": "!",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "!",
+          "semanticId": "factorial",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "@",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "@",
+          "semanticId": "at_sign",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r7c4",
+      "visual": {
+        "row": 7,
+        "col": 4
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "÷",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\div ",
+          "semanticId": "divide",
+          "printLegend": false,
+          "contextOverrides": {
+            "code": {
+              "label": "/",
+              "kind": "insert",
+              "legendType": "text",
+              "insert": "/",
+              "semanticId": "code_divide"
+            }
+          }
+        },
+        "shift": {
+          "label": "%",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\% ",
+          "semanticId": "percent",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "\\",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\",
+          "semanticId": "backslash",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r8c0",
+      "visual": {
+        "row": 8,
+        "col": 0
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "1",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "1",
+          "semanticId": "digit_1",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "F1",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "soft_1",
+          "printLegend": false
+        },
+        "alpha": {
+          "label": "{",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "{",
+          "semanticId": "left_brace",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r8c1",
+      "visual": {
+        "row": 8,
+        "col": 1
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "2",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "2",
+          "semanticId": "digit_2",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "F2",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "soft_2",
+          "printLegend": false
+        },
+        "alpha": {
+          "label": "}",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "}",
+          "semanticId": "right_brace",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r8c2",
+      "visual": {
+        "row": 8,
+        "col": 2
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "3",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "3",
+          "semanticId": "digit_3",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "F3",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "soft_3",
+          "printLegend": false
+        },
+        "alpha": {
+          "label": "#",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "#",
+          "semanticId": "hash",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r8c3",
+      "visual": {
+        "row": 8,
+        "col": 3
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "+",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "+",
+          "semanticId": "add",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "Σ",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\sum_{¶}^{}{}",
+          "semanticId": "summation",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "&",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "&",
+          "semanticId": "ampersand",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      },
+      "longPress": {
+        "action": "open_summation_family",
+        "items": [
+          "sum",
+          "product",
+          "infinite_series",
+          "nested_sum"
+        ]
+      }
+    },
+    {
+      "id": "r8c4",
+      "visual": {
+        "row": 8,
+        "col": 4
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "−",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "-",
+          "semanticId": "subtract",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "∫",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\int_{¶}^{}{}",
+          "semanticId": "definite_integral",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "|",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "|",
+          "semanticId": "vertical_bar",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      },
+      "longPress": {
+        "action": "open_calculus_family",
+        "items": [
+          "definite_integral",
+          "indefinite_integral",
+          "improper_integral",
+          "derivative",
+          "limit"
+        ]
+      }
+    },
+    {
+      "id": "r9c0",
+      "visual": {
+        "row": 9,
+        "col": 0
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "0",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "0",
+          "semanticId": "digit_0",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "°",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "^{\\circ}",
+          "semanticId": "degree_symbol",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "SPACE",
+          "kind": "insert",
+          "legendType": "icon",
+          "iconId": "space",
+          "consumesModifier": true,
+          "insert": " ",
+          "semanticId": "alpha_space",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r9c1",
+      "visual": {
+        "row": 9,
+        "col": 1
+      },
+      "category": "number",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": ".",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": ".",
+          "semanticId": "decimal_point",
+          "printLegend": false
+        },
+        "shift": {
+          "label": ":",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": ":",
+          "semanticId": "colon",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "_",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "_",
+          "semanticId": "underscore",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r9c2",
+      "visual": {
+        "row": 9,
+        "col": 2
+      },
+      "category": "function",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "×10ˣ",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\times 10^{¶}",
+          "semanticId": "scientific_exponent",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "ENG",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": true,
+          "action": "engineering_notation",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "\"",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\"",
+          "semanticId": "quote",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r9c3",
+      "visual": {
+        "row": 9,
+        "col": 3
+      },
+      "category": "operator",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "(-)",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "-",
+          "semanticId": "unary_negative",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "Ans",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\operatorname{Ans}",
+          "semanticId": "ans",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "PreAns",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "\\operatorname{PreAns}",
+          "semanticId": "preans",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    },
+    {
+      "id": "r9c4",
+      "visual": {
+        "row": 9,
+        "col": 4
+      },
+      "category": "system",
+      "repeatPolicy": "none",
+      "planes": {
+        "primary": {
+          "label": "EXE",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "execute",
+          "printLegend": false
+        },
+        "shift": {
+          "label": "≈",
+          "kind": "command",
+          "legendType": "text",
+          "consumesModifier": false,
+          "action": "approximate",
+          "printLegend": true
+        },
+        "alpha": {
+          "label": "'",
+          "kind": "insert",
+          "legendType": "text",
+          "consumesModifier": true,
+          "insert": "'",
+          "semanticId": "single_quote",
+          "printLegend": true
+        },
+        "shiftAlpha": {
+          "label": "",
+          "kind": "inherit",
+          "legendType": "text",
+          "consumesModifier": false,
+          "inheritFrom": "alpha",
+          "printLegend": false
+        }
+      }
+    }
+  ],
+  "contexts": {
+    "math": "Natural Display and mathematical entry",
+    "code": "NeoLanguage and Python code editors",
+    "text": "Plain-text editor; aliases the code character rules"
+  },
+  "contextAliases": {
+    "text": "code"
+  },
+  "contextPolicy": {
+    "math": {
+      "alphaLetters": "uppercase symbolic variables A-Z",
+      "shiftAlphaLetters": "explicit shiftAlpha definition; letters remain uppercase",
+      "operatorOverrides": "use mathematical structured semantics"
+    },
+    "code": {
+      "alphaLetters": "lowercase a-z",
+      "shiftAlphaLetters": "uppercase A-Z",
+      "operatorOverrides": "use contextOverrides.code where present"
+    },
+    "text": {
+      "alias": "code",
+      "alphaLetters": "lowercase a-z",
+      "shiftAlphaLetters": "uppercase A-Z"
+    }
+  }
+}

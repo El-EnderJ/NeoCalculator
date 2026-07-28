@@ -36,12 +36,19 @@ int main() {
         {4, 5, 6, 7, 15, 16, 17, 18, 8, 10};
     assert(board.electricalMatrix.rowOutputs == expectedRows);
     assert(board.electricalMatrix.columnInputs == expectedColumns);
+    constexpr std::array<uint8_t, 5> expectedRowOrder = {0, 1, 2, 3, 4};
+    constexpr std::array<uint8_t, 10> expectedColumnOrder =
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    assert(board.electricalMatrix.rowOrder == expectedRowOrder);
+    assert(board.electricalMatrix.columnOrder == expectedColumnOrder);
     assert(board.electricalMatrix.inactiveRowLevel == ActiveLevel::High);
     assert(board.electricalMatrix.selectedRowLevel == ActiveLevel::Low);
     assert(board.electricalMatrix.pressedColumnLevel == ActiveLevel::Low);
     assert(board.electricalMatrix.columnsUseInternalPullups);
     assert(board.electricalMatrix.perKeyDiodesFitted);
-    assert(!board.electricalMatrix.logicalMappingReady);
+    assert(board.electricalMatrix.fullScanIntervalUs == 5'000U);
+    assert(board.electricalMatrix.settlingDurationUs == 10U);
+    assert(board.electricalMatrix.logicalMappingReady);
 
     assert(board.usbDataMinus.gpio == 19);
     assert(board.usbDataPlus.gpio == 20);

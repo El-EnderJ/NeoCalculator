@@ -334,6 +334,14 @@ void NeoLanguageApp::handleTabBarKey(const KeyEvent& ev) {
 }
 
 void NeoLanguageApp::handleEditorKey(const KeyEvent& ev) {
+    if (_editor && ev.text && ev.text[0] != '\0') {
+        // Revision-C contextual text has already been resolved by SystemApp.
+        // The editor consumes it verbatim; GPIO/electrical code remains free
+        // of language-specific string construction.
+        lv_textarea_add_text(_editor, ev.text);
+        return;
+    }
+
     switch (ev.code) {
         // ── Navigation ────────────────────────────────────────────
         case KeyCode::UP:

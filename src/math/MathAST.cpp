@@ -323,6 +323,7 @@ const char* NodeOperator::symbol() const {
         case OpKind::Add:       return "+";
         case OpKind::Sub:       return "-";              // ASCII hyphen-minus (U+002D)
         case OpKind::Mul:       return numos::mathsym::SYMB_TIMES;
+        case OpKind::Div:       return numos::mathsym::SYMB_DIVIDE;
         case OpKind::PlusMinus: return numos::mathsym::SYMB_PLUS_MINUS;
         case OpKind::Eq:        return "=";
         case OpKind::Lt:        return "<";

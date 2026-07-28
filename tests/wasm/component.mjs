@@ -216,7 +216,7 @@ try {
   await page.evaluate(() => { window.emulator.controls = "visible"; });
   const keyCount = await page.locator("numos-emulator")
     .locator(".key").count();
-  assert.equal(keyCount, 68);
+  assert.equal(keyCount, 79);
   const right = page.locator("numos-emulator").locator('[data-key-id="RIGHT"]');
   const down = page.locator("numos-emulator").locator('[data-key-id="DOWN"]');
   const focusBeforeTouch = (await diagnostics()).menuFocus;

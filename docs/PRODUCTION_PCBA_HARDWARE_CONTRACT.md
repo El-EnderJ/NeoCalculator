@@ -21,13 +21,14 @@ reported a test pass.
 
 ## Source priority and audit
 
-The conflict order is:
+The keypad conflict order is:
 
 1. `L-1L1W1027609A.kicad_sch` and `L-1L1W1027609A.kicad_pcb`;
-2. PCBWay final test firmware;
-3. final BOM, assembly drawings, and manufacturing specification;
-4. repository hardware documentation;
-5. prototype assumptions.
+2. final PCB switch positions and designators;
+3. `hardware/keyboard/neocalculator-v1-final-5x10-revision-c-canonical.json`;
+4. existing NumOS KeyCodes and dispatcher;
+5. production BoardProfile;
+6. prototype assumptions.
 
 | Material | Direct audit result |
 |---|---|
@@ -269,15 +270,40 @@ row outputs:   9, 21, 47, 48, 11
 column inputs: 4, 5, 6, 7, 15, 16, 17, 18, 8, 10
 ```
 
-The observed electrical contract is inactive rows high, one selected row low,
+The contract-supported profile is inactive rows high, one selected row low,
 columns input-pull-up, and a pressed switch observed low. Fifty diodes are
 fitted. `logicalMappingReady` and
-`NUMOS_PRODUCTION_KEYPAD_MAPPING_READY` are both false. The production
-`Keyboard` implementation performs no GPIO I/O and yields no key events.
+`NUMOS_PRODUCTION_KEYPAD_MAPPING_READY` are both true.
 
-Deliberate omissions: no SW2–SW51 visual layout, no matrix-to-`KeyCode` table,
-no keyboard-layout JSON import, no rollover/debounce/ghosting claim, no raw
-one-key test scanner, no normal keypad dispatch, and no sleep wake source.
+The canonical Revision C JSON is hash-locked to
+`7f6638ae7f830ef0741424d621832756268e5fa41292f2d8f8c363cdbc1a2fc3`.
+`scripts/generate-production-keypad.py` validates it and deterministically
+generates:
+
+- `src/input/generated/ProductionKeypadMap.generated.h`;
+- `hardware/keyboard/production-keypad-map.generated.csv`.
+
+The KiCad-derived visual/electrical transform is intentionally explicit:
+visual columns `c0..c4` map to electrical rows `eR4..eR0`, and visual rows
+`r0..r9` map to electrical columns `eC0..eC9`. SW2–SW51 cover every
+electrical and visual position exactly once. These coordinate systems are
+never equated by index.
+
+At deliberate `Keyboard::begin()` ownership, all row output latches are
+preloaded inactive before output enable, columns become input-pull-up, and a
+timestamped two-phase scanner samples one row at a time. The full-scan period
+is 5 ms (200 Hz target), settling is 10 µs, debounce is four full samples
+(nominal 15–20 ms transition latency), and repeat is 500/80 ms. The scanner
+uses fixed storage, has independent state for all 50 intersections, supports
+simultaneous software states, and exposes PRESS/RELEASE/REPEAT through a
+64-entry bounded queue. It contains no `delay()` and allocates no heap.
+
+The production normal build dispatches the mapped keypad. The bring-up build
+also accepts `KEYPAD RAW ON`, `KEYPAD RAW OFF`, `KEYPAD RAW STATUS`, and
+`KEYPAD HELP`; raw reporting is disabled by default.
+
+Deliberate omissions remain: no deep-sleep keypad wake, automatic polarity
+probing, measured rollover/ghosting claim, or physical debounce/diode claim.
 
 ## Power architecture and capability flags
 
@@ -296,7 +322,8 @@ reports that wake-source selection is deferred.
 
 ## Bounded bring-up report
 
-The opt-in bring-up environment emits, once and without driving the matrix:
+The opt-in bring-up environment emits its board report once. The matrix is
+driven only later by deliberate normal `Keyboard::begin()` ownership:
 
 - board ID, exact module, build date/time revision, and reset reason;
 - expected/detected flash;
@@ -306,8 +333,11 @@ The opt-in bring-up environment emits, once and without driving the matrix:
 - logical-mapping state and capability flags;
 - detected partition labels, offsets, and sizes (bounded to 16 entries).
 
-It never probes indefinitely, starts radios, runs the display pattern
-automatically, or assigns a logical key identity.
+The separately opt-in raw keypad mode reports electrical row/column GPIO,
+switch designator, derived visual position, mapped KeyCode/label, raw and
+debounced states, transitions, integrator value, active positions, and queue
+overflow count. It never probes indefinitely, starts radios, runs the display
+pattern automatically, or touches non-matrix pins.
 
 ## Board-arrival checklist
 
@@ -334,16 +364,27 @@ values silently.
     current draw.
 11. Increase SPI frequency only in measured steps; retain 10 MHz on any error.
 12. Verify GPIO42 reads only if a later requirement needs panel readback.
-13. Confirm every electrical row/column net with a continuity fixture before
-    enabling a raw matrix command.
-14. Audit the diode direction and derive the SW2–SW51 electrical-coordinate
-    table; review it independently before any `KeyCode` mapping.
-15. Test raw press/release, debounce, rollover, and ghost behavior without
-    claiming logical identities.
-16. Measure backlight-off current and document that deep sleep differs from
+13. Send `KEYPAD RAW STATUS`, then `KEYPAD RAW ON`; confirm no raw mode was
+    active automatically.
+14. Verify idle-high rows, selected-low row polarity, pull-up columns, pressed
+    low level, and diode direction with an oscilloscope/continuity fixture.
+15. Press all 50 keys visually from top-left to bottom-right and capture the
+    reported SW/electrical/visual/KeyCode record. Compare it to
+    `production-keypad-map.generated.csv`.
+16. Exercise same-row, same-column, diagonal, modifier-plus-key, and several-key
+    chords. Record observed rollover and impossible states without claiming
+    NKRO or ghost prevention.
+17. Measure press/release bounce and adjust only centralized profile/debounce
+    values if evidence requires it. Verify long hold, bounded repeat, rapid
+    repress, scanner disable while held, and force-release recovery.
+18. Run the event MVP: launcher navigation, Calculation digits/operators and
+    structures, SHIFT/ALPHA/SHIFT+ALPHA, DEL/AC/EXE/HOME/BACK, then Grapher
+    expression entry and a basic graph.
+19. Send `KEYPAD RAW OFF` and archive the compact validation log.
+20. Measure backlight-off current and document that deep sleep differs from
     SW1 hard-off.
-17. Test TP14/TP15 only as an external-adapter recovery fallback.
-18. Preserve logs and promote confidence labels only from recorded evidence.
+21. Test TP14/TP15 only as an external-adapter recovery fallback.
+22. Preserve logs and promote confidence labels only from recorded evidence.
 
 ## Physical validation gates and remaining limitations
 
@@ -352,9 +393,10 @@ values silently.
 - LCD orientation, color order, inversion, offsets, reset timing, and SPI
   ceiling remain provisional.
 - Backlight PWM linearity, safe maximum, and current remain unmeasured.
-- The electrical matrix has no audited switch-coordinate or logical key map,
-  so normal physical keypad input is deliberately disabled.
-- Rollover, debounce, diode behavior, and wake suitability are unverified.
+- The electrical switch-coordinate and logical map is KiCad/layout-derived,
+  host-simulated, and build-tested, but not physically validated.
+- Pressed polarity, rollover, ghost prevention, debounce timing, diode
+  direction, switch feel, signal integrity, and wake suitability are unverified.
 - Battery/charger behavior is documented only; no ADC or status GPIO exists.
 - The three named PCBWay `.ino` source files remain unavailable for direct
   audit.

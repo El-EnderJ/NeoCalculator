@@ -240,6 +240,7 @@ static void nodeToText(const MathNode* node, std::string& out) {
                 case OpKind::Add: out += "+"; break;
                 case OpKind::Sub: out += "-"; break;
                 case OpKind::Mul: out += "*"; break;
+                case OpKind::Div: out += "/"; break;
                 default:          out += "+"; break;
             }
             break;

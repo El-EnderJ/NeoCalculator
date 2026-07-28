@@ -124,7 +124,7 @@ struct Serializer {
             if (n->type() == vpam::NodeType::Operator) {
                 const auto op = static_cast<const vpam::NodeOperator*>(n)->op();
                 if (op != vpam::OpKind::Add && op != vpam::OpKind::Sub &&
-                    op != vpam::OpKind::Mul)
+                    op != vpam::OpKind::Mul && op != vpam::OpKind::Div)
                     return fail("unsupported operator");
                 if (!prevOperand) {
                     // Unary position (row start or after another operator):
@@ -132,12 +132,14 @@ struct Serializer {
                     // text never relies on Giac's prefix-minus grammar.
                     if (op == vpam::OpKind::Sub) out += "(-1)*";
                     // unary '+' contributes nothing
-                    else if (op == vpam::OpKind::Mul)
+                    else if (op == vpam::OpKind::Mul ||
+                             op == vpam::OpKind::Div)
                         return fail("misplaced operator");
                 } else {
                     out += (op == vpam::OpKind::Add) ? '+'
                          : (op == vpam::OpKind::Sub) ? '-'
-                                                     : '*';
+                         : (op == vpam::OpKind::Mul) ? '*'
+                                                     : '/';
                     prevOperand = false;
                 }
                 continue;

@@ -834,6 +834,13 @@ void PythonApp::handleScriptsKey(const KeyEvent& ev) {
 }
 
 void PythonApp::handleEditorKey(const KeyEvent& ev) {
+    if (_editorTA && ev.text && ev.text[0] != '\0') {
+        lv_textarea_add_text(_editorTA, ev.text);
+        closeAutocomplete();
+        checkAutocomplete();
+        return;
+    }
+
     switch (ev.code) {
         case KeyCode::AC:
             // Save and go back to tab bar

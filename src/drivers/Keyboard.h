@@ -48,6 +48,7 @@
   #include "../hal/ArduinoCompat.h"
 #endif
 
+#include "../Config.h"
 #include "../input/KeyCodes.h"   // KeyCode, KeyAction, KeyEvent
 
 class Keyboard {
@@ -82,6 +83,7 @@ public:
     static constexpr int CONNECTED_COLS = 0;  // ← 0 = escaneo desactivado
 
 private:
+#if !NUMOS_BOARD_PROD_WROOM1U_N16R8
     // ── GPIOs ──────────────────────────────────────────────────────────────
     // Filas (OUTPUT) — se ponen a LOW de una en una.
     const int _rowPins[ROWS] = { 1, 2, 41, 42, 40 };
@@ -120,4 +122,5 @@ private:
     // ── Helpers ───────────────────────────────────────────────────────────
     void doScan();                           // Escaneo físico + debounce
     void pushEvent(const KeyEvent& ev);      // Inserta en la cola (descarta si llena)
+#endif
 };

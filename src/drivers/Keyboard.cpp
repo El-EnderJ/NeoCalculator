@@ -28,6 +28,17 @@
 
 #include "Keyboard.h"
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+
+// The final PCB electrical coordinates are known, but switch-to-KeyCode
+// identity is not. Production therefore compiles a zero-state, zero-I/O
+// keyboard seam until the audited logical map is supplied.
+void Keyboard::begin() {}
+void Keyboard::update() {}
+bool Keyboard::pollEvent(KeyEvent&) { return false; }
+
+#else
+
 // ── Keymap 5×10 ───────────────────────────────────────────────────────────────
 //
 // Diseño visual de las 15 teclas ACTUALMENTE CABLEADAS (cols 0-2):
@@ -191,3 +202,5 @@ void Keyboard::pushEvent(const KeyEvent& ev) {
     _queue[_qTail] = ev;
     _qTail = nextTail;
 }
+
+#endif

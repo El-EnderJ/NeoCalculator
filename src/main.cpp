@@ -41,6 +41,14 @@ bool setting_edu_steps = false;
 #include "ui/SplashScreen.h"
 #include "utils/MemProbe.h"
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#include "hardware/ProductionSafeStartup.h"
+#endif
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
+#include "hardware/ProductionBringup.h"
+#endif
+
 #define Serial NUMOS_SERIAL
 
 #ifdef NUMOS_MATH_STRESS_DIAGNOSTICS
@@ -93,11 +101,22 @@ static void* lvBuf2 = nullptr;
 // setup()
 // ====================================================================
 void setup() {
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // Earliest framework-controlled point: CS high, BL off, reset inactive,
+    // mode-0 SCLK idle. Matrix, USB, BOOT, and strap pins remain untouched.
+    numos::hardware::applyProductionSafeStartup();
+#endif
+
     Serial.begin(115200);
-    // UART0 física (chip puente externo) — no necesita while(!Serial).
-    // El puerto está disponible inmediatamente tras el reset.
-    // Native USB CDC needs a bounded wait so the serial monitor can enumerate
-    // before boot diagnostics and SerialBridge input start flowing.
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // Normal production boot never waits for a USB host. Only the explicitly
+    // selected bring-up build gets a bounded enumeration window; its report
+    // service also handles a host that connects after setup() has completed.
+#if defined(NUMOS_PRODUCTION_BRINGUP)
+    numos::hardware::waitForProductionBringupSerial();
+#endif
+#else
+    // Preserve the separately validated CAM UART/USB startup contract exactly.
 #if NUMOS_SERIAL_BACKEND_USB_CDC
     const uint32_t serialWaitStart = millis();
     while (!Serial && (millis() - serialWaitStart) < 3000U) {
@@ -105,6 +124,7 @@ void setup() {
     }
 #else
     delay(50);  // UART bridge reset margin when Serial is routed to UART0.
+#endif
 #endif
 
     Serial.print("\n>>> NumOS: System Ready (");
@@ -141,6 +161,10 @@ void setup() {
         Serial.println("[PSRAM] NO DETECTADA!");
     }
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
+    numos::hardware::startProductionBringupReporting();
+#endif
+
     // -- 2. TFT --
     g_display.begin();
 
@@ -172,6 +196,13 @@ void setup() {
 
     // -- 5. Display LVGL --
     g_display.initLvgl(lvBuf1, lvBuf2, BUF_BYTES);
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8 && \
+    defined(NUMOS_PRODUCTION_BRINGUP_DISPLAY_AUTORUN)
+    // Never enabled by either checked-in production environment. This bounded
+    // seam is available for an explicitly instrumented first-board build.
+    g_display.runBoundedProductionDisplayDiagnostic();
+#endif
 
     if (!lv_display_get_default()) {
         Serial.println("[BOOT] NO DISPLAY! HALT.");
@@ -259,6 +290,12 @@ void setup() {
 static unsigned long _lastHeartbeat = 0;
 
 void loop() {
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
+    // O(1), non-blocking readiness check. If CDC was absent during setup(),
+    // the bounded report is emitted once when a host later enumerates.
+    numos::hardware::serviceProductionBringupReporting();
+#endif
+
     if (g_lvglActive) {
         lv_timer_handler();
     }

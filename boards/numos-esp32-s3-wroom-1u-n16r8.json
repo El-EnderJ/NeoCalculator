@@ -1,0 +1,67 @@
+{
+  "build": {
+    "arduino": {
+      "ldscript": "esp32s3_out.ld",
+      "memory_type": "qio_opi",
+      "partitions": "default_16MB.csv"
+    },
+    "boot": "qio",
+    "core": "esp32",
+    "extra_flags": [
+      "-DARDUINO_ESP32S3_DEV",
+      "-DNUMOS_BOARD_PROD_WROOM1U_N16R8=1",
+      "-DARDUINO_USB_MODE=1",
+      "-DARDUINO_USB_CDC_ON_BOOT=1",
+      "-DARDUINO_RUNNING_CORE=1",
+      "-DARDUINO_EVENT_RUNNING_CORE=1",
+      "-DBOARD_HAS_PSRAM"
+    ],
+    "f_cpu": "240000000L",
+    "f_flash": "80000000L",
+    "filesystem": "littlefs",
+    "flash_mode": "dio",
+    "hwids": [
+      [
+        "0x303A",
+        "0x1001"
+      ]
+    ],
+    "mcu": "esp32s3",
+    "variant": "esp32s3"
+  },
+  "connectivity": [
+    "bluetooth",
+    "wifi"
+  ],
+  "debug": {
+    "default_tool": "esp-builtin",
+    "onboard_tools": [
+      "esp-builtin"
+    ],
+    "openocd_target": "esp32s3.cfg"
+  },
+  "frameworks": [
+    "arduino",
+    "espidf"
+  ],
+  "name": "NumOS production ESP32-S3-WROOM-1U-N16R8 (native USB CDC/JTAG, 16 MB QIO flash, 8 MB OPI PSRAM)",
+  "numos_hardware_contract": {
+    "module": "ESP32-S3-WROOM-1U-N16R8",
+    "external_flash_bytes": 16777216,
+    "flash_frequency_hz": 80000000,
+    "external_psram_bytes": 8388608,
+    "psram_bus": "OPI",
+    "psram_frequency_hz": 80000000,
+    "usb": "ESP32-S3 native USB Serial/JTAG on GPIO19/GPIO20",
+    "onboard_uart_bridge": false
+  },
+  "upload": {
+    "flash_size": "16MB",
+    "maximum_ram_size": 327680,
+    "maximum_size": 6553600,
+    "require_upload_port": true,
+    "speed": 460800
+  },
+  "url": "https://www.espressif.com/sites/default/files/documentation/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf",
+  "vendor": "NumOS"
+}

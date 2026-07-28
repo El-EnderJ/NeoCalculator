@@ -64,6 +64,17 @@ public:
      */
     void initLvgl(void* buf1, void* buf2, uint32_t bufBytes);
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    /** Force the active-high production backlight fully off. */
+    void forceBacklightOff();
+
+    /** Apply a compile-time-bounded production backlight PWM level. */
+    void setBacklightLevel(uint8_t level);
+
+    /** Bounded, opt-in physical display diagnostic; returns control to LVGL. */
+    void runBoundedProductionDisplayDiagnostic();
+#endif
+
     /** Callback de flush que LVGL llama para enviar píxeles al GRAM. */
     static void lvglFlushCb(lv_display_t* disp,
                             const lv_area_t* area,

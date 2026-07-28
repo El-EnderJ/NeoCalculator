@@ -1055,6 +1055,13 @@ void SystemApp::renderGraphMode() {
 //   5. Entra en deep sleep
 // ═════════════════════════════════════════════════
 void SystemApp::powerOff() {
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // Production OFF semantics are deliberately deferred until the physical
+    // keypad/wake audit. The only currently safe action is a dark display.
+    _display.forceBacklightOff();
+    Serial.println("[SYSTEM] Production OFF deferred: backlight off; no wake source selected");
+    return;
+#else
     // ── Deep sleep completamente DESACTIVADO en modo USB/Debug ──
     // Mientras el cable USB esté conectado, el sistema debe permanecer 100% operativo.
     // Para reactivar: descomentar el bloque de abajo.
@@ -1107,5 +1114,6 @@ void SystemApp::powerOff() {
 
     // No se ejecuta nada después de aquí
     */   // === FIN DEEP SLEEP ORIGINAL ===
+#endif
 }
 

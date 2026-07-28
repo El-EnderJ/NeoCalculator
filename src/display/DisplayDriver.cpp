@@ -45,11 +45,25 @@ DisplayDriver::~DisplayDriver() {
 void DisplayDriver::begin() {
     Serial.println("[TFT] Initializing...");
 
-    // BL pin: prefer leaving as INPUT initially; LVGL init will drive it HIGH.
+    // Production BL is an active-high NPN drive and must never float or flash.
 #ifdef TFT_BL
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    digitalWrite(TFT_BL, LOW);
+    pinMode(TFT_BL, OUTPUT);
+#else
+    // Existing CAM behavior remains unchanged pending production validation.
     pinMode(TFT_BL, INPUT);
+#endif
 #else
     (void)0;
+#endif
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // WHY: Reassert the early safe states at the display ownership boundary.
+    digitalWrite(TFT_CS, HIGH);
+    pinMode(TFT_CS, OUTPUT);
+    digitalWrite(TFT_SCLK, LOW);
+    pinMode(TFT_SCLK, OUTPUT);
 #endif
 
     // Print compile-time pin mapping so user can verify wiring.
@@ -79,7 +93,7 @@ void DisplayDriver::begin() {
     Serial.println("RST=<undef>");
 #endif
 
-    // Manual hardware reset: pulse RST low for 10ms, then high for 150ms
+    // Manual hardware reset after the safe-startup inactive-high interval.
 #ifdef TFT_RST
 #if TFT_RST >= 0
     pinMode(TFT_RST, OUTPUT);
@@ -88,9 +102,15 @@ void DisplayDriver::begin() {
     digitalWrite(TFT_RST, HIGH);
     delay(10);
     digitalWrite(TFT_RST, LOW);
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    delay(10);
+    digitalWrite(TFT_RST, HIGH);
+    delay(120);
+#else
     delay(150); // Aggressive reset: hold low for 150ms
     digitalWrite(TFT_RST, HIGH);
     delay(150); // hold high for 150ms before init
+#endif
 #else
     Serial.println("[TFT] TFT_RST defined as -1; skipping manual reset");
 #endif
@@ -113,7 +133,15 @@ void DisplayDriver::begin() {
     }
 #endif
     _tft.setRotation(SCREEN_ROTATION);
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // Panel inversion is a physical bring-up gate. Do not inherit the CAM
+    // panel's unconditional inversion assumption.
+#if defined(NUMOS_TFT_INVERT_DISPLAY) && NUMOS_TFT_INVERT_DISPLAY
+    _tft.invertDisplay(true);
+#endif
+#else
     _tft.invertDisplay(true); // colors inverted
+#endif
 
     // Ensure CS and DC pins are correctly configured for manual control
     pinMode(TFT_CS, OUTPUT);
@@ -199,6 +227,14 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
     */
 
 #ifdef TFT_BL
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // The GRAM is black before the bounded PWM level is enabled. This avoids a
+    // full-brightness flash while retaining enough light for first bring-up.
+    setBacklightLevel(NUMOS_BACKLIGHT_INITIAL_LEVEL);
+    Serial.printf("[TFT] Production backlight level=%u/%u\n",
+                  (unsigned)NUMOS_BACKLIGHT_INITIAL_LEVEL,
+                  (unsigned)NUMOS_BACKLIGHT_MAX_LEVEL);
+#else
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, HIGH);
     
@@ -212,9 +248,78 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
     Serial.println("[TFT] Self-test fill done");
 #endif
 #endif
+#endif
 
     Serial.printf("[LVGL] Buffers asignados: %u bytes cada uno\n", (unsigned)bufBytes);
 }
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+
+void DisplayDriver::forceBacklightOff() {
+    analogWrite(TFT_BL, 0);
+    digitalWrite(TFT_BL, LOW);
+    pinMode(TFT_BL, OUTPUT);
+}
+
+void DisplayDriver::setBacklightLevel(uint8_t level) {
+    const uint8_t bounded =
+        level > NUMOS_BACKLIGHT_MAX_LEVEL ? NUMOS_BACKLIGHT_MAX_LEVEL : level;
+    pinMode(TFT_BL, OUTPUT);
+    analogWrite(TFT_BL, bounded);
+}
+
+void DisplayDriver::runBoundedProductionDisplayDiagnostic() {
+    // Explicit bring-up entry point only; no normal boot path calls it.
+    forceBacklightOff();
+    _tft.fillScreen(TFT_BLACK);
+    delay(150);
+
+    constexpr uint8_t levels[] = {
+        0,
+        NUMOS_BACKLIGHT_LOW_LEVEL,
+        NUMOS_BACKLIGHT_INITIAL_LEVEL,
+        NUMOS_BACKLIGHT_MAX_LEVEL
+    };
+    for (const uint8_t level : levels) {
+        setBacklightLevel(level);
+        delay(200);
+    }
+
+    constexpr uint16_t colors[] = {
+        TFT_RED, TFT_GREEN, TFT_BLUE, TFT_WHITE, TFT_BLACK
+    };
+    for (const uint16_t color : colors) {
+        _tft.fillScreen(color);
+        delay(250);
+    }
+
+    _tft.fillScreen(TFT_BLACK);
+    _tft.drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, TFT_WHITE);
+    _tft.drawLine(0, 0, 20, 0, TFT_RED);
+    _tft.drawLine(0, 0, 0, 20, TFT_RED);
+    _tft.drawLine(SCREEN_WIDTH - 21, 0, SCREEN_WIDTH - 1, 0, TFT_GREEN);
+    _tft.drawLine(SCREEN_WIDTH - 1, 0, SCREEN_WIDTH - 1, 20, TFT_GREEN);
+    _tft.drawLine(0, SCREEN_HEIGHT - 1, 20, SCREEN_HEIGHT - 1, TFT_BLUE);
+    _tft.drawLine(0, SCREEN_HEIGHT - 21, 0, SCREEN_HEIGHT - 1, TFT_BLUE);
+    _tft.drawLine(SCREEN_WIDTH - 21, SCREEN_HEIGHT - 1,
+                  SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, TFT_YELLOW);
+    _tft.drawLine(SCREEN_WIDTH - 1, SCREEN_HEIGHT - 21,
+                  SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, TFT_YELLOW);
+    _tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    _tft.setTextDatum(TL_DATUM);
+    _tft.drawString("NumOS PCBA: top-left", 8, 8, 2);
+    _tft.drawFastHLine(8, 42, 180, TFT_CYAN);
+    _tft.drawString("baseline", 8, 24, 2);
+    delay(1200);
+
+    _tft.fillScreen(TFT_BLACK);
+    setBacklightLevel(NUMOS_BACKLIGHT_INITIAL_LEVEL);
+    if (_lvDisp != nullptr) {
+        lv_obj_invalidate(lv_screen_active());
+    }
+}
+
+#endif
 
 void DisplayDriver::lvglFlushCb(lv_display_t* disp,
                                 const lv_area_t* area,

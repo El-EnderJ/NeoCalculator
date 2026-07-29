@@ -29,6 +29,7 @@
 #pragma once
 
 #include <lvgl.h>
+#include "../Config.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
 #include "../input/KeyboardManager.h"
@@ -44,8 +45,9 @@ public:
     void handleKey(const KeyEvent& ev);
 
     bool isActive() const { return _screen != nullptr; }
+    bool navigateBack() { return false; }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || NUMOS_PRODUCTION_DEMO_PROFILE
     /**
      * Browser-only storage boundary. These use the production LittleFS shim,
      * whose root is /numos after the JavaScript runtime has hydrated IDBFS.

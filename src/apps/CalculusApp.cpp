@@ -844,6 +844,24 @@ char CalculusApp::detectVariable(const cas::SymExpr* expr) {
     }
 }
 
+bool CalculusApp::navigateBack() {
+    switch (_state) {
+        case State::STEPS:
+            showResult();
+            return true;
+        case State::RESULT:
+            showInput();
+            return true;
+        case State::COMPUTING:
+            // The pinned Giac boundary is synchronous and cannot be torn down
+            // safely. HOME/BACK are serviced immediately after it returns.
+            return true;
+        case State::EDITING:
+            return false;
+    }
+    return false;
+}
+
 char CalculusApp::detectAuthoredVariable(const vpam::MathNode* node) const {
     if (!node) return 0;
     if (node->type() == vpam::NodeType::Variable) {

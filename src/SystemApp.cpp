@@ -29,6 +29,12 @@
 #include "math/AngleModeRuntime.h"
 #include "input/KeyboardManager.h"
 #include "utils/MemProbe.h"
+#include <new>
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+#include "demo/DemoBootHealth.h"
+#include "demo/DemoProfile.h"
+#endif
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 #include "input/KeySemanticResolver.h"
@@ -97,7 +103,13 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
 // begin() — Boot sequence
 // ═════════════════════════════════════════════════
 void SystemApp::begin() {
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    if (!numos::demo::safeModeActive()) {
+        _vars.begin();
+    }
+#else
     _vars.begin();
+#endif
     // Angle mode single source of truth: derive the legacy copy from the
     // runtime (vpam::g_angleMode) instead of a hardcoded DEG that disagreed
     // with the LVGL StatusBar badge.
@@ -111,6 +123,18 @@ void SystemApp::begin() {
     // `if (!_screen) begin()` so screens are created on first use only.
     // Calling begin() on 10 apps simultaneously at boot exhausts LVGL heap
     // before lv_timer_handler() ever runs, causing a watchdog/abort crash.
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    // WHY: hidden applications are not constructed in the event image. This
+    // reduces boot heap exposure without deleting code or changing normal
+    // production behavior. Safe mode constructs only its two recovery apps.
+    _calcApp = new (std::nothrow) CalculationApp();
+    _settingsApp = new (std::nothrow) SettingsApp();
+    if (!numos::demo::safeModeActive()) {
+        _grapherApp = new (std::nothrow) GrapherApp();
+        _equationsApp = new (std::nothrow) EquationsApp();
+        _calculusApp = new (std::nothrow) CalculusApp();
+    }
+#else
     _calcApp       = new CalculationApp();
     _grapherApp    = new GrapherApp();
     _equationsApp  = new EquationsApp();
@@ -131,6 +155,7 @@ void SystemApp::begin() {
     _opticsLabApp = new OpticsLabApp();
     _neoLangApp   = new NeoLanguageApp();
     _fractalApp   = new FractalApp();
+#endif
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     _mathVisualApp = new MathRenderVisualTestApp();
 #endif
@@ -150,7 +175,61 @@ void SystemApp::begin() {
     // ── LittleFS: cargar variables persistidas ──
     // Done AFTER menu is ready so user sees the UI, not a black screen.
     // Proactively create vars.dat on first boot to silence vfs_api.cpp:105.
-    if (LittleFS.begin(true)) {   // true = formatOnFail
+    if (LittleFS.begin(
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+            false
+#else
+            true
+#endif
+        )) {
+        _filesystemMounted = true;
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+        if (!numos::demo::safeModeActive()) {
+            auto& variables = vpam::VariableManager::instance();
+            const bool variablesLoaded = variables.loadFromFlash();
+            const auto variableStatus = variables.lastLoadStatus();
+            if (variableStatus ==
+                    vpam::VariableManager::PersistentLoadStatus::Corrupt ||
+                variableStatus ==
+                    vpam::VariableManager::PersistentLoadStatus::
+                        UnsupportedVersion) {
+                LittleFS.remove("/vars.bad");
+                if (LittleFS.rename("/vars.dat", "/vars.bad")) {
+                    Serial.println(
+                        "[FS] vars=corrupt action=quarantine path=/vars.bad");
+                } else {
+                    Serial.println(
+                        "[FS] vars=corrupt action=preserve-in-place");
+                }
+                numos::demo::recordFailure(
+                    numos::demo::FailureCode::PersistentState);
+            } else if (variableStatus ==
+                       vpam::VariableManager::PersistentLoadStatus::Partial) {
+                Serial.println(
+                    "[FS] vars=partial action=per-slot-default evidence=preserved");
+            }
+            const bool settingsExisted = LittleFS.exists("/settings.dat");
+            const bool settingsLoaded = SettingsApp::loadPersistentState();
+            if (settingsExisted && !settingsLoaded) {
+                LittleFS.remove("/settings.bad");
+                if (LittleFS.rename("/settings.dat", "/settings.bad")) {
+                    Serial.println(
+                        "[FS] settings=corrupt action=quarantine path=/settings.bad");
+                } else {
+                    Serial.println(
+                        "[FS] settings=corrupt action=preserve-in-place");
+                }
+                numos::demo::recordFailure(
+                    numos::demo::FailureCode::PersistentState);
+            }
+            Serial.printf("[FS] mount=ok vars=%s settings=%s\n",
+                          variablesLoaded ? "loaded" : "defaults",
+                          settingsLoaded ? "loaded" : "defaults");
+        } else {
+            Serial.println(
+                "[FS] mount=ok safe-mode=1 optional-state=ignored");
+        }
+#else
         if (!LittleFS.exists("/vars.dat")) {
             auto f = LittleFS.open("/vars.dat", "w");
             if (f) { f.write(static_cast<uint8_t>(0)); f.close(); }
@@ -160,8 +239,17 @@ void SystemApp::begin() {
         } else {
             Serial.println("[SYSTEM] LittleFS OK, vars.dat empty (first boot)");
         }
+#endif
     } else {
+        _filesystemMounted = false;
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+        numos::demo::recordFailure(
+            numos::demo::FailureCode::FilesystemMount);
+        Serial.println(
+            "[FS] mount=fail action=disabled evidence=preserved launcher=usable");
+#else
         Serial.println("[SYSTEM] LittleFS FAIL (continuing without persistence)");
+#endif
     }
 }
 
@@ -170,6 +258,20 @@ void SystemApp::begin() {
 // ═════════════════════════════════════════════════
 void SystemApp::initApps() {
     _apps.clear();
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    for (const auto& policy : numos::demo::kEventReadyApps) {
+        if (numos::demo::safeModeActive() && !policy.safeModeVisible) continue;
+        const uint16_t* icon = icon_Calculation;
+        switch (policy.id) {
+            case 1: icon = icon_Grapher; break;
+            case 2: icon = icon_Equations; break;
+            case 3: icon = icon_Elements; break;
+            case 10: icon = icon_Settings; break;
+            default: break;
+        }
+        _apps.emplace_back(policy.id, policy.name, icon);
+    }
+#else
     _apps.emplace_back(0,  "Calculation",  icon_Calculation);
     _apps.emplace_back(1,  "Grapher",      icon_Grapher);
     _apps.emplace_back(2,  "Equations",    icon_Equations);
@@ -185,6 +287,7 @@ void SystemApp::initApps() {
     _apps.emplace_back(19, "Fractals",     icon_Grapher);
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     _apps.emplace_back(20, "Math Visual",  icon_Calculation);
+#endif
 #endif
 }
 
@@ -319,6 +422,37 @@ void SystemApp::update() {
 // ═════════════════════════════════════════════════
 void SystemApp::injectKey(const KeyEvent &ev) {
     handleKey(ev);
+}
+
+void SystemApp::clearTransitionInput() {
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    _keypad.forceReleaseAll();
+    LvglKeypad::forceReleaseAll();
+    vpam::KeyboardManager::instance().reset();
+    _shiftActive = false;
+    _alphaActive = false;
+#endif
+}
+
+bool SystemApp::unwindTopmostDemoState() {
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    switch (_mode) {
+        case Mode::APP_CALCULATION:
+            return _calcApp && _calcApp->navigateBack();
+        case Mode::APP_GRAPHER:
+            return _grapherApp && _grapherApp->navigateBack();
+        case Mode::APP_EQUATIONS:
+            return _equationsApp && _equationsApp->navigateBack();
+        case Mode::APP_CALCULUS:
+            return _calculusApp && _calculusApp->navigateBack();
+        case Mode::APP_SETTINGS:
+            return _settingsApp && _settingsApp->navigateBack();
+        default:
+            return false;
+    }
+#else
+    return false;
+#endif
 }
 
 // ═════════════════════════════════════════════════
@@ -513,6 +647,7 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     // keys and clear modifiers before changing the active application.
     if (ev.code == KeyCode::HOME) {
         _keypad.forceReleaseAll();
+        LvglKeypad::forceReleaseAll();
         km.reset();
         _shiftActive = false;
         _alphaActive = false;
@@ -520,7 +655,13 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
         return;
     }
     if (ev.code == KeyCode::BACK) {
-        if (_mode != Mode::MENU) returnToMenu();
+        if (_mode != Mode::MENU) {
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+            if (!unwindTopmostDemoState()) returnToMenu();
+#else
+            returnToMenu();
+#endif
+        }
         return;
     }
 
@@ -780,6 +921,16 @@ void SystemApp::handleKeyMenu(const KeyEvent &ev) {
 // launchApp() — Lanza una app por ID desde el launcher LVGL
 // ═════════════════════════════════════════════════
 void SystemApp::launchApp(int id) {
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    const bool allowed = numos::demo::safeModeActive()
+        ? numos::demo::isSafeModeApp(id)
+        : numos::demo::isEventReadyApp(id);
+    if (!allowed) {
+        Serial.printf("[APP] refused id=%d reason=demo-allowlist\n", id);
+        return;
+    }
+    clearTransitionInput();
+#endif
     // Ensure LVGL layout is finalized before switching screens.
     // Prevents crashes when launching from a card that was scrolled off-screen.
     lv_obj_update_layout(lv_scr_act());
@@ -907,6 +1058,24 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = false;   // Pausa LVGL: la app escribe directo al TFT
         switchApp(id);           // Actualiza _mode y fuerza _redraw
     }
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    bool active = false;
+    switch (id) {
+        case 0: active = _calcApp && _calcApp->isActive(); break;
+        case 1: active = _grapherApp && _grapherApp->isActive(); break;
+        case 2: active = _equationsApp && _equationsApp->isActive(); break;
+        case 3: active = _calculusApp && _calculusApp->isActive(); break;
+        case 10: active = _settingsApp && _settingsApp->isActive(); break;
+        default: break;
+    }
+    if (!active) {
+        numos::demo::recordFailure(
+            numos::demo::FailureCode::AppInitialization);
+        Serial.printf("[APP] begin-fail id=%d fallback=launcher\n", id);
+        returnToMenu();
+    }
+#endif
 }
 
 // ═════════════════════════════════════════════════
@@ -914,6 +1083,8 @@ void SystemApp::launchApp(int id) {
 // ═════════════════════════════════════════════════
 void SystemApp::returnToMenu() {
     Serial.printf("[RTM] Entering returnToMenu — mode=%d\n", (int)_mode);
+
+    clearTransitionInput();
 
     // ── Step 1: Switch the active LVGL screen to the menu FIRST.
     //    This starts a 200ms FADE_IN animation. The old app screen
@@ -933,9 +1104,22 @@ void SystemApp::returnToMenu() {
     _mode        = Mode::MENU;
     _redraw      = false;
     g_lvglActive = true;
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    numos::demo::recordAppMode(static_cast<uint8_t>(_mode));
+#endif
 
     Serial.println("[RTM] returnToMenu complete — teardown deferred 250ms.");
 }
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+void SystemApp::demoReturnToLauncher() {
+    if (_mode != Mode::MENU) returnToMenu();
+}
+
+uint8_t SystemApp::demoRetainedExpressionCount() const {
+    return _grapherApp ? _grapherApp->retainedExpressionCount() : 0;
+}
+#endif
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
 void SystemApp::returnToLauncherAfterDiagnostic() {
@@ -970,6 +1154,9 @@ void SystemApp::switchApp(int id) {
 #endif
         default: _mode = Mode::MENU;            break;
     }
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    numos::demo::recordAppMode(static_cast<uint8_t>(_mode));
+#endif
     _redraw = true;
 }
 

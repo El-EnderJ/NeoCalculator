@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const variant = process.env.NUMOS_WASM_VARIANT || "release";
 const port = Number(process.env.NUMOS_WASM_PORT ||
                     (variant === "debug" ? 4174 : 4173));
-const root = new URL(`../../out/wasm/dist/${variant}/`, import.meta.url).pathname;
+const root = fileURLToPath(
+  new URL(`../../out/wasm/dist/${variant}/`, import.meta.url));
 const server = spawn("python3", ["-m", "http.server", String(port),
                                  "--bind", "127.0.0.1", "--directory", root], {
   stdio: ["ignore", "pipe", "pipe"],
@@ -144,8 +146,8 @@ try {
   await waitForApp("Menu");
   await delay(350);
   const warmRetainedHandles = (await diagnostics()).giac.liveRetainedHandles;
-  assert.equal(warmRetainedHandles, 1,
-               "the compiled Grapher expression must remain retained");
+  assert.equal(warmRetainedHandles, 0,
+               "Grapher teardown must release every retained expression");
 
   // All three lazy screens are warm now. Repeat real pointer/keyboard switches,
   // wait for deferred teardown, and sample allocator usage at the same state.

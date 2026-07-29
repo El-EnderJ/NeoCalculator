@@ -97,6 +97,9 @@ public:
      */
     bool isActive() const { return _screen != nullptr; }
 
+    /** Close the topmost app-owned surface. False means SystemApp may exit. */
+    bool navigateBack();
+
 #ifdef NATIVE_SIM
     // ── Sonda de prueba (SOLO emulador, read-only) ────────────────────────
     // Expone el último resultado evaluado para las aserciones semánticas del

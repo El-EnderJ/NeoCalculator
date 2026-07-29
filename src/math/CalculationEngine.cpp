@@ -89,6 +89,13 @@ struct Serializer {
     std::string out;
     std::string err;
     int nodes = 0;
+    int depth = 0;
+
+    struct DepthScope {
+        int& value;
+        explicit DepthScope(int& current) : value(current) { ++value; }
+        ~DepthScope() { --value; }
+    };
 
     bool fail(const char* m) {
         if (err.empty()) err = m;
@@ -112,6 +119,9 @@ struct Serializer {
     }
 
     bool emitRow(const vpam::NodeRow* row) {
+        DepthScope scope(depth);
+        if (depth > enginecontract::kMaxTreeDepth)
+            return fail("expression nesting too deep");
         if (!budget()) return false;
         const auto& kids = row->children();
         bool prevOperand = false;
@@ -171,6 +181,9 @@ struct Serializer {
     }
 
     bool emitNode(const vpam::MathNode* n) {
+        DepthScope scope(depth);
+        if (depth > enginecontract::kMaxTreeDepth)
+            return fail("expression nesting too deep");
         if (!budget()) return false;
         using vpam::NodeType;
         switch (n->type()) {

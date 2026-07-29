@@ -68,6 +68,7 @@ public:
     void handleKey(const KeyEvent& ev);
 
     bool isActive() const { return _screen != nullptr; }
+    bool navigateBack();
 
 #ifdef NATIVE_SIM
     // GIAC-D01 semantic probes. These expose NumOS-owned state only.

@@ -141,6 +141,7 @@ def main() -> int:
     ini = PLATFORMIO_INI.read_text(encoding="utf-8")
     normal = section(ini, "env:numos-esp32-s3-wroom-1u-n16r8")
     bringup = section(ini, "env:numos-esp32-s3-wroom-1u-n16r8-bringup")
+    demo = section(ini, "env:numos-esp32-s3-wroom-1u-n16r8-demo")
     require("board      = numos-esp32-s3-wroom-1u-n16r8" in normal,
             "normal environment does not select production manifest")
     require("extends = env:esp32s3_n16r8" not in normal,
@@ -167,6 +168,15 @@ def main() -> int:
             "bring-up must extend the normal production environment")
     require("-DNUMOS_PRODUCTION_BRINGUP=1" in bringup,
             "bring-up instrumentation flag missing")
+    require("extends = env:numos-esp32-s3-wroom-1u-n16r8" in demo,
+            "demo must extend the normal production environment")
+    require("-DNUMOS_PRODUCTION_DEMO_PROFILE=1" in demo,
+            "demo capability flag missing")
+    require("-DNUMOS_DEMO_RADIOS_DISABLED=1" in demo,
+            "demo radio-disable capability missing")
+    default_section = section(ini, "platformio")
+    require("numos-esp32-s3-wroom-1u-n16r8-demo" not in default_section,
+            "demo environment must remain opt-in before physical acceptance")
 
     main_cpp = MAIN_CPP.read_text(encoding="utf-8")
     bringup_cpp = BRINGUP_CPP.read_text(encoding="utf-8")

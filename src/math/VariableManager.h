@@ -40,7 +40,11 @@
 #pragma once
 
 #include "ExactVal.h"
+#ifndef NUMOS_PRODUCTION_DEMO_PROFILE
+#define NUMOS_PRODUCTION_DEMO_PROFILE 0
+#endif
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace vpam {
@@ -56,6 +60,14 @@ static constexpr char VAR_PREANS  = '$';   ///< PreAns (penúltimo resultado)
 // ════════════════════════════════════════════════════════════════════════════
 class VariableManager {
 public:
+    enum class PersistentLoadStatus : uint8_t {
+        Missing,
+        Loaded,
+        Partial,
+        Corrupt,
+        UnsupportedVersion,
+        IoError,
+    };
     /// Acceso al singleton
     static VariableManager& instance();
 
@@ -105,6 +117,7 @@ public:
      * @return true si se cargó correctamente.
      */
     bool loadFromFlash();
+    PersistentLoadStatus lastLoadStatus() const { return _lastLoadStatus; }
 
     // ── Utilidades ───────────────────────────────────────────────────────
 
@@ -151,11 +164,22 @@ private:
 
     /// Formato binario: header(4 bytes "VR01") + count(1 byte) + [ExactVal serializado]*count
     /// Cada ExactVal serializado: num(8) + den(8) + outer(8) + inner(8) + piMul(1) + eMul(1) = 34 bytes
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    static constexpr uint32_t MAGIC = 0x56523032; // "VR02"
+    static constexpr uint8_t FORMAT_VERSION = 2;
+#else
     static constexpr uint32_t MAGIC = 0x56523031; // "VR01"
+#endif
     static constexpr int EXACTVAL_SIZE = 34;       // Bytes por ExactVal serializado
+    static constexpr int SLOT_RECORD_SIZE = EXACTVAL_SIZE + 4;
+    static constexpr const char* TEMP_PATH = "/vars.tmp";
 
     void serializeExactVal(uint8_t* buf, const ExactVal& val) const;
     ExactVal deserializeExactVal(const uint8_t* buf) const;
+    static uint32_t checksum(const uint8_t* data, std::size_t length);
+    static bool validatePersistentValue(const ExactVal& value);
+
+    PersistentLoadStatus _lastLoadStatus = PersistentLoadStatus::Missing;
 };
 
 } // namespace vpam

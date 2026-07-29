@@ -2268,6 +2268,37 @@ bool EquationsApp::splitAtEquals(NodeRow* row,
     return !lhsRow->isEmpty() && !rhsRow->isEmpty();
 }
 
+bool EquationsApp::navigateBack() {
+    switch (_state) {
+        case State::TEMPLATE:
+            if (_templateOverlay) {
+                lv_obj_add_flag(_templateOverlay, LV_OBJ_FLAG_HIDDEN);
+            }
+            _state = State::EQ_LIST;
+            if (_screen) lv_obj_invalidate(_screen);
+            return true;
+        case State::EDITING:
+            _editCanvas.stopCursorBlink();
+            _editNode.reset();
+            _editRow = nullptr;
+            showEqList();
+            return true;
+        case State::RESULT:
+            showEqList();
+            return true;
+        case State::STEPS:
+            showResult();
+            return true;
+        case State::SOLVING:
+            // Giac is synchronous at the solve boundary. HOME remains a
+            // post-return escape; BACK cannot safely terminate it in-place.
+            return true;
+        case State::EQ_LIST:
+            return false;
+    }
+    return false;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Convert SymEquation → LinEq for system solver
 // ════════════════════════════════════════════════════════════════════════════

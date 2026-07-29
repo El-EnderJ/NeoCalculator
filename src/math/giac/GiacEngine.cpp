@@ -44,6 +44,11 @@
 #include "math/giac/GiacEngine.h"
 #include "math/giac/GiacEngineInternal.h"
 #include "math/giac/EngineContracts.h"
+#include "Config.h"
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+#include "demo/DemoLiveness.h"
+#endif
 #include "math/AngleModeRuntime.h"
 
 namespace giac {
@@ -131,8 +136,22 @@ void configureContext(giac::context* ctx) {
 struct CallGuard {
     bool& flag;
     bool ok;
-    explicit CallGuard(bool& f) : flag(f), ok(!f) { if (ok) flag = true; }
-    ~CallGuard() { if (ok) flag = false; }
+    explicit CallGuard(bool& f) : flag(f), ok(!f) {
+        if (ok) {
+            flag = true;
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+            numos::demo::suspendUiLoopWatchdogForGiac();
+#endif
+        }
+    }
+    ~CallGuard() {
+        if (ok) {
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+            numos::demo::resumeUiLoopWatchdogAfterGiac();
+#endif
+            flag = false;
+        }
+    }
     bool entered() const { return ok; }
 };
 

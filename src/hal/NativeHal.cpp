@@ -608,6 +608,7 @@ static KeyCode scriptNameToKeyCode(const std::string& raw)
     if (n == "ac" || n == "esc" ||
         n == "escape")                        return KeyCode::AC;
     if (n == "home" || n == "mode")           return KeyCode::MODE;
+    if (n == "back")                           return KeyCode::BACK;
     // GRAPH (KeyCodes.h:61): app-specific function key. StatisticsApp uses it to
     // cycle Data->Stats->Graph tabs (StatisticsApp.cpp:532); on the Data tab
     // LEFT/RIGHT are column nav, so GRAPH is the only key that reaches a computed
@@ -680,6 +681,28 @@ static KeyCode scriptNameToKeyCode(const std::string& raw)
 // ════════════════════════════════════════════════════════════════════════════
 static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
 {
+    // Emulator parity for the demo recovery contract: BACK first unwinds the
+    // app's topmost modal/state, then returns one level to the launcher.
+    if (isDown && kc == KeyCode::BACK &&
+        g_mode != AppMode::MENU && g_mode != AppMode::SPLASH) {
+        bool consumed = false;
+        switch (g_mode) {
+            case AppMode::CALCULATION:
+                consumed = g_calcApp && g_calcApp->navigateBack(); break;
+            case AppMode::GRAPHER:
+                consumed = g_grapherApp && g_grapherApp->navigateBack(); break;
+            case AppMode::EQUATIONS:
+                consumed = g_equationsApp && g_equationsApp->navigateBack(); break;
+            case AppMode::CALCULUS:
+                consumed = g_calculusApp && g_calculusApp->navigateBack(); break;
+            case AppMode::SETTINGS:
+                consumed = g_settingsApp && g_settingsApp->navigateBack(); break;
+            default: break;
+        }
+        if (!consumed) returnToMenu();
+        return;
+    }
+
     switch (g_mode) {
         case AppMode::SPLASH:
             // Ignorar teclas durante la animación del splash
@@ -1339,6 +1362,7 @@ static void returnToMenu()
     }
 
     // Resetear modificadores de teclado (SHIFT/ALPHA/STO)
+    LvglKeypad::forceReleaseAll();
     vpam::KeyboardManager::instance().reset();
 
     g_menu->load();   // fade-in; la pantalla de la app sigue viva como origen
@@ -1810,6 +1834,7 @@ enum class ScriptCmdType : uint8_t {
     AssertGraphEvalValid,      // assert_graph_eval_valid SLOT T [Y]      (fArgs)
     AssertGraphEvalInvalid,    // assert_graph_eval_invalid SLOT T [Y]    (fArgs)
     AssertGraphEvalNear,       // assert_graph_eval_near SLOT T [Y] EXPECTED EPS
+    AssertGiacLiveHandles,     // assert_giac_live_handles N
     GiacReset,                 // giac_reset (rebuild del contexto; handles huerfanos)
 #if defined(NUMOS_NEO_APP_SMOKE)
     NeoSource,
@@ -2505,6 +2530,19 @@ static bool loadScript(const char* path)
             if (iss >> extra) return scriptErr(path, lineNo, "giac_reset no acepta argumentos");
             sc.type = ScriptCmdType::GiacReset;
         }
+        else if (lc == "assert_giac_live_handles") {
+            std::string countToken, extra;
+            long count = 0;
+            if (!(iss >> countToken) ||
+                !parseNonNegLong(countToken, count))
+                return scriptErr(path, lineNo,
+                    "assert_giac_live_handles requiere N entero >= 0");
+            if (iss >> extra)
+                return scriptErr(path, lineNo,
+                    "assert_giac_live_handles: demasiados argumentos");
+            sc.type = ScriptCmdType::AssertGiacLiveHandles;
+            sc.waitN = count;
+        }
 #if defined(NUMOS_NEO_APP_SMOKE)
         else if (lc == "neo_source" ||
                  lc == "assert_neo_console_contains") {
@@ -3170,6 +3208,19 @@ static void scriptStepBegin()
         case ScriptCmdType::GiacReset: {
             numos::GiacEngine::instance().reset();
             std::printf("[SCRIPT] giac_reset: contexto reconstruido (handles huerfanos)\n");
+            break;
+        }
+        case ScriptCmdType::AssertGiacLiveHandles: {
+            const uint32_t actual =
+                numos::GiacEngine::instance().runtimeDiagnostics()
+                    .liveRetainedHandles;
+            if (actual == static_cast<uint32_t>(sc.waitN))
+                assertPass(sc.line, "assert_giac_live_handles " +
+                                    std::to_string(sc.waitN));
+            else
+                assertFail(sc.line, "assert_giac_live_handles esperaba " +
+                                    std::to_string(sc.waitN) + " pero hay " +
+                                    std::to_string(actual));
             break;
         }
         case ScriptCmdType::AssertAngleMode: {

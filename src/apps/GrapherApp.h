@@ -51,6 +51,8 @@ public:
     void handleKey(const KeyEvent& ev);
 
     bool isActive()        const { return _screen != nullptr; }
+    bool navigateBack();
+    uint8_t retainedExpressionCount() const;
     bool atTabLevel()      const { return _focus == Focus::TAB_BAR; }
     bool isOnExpressions() const { return _tab == Tab::EXPRESSIONS; }
 

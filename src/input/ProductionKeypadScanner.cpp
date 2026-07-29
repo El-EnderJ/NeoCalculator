@@ -177,9 +177,14 @@ bool ProductionKeypadScanner::pollEvent(KeyEvent& event) {
 
 void ProductionKeypadScanner::forceReleaseAll(const uint32_t nowMs) {
     (void)nowMs;
+    // Transition is a hard input boundary. Discard queued PRESS/REPEAT events
+    // from the old application, then emit releases only for presses that were
+    // actually dispatched. This prevents both post-transition repeats and
+    // release-without-down fabrication.
+    _queueCount = 0;
     for (std::size_t i = 0; i < _states.size(); ++i) {
         auto& key = _states[i];
-        if (key.debounced && !key.suppressRelease) {
+        if (key.dispatchedDown && !key.suppressRelease) {
             pushEvent(i, KeyAction::RELEASE);
         }
         const bool wasActive = key.raw || key.debounced;

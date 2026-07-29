@@ -38,6 +38,23 @@
 #define NUMOS_BOARD_PROD_WROOM1U_N16R8 0
 #endif
 
+#ifndef NUMOS_PRODUCTION_DEMO_PROFILE
+#define NUMOS_PRODUCTION_DEMO_PROFILE 0
+#endif
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE && defined(ARDUINO) && \
+    !NUMOS_BOARD_PROD_WROOM1U_N16R8
+#error "The production demo profile is valid only for the WROOM-1U-N16R8 target"
+#endif
+
+#ifndef NUMOS_BUILD_COMMIT
+#define NUMOS_BUILD_COMMIT "unknown"
+#endif
+
+#ifndef NUMOS_BUILD_ENVIRONMENT
+#define NUMOS_BUILD_ENVIRONMENT "unknown"
+#endif
+
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 
 #include "hardware/BoardProfile.h"

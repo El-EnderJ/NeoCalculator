@@ -35,6 +35,7 @@
 #endif
 
 #include <cstring>
+#include <cstddef>
 
 namespace vpam {
 
@@ -162,31 +163,80 @@ ExactVal VariableManager::deserializeExactVal(const uint8_t* buf) const {
     return val;
 }
 
+uint32_t VariableManager::checksum(const uint8_t* data,
+                                   const std::size_t length) {
+    uint32_t hash = 2166136261U;
+    for (std::size_t i = 0; i < length; ++i) {
+        hash ^= data[i];
+        hash *= 16777619U;
+    }
+    return hash;
+}
+
+bool VariableManager::validatePersistentValue(const ExactVal& value) {
+    // These are representation invariants, not arbitrary numeric limits.
+    // Large int64 numerators remain valid; poisoned denominators/radicands and
+    // impossible symbolic exponents fall back only for their own slot.
+    return value.den > 0 &&
+           value.inner > 0 &&
+           value.piMul >= -32 && value.piMul <= 32 &&
+           value.eMul >= -32 && value.eMul <= 32;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // saveToFlash — Guarda todas las variables en LittleFS
 // ════════════════════════════════════════════════════════════════════════════
 
 bool VariableManager::saveToFlash() {
-    File f = LittleFS.open(FLASH_PATH, "w");
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    LittleFS.remove(TEMP_PATH);
+    File f = LittleFS.open(TEMP_PATH, "w");
     if (!f) return false;
 
-    // Magic "VR01"
+    bool complete = true;
+    uint32_t magic = MAGIC;
+    const uint8_t header[8] = {
+        static_cast<uint8_t>(magic),
+        static_cast<uint8_t>(magic >> 8U),
+        static_cast<uint8_t>(magic >> 16U),
+        static_cast<uint8_t>(magic >> 24U),
+        FORMAT_VERSION,
+        static_cast<uint8_t>(NUM_VARS),
+        0,
+        0,
+    };
+    complete = f.write(header, sizeof(header)) == sizeof(header);
+
+    uint8_t buf[SLOT_RECORD_SIZE];
+    for (int i = 0; i < NUM_VARS && complete; ++i) {
+        serializeExactVal(buf, _vars[i]);
+        const uint32_t crc = checksum(buf, EXACTVAL_SIZE);
+        std::memcpy(buf + EXACTVAL_SIZE, &crc, sizeof(crc));
+        complete = f.write(buf, sizeof(buf)) == sizeof(buf);
+    }
+
+    f.close();
+    if (!complete) {
+        LittleFS.remove(TEMP_PATH);
+        return false;
+    }
+    LittleFS.remove(FLASH_PATH);
+    return LittleFS.rename(TEMP_PATH, FLASH_PATH);
+#else
+    File f = LittleFS.open(FLASH_PATH, "w");
+    if (!f) return false;
     uint32_t magic = MAGIC;
     f.write(reinterpret_cast<const uint8_t*>(&magic), 4);
-
-    // Count
     uint8_t count = NUM_VARS;
     f.write(&count, 1);
-
-    // Variables
     uint8_t buf[EXACTVAL_SIZE];
     for (int i = 0; i < NUM_VARS; ++i) {
         serializeExactVal(buf, _vars[i]);
         f.write(buf, EXACTVAL_SIZE);
     }
-
     f.close();
     return true;
+#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -194,35 +244,90 @@ bool VariableManager::saveToFlash() {
 // ════════════════════════════════════════════════════════════════════════════
 
 bool VariableManager::loadFromFlash() {
+#if NUMOS_PRODUCTION_DEMO_PROFILE
     // Attempt open directly — avoids LittleFS.exists() which internally calls
     // open("r") and emits log_e via vfs_api.cpp:105 when the file is absent.
     File f = LittleFS.open(FLASH_PATH, "r");
-    if (!f) return false;
-
-    // Verificar magic
-    uint32_t magic = 0;
-    if (f.read(reinterpret_cast<uint8_t*>(&magic), 4) != 4 || magic != MAGIC) {
-        f.close();
+    if (!f) {
+        _lastLoadStatus = PersistentLoadStatus::Missing;
         return false;
     }
 
-    // Count
+    resetAll();
+    uint8_t header[8] = {};
+    if (f.read(header, sizeof(header)) != sizeof(header)) {
+        f.close();
+        _lastLoadStatus = PersistentLoadStatus::Corrupt;
+        return false;
+    }
+    uint32_t magic = 0;
+    std::memcpy(&magic, header, sizeof(magic));
+    if (magic != MAGIC) {
+        f.close();
+        _lastLoadStatus = PersistentLoadStatus::UnsupportedVersion;
+        return false;
+    }
+    if (header[4] != FORMAT_VERSION || header[5] > NUM_VARS) {
+        f.close();
+        _lastLoadStatus = PersistentLoadStatus::UnsupportedVersion;
+        return false;
+    }
+
+    const std::size_t count = header[5];
+    const std::size_t expectedSize =
+        sizeof(header) + count * SLOT_RECORD_SIZE;
+    if (f.size() != expectedSize) {
+        f.close();
+        _lastLoadStatus = PersistentLoadStatus::Corrupt;
+        return false;
+    }
+
+    bool partial = count != NUM_VARS;
+    uint8_t buf[SLOT_RECORD_SIZE];
+    for (std::size_t i = 0; i < count; ++i) {
+        if (f.read(buf, sizeof(buf)) != sizeof(buf)) {
+            partial = true;
+            break;
+        }
+        uint32_t storedChecksum = 0;
+        std::memcpy(&storedChecksum, buf + EXACTVAL_SIZE,
+                    sizeof(storedChecksum));
+        const ExactVal value = deserializeExactVal(buf);
+        if (storedChecksum != checksum(buf, EXACTVAL_SIZE) ||
+            !validatePersistentValue(value)) {
+            partial = true;
+            continue;
+        }
+        _vars[i] = value;
+    }
+
+    f.close();
+    _lastLoadStatus = partial ? PersistentLoadStatus::Partial
+                              : PersistentLoadStatus::Loaded;
+    return true;
+#else
+    File f = LittleFS.open(FLASH_PATH, "r");
+    if (!f) return false;
+    uint32_t magic = 0;
+    if (f.read(reinterpret_cast<uint8_t*>(&magic), 4) != 4 ||
+        magic != MAGIC) {
+        f.close();
+        return false;
+    }
     uint8_t count = 0;
     if (f.read(&count, 1) != 1) {
         f.close();
         return false;
     }
-
-    // Leer solo hasta NUM_VARS, ignorar extras
-    int toRead = (count < NUM_VARS) ? count : NUM_VARS;
+    const int toRead = count < NUM_VARS ? count : NUM_VARS;
     uint8_t buf[EXACTVAL_SIZE];
     for (int i = 0; i < toRead; ++i) {
         if (f.read(buf, EXACTVAL_SIZE) != EXACTVAL_SIZE) break;
         _vars[i] = deserializeExactVal(buf);
     }
-
     f.close();
     return true;
+#endif
 }
 
 } // namespace vpam

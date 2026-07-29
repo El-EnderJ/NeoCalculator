@@ -43,6 +43,12 @@
 
 #include "MainMenu.h"
 #include "../display/DisplayDriver.h"
+#include "../Config.h"
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+#include "../demo/DemoBootHealth.h"
+#include "../demo/DemoProfile.h"
+#endif
 
 #ifdef NATIVE_SIM
 // Only the Phase 9B native-only debug accessors below need these; the firmware
@@ -168,11 +174,23 @@ bool MainMenu::moveFocusByDelta(int dCol, int dRow) {
         return false;
     }
 
-    const int cols = 3;
-    int col = currentId % cols;
-    int row = currentId / cols;
-    int maxRow = (APP_COUNT - 1) / cols;
+    const int cardCount = static_cast<int>(lv_obj_get_child_count(_grid));
+    if (cardCount <= 0) return false;
+    int currentPosition = -1;
+    for (int i = 0; i < cardCount; ++i) {
+        lv_obj_t* card = lv_obj_get_child(_grid, static_cast<uint32_t>(i));
+        if (card && static_cast<int>(reinterpret_cast<intptr_t>(
+                        lv_obj_get_user_data(card))) == currentId) {
+            currentPosition = i;
+            break;
+        }
+    }
+    if (currentPosition < 0) return false;
 
+    const int cols = 3;
+    int col = currentPosition % cols;
+    int row = currentPosition / cols;
+    int maxRow = (cardCount - 1) / cols;
     int targetCol = col + dCol;
     int targetRow = row + dRow;
 
@@ -184,12 +202,13 @@ bool MainMenu::moveFocusByDelta(int dCol, int dRow) {
     if (targetRow < 0)       targetRow = maxRow;
     if (targetRow > maxRow)  targetRow = 0;
 
-    int targetId = targetRow * cols + targetCol;
+    int targetPosition = targetRow * cols + targetCol;
     // Clamp to valid range (last row may be incomplete)
-    if (targetId >= APP_COUNT) targetId = APP_COUNT - 1;
-    if (targetId < 0)         targetId = 0;
+    if (targetPosition >= cardCount) targetPosition = cardCount - 1;
+    if (targetPosition < 0) targetPosition = 0;
 
-    lv_obj_t* target = cardById(targetId);
+    lv_obj_t* target =
+        lv_obj_get_child(_grid, static_cast<uint32_t>(targetPosition));
     if (!target) return false;
 
     lv_group_focus_obj(target);
@@ -349,7 +368,12 @@ void MainMenu::buildStatusBar() {
 
     // Centre: title
     lv_obj_t* title = lv_label_create(bar);
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    lv_label_set_text(title, numos::demo::safeModeActive()
+                                ? "SAFE MODE" : "EVENT DEMO");
+#else
     lv_label_set_text(title, "APPLICATIONS");
+#endif
     lv_obj_set_style_text_font(title, LV_FONT_DEFAULT, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COL_STATUS_TEXT), 0);
     lv_obj_set_style_text_opa(title, LV_OPA_COVER, 0);
@@ -423,8 +447,14 @@ void MainMenu::buildGrid() {
                           APP_COUNT, i);
             break;
         }
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+        const bool visible = numos::demo::safeModeActive()
+            ? numos::demo::isSafeModeApp(APPS[i].id)
+            : numos::demo::isEventReadyApp(APPS[i].id);
+        if (!visible) continue;
+#endif
         lv_obj_t* card = buildCard(_grid, APPS[i]);
-        if (i == 0) _firstCard = card;   // Remember first for initial focus
+        if (!_firstCard) _firstCard = card; // deterministic first visible card
     }
 }
 

@@ -132,6 +132,13 @@ public:
      */
     void powerOff();
 
+    bool filesystemMounted() const { return _filesystemMounted; }
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    void demoReturnToLauncher();
+    uint8_t demoRetainedExpressionCount() const;
+#endif
+
 private:
     DisplayDriver &_display;
     Keyboard &_keypad;
@@ -194,12 +201,15 @@ private:
     int _selectedAppIndex;
     int _menuScrollOffset;
     bool _redraw;
+    bool _filesystemMounted = false;
 
     // ── Initialization ──
     void initApps();
 
     // ── Key handling ──
     void handleKey(const KeyEvent &ev);
+    void clearTransitionInput();
+    bool unwindTopmostDemoState();
 
     // ── Key handling (internal) ──
     void handleKeyMenu(const KeyEvent &ev);

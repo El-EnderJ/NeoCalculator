@@ -67,6 +67,14 @@ void LvglKeypad::pushKey(KeyCode code, bool pressed) {
                   (unsigned long)lk, pressed ? "PRESS" : "RELEASE", _head, _tail);
 }
 
+void LvglKeypad::forceReleaseAll() {
+    _head = 0;
+    _tail = 0;
+    _currentKey = 0;
+    _currentState = LV_INDEV_STATE_RELEASED;
+    if (_indev) lv_indev_reset(_indev, nullptr);
+}
+
 // ── readCb() ────────────────────────────────────────────────────────────────
 /**
  * LVGL llama a esta función en cada tick de su timer handler.

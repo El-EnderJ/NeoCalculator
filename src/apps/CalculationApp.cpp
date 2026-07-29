@@ -713,6 +713,12 @@ void CalculationApp::evaluateExpression() {
     hwux.finish(status, kind, "giac", numos::hwUxHash(_exactText.c_str()));
 }
 
+bool CalculationApp::navigateBack() {
+    if (!_stepViewerActive) return false;
+    closeStepViewer();
+    return true;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // applyResultLayout() — Dynamically trim expression, reveal separator, fill result
 //

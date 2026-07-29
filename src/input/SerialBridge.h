@@ -49,6 +49,8 @@
 
 class SerialBridge {
 public:
+    using LineHandler = bool (*)(const char* line, void* context);
+
     SerialBridge();
 
     /// Call once in setup() after Serial.begin()
@@ -57,6 +59,7 @@ public:
     /// Non-blocking: reads available serial chars, pushes events.
     /// Returns true if at least one event was generated.
     bool pollEvent(KeyEvent &outEvent);
+    void setLineHandler(LineHandler handler, void* context);
 
 private:
     // Small circular buffer for generated events
@@ -64,6 +67,8 @@ private:
     KeyEvent _buf[BUF_SIZE];
     int _head;
     int _tail;
+    LineHandler _lineHandler = nullptr;
+    void* _lineHandlerContext = nullptr;
 
     void push(KeyCode code, const char* label);
     bool pop(KeyEvent &out);

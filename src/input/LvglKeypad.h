@@ -57,6 +57,9 @@ public:
      */
     static void pushKey(KeyCode code, bool pressed);
 
+    /** Clear queued presses/repeats and publish a released state. */
+    static void forceReleaseAll();
+
     /** Devuelve el lv_indev_t creado por init(), útil para asignarlo a grupos */
     static lv_indev_t* indev() { return _indev; }
 

@@ -1,0 +1,206 @@
+# PROD-DEMO-HARDEN-01 deterministic event flow.
+# One command follows the same logical input path used by SDL; production keypad
+# mapping/debounce/held-release is covered by the companion host suite.
+
+log "demo acceptance: boot to known launcher"
+wait 200
+assert_app Menu
+assert_giac_live_handles 0
+
+# Calculation: arithmetic, fraction, power, square root, SHIFT trig, ALPHA var,
+# DEL/edit, EXE, HOME, and held-key release.
+open_app Calculation
+wait 60
+key 2
+key +
+key 3
+key enter
+wait 100
+assert_result 5
+key ac
+
+key 1
+key frac
+key 2
+key right
+key enter
+wait 100
+assert_result 1/2
+key ac
+
+key 2
+key pow
+key 3
+key enter
+wait 100
+assert_result 8
+key ac
+
+key sqrt
+key 9
+key right
+key enter
+wait 100
+assert_result 3
+key ac
+
+key shift
+key sin
+key 1
+key right
+key enter
+wait 100
+assert_no_error
+key ac
+
+key 4
+key enter
+wait 80
+key sto
+key 1
+wait 20
+assert_variable A 4
+key ac
+key alpha
+key 1
+key +
+key 2
+key enter
+wait 100
+assert_result 6
+key ac
+
+key 7
+key +
+key 9
+key del
+key 3
+key enter
+wait 100
+assert_result 10
+
+keydown 5
+key home
+wait 50
+keyup 5
+assert_app Menu
+
+# Re-entry proves the held digit, modifier plane, repeat state, and result did
+# not survive the transition. BACK at the root returns exactly one level.
+open_app Calculation
+wait 40
+key 1
+key enter
+wait 80
+assert_result 1
+key back
+wait 50
+assert_app Menu
+
+# Grapher parse-once flow and HOME teardown.
+open_app Grapher
+wait 60
+key down
+key enter
+key y
+key =
+key x
+key pow
+key 2
+key enter
+wait 80
+assert_graph_engine giac
+assert_graph_slot_valid 0
+assert_graph_compile_status 0 ok
+assert_graph_eval_near 0 2 4 1e-9
+key graph
+wait 30
+key home
+wait 60
+assert_app Menu
+assert_giac_live_handles 0
+
+# BACK closes the Templates modal, then cancels edit, then returns one level.
+open_app Grapher
+wait 50
+key down
+key enter
+key right
+wait 80
+key back
+wait 20
+assert_app Grapher
+key back
+wait 20
+assert_app Grapher
+key back
+wait 20
+assert_app Grapher
+key back
+wait 60
+assert_app Menu
+assert_giac_live_handles 0
+
+# Every remaining visible app: real operation/state plus BACK/HOME recovery.
+open_app Equations
+wait 50
+key enter
+key enter
+key 2
+key *
+key x
+key +
+key 4
+key =
+key 0
+key enter
+key down
+key down
+key enter
+wait 100
+assert_equations_status ok
+key back
+wait 30
+assert_app Equations
+key home
+wait 60
+assert_app Menu
+
+open_app Calculus
+wait 50
+key x
+key pow
+key 2
+key enter
+wait 100
+assert_calculus_status ok
+key back
+wait 30
+assert_app Calculus
+key back
+wait 60
+assert_app Menu
+
+open_app Settings
+wait 50
+assert_app Settings
+key back
+wait 60
+assert_app Menu
+
+# Repeated app switching must remain recoverable and retain no graph handles.
+open_app Calculation
+wait 30
+key home
+wait 40
+open_app Grapher
+wait 30
+key home
+wait 50
+open_app Settings
+wait 30
+key home
+wait 50
+assert_app Menu
+assert_giac_live_handles 0
+log "demo acceptance: PASS"

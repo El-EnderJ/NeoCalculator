@@ -50,6 +50,12 @@ bool setting_edu_steps = false;
 #include "hardware/ProductionBringup.h"
 #endif
 
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+#include "demo/DemoBootHealth.h"
+#include "demo/DemoDiagnostics.h"
+#include "demo/DemoLiveness.h"
+#endif
+
 #define Serial NUMOS_SERIAL
 
 #ifdef NUMOS_MATH_STRESS_DIAGNOSTICS
@@ -90,6 +96,17 @@ static DisplayDriver g_display;
 static SystemApp     g_app(g_display, g_keypad);
 static SerialBridge  g_serial;
 static SplashScreen  g_splash;
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+static uint32_t g_demoLauncherReadyMs = 0;
+static numos::demo::DemoDiagnostics g_demoDiagnostics(
+    g_keypad, g_display, g_app);
+
+static bool handleDemoDiagnosticLine(const char* line, void* context) {
+    auto* diagnostics =
+        static_cast<numos::demo::DemoDiagnostics*>(context);
+    return diagnostics && diagnostics->handleLine(line);
+}
+#endif
 
 // LVGL gating flag
 bool g_lvglActive = true;
@@ -102,10 +119,17 @@ static void* lvBuf2 = nullptr;
 // setup()
 // ====================================================================
 void setup() {
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    const uint32_t demoSetupEntryMs = millis();
+#endif
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     // Earliest framework-controlled point: CS high, BL off, reset inactive,
     // mode-0 SCLK idle. Matrix, USB, BOOT, and strap pins remain untouched.
     numos::hardware::applyProductionSafeStartup();
+#endif
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    numos::demo::initializeBootHealth();
 #endif
 
     Serial.begin(115200);
@@ -132,6 +156,17 @@ void setup() {
     Serial.print(NUMOS_SERIAL_BACKEND_LABEL);
     Serial.println(")");
     Serial.println("=== NumOS Boot ===");
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    {
+        const auto& health = numos::demo::bootHealthRecord();
+        Serial.printf(
+            "[BOOT] profile=demo commit=%s reset=%s failures=%u safe=%u\n",
+            NUMOS_BUILD_COMMIT,
+            numos::demo::resetClassName(health.lastReset),
+            health.consecutiveFailures,
+            numos::demo::safeModeActive());
+    }
+#endif
 
     // -- CAS-Lite Phase A Tests (if enabled) --
 #ifdef CAS_RUN_TESTS
@@ -221,6 +256,7 @@ void setup() {
 #endif
 
     // -- 6. SplashScreen con animacion fade-in --
+#if !NUMOS_PRODUCTION_DEMO_PROFILE
     volatile bool splashDone = false;
     g_splash.create();
     g_splash.show([&splashDone]() { splashDone = true; });
@@ -236,6 +272,9 @@ void setup() {
         lv_timer_handler();
         delay(5);
     }
+#else
+    Serial.println("[BOOT] demo splash=skipped");
+#endif
 
     #ifdef NUMOS_STIX_DIAGNOSTICS
     // -- 6b. STIX Two Math validation (glyph coverage + baseline check) --
@@ -270,7 +309,9 @@ void setup() {
             delay(5);
         }
     }
+#if !NUMOS_PRODUCTION_DEMO_PROFILE
     g_splash.destroy();
+#endif
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     // A saved profile is considered bootable only after the launcher has
@@ -278,8 +319,20 @@ void setup() {
     numos::display::markProductionDisplayBootUsable();
 #endif
 
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    lv_timer_handler();
+    g_demoLauncherReadyMs = millis() - demoSetupEntryMs;
+    g_demoDiagnostics.setLauncherReadyMs(g_demoLauncherReadyMs);
+    numos::demo::acknowledgeLauncherReady();
+    Serial.printf("[BOOT] launcher-usable-ms=%u\n",
+                  (unsigned)g_demoLauncherReadyMs);
+#endif
+
     // -- 8. Serial bridge (teclado via monitor serial) --
     g_serial.begin();
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    g_serial.setLineHandler(handleDemoDiagnosticLine, &g_demoDiagnostics);
+#endif
 
     // -- 9. Confirmar foco LVGL --
     lv_group_t* focusGrp = lv_indev_get_group(LvglKeypad::indev());
@@ -293,6 +346,10 @@ void setup() {
 
     // MT-01: boot steady-state probe (menu loaded, splash freed, apps constructed).
     NUMOS_MEM_PROBE("boot");
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    numos::demo::enableUiLoopWatchdog();
+#endif
 }
 
 // ====================================================================
@@ -327,6 +384,10 @@ void loop() {
 
     g_app.update();
 
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    g_demoDiagnostics.service();
+#endif
+
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
     numos::hardware::serviceProductionBringupCommands(
         g_keypad, g_display, g_app);
@@ -336,6 +397,10 @@ void loop() {
     while (g_serial.pollEvent(serialEv)) {
         g_app.injectKey(serialEv);
     }
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    numos::demo::noteUiLoopProgress();
+#endif
 
     // Heartbeat cada 5s (confirma que el loop corre y Serial TX funciona).
     // MT-01: the old internal-only "[HB] heap=" line is replaced by the full

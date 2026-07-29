@@ -8,6 +8,10 @@
 #include <esp_attr.h>
 #include <esp_system.h>
 
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+#include "../demo/DemoBootHealth.h"
+#endif
+
 namespace numos::display {
 
 namespace {
@@ -80,6 +84,20 @@ void armRtcAttempt(const uint32_t recordIdentity) {
 void prepareProductionDisplayBootProfile() {
     if (g_prepared) return;
     g_prepared = true;
+
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    if (numos::demo::safeModeActive()) {
+        // General boot-health safe mode is independent from the display
+        // quarantine counter. Optional UI state is ignored, while its NVS
+        // evidence is left untouched for diagnostics.
+        g_activeProfile = kSafeDisplayProfile;
+        g_loadDecision = ProfileLoadDecision::SafeRollback;
+        g_resetClass = classifyReset(esp_reset_reason());
+        clearRtcAttempt();
+        publishBusFrequencies();
+        return;
+    }
+#endif
 
     Preferences preferences;
     if (!preferences.begin(kPreferencesNamespace, false)) {

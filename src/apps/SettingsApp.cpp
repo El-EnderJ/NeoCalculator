@@ -25,7 +25,14 @@
 #include "../Config.h"
 #include "../math/AngleModeRuntime.h"
 
-#ifdef __EMSCRIPTEN__
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+#include "../demo/DemoBootHealth.h"
+#include "../demo/DemoSettingsRecord.h"
+#include <FS.h>
+#include <LittleFS.h>
+#include <cstdint>
+#include <cstring>
+#elif defined(__EMSCRIPTEN__)
 #include "../hal/FileSystem.h"
 #include <cstdint>
 #include <cstring>
@@ -49,7 +56,65 @@ static constexpr uint32_t COL_HINT       = 0x808080;
 static const int PRECISIONS[] = {6, 8, 10, 12};
 static constexpr int NUM_PREC  = 4;
 
-#ifdef __EMSCRIPTEN__
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+namespace {
+constexpr const char* SETTINGS_PATH = "/settings.dat";
+constexpr const char* SETTINGS_TEMP_PATH = "/settings.tmp";
+}
+
+bool SettingsApp::savePersistentState() {
+#if NUMOS_PRODUCTION_DEMO_PROFILE
+    if (numos::demo::safeModeActive()) return false;
+#endif
+    const auto record = numos::demo::encodeSettingsRecord(
+        numos::angleModeIsDeg(), setting_complex_enabled,
+        setting_edu_steps, static_cast<uint8_t>(setting_decimal_precision));
+
+    LittleFS.remove(SETTINGS_TEMP_PATH);
+    File file = LittleFS.open(SETTINGS_TEMP_PATH, "w");
+    if (!file) return false;
+    const bool complete =
+        file.write(record.data(), record.size()) == record.size();
+    file.close();
+    if (!complete) {
+        LittleFS.remove(SETTINGS_TEMP_PATH);
+        return false;
+    }
+    LittleFS.remove(SETTINGS_PATH);
+    return LittleFS.rename(SETTINGS_TEMP_PATH, SETTINGS_PATH);
+}
+
+bool SettingsApp::loadPersistentState() {
+    File file = LittleFS.open(SETTINGS_PATH, "r");
+    if (!file) return false;  // normal first run
+
+    std::array<uint8_t, numos::demo::kSettingsRecordSize> record{};
+    if (file.size() != record.size()) {
+        file.close();
+        return false;
+    }
+    const bool complete =
+        file.read(record.data(), record.size()) == record.size();
+    file.close();
+    if (!complete) return false;
+
+    numos::demo::DecodedSettings decoded{};
+    if (!numos::demo::decodeSettingsRecord(
+            record.data(), record.size(), decoded)) return false;
+
+    if (decoded.angleValid) {
+        numos::setAngleMode(decoded.angleDeg ? vpam::AngleMode::DEG
+                                             : vpam::AngleMode::RAD);
+    }
+    if (decoded.complexValid)
+        setting_complex_enabled = decoded.complexEnabled;
+    if (decoded.educationValid)
+        setting_edu_steps = decoded.educationEnabled;
+    if (decoded.precisionValid)
+        setting_decimal_precision = decoded.precision;
+    return true;
+}
+#elif defined(__EMSCRIPTEN__)
 namespace {
 constexpr const char* SETTINGS_PATH = "/settings.dat";
 constexpr uint32_t SETTINGS_MAGIC = 0x53543031;  // "ST01"
@@ -76,7 +141,7 @@ bool SettingsApp::savePersistentState() {
 
 bool SettingsApp::loadPersistentState() {
     File file = LittleFS.open(SETTINGS_PATH, "r");
-    if (!file) return false;  // normal first run
+    if (!file) return false;
 
     uint8_t record[SETTINGS_RECORD_SIZE] = {};
     const bool complete = file.read(record, sizeof(record)) == sizeof(record);
@@ -334,7 +399,7 @@ void SettingsApp::toggleCurrent() {
     }
 
     updateValues();
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || NUMOS_PRODUCTION_DEMO_PROFILE
     // One compact record per completed user action. FileSystem marks the
     // successful close dirty; JavaScript coalesces repeated actions.
     savePersistentState();
@@ -380,7 +445,7 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
                 idx = (idx - 1 + NUM_PREC) % NUM_PREC;
                 setting_decimal_precision = PRECISIONS[idx];
                 updateValues();
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || NUMOS_PRODUCTION_DEMO_PROFILE
                 savePersistentState();
 #endif
             }

@@ -1,0 +1,153 @@
+# Bounded automatic host/emulator soak. Physical soak is separately opt-in via
+# the hidden "DEMO SOAK START CONFIRM" operator command.
+wait 200
+assert_app Menu
+
+# Ten mixed lifecycle cycles in one process.
+open_app Calculation
+key 1
+key +
+key 1
+key enter
+wait 20
+key ac
+key home
+wait 30
+open_app Grapher
+key down
+key enter
+key y
+key =
+key x
+key enter
+wait 20
+key home
+wait 40
+assert_giac_live_handles 0
+open_app Settings
+wait 10
+key back
+wait 30
+
+open_app Calculation
+key shift
+key alpha
+keydown 8
+key home
+keyup 8
+wait 30
+open_app Grapher
+key down
+key enter
+key x
+key enter
+wait 20
+key home
+wait 40
+assert_giac_live_handles 0
+
+open_app Calculation
+key 2
+key pow
+key 8
+key enter
+wait 20
+key ac
+key home
+wait 30
+open_app Grapher
+key down
+key enter
+key y
+key =
+key x
+key pow
+key 2
+key enter
+wait 20
+key home
+wait 40
+assert_giac_live_handles 0
+
+open_app Settings
+wait 10
+key back
+wait 20
+open_app Calculation
+key 1
+key frac
+key 2
+key right
+key enter
+wait 20
+key ac
+key home
+wait 30
+
+open_app Grapher
+key down
+key enter
+key right
+wait 30
+key back
+key back
+key back
+key back
+wait 40
+assert_app Menu
+assert_giac_live_handles 0
+
+open_app Equations
+wait 20
+key home
+wait 30
+open_app Calculus
+wait 20
+key home
+wait 30
+
+open_app Calculation
+key 9
+key del
+key 3
+key enter
+wait 20
+key ac
+key home
+wait 30
+open_app Settings
+wait 10
+key home
+wait 30
+
+open_app Grapher
+key down
+key enter
+key x
+key enter
+wait 20
+key home
+wait 40
+assert_giac_live_handles 0
+open_app Calculation
+key shift
+key alpha
+key home
+wait 30
+
+open_app Grapher
+wait 20
+key home
+wait 30
+open_app Calculation
+wait 20
+key back
+wait 30
+
+open_app Settings
+wait 10
+key back
+wait 30
+assert_app Menu
+assert_giac_live_handles 0
+log "demo soak: PASS cycles=10"

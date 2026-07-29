@@ -190,6 +190,11 @@ void GrapherApp::end() {
         _exprCanvas[i].destroy();
         _exprAST[i].reset();
         _exprASTRow[i] = nullptr;
+        // WHY: CompiledExpression owns the retained Giac handle. Replacing
+        // every slot on app exit guarantees HOME cannot leave CAS state tied
+        // to a UI whose LVGL objects are being destroyed.
+        _funcs[i] = FuncSlot{};
+        _funcs[i].color = FUNC_COLORS[i];
     }
     for (int i = 0; i < 6; ++i) {
         _tplCanvas[i].destroy();
@@ -1657,6 +1662,37 @@ void GrapherApp::closeTemplates() {
     }
     _tplOpen = false;
     for (int i = 0; i < 6; ++i) { _tplRows[i] = nullptr; }
+}
+
+uint8_t GrapherApp::retainedExpressionCount() const {
+    uint8_t count = 0;
+    for (int i = 0; i < MAX_FUNCS; ++i) {
+        if (_funcs[i].giacF.valid()) ++count;
+        if (_funcs[i].giacG.valid()) ++count;
+        if (_funcs[i].giacFy.valid()) ++count;
+    }
+    return count;
+}
+
+bool GrapherApp::navigateBack() {
+    if (_tplOpen) {
+        closeTemplates();
+        return true;
+    }
+    if (_calcMenuOpen) {
+        closeCalcMenu();
+        return true;
+    }
+    if (_exprMode == ExprMode::EDITING) {
+        stopEditing();
+        return true;
+    }
+    if (_grMode == GrMode::TRACE) {
+        _grMode = GrMode::NAVIGATE;
+        _plotDirty = true;
+        return true;
+    }
+    return false;
 }
 
 void GrapherApp::handleTemplates(const KeyEvent& ev) {

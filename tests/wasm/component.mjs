@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { chromium, firefox, webkit } from "playwright";
 import { startStaticServer } from "./test-server.mjs";
 
@@ -9,7 +10,8 @@ assert.ok(browserType, `unknown browser: ${engineName}`);
 const port = Number(process.env.NUMOS_WASM_COMPONENT_PORT ||
   ({ chromium: 4201, firefox: 4202, webkit: 4203 }[engineName]) +
   (variant === "debug" ? 10 : 0));
-const root = new URL(`../../out/wasm/dist/${variant}/`, import.meta.url).pathname;
+const root = fileURLToPath(
+  new URL(`../../out/wasm/dist/${variant}/`, import.meta.url));
 const server = await startStaticServer(root, port);
 const launchOptions = { headless: true };
 if (engineName === "chromium") launchOptions.executablePath = chromium.executablePath();

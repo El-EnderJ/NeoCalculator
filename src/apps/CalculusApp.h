@@ -75,6 +75,7 @@ public:
     void handleKey(const KeyEvent& ev);
 
     bool isActive() const { return _scr != nullptr; }
+    bool navigateBack();
 
     // NativeHAL semantic-test seam. No Giac-owned type is exposed.
     const char* debugEngineName() const;

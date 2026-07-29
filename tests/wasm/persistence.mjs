@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const variant = process.env.NUMOS_WASM_VARIANT || "release";
 const port = Number(process.env.NUMOS_WASM_PERSIST_PORT ||
                     (variant === "debug" ? 4184 : 4183));
-const root = new URL(`../../out/wasm/dist/${variant}/`, import.meta.url).pathname;
+const root = fileURLToPath(
+  new URL(`../../out/wasm/dist/${variant}/`, import.meta.url));
 const origin = `http://127.0.0.1:${port}`;
 const server = spawn("python3", ["-m", "http.server", String(port),
                                  "--bind", "127.0.0.1", "--directory", root], {

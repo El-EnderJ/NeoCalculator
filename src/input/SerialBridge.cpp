@@ -62,6 +62,11 @@ void SerialBridge::begin() {
     Serial.println("[SerialBridge] Type a key and press Enter.");
 }
 
+void SerialBridge::setLineHandler(LineHandler handler, void* context) {
+    _lineHandler = handler;
+    _lineHandlerContext = context;
+}
+
 // ── Circular buffer helpers ──
 
 void SerialBridge::push(KeyCode code, const char* label) {
@@ -143,6 +148,12 @@ void SerialBridge::processChar(int ch) {
             return;
         } else {
             line = inputBuffer.substr(lpos, rpos - lpos + 1);
+        }
+
+        if (_lineHandler &&
+            _lineHandler(line.c_str(), _lineHandlerContext)) {
+            inputBuffer.clear();
+            return;
         }
 
         // If line starts with ':' → Giac command

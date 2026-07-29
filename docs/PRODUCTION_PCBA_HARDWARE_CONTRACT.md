@@ -238,9 +238,10 @@ The bring-up build includes
 `DisplayDriver::runBoundedProductionDisplayDiagnostic()`. It is not called by
 either checked-in boot path. An explicitly instrumented first-board build may
 enable `NUMOS_PRODUCTION_BRINGUP_DISPLAY_AUTORUN`; the routine starts black,
-steps backlight through 0/32/96/192, fills red/green/blue/white/black, draws
-colored corner/edge/orientation and text-baseline markers, then restores the
-normal LVGL screen.
+steps backlight through 0/32/96/192, fills black/white/red/green/blue, draws
+color-order blocks, gradients, a coordinate grid, labelled corners/edges and
+text-baseline markers, then restores the normal LVGL screen. The interactive,
+persisted profile workflow is specified in `docs/PROD-DISPLAY-BRINGUP-01.md`.
 
 ## Deterministic safe startup
 

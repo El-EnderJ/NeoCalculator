@@ -43,6 +43,7 @@ bool setting_edu_steps = false;
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 #include "hardware/ProductionSafeStartup.h"
+#include "display/ProductionDisplayRuntime.h"
 #endif
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
@@ -271,6 +272,12 @@ void setup() {
     }
     g_splash.destroy();
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // A saved profile is considered bootable only after the launcher has
+    // rendered and the splash/transition lifetime is complete.
+    numos::display::markProductionDisplayBootUsable();
+#endif
+
     // -- 8. Serial bridge (teclado via monitor serial) --
     g_serial.begin();
 
@@ -321,7 +328,8 @@ void loop() {
     g_app.update();
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
-    numos::hardware::serviceProductionBringupKeypad(g_keypad);
+    numos::hardware::serviceProductionBringupCommands(
+        g_keypad, g_display, g_app);
 #endif
 
     KeyEvent serialEv;

@@ -25,6 +25,12 @@
 #include <cstdint>
 #include <SPI.h>
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#include "ProductionDisplayClip.h"
+#include "ProductionDisplayRuntime.h"
+#include "ProductionDisplayRuntimeConfig.h"
+#endif
+
 // Diagnostic and strict-sync helpers — enable during debugging.
 // Uncomment to enable verbose display diagnostics during development.
 // #define DISPLAY_DRIVER_DIAG
@@ -44,6 +50,19 @@ DisplayDriver::~DisplayDriver() {
 
 void DisplayDriver::begin() {
     Serial.println("[TFT] Initializing...");
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    numos::display::prepareProductionDisplayBootProfile();
+    const auto& productionProfile =
+        numos::display::activeProductionDisplayProfile();
+    Serial.printf("[TFT] profile=%s source=%s write=%u read=%u\n",
+                  numos::display::profileIdentifier(
+                      productionProfile.identifier),
+                  numos::display::profileLoadDecisionName(
+                      numos::display::productionDisplayLoadDecision()),
+                  productionProfile.writeSpiHz,
+                  productionProfile.readSpiHz);
+#endif
 
     // Production BL is an active-high NPN drive and must never float or flash.
 #ifdef TFT_BL
@@ -103,9 +122,9 @@ void DisplayDriver::begin() {
     delay(10);
     digitalWrite(TFT_RST, LOW);
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
-    delay(10);
+    delay(productionProfile.resetLowMs);
     digitalWrite(TFT_RST, HIGH);
-    delay(120);
+    delay(productionProfile.resetRecoveryMs);
 #else
     delay(150); // Aggressive reset: hold low for 150ms
     digitalWrite(TFT_RST, HIGH);
@@ -132,14 +151,10 @@ void DisplayDriver::begin() {
         Serial.printf("[TFT] readcmd ID = 0x%08X (%u)\n", (unsigned)id, (unsigned)id);
     }
 #endif
-    _tft.setRotation(SCREEN_ROTATION);
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
-    // Panel inversion is a physical bring-up gate. Do not inherit the CAM
-    // panel's unconditional inversion assumption.
-#if defined(NUMOS_TFT_INVERT_DISPLAY) && NUMOS_TFT_INVERT_DISPLAY
-    _tft.invertDisplay(true);
-#endif
+    (void)configureProductionController(productionProfile);
 #else
+    _tft.setRotation(SCREEN_ROTATION);
     _tft.invertDisplay(true); // colors inverted
 #endif
 
@@ -230,10 +245,12 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     // The GRAM is black before the bounded PWM level is enabled. This avoids a
     // full-brightness flash while retaining enough light for first bring-up.
-    setBacklightLevel(NUMOS_BACKLIGHT_INITIAL_LEVEL);
+    const auto& profile =
+        numos::display::activeProductionDisplayProfile();
+    setBacklightLevel(profile.initialBacklight);
     Serial.printf("[TFT] Production backlight level=%u/%u\n",
-                  (unsigned)NUMOS_BACKLIGHT_INITIAL_LEVEL,
-                  (unsigned)NUMOS_BACKLIGHT_MAX_LEVEL);
+                  (unsigned)profile.initialBacklight,
+                  (unsigned)profile.maximumBacklight);
 #else
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, HIGH);
@@ -259,64 +276,206 @@ void DisplayDriver::forceBacklightOff() {
     analogWrite(TFT_BL, 0);
     digitalWrite(TFT_BL, LOW);
     pinMode(TFT_BL, OUTPUT);
+    _backlightLevel = 0;
 }
 
 void DisplayDriver::setBacklightLevel(uint8_t level) {
+    const uint8_t maximum =
+        numos::display::activeProductionDisplayProfile().maximumBacklight;
     const uint8_t bounded =
-        level > NUMOS_BACKLIGHT_MAX_LEVEL ? NUMOS_BACKLIGHT_MAX_LEVEL : level;
+        level > maximum ? maximum : level;
     pinMode(TFT_BL, OUTPUT);
     analogWrite(TFT_BL, bounded);
+    _backlightLevel = bounded;
+}
+
+void DisplayDriver::resetProductionController(
+    const numos::display::ProductionDisplayProfile& profile) {
+    digitalWrite(TFT_RST, HIGH);
+    pinMode(TFT_RST, OUTPUT);
+    delay(10);
+    digitalWrite(TFT_RST, LOW);
+    delay(profile.resetLowMs);
+    digitalWrite(TFT_RST, HIGH);
+    delay(profile.resetRecoveryMs);
+    _tft.init();
+}
+
+bool DisplayDriver::configureProductionController(
+    const numos::display::ProductionDisplayProfile& profile) {
+    // WHY: rotation is the sole axis/geometry authority. TFT_eSPI first writes
+    // its rotation and updates its private logical dimensions. NumOS then
+    // applies offsets and writes a final MADCTL derived only from that rotation
+    // plus the independently validated color-order bit.
+    _tft.setRotation(profile.rotation);
+    const numos::display::DisplayGeometry geometry =
+        numos::display::logicalDisplayGeometry(profile.rotation);
+    if (_tft.width() != geometry.width ||
+        _tft.height() != geometry.height) {
+        return false;
+    }
+    _xOffset = profile.xOffset;
+    _yOffset = profile.yOffset;
+    const uint8_t madctl = numos::display::displayMadctl(profile);
+    _tft.startWrite();
+    _tft.writecommand(0x36);
+    _tft.writedata(madctl);
+    _tft.endWrite();
+    _tft.invertDisplay(profile.inverted);
+    return true;
+}
+
+void DisplayDriver::invalidateLvglFrame() {
+    if (_lvDisp != nullptr && lv_screen_active() != nullptr) {
+        lv_obj_invalidate(lv_screen_active());
+    }
+}
+
+bool DisplayDriver::applyProductionDisplayProfile(
+    const numos::display::ProductionDisplayProfile& profile,
+    const bool resetController) {
+    if (numos::display::validateDisplayProfile(profile) !=
+        numos::display::ProfileValidation::Ok) {
+        return false;
+    }
+    forceBacklightOff();
+    if (!numos::display::setActiveProductionDisplayProfile(profile)) {
+        return false;
+    }
+    if (resetController) {
+        resetProductionController(profile);
+    }
+    if (!configureProductionController(profile)) return false;
+    _tft.fillScreen(TFT_BLACK);
+    setBacklightLevel(profile.initialBacklight);
+    invalidateLvglFrame();
+    return true;
+}
+
+void DisplayDriver::restoreSafeProductionDisplayProfile() {
+    numos::display::restoreSafeProductionDisplayProfile();
+    (void)applyProductionDisplayProfile(
+        numos::display::kSafeDisplayProfile, true);
 }
 
 void DisplayDriver::runBoundedProductionDisplayDiagnostic() {
-    // Explicit bring-up entry point only; no normal boot path calls it.
+    // Explicit bring-up entry point only; no normal boot path calls it. All
+    // loops are fixed by the 320x240 production geometry and allocate no heap.
+    const auto& profile =
+        numos::display::activeProductionDisplayProfile();
+    const auto tx = [&](const int16_t x) {
+        return static_cast<int16_t>(x + _xOffset);
+    };
+    const auto ty = [&](const int16_t y) {
+        return static_cast<int16_t>(y + _yOffset);
+    };
+
     forceBacklightOff();
     _tft.fillScreen(TFT_BLACK);
     delay(150);
 
     constexpr uint8_t levels[] = {
         0,
-        NUMOS_BACKLIGHT_LOW_LEVEL,
-        NUMOS_BACKLIGHT_INITIAL_LEVEL,
-        NUMOS_BACKLIGHT_MAX_LEVEL
+        32,
+        96,
+        numos::display::kMaximumBacklight
     };
+    constexpr const char* levelNames[] = {
+        "off", "low", "normal", "bounded-high"
+    };
+    std::size_t levelIndex = 0;
     for (const uint8_t level : levels) {
-        setBacklightLevel(level);
+        const uint8_t bounded = level > profile.maximumBacklight
+            ? profile.maximumBacklight : level;
+        Serial.printf("[DISPLAY] TEST backlight=%s level=%u\n",
+                      levelNames[levelIndex++], bounded);
+        setBacklightLevel(bounded);
         delay(200);
     }
 
     constexpr uint16_t colors[] = {
-        TFT_RED, TFT_GREEN, TFT_BLUE, TFT_WHITE, TFT_BLACK
+        TFT_BLACK, TFT_WHITE, TFT_RED, TFT_GREEN, TFT_BLUE
     };
     for (const uint16_t color : colors) {
         _tft.fillScreen(color);
-        delay(250);
+        delay(350);
     }
 
+    // Color order, one-pixel physical edges, labelled corners/directions, grid.
     _tft.fillScreen(TFT_BLACK);
-    _tft.drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, TFT_WHITE);
-    _tft.drawLine(0, 0, 20, 0, TFT_RED);
-    _tft.drawLine(0, 0, 0, 20, TFT_RED);
-    _tft.drawLine(SCREEN_WIDTH - 21, 0, SCREEN_WIDTH - 1, 0, TFT_GREEN);
-    _tft.drawLine(SCREEN_WIDTH - 1, 0, SCREEN_WIDTH - 1, 20, TFT_GREEN);
-    _tft.drawLine(0, SCREEN_HEIGHT - 1, 20, SCREEN_HEIGHT - 1, TFT_BLUE);
-    _tft.drawLine(0, SCREEN_HEIGHT - 21, 0, SCREEN_HEIGHT - 1, TFT_BLUE);
-    _tft.drawLine(SCREEN_WIDTH - 21, SCREEN_HEIGHT - 1,
-                  SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, TFT_YELLOW);
-    _tft.drawLine(SCREEN_WIDTH - 1, SCREEN_HEIGHT - 21,
-                  SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, TFT_YELLOW);
+    _tft.drawRect(tx(0), ty(0), SCREEN_WIDTH, SCREEN_HEIGHT, TFT_WHITE);
+    for (int16_t x = 0; x < SCREEN_WIDTH; x += 40) {
+        _tft.drawFastVLine(tx(x), ty(0), SCREEN_HEIGHT, TFT_DARKGREY);
+    }
+    for (int16_t y = 0; y < SCREEN_HEIGHT; y += 40) {
+        _tft.drawFastHLine(tx(0), ty(y), SCREEN_WIDTH, TFT_DARKGREY);
+    }
+    _tft.fillRect(tx(110), ty(42), 32, 24, TFT_RED);
+    _tft.fillRect(tx(144), ty(42), 32, 24, TFT_GREEN);
+    _tft.fillRect(tx(178), ty(42), 32, 24, TFT_BLUE);
     _tft.setTextColor(TFT_WHITE, TFT_BLACK);
     _tft.setTextDatum(TL_DATUM);
-    _tft.drawString("NumOS PCBA: top-left", 8, 8, 2);
-    _tft.drawFastHLine(8, 42, 180, TFT_CYAN);
-    _tft.drawString("baseline", 8, 24, 2);
-    delay(1200);
+    _tft.drawString("TL (0,0)", tx(2), ty(2), 1);
+    _tft.setTextDatum(TR_DATUM);
+    _tft.drawString("TR (319,0)", tx(317), ty(2), 1);
+    _tft.setTextDatum(BL_DATUM);
+    _tft.drawString("BL (0,239)", tx(2), ty(237), 1);
+    _tft.setTextDatum(BR_DATUM);
+    _tft.drawString("BR (319,239)", tx(317), ty(237), 1);
+    _tft.setTextDatum(TC_DATUM);
+    _tft.drawString("TOP", tx(160), ty(12), 2);
+    _tft.setTextDatum(BC_DATUM);
+    _tft.drawString("BOTTOM", tx(160), ty(228), 2);
+    _tft.setTextDatum(ML_DATUM);
+    _tft.drawString("LEFT", tx(3), ty(120), 2);
+    _tft.setTextDatum(MR_DATUM);
+    _tft.drawString("RIGHT", tx(317), ty(120), 2);
+    _tft.setTextDatum(TL_DATUM);
+    _tft.drawString("R", tx(122), ty(69), 1);
+    _tft.drawString("G", tx(156), ty(69), 1);
+    _tft.drawString("B", tx(190), ty(69), 1);
+    delay(1400);
+
+    // Independent horizontal and vertical RGB565 gradients.
+    _tft.fillScreen(TFT_BLACK);
+    _tft.setTextDatum(TL_DATUM);
+    _tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    _tft.drawString("HORIZONTAL GRADIENT", tx(6), ty(4), 1);
+    for (int16_t x = 0; x < SCREEN_WIDTH; ++x) {
+        const uint8_t red = static_cast<uint8_t>(
+            (x * 31) / (SCREEN_WIDTH - 1));
+        const uint8_t blue = static_cast<uint8_t>(31 - red);
+        const uint16_t color =
+            static_cast<uint16_t>((red << 11U) | blue);
+        _tft.drawFastVLine(tx(x), ty(18), 82, color);
+    }
+    _tft.drawString("VERTICAL GRADIENT", tx(6), ty(106), 1);
+    for (int16_t y = 0; y < 120; ++y) {
+        const uint8_t green = static_cast<uint8_t>((y * 63) / 119);
+        const uint16_t color = static_cast<uint16_t>(green << 5U);
+        _tft.drawFastHLine(tx(0), ty(120 + y), SCREEN_WIDTH, color);
+    }
+    delay(1400);
+
+    // Baseline rules and the smallest loaded bitmap glyphs.
+    _tft.fillScreen(TFT_BLACK);
+    _tft.setTextDatum(BL_DATUM);
+    _tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    constexpr int16_t baselines[] = {40, 78, 116, 154, 192, 224};
+    for (const int16_t baseline : baselines) {
+        _tft.drawFastHLine(tx(4), ty(baseline), 312, TFT_CYAN);
+    }
+    _tft.drawString("Baseline 40: Agjpq 0123456789", tx(6), ty(40), 1);
+    _tft.drawString("Baseline 78: +-*/=()[]{}", tx(6), ty(78), 2);
+    _tft.drawString("Baseline 116: RGB rgb 1px", tx(6), ty(116), 1);
+    _tft.drawString("Baseline 154: small glyphs .,:;!|", tx(6), ty(154), 1);
+    _tft.drawString("Baseline 192: XYZ xyz", tx(6), ty(192), 2);
+    _tft.drawString("Baseline 224: NumOS Z320IT008-D", tx(6), ty(224), 1);
+    delay(1400);
 
     _tft.fillScreen(TFT_BLACK);
-    setBacklightLevel(NUMOS_BACKLIGHT_INITIAL_LEVEL);
-    if (_lvDisp != nullptr) {
-        lv_obj_invalidate(lv_screen_active());
-    }
+    setBacklightLevel(profile.initialBacklight);
+    invalidateLvglFrame();
 }
 
 #endif
@@ -334,6 +493,31 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
     const uint32_t h = lv_area_get_height(area);
     const uint32_t pxCount = static_cast<uint32_t>(w) * static_cast<uint32_t>(h);
     uint16_t* src = reinterpret_cast<uint16_t*>(pxMap);
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    if (self->_xOffset != 0 || self->_yOffset != 0) {
+        const numos::display::ClippedFlushPlan plan =
+            numos::display::makeClippedFlushPlan(
+                {area->x1, area->y1, area->x2, area->y2},
+                self->_xOffset, self->_yOffset,
+                SCREEN_WIDTH, SCREEN_HEIGHT);
+        numos::display::executeClippedFlush(
+            plan,
+            src,
+            [self](const int32_t x, const int32_t y,
+                   const uint32_t width, uint16_t* const rowSource) {
+                self->_tft.startWrite();
+                self->_tft.setAddrWindow(x, y, width, 1);
+                self->_tft.pushColors(rowSource, width, true);
+                self->_tft.endWrite();
+            },
+            [disp]() {
+                digitalWrite(TFT_CS, HIGH);
+                lv_display_flush_ready(disp);
+            });
+        return;
+    }
+#endif
 
 #ifdef DISPLAY_DRIVER_DIAG
     Serial.printf("A area=%d,%d..%d,%d px=%u pxMap=%p dmaPending=%d\n",

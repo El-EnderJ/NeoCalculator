@@ -17,6 +17,7 @@ CAM_BOARD = ROOT / "boards" / "numos-esp32-s3-n16r8-cam.json"
 PLATFORMIO_INI = ROOT / "platformio.ini"
 MAIN_CPP = ROOT / "src" / "main.cpp"
 BRINGUP_CPP = ROOT / "src" / "hardware" / "ProductionBringup.cpp"
+DISPLAY_PROFILE = ROOT / "src" / "display" / "ProductionDisplayProfile.h"
 FLASH_BYTES = 16 * 1024 * 1024
 
 
@@ -148,8 +149,20 @@ def main() -> int:
             "production environment strips its required USB mode")
     require("-DNUMOS_SERIAL_BACKEND_USB_CDC=1" in normal,
             "production serial backend is not native USB CDC")
-    require("-DTFT_MISO=42" in normal and "-DSPI_FREQUENCY=10000000" in normal,
-            "production display contract missing")
+    require(
+        "-DTFT_MISO=42" in normal
+        and "-DSPI_FREQUENCY=numos_display_write_spi_hz" in normal
+        and "-DSPI_READ_FREQUENCY=numos_display_read_spi_hz" in normal
+        and "-include display/ProductionDisplayRuntimeConfig.h" in normal,
+        "production runtime display contract missing",
+    )
+    display_profile = DISPLAY_PROFILE.read_text(encoding="utf-8")
+    require(
+        "10'000'000U" in display_profile
+        and "inline constexpr ProductionDisplayProfile kSafeDisplayProfile"
+        in display_profile,
+        "immutable 10 MHz production safe profile missing",
+    )
     require("extends = env:numos-esp32-s3-wroom-1u-n16r8" in bringup,
             "bring-up must extend the normal production environment")
     require("-DNUMOS_PRODUCTION_BRINGUP=1" in bringup,

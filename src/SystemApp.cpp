@@ -937,6 +937,12 @@ void SystemApp::returnToMenu() {
     Serial.println("[RTM] returnToMenu complete — teardown deferred 250ms.");
 }
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
+void SystemApp::returnToLauncherAfterDiagnostic() {
+    returnToMenu();
+}
+#endif
+
 void SystemApp::switchApp(int id) {
     switch (id) {
         case 0:  _mode = Mode::APP_CALCULATION; break;

@@ -45,6 +45,10 @@
 #include <lvgl.h>
 #include "../Config.h"
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#include "ProductionDisplayProfile.h"
+#endif
+
 class DisplayDriver {
 public:
     DisplayDriver();
@@ -70,6 +74,13 @@ public:
 
     /** Apply a compile-time-bounded production backlight PWM level. */
     void setBacklightLevel(uint8_t level);
+
+    uint8_t backlightLevel() const { return _backlightLevel; }
+
+    bool applyProductionDisplayProfile(
+        const numos::display::ProductionDisplayProfile& profile,
+        bool resetController);
+    void restoreSafeProductionDisplayProfile();
 
     /** Bounded, opt-in physical display diagnostic; returns control to LVGL. */
     void runBoundedProductionDisplayDiagnostic();
@@ -122,6 +133,17 @@ private:
     void*       _dmaStagingAlloc     = nullptr;
     uint16_t*   _dmaStagingBuf       = nullptr;
     uint32_t    _dmaStagingBufBytes  = 0;
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    int16_t     _xOffset             = 0;
+    int16_t     _yOffset             = 0;
+    uint8_t     _backlightLevel      = 0;
+
+    void resetProductionController(
+        const numos::display::ProductionDisplayProfile& profile);
+    bool configureProductionController(
+        const numos::display::ProductionDisplayProfile& profile);
+    void invalidateLvglFrame();
+#endif
     #endif
 
     /** Puntero al display LVGL creado por initLvgl() */

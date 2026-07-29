@@ -1,6 +1,8 @@
 #pragma once
 
 class Keyboard;
+class DisplayDriver;
+class SystemApp;
 
 namespace numos::hardware {
 
@@ -16,6 +18,8 @@ void serviceProductionBringupReporting();
 
 // Opt-in command service. Raw logging is disabled until the host sends
 // "KEYPAD RAW ON"; ordinary mapped keypad input remains active throughout.
-void serviceProductionBringupKeypad(::Keyboard& keyboard);
+void serviceProductionBringupCommands(::Keyboard& keyboard,
+                                      ::DisplayDriver& display,
+                                      ::SystemApp& app);
 
 } // namespace numos::hardware

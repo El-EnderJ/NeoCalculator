@@ -120,6 +120,11 @@ public:
      */
     void launchApp(int id);
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
+    /** Bring-up diagnostics must always hand control back to the launcher. */
+    void returnToLauncherAfterDiagnostic();
+#endif
+
     /**
      * Apaga el sistema: fade-out LVGL → backlight off → deep sleep.
      * Se activa con SHIFT + AC desde cualquier modo.

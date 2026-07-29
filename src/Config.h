@@ -41,6 +41,7 @@
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 
 #include "hardware/BoardProfile.h"
+#include "display/ProductionDisplayProfile.h"
 
 #ifndef ARDUINO_USB_MODE
 #error "Production target requires an explicit Hardware CDC/JTAG USB mode"
@@ -112,9 +113,16 @@ static_assert(TFT_RST == PIN_TFT_RST, "TFT reset/profile mismatch");
 static_assert(TFT_BL == PIN_TFT_BL, "TFT backlight/profile mismatch");
 #endif
 #if defined(SPI_FREQUENCY)
-static_assert(SPI_FREQUENCY <=
+static_assert(numos::display::kSafeDisplayProfile.writeSpiHz <=
                   numos::hardware::kProductionBoard.display.initialSpiHz,
-              "Production SPI frequency exceeds the audited initial limit");
+              "Production safe SPI frequency exceeds the audited limit");
+static_assert(numos::display::kSafeDisplayProfile.writeSpiHz ==
+                  numos::hardware::kProductionBoard.display.initialSpiHz,
+              "Board and immutable safe profile SPI values must match");
+static_assert(numos::display::displayMadctl(
+                  numos::display::kSafeDisplayProfile) ==
+                  numos::hardware::kProductionBoard.display.provisionalMadctl,
+              "Board and immutable safe profile MADCTL values must match");
 #endif
 #if defined(NUMOS_BACKLIGHT_LOW_LEVEL) && \
     defined(NUMOS_BACKLIGHT_INITIAL_LEVEL) && \

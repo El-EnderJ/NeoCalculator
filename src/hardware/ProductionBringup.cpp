@@ -8,9 +8,13 @@
 #include <esp_partition.h>
 #include <esp_system.h>
 #include "BoardProfile.h"
+#include "../display/DisplayDriver.h"
+#include "../display/ProductionDisplayProfile.h"
+#include "../display/ProductionDisplayRuntime.h"
 #include "../drivers/Keyboard.h"
 #include "../input/NumosSerialBackend.h"
 #include "../input/generated/ProductionKeypadMap.generated.h"
+#include "../SystemApp.h"
 
 #ifndef NUMOS_BUILD_REVISION
 #define NUMOS_BUILD_REVISION __DATE__ " " __TIME__
@@ -23,8 +27,9 @@ namespace {
 constexpr uint32_t kMaximumSerialWaitMs = 3000U;
 bool g_reportDeliveredToConnectedHost = false;
 bool g_rawKeypadDiagnostic = false;
-char g_keypadCommand[32]{};
-uint8_t g_keypadCommandLength = 0;
+char g_bringupCommand[80]{};
+uint8_t g_bringupCommandLength = 0;
+bool g_bringupCommandOverflow = false;
 bool g_lastRaw[50]{};
 bool g_lastDebounced[50]{};
 
@@ -137,11 +142,201 @@ void emitRawRecord(const Keyboard& keyboard,
 }
 
 bool commandEquals(const char* expected) {
-    return strcmp(g_keypadCommand, expected) == 0;
+    return strcmp(g_bringupCommand, expected) == 0;
 }
 
-void processKeypadCommand() {
+void emitDisplayProfile(const char* prefix,
+                        const numos::display::ProductionDisplayProfile& profile,
+                        const uint8_t backlight) {
+    NUMOS_SERIAL.printf(
+        "%s id=%s rotation=%u madctl=0x%02X order=%s invert=%u "
+        "offset=(%d,%d) write_mhz=%u read_mhz=%u reset_ms=%u/%u "
+        "backlight=%u initial=%u max=%u\n",
+        prefix, numos::display::profileIdentifier(profile.identifier),
+        profile.rotation, numos::display::displayMadctl(profile),
+        profile.colorOrder == numos::display::ColorOrder::Bgr ? "BGR" : "RGB",
+        profile.inverted, profile.xOffset, profile.yOffset,
+        profile.writeSpiHz / 1'000'000U,
+        profile.readSpiHz / 1'000'000U,
+        profile.resetLowMs, profile.resetRecoveryMs,
+        backlight, profile.initialBacklight, profile.maximumBacklight);
+}
+
+void emitDisplayHelp() {
+    NUMOS_SERIAL.println("[DISPLAY] commands:");
+    NUMOS_SERIAL.println("[DISPLAY] DISPLAY HELP | DISPLAY INFO | DISPLAY TEST");
+    NUMOS_SERIAL.println(
+        "[DISPLAY] DISPLAY PROFILE LIST | DISPLAY PROFILE SET <id>");
+    NUMOS_SERIAL.println(
+        "[DISPLAY] DISPLAY ROTATE 1|3 | DISPLAY BGR ON|OFF | "
+        "DISPLAY INVERT ON|OFF");
+    NUMOS_SERIAL.println(
+        "[DISPLAY] DISPLAY OFFSET <-32..32> <-32..32> | "
+        "DISPLAY SPI <1..40>");
+    NUMOS_SERIAL.println(
+        "[DISPLAY] DISPLAY BACKLIGHT <0..192> | DISPLAY SAVE | "
+        "DISPLAY RESET | DISPLAY SAFE");
+    NUMOS_SERIAL.println(
+        "[DISPLAY] SAVE is explicit; invalid DISPLAY input restores SAFE");
+}
+
+void emitDisplayInfo(const DisplayDriver& display) {
+    const auto& profile =
+        numos::display::activeProductionDisplayProfile();
+    emitDisplayProfile("[DISPLAY] active", profile,
+                       display.backlightLevel());
+    NUMOS_SERIAL.printf(
+        "[DISPLAY] source=%s driver=TFT_eSPI-2.5.43 "
+        "failures=%u/%u reset=%s "
+        "runtime=rotation,madctl-rgb-bgr,inversion,offset,spi,backlight "
+        "compile_time=controller,pins,bus,geometry,pixel-format\n",
+        numos::display::profileLoadDecisionName(
+            numos::display::productionDisplayLoadDecision()),
+        numos::display::productionDisplayFailureCount(),
+        numos::display::kDisplayBootFailureThreshold,
+        numos::display::displayResetClassName(
+            numos::display::productionDisplayResetClass()));
+}
+
+bool applyDisplayCandidate(
+    DisplayDriver& display,
+    const numos::display::ProductionDisplayProfile& candidate,
+    const bool resetController) {
+    const auto validation =
+        numos::display::validateDisplayProfile(candidate);
+    if (validation != numos::display::ProfileValidation::Ok ||
+        !display.applyProductionDisplayProfile(candidate, resetController)) {
+        display.restoreSafeProductionDisplayProfile();
+        NUMOS_SERIAL.printf(
+            "[DISPLAY] ERROR apply=%s; immutable SAFE restored\n",
+            numos::display::profileValidationName(validation));
+        return false;
+    }
+    emitDisplayProfile("[DISPLAY] OK", candidate,
+                       display.backlightLevel());
+    return true;
+}
+
+void processDisplayCommand(const numos::display::DisplayCommand& command,
+                           DisplayDriver& display,
+                           SystemApp& app) {
+    using numos::display::ColorOrder;
+    using numos::display::DisplayCommandKind;
+    using numos::display::ProductionDisplayProfile;
+    auto candidate =
+        numos::display::activeProductionDisplayProfile();
+
+    switch (command.kind) {
+        case DisplayCommandKind::Help:
+            emitDisplayHelp();
+            return;
+        case DisplayCommandKind::Info:
+            emitDisplayInfo(display);
+            return;
+        case DisplayCommandKind::Test:
+            NUMOS_SERIAL.println(
+                "[DISPLAY] TEST BEGIN bounded; launcher resumes on completion");
+            display.runBoundedProductionDisplayDiagnostic();
+            app.returnToLauncherAfterDiagnostic();
+            NUMOS_SERIAL.println("[DISPLAY] TEST END launcher restored");
+            return;
+        case DisplayCommandKind::ProfileList:
+            for (const auto& preset :
+                 numos::display::kProductionDisplayPresets) {
+                emitDisplayProfile("[DISPLAY] preset", preset,
+                                   preset.initialBacklight);
+            }
+            return;
+        case DisplayCommandKind::ProfileSet: {
+            const ProductionDisplayProfile* preset =
+                numos::display::findPreset(command.profile);
+            if (preset == nullptr ||
+                !applyDisplayCandidate(display, *preset, true)) {
+                display.restoreSafeProductionDisplayProfile();
+            }
+            return;
+        }
+        case DisplayCommandKind::Rotate:
+            numos::display::markProfileCustom(candidate);
+            candidate.rotation = static_cast<uint8_t>(command.first);
+            (void)applyDisplayCandidate(display, candidate, false);
+            return;
+        case DisplayCommandKind::Bgr:
+            numos::display::markProfileCustom(candidate);
+            candidate.colorOrder =
+                command.enabled ? ColorOrder::Bgr : ColorOrder::Rgb;
+            (void)applyDisplayCandidate(display, candidate, false);
+            return;
+        case DisplayCommandKind::Invert:
+            numos::display::markProfileCustom(candidate);
+            candidate.inverted = command.enabled;
+            (void)applyDisplayCandidate(display, candidate, false);
+            return;
+        case DisplayCommandKind::Offset:
+            numos::display::markProfileCustom(candidate);
+            candidate.xOffset = static_cast<int16_t>(command.first);
+            candidate.yOffset = static_cast<int16_t>(command.second);
+            (void)applyDisplayCandidate(display, candidate, false);
+            return;
+        case DisplayCommandKind::Spi:
+            numos::display::markProfileCustom(candidate);
+            candidate.writeSpiHz =
+                static_cast<uint32_t>(command.first) * 1'000'000U;
+            candidate.readSpiHz = candidate.writeSpiHz;
+            (void)applyDisplayCandidate(display, candidate, false);
+            return;
+        case DisplayCommandKind::Backlight:
+            numos::display::markProfileCustom(candidate);
+            candidate.initialBacklight =
+                static_cast<uint8_t>(command.first);
+            (void)applyDisplayCandidate(display, candidate, false);
+            return;
+        case DisplayCommandKind::Save:
+            if (numos::display::saveActiveProductionDisplayProfile()) {
+                NUMOS_SERIAL.println(
+                    "[DISPLAY] SAVE OK version=2 crc32=valid failures=0");
+            } else {
+                display.restoreSafeProductionDisplayProfile();
+                NUMOS_SERIAL.println(
+                    "[DISPLAY] SAVE ERROR; immutable SAFE restored");
+            }
+            return;
+        case DisplayCommandKind::Reset:
+            if (!display.applyProductionDisplayProfile(candidate, true)) {
+                display.restoreSafeProductionDisplayProfile();
+                NUMOS_SERIAL.println(
+                    "[DISPLAY] RESET ERROR; immutable SAFE restored");
+            } else {
+                NUMOS_SERIAL.println(
+                    "[DISPLAY] RESET OK active profile reapplied");
+            }
+            return;
+        case DisplayCommandKind::Safe:
+            display.restoreSafeProductionDisplayProfile();
+            NUMOS_SERIAL.println(
+                "[DISPLAY] SAFE OK immutable profile restored; not auto-saved");
+            return;
+    }
+}
+
+void processBringupCommand(DisplayDriver& display, SystemApp& app) {
     auto& serial = NUMOS_SERIAL;
+    numos::display::DisplayCommand displayCommand{};
+    const auto displayResult = numos::display::parseDisplayCommand(
+        g_bringupCommand, g_bringupCommandLength, displayCommand);
+    if (displayResult == numos::display::CommandParseResult::Ok) {
+        processDisplayCommand(displayCommand, display, app);
+        return;
+    }
+    if (displayResult !=
+        numos::display::CommandParseResult::NotDisplayCommand) {
+        display.restoreSafeProductionDisplayProfile();
+        serial.printf(
+            "[DISPLAY] ERROR parse=%s; immutable SAFE restored\n",
+            numos::display::commandParseResultName(displayResult));
+        return;
+    }
+
     if (commandEquals("KEYPAD RAW ON")) {
         g_rawKeypadDiagnostic = true;
         for (std::size_t i = 0; i < 50; ++i) {
@@ -187,25 +382,36 @@ void serviceProductionBringupReporting() {
     g_reportDeliveredToConnectedHost = true;
 }
 
-void serviceProductionBringupKeypad(Keyboard& keyboard) {
+void serviceProductionBringupCommands(Keyboard& keyboard,
+                                      DisplayDriver& display,
+                                      SystemApp& app) {
     auto& serial = NUMOS_SERIAL;
     while (serial.available() > 0) {
         const int value = serial.read();
         if (value < 0) break;
         const char ch = static_cast<char>(value);
         if (ch == '\r' || ch == '\n') {
-            if (g_keypadCommandLength > 0) {
-                g_keypadCommand[g_keypadCommandLength] = '\0';
-                processKeypadCommand();
-                g_keypadCommandLength = 0;
+            if (g_bringupCommandOverflow) {
+                display.restoreSafeProductionDisplayProfile();
+                serial.println(
+                    "[DISPLAY] ERROR parse=too-long; immutable SAFE restored");
+                g_bringupCommandOverflow = false;
+                g_bringupCommandLength = 0;
+            } else if (g_bringupCommandLength > 0) {
+                g_bringupCommand[g_bringupCommandLength] = '\0';
+                processBringupCommand(display, app);
+                g_bringupCommandLength = 0;
             }
             continue;
         }
-        if (g_keypadCommandLength + 1U >= sizeof(g_keypadCommand)) {
-            g_keypadCommandLength = 0;
+        if (g_bringupCommandOverflow) continue;
+        if (g_bringupCommandLength + 1U >=
+            sizeof(g_bringupCommand)) {
+            g_bringupCommandOverflow = true;
+            g_bringupCommandLength = 0;
             continue;
         }
-        g_keypadCommand[g_keypadCommandLength++] =
+        g_bringupCommand[g_bringupCommandLength++] =
             (ch >= 'a' && ch <= 'z') ? static_cast<char>(ch - 32) : ch;
     }
 

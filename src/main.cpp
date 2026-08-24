@@ -31,6 +31,12 @@
 bool setting_complex_enabled  = true;
 int  setting_decimal_precision = 10;
 bool setting_edu_steps = false;
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+uint8_t setting_brightness =
+    numos::display::kSafeDisplayProfile.initialBacklight;
+#else
+uint8_t setting_brightness = 96;
+#endif
 #include "display/DisplayDriver.h"
 #include "input/KeyMatrix.h"   // legacy driver — no instanciado; conservado por si acaso
 #include "drivers/Keyboard.h"  // nuevo driver 5×10

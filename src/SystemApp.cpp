@@ -128,7 +128,7 @@ void SystemApp::begin() {
     // reduces boot heap exposure without deleting code or changing normal
     // production behavior. Safe mode constructs only its two recovery apps.
     _calcApp = new (std::nothrow) CalculationApp();
-    _settingsApp = new (std::nothrow) SettingsApp();
+    _settingsApp = new (std::nothrow) SettingsApp(&_display);
     if (!numos::demo::safeModeActive()) {
         _grapherApp = new (std::nothrow) GrapherApp();
         _equationsApp = new (std::nothrow) EquationsApp();
@@ -139,7 +139,7 @@ void SystemApp::begin() {
     _grapherApp    = new GrapherApp();
     _equationsApp  = new EquationsApp();
     _calculusApp   = new CalculusApp();
-    _settingsApp   = new SettingsApp();
+    _settingsApp   = new SettingsApp(&_display);
     _statisticsApp = new StatisticsApp();
     _probabilityApp = new ProbabilityApp();
     _regressionApp = new RegressionApp();
@@ -222,6 +222,7 @@ void SystemApp::begin() {
                 numos::demo::recordFailure(
                     numos::demo::FailureCode::PersistentState);
             }
+            _display.setBacklightLevel(setting_brightness);
             Serial.printf("[FS] mount=ok vars=%s settings=%s\n",
                           variablesLoaded ? "loaded" : "defaults",
                           settingsLoaded ? "loaded" : "defaults");
@@ -239,6 +240,14 @@ void SystemApp::begin() {
         } else {
             Serial.println("[SYSTEM] LittleFS OK, vars.dat empty (first boot)");
         }
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+        const bool settingsLoaded = SettingsApp::loadPersistentState();
+        _display.setBacklightLevel(setting_brightness);
+        Serial.printf("[SYSTEM] Settings %s, brightness=%u/%u\n",
+                      settingsLoaded ? "loaded" : "defaults",
+                      static_cast<unsigned>(setting_brightness),
+                      static_cast<unsigned>(numos::display::kMaximumBacklight));
+#endif
 #endif
     } else {
         _filesystemMounted = false;
@@ -1085,6 +1094,12 @@ void SystemApp::returnToMenu() {
     Serial.printf("[RTM] Entering returnToMenu — mode=%d\n", (int)_mode);
 
     clearTransitionInput();
+
+    // Commit a pending Settings brightness before the launcher is made active.
+    // end() repeats this idempotently after the fade as fallback.
+    if (_mode == Mode::APP_SETTINGS && _settingsApp) {
+        _settingsApp->prepareToLeave();
+    }
 
     // ── Step 1: Switch the active LVGL screen to the menu FIRST.
     //    This starts a 200ms FADE_IN animation. The old app screen

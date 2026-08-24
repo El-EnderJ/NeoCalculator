@@ -150,6 +150,7 @@
 bool setting_complex_enabled  = true;
 int  setting_decimal_precision = 10;
 bool setting_edu_steps         = false;
+uint8_t setting_brightness     = 96;
 
 // ════════════════════════════════════════════════════════════════════════════
 // DisplayDriver stubs (MainMenu almacena una referencia pero nunca la usa)

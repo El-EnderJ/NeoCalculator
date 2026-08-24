@@ -107,7 +107,7 @@ inline constexpr ProductionBoardProfile kProductionBoard = {
     {
         320,
         240,
-        10'000'000U,
+        40'000'000U,
         {"LCD CS", 38, Direction::Output, ActiveLevel::Low, Pull::None},
         {"LCD SCLK", 39, Direction::Output, ActiveLevel::None, Pull::None},
         {"LCD DC", 40, Direction::Output, ActiveLevel::None, Pull::None},
@@ -228,7 +228,7 @@ static_assert(kProductionBoard.electricalMatrix.logicalMappingReady);
 static_assert(!kProductionBoard.capabilities.batteryAdc);
 static_assert(!kProductionBoard.capabilities.softwareRegulatorControl);
 static_assert(!kProductionBoard.capabilities.chargerStatusGpios);
-static_assert(kProductionBoard.display.initialSpiHz <= 10'000'000U);
+static_assert(kProductionBoard.display.initialSpiHz <= 40'000'000U);
 static_assert(kProductionBoard.display.chipSelect.gpio !=
               kExistingCamIdentity.displayPins[2],
               "Production profile must not inherit the CAM display contract");

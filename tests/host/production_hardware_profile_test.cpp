@@ -27,7 +27,7 @@ int main() {
     assert(board.display.reset.activeLevel == ActiveLevel::Low);
     assert(board.display.backlight.gpio == 2);
     assert(board.display.backlight.activeLevel == ActiveLevel::High);
-    assert(board.display.initialSpiHz == 10'000'000U);
+    assert(board.display.initialSpiHz == 40'000'000U);
     assert(!board.display.misoRequiredForBasicRendering);
     assert(!board.display.teConnected);
 

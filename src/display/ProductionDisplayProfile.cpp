@@ -490,7 +490,8 @@ CommandParseResult parseDisplayCommand(const char* text,
         if (!parseInteger(tokens[2].data, tokens[2].length, mhz)) {
             return CommandParseResult::InvalidInteger;
         }
-        if (mhz < 1 || mhz > 40) {
+        if (mhz < static_cast<int32_t>(kMinimumSpiHz / 1'000'000U) ||
+            mhz > static_cast<int32_t>(kMaximumSpiHz / 1'000'000U)) {
             return CommandParseResult::UnsupportedValue;
         }
         command.kind = DisplayCommandKind::Spi;

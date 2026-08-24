@@ -148,6 +148,9 @@ static_assert(NUMOS_BACKLIGHT_LOW_LEVEL <= NUMOS_BACKLIGHT_INITIAL_LEVEL &&
               NUMOS_BACKLIGHT_INITIAL_LEVEL <= NUMOS_BACKLIGHT_MAX_LEVEL &&
               NUMOS_BACKLIGHT_MAX_LEVEL < 255,
               "Production backlight levels must be ordered and bounded");
+static_assert(NUMOS_BACKLIGHT_LOW_LEVEL ==
+                  numos::display::kZeroBrightnessFallbackBacklight,
+              "Zero-brightness recovery must match the SAFE low level");
 #endif
 
 #else
@@ -199,6 +202,7 @@ static const uint16_t KEY_AUTOREPEAT_RATE_MS  =  80;  // ms entre REPEAT events
 extern bool setting_complex_enabled;   // true = show complex roots, false = "No real solutions"
 extern int  setting_decimal_precision;  // number of decimal digits (6, 8, 10, 12)
 extern bool setting_edu_steps;          // true = step-by-step educational mode for arithmetic
+extern uint8_t setting_brightness;      // production PWM duty, clamped by DisplayDriver
 
 // ── Matriz legacy 6×8 (reservada / compatibilidad con KeyMatrix.h) ───────────
 // Filas: INPUT_PULLUP.  Columnas: OUTPUT activo-LOW.

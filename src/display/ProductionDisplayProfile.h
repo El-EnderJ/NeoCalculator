@@ -7,9 +7,22 @@
 namespace numos::display {
 
 inline constexpr uint32_t kMinimumSpiHz = 1'000'000U;
-inline constexpr uint32_t kMaximumSpiHz = 40'000'000U;
+inline constexpr uint32_t kValidatedMaximumSpiHz = 40'000'000U;
+#if defined(NUMOS_PRODUCTION_BRINGUP_SPI_EXPERIMENT_MAX_HZ)
+inline constexpr uint32_t kMaximumSpiHz =
+    NUMOS_PRODUCTION_BRINGUP_SPI_EXPERIMENT_MAX_HZ;
+static_assert(kMaximumSpiHz > kValidatedMaximumSpiHz &&
+              kMaximumSpiHz <= 80'000'000U,
+              "Bring-up SPI experiment must stay within 40..80 MHz");
+#else
+inline constexpr uint32_t kMaximumSpiHz = kValidatedMaximumSpiHz;
+#endif
 inline constexpr int16_t kMinimumOffset = -32;
 inline constexpr int16_t kMaximumOffset = 32;
+// Settings never offers a black-screen value. The existing SAFE low level is
+// retained as the recovery value for legacy/corrupt records that contain zero.
+inline constexpr uint8_t kMinimumPersistedBacklight = 1;
+inline constexpr uint8_t kZeroBrightnessFallbackBacklight = 32;
 inline constexpr uint8_t kMaximumBacklight = 192;
 inline constexpr uint8_t kMadctlBgr = 0x08;
 inline constexpr uint8_t kMadctlRotation1 = 0x20;
@@ -52,7 +65,7 @@ inline constexpr ProductionDisplayProfile kSafeDisplayProfile = {
     false,
     0,
     0,
-    10'000'000U,
+    40'000'000U,
     10'000'000U,
     10,
     120,
@@ -60,20 +73,29 @@ inline constexpr ProductionDisplayProfile kSafeDisplayProfile = {
     192
 };
 
+static_assert(kMinimumPersistedBacklight > 0);
+static_assert(kMinimumPersistedBacklight <=
+              kSafeDisplayProfile.initialBacklight);
+static_assert(kMinimumPersistedBacklight <=
+              kZeroBrightnessFallbackBacklight);
+static_assert(kZeroBrightnessFallbackBacklight <=
+              kSafeDisplayProfile.initialBacklight);
+static_assert(kSafeDisplayProfile.initialBacklight <= kMaximumBacklight);
+
 inline constexpr std::array<ProductionDisplayProfile, 4>
     kProductionDisplayPresets = {{
         kSafeDisplayProfile,
         {
             ProfileId::Rotate3Bgr, 3, ColorOrder::Bgr, false,
-            0, 0, 10'000'000U, 10'000'000U, 10, 120, 96, 192
+            0, 0, 40'000'000U, 10'000'000U, 10, 120, 96, 192
         },
         {
             ProfileId::Rotate1Rgb, 1, ColorOrder::Rgb, false,
-            0, 0, 10'000'000U, 10'000'000U, 10, 120, 96, 192
+            0, 0, 40'000'000U, 10'000'000U, 10, 120, 96, 192
         },
         {
             ProfileId::Rotate1BgrInverted, 1, ColorOrder::Bgr, true,
-            0, 0, 10'000'000U, 10'000'000U, 10, 120, 96, 192
+            0, 0, 40'000'000U, 10'000'000U, 10, 120, 96, 192
         }
     }};
 
@@ -99,6 +121,12 @@ constexpr uint8_t displayMadctl(const uint8_t rotation,
 
 constexpr uint8_t displayMadctl(const ProductionDisplayProfile& profile) {
     return displayMadctl(profile.rotation, profile.colorOrder);
+}
+
+constexpr bool usesUnvalidatedSpiRate(
+    const ProductionDisplayProfile& profile) {
+    return profile.writeSpiHz > kValidatedMaximumSpiHz ||
+           profile.readSpiHz > kValidatedMaximumSpiHz;
 }
 
 bool decodeSupportedMadctl(uint8_t madctl, uint8_t& rotation,

@@ -30,39 +30,43 @@
 
 #include <lvgl.h>
 #include "../Config.h"
+#include "BrightnessSettingPolicy.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
 #include "../input/KeyboardManager.h"
 
+class DisplayDriver;
+
 class SettingsApp {
 public:
-    SettingsApp();
+    explicit SettingsApp(DisplayDriver* display = nullptr);
     ~SettingsApp();
 
     void begin();
     void end();
+    /** Commit the final visible brightness before a screen change. */
+    void prepareToLeave();
     void load();
     void handleKey(const KeyEvent& ev);
 
     bool isActive() const { return _screen != nullptr; }
     bool navigateBack() { return false; }
 
-#if defined(__EMSCRIPTEN__) || NUMOS_PRODUCTION_DEMO_PROFILE
-    /**
-     * Browser-only storage boundary. These use the production LittleFS shim,
-     * whose root is /numos after the JavaScript runtime has hydrated IDBFS.
-     */
+#if defined(__EMSCRIPTEN__) || NUMOS_BOARD_PROD_WROOM1U_N16R8
+    /** Persist the compact settings record (LittleFS on hardware/IDBFS on web). */
     static bool loadPersistentState();
     static bool savePersistentState();
 #endif
 
 private:
-    static constexpr int NUM_ITEMS = 4;
+    static constexpr int NUM_ITEMS =
+        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 5 : 4;
     static constexpr int SCREEN_W  = 320;
     static constexpr int SCREEN_H  = 240;
     static constexpr int PAD       = 12;
-    static constexpr int ROW_H     = 44;
-    static constexpr int ROW_GAP   = 2;   // tightened for the 4th row (Angle unit)
+    static constexpr int ROW_H     =
+        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 34 : 44;
+    static constexpr int ROW_GAP   = 2;
 
     lv_obj_t*       _screen;
     ui::StatusBar   _statusBar;
@@ -73,11 +77,15 @@ private:
     lv_obj_t*       _labels[NUM_ITEMS];
     lv_obj_t*       _values[NUM_ITEMS];
     lv_obj_t*       _hintLabel;
+    lv_obj_t*       _brightnessSlider;
 
     int             _focus;
+    DisplayDriver*  _display;
+    numos::settings::BrightnessSettingSession _brightnessSession;
 
     void createUI();
     void updateFocus();
     void updateValues();
     void toggleCurrent();
+    void adjustBrightness(int delta);
 };

@@ -91,6 +91,11 @@ public:
                             const lv_area_t* area,
                             uint8_t* pxMap);
 
+#if defined(NUMOS_DISPLAY_PERF_TELEMETRY) && defined(ARDUINO)
+    /** Zero-heap refresh/flush telemetry for the opt-in BOARD A probe. */
+    static void lvglPerfEventCb(lv_event_t* event);
+#endif
+
     // En la ruta DMA interna es necesario staging buffer para evitar
     // DMA desde PSRAM en ESP32-S3.
     ~DisplayDriver();
@@ -133,6 +138,19 @@ private:
     void*       _dmaStagingAlloc     = nullptr;
     uint16_t*   _dmaStagingBuf       = nullptr;
     uint32_t    _dmaStagingBufBytes  = 0;
+#if defined(NUMOS_DISPLAY_PERF_TELEMETRY)
+    uint32_t    _perfWindowStartUs   = 0;
+    uint32_t    _perfRefreshStartUs  = 0;
+    uint32_t    _perfFrameCount      = 0;
+    uint32_t    _perfFlushCount      = 0;
+    uint32_t    _perfPixelCount      = 0;
+    uint32_t    _perfRefreshTotalUs  = 0;
+    uint32_t    _perfRefreshMaxUs    = 0;
+    uint32_t    _perfFlushTotalUs    = 0;
+    uint32_t    _perfFlushMaxUs      = 0;
+
+    void recordDisplayPerfFlush(uint32_t pixelCount, uint32_t startUs);
+#endif
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     int16_t     _xOffset             = 0;
     int16_t     _yOffset             = 0;

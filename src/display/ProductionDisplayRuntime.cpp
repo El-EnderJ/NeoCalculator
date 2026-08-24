@@ -187,7 +187,11 @@ void restoreSafeProductionDisplayProfile() {
 }
 
 bool saveActiveProductionDisplayProfile() {
-    if (validateDisplayProfile(g_activeProfile) != ProfileValidation::Ok) {
+    // WHY: The opt-in BOARD A performance build may exercise the ESP32-S3
+    // peripheral's 80 MHz endpoint, but GPIO-matrix routing is only guaranteed
+    // through 40 MHz. Never allow an experimental rate to survive reboot.
+    if (usesUnvalidatedSpiRate(g_activeProfile) ||
+        validateDisplayProfile(g_activeProfile) != ProfileValidation::Ok) {
         return false;
     }
     const DisplayProfileRecord record =

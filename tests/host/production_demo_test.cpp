@@ -11,6 +11,7 @@
 #include "demo/DemoBootHealth.h"
 #include "demo/DemoProfile.h"
 #include "demo/DemoSettingsRecord.h"
+#include "apps/BrightnessSettingPolicy.h"
 #include "hal/FileSystem.h"
 #include "input/KeyboardManager.h"
 #include "input/ProductionKeypadScanner.h"
@@ -213,7 +214,7 @@ void testPersistentFaults(const std::filesystem::path& root) {
 
 void testSettingsRecordFaults() {
     using namespace numos::demo;
-    const auto pristine = encodeSettingsRecord(true, true, false, 12);
+    const auto pristine = encodeSettingsRecord(true, true, false, 12, 180);
     DecodedSettings decoded{};
     require(decodeSettingsRecord(
                 pristine.data(), pristine.size(), decoded),
@@ -221,8 +222,23 @@ void testSettingsRecordFaults() {
     require(decoded.angleValid && decoded.angleDeg &&
             decoded.complexValid && decoded.complexEnabled &&
             decoded.educationValid && !decoded.educationEnabled &&
-            decoded.precisionValid && decoded.precision == 12,
+            decoded.precisionValid && decoded.precision == 12 &&
+            decoded.brightnessValid && decoded.brightness == 180,
             "valid settings fields restored");
+
+    auto previous = pristine;
+    previous[4] = kPreviousSettingsFormatVersion;
+    previous[9] = 0;  // reserved in v2, not an encoded brightness value
+    const uint32_t previousChecksum =
+        settingsRecordChecksum(previous.data(), 12);
+    std::memcpy(previous.data() + 12, &previousChecksum,
+                sizeof(previousChecksum));
+    require(decodeSettingsRecord(
+                previous.data(), previous.size(), decoded),
+            "previous settings version migrated");
+    require(decoded.angleValid && decoded.precisionValid &&
+            !decoded.brightnessValid,
+            "v2 migration preserves defaults for missing brightness");
 
     require(!decodeSettingsRecord(pristine.data(), 9, decoded),
             "truncated settings rejected");
@@ -259,6 +275,84 @@ void testSettingsRecordFaults() {
             "invalid settings fields do not poison unrelated fields");
 }
 
+void testBrightnessZeroContract() {
+    using numos::display::kMaximumBacklight;
+    using numos::display::kMinimumPersistedBacklight;
+    using numos::display::kZeroBrightnessFallbackBacklight;
+    using numos::settings::BrightnessSettingSession;
+    using numos::settings::normalizePersistedBrightness;
+    using namespace numos::demo;
+
+    static_assert(kMinimumPersistedBacklight == 1);
+    static_assert(kZeroBrightnessFallbackBacklight == 32);
+    static_assert(normalizePersistedBrightness(0) == 32);
+    static_assert(normalizePersistedBrightness(1) == 1);
+    static_assert(normalizePersistedBrightness(31) == 31);
+    static_assert(normalizePersistedBrightness(32) == 32);
+    static_assert(normalizePersistedBrightness(192) == 192);
+    static_assert(normalizePersistedBrightness(255) == 192);
+
+    // A zero request through Settings is clamped to the visible minimum.
+    // HOME uses this same prepare-to-leave seam and performs one deferred write.
+    BrightnessSettingSession session;
+    session.begin(144);
+    require(session.setRuntime(0) == kMinimumPersistedBacklight,
+            "Settings clamps zero to its visible minimum");
+    auto leave = session.prepareToLeave();
+    require(leave.runtimeBrightness == kMinimumPersistedBacklight &&
+            leave.persist,
+            "zero exit/HOME commits the visible minimum once");
+
+    // RESET or hard-power before leaving Settings never changes the previously
+    // committed record, so the next ordinary boot remains visible.
+    const auto committed = encodeSettingsRecord(false, true, false, 10, 144);
+    session.begin(144);
+    require(session.setRuntime(0) == kMinimumPersistedBacklight,
+            "zero request remains visible before reset");
+    DecodedSettings rebooted{};
+    require(decodeSettingsRecord(
+                committed.data(), committed.size(), rebooted) &&
+            rebooted.brightnessValid && rebooted.brightness == 144,
+            "zero then RESET/hard-power retains visible committed brightness");
+
+    // A pre-fix version-3 record containing zero migrates in place to the
+    // established SAFE fallback instead of becoming a valid black boot.
+    auto legacyZero = committed;
+    legacyZero[9] = 0;
+    const uint32_t legacyZeroChecksum =
+        settingsRecordChecksum(legacyZero.data(), 12);
+    std::memcpy(legacyZero.data() + 12, &legacyZeroChecksum,
+                sizeof(legacyZeroChecksum));
+    require(decodeSettingsRecord(
+                legacyZero.data(), legacyZero.size(), rebooted) &&
+            rebooted.brightnessValid &&
+            rebooted.brightness == kZeroBrightnessFallbackBacklight &&
+            rebooted.brightnessMigrated,
+            "persisted zero migrates to minimum visible brightness");
+
+    // New records never encode a value below the visible persistence floor.
+    for (int value = 0; value <= kMaximumBacklight; ++value) {
+        const auto record = encodeSettingsRecord(
+            false, true, false, 10, static_cast<uint8_t>(value));
+        require(record[9] == normalizePersistedBrightness(
+                    static_cast<uint8_t>(value)),
+                "encoded brightness obeys persistent visible range");
+    }
+
+    // Repeated runtime changes perform no persistence themselves. Exactly one
+    // deferred write is requested when the final visible value differs.
+    session.begin(96);
+    unsigned writes = 0;
+    for (int value = 104; value <= 176; value += 8) {
+        session.setRuntime(value);
+        require(writes == 0, "autorepeat remains write-free");
+    }
+    leave = session.prepareToLeave();
+    if (leave.persist) ++writes;
+    require(leave.runtimeBrightness == 176 && writes == 1,
+            "one deferred write records final visible brightness");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -268,6 +362,7 @@ int main(int argc, char** argv) {
     testForceReleaseAndModifiers();
     testPersistentFaults(argv[1]);
     testSettingsRecordFaults();
+    testBrightnessZeroContract();
     std::puts("production demo host suite: PASS");
     return 0;
 }

@@ -219,7 +219,7 @@ extern const lv_font_t stix_math_12;
  *====================*/
 
 #define LV_USE_ARC          1
-#define LV_USE_BAR          0
+#define LV_USE_BAR          1
 #define LV_USE_BTN          1   /* Botones del grid de apps */
 #define LV_USE_BTNMATRIX    0
 #define LV_USE_CANVAS       0
@@ -235,7 +235,7 @@ extern const lv_font_t stix_math_12;
 #define LV_USE_MENU         0
 #define LV_USE_MSGBOX       1   /* Error dialogs (Matrices) */
 #define LV_USE_ROLLER       0
-#define LV_USE_SLIDER       0
+#define LV_USE_SLIDER       1
 #define LV_USE_SPAN         0
 #define LV_USE_SPINBOX      0
 #define LV_USE_SPINNER      1

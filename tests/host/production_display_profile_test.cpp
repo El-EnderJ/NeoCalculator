@@ -109,7 +109,7 @@ void executeAndVerify(const ClippedFlushPlan& plan,
 int main() {
     static_assert(kSafeDisplayProfile.rotation == 1);
     static_assert(displayMadctl(kSafeDisplayProfile) == 0x28);
-    static_assert(kSafeDisplayProfile.writeSpiHz == 10'000'000U);
+    static_assert(kSafeDisplayProfile.writeSpiHz == 40'000'000U);
     static_assert(kSafeDisplayProfile.xOffset == 0);
     static_assert(kSafeDisplayProfile.yOffset == 0);
     static_assert(kSafeDisplayProfile.maximumBacklight == 192);
@@ -378,6 +378,10 @@ int main() {
     assert(command.first == -32 && command.second == 32);
     command = parseOk("DISPLAY SPI 40");
     assert(command.first == 40);
+#if defined(NUMOS_PRODUCTION_BRINGUP_SPI_EXPERIMENT_MAX_HZ)
+    command = parseOk("DISPLAY SPI 80");
+    assert(command.first == 80);
+#endif
     command = parseOk("DISPLAY BACKLIGHT 192");
     assert(command.first == 192);
     assert(parseOk("DISPLAY SAVE").kind == DisplayCommandKind::Save);
@@ -393,8 +397,13 @@ int main() {
            CommandParseResult::UnsupportedValue);
     assert(parseDisplayCommand("DISPLAY OFFSET -33 0", 20, rejected) ==
            CommandParseResult::UnsupportedValue);
+#if defined(NUMOS_PRODUCTION_BRINGUP_SPI_EXPERIMENT_MAX_HZ)
+    assert(parseDisplayCommand("DISPLAY SPI 81", 14, rejected) ==
+           CommandParseResult::UnsupportedValue);
+#else
     assert(parseDisplayCommand("DISPLAY SPI 41", 14, rejected) ==
            CommandParseResult::UnsupportedValue);
+#endif
     assert(parseDisplayCommand("DISPLAY BACKLIGHT 193", 21, rejected) ==
            CommandParseResult::UnsupportedValue);
     assert(parseDisplayCommand("KEYPAD HELP", 11, rejected) ==

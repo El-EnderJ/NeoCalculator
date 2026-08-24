@@ -23,10 +23,13 @@
 
 #include "SettingsApp.h"
 #include "../Config.h"
+#include "../display/DisplayDriver.h"
 #include "../math/AngleModeRuntime.h"
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
 #if NUMOS_PRODUCTION_DEMO_PROFILE
 #include "../demo/DemoBootHealth.h"
+#endif
 #include "../demo/DemoSettingsRecord.h"
 #include <FS.h>
 #include <LittleFS.h>
@@ -56,10 +59,12 @@ static constexpr uint32_t COL_HINT       = 0x808080;
 static const int PRECISIONS[] = {6, 8, 10, 12};
 static constexpr int NUM_PREC  = 4;
 
-#if NUMOS_PRODUCTION_DEMO_PROFILE
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
 namespace {
 constexpr const char* SETTINGS_PATH = "/settings.dat";
 constexpr const char* SETTINGS_TEMP_PATH = "/settings.tmp";
+uint8_t g_persistedBrightness =
+    numos::display::kSafeDisplayProfile.initialBacklight;
 }
 
 bool SettingsApp::savePersistentState() {
@@ -68,10 +73,11 @@ bool SettingsApp::savePersistentState() {
 #endif
     const auto record = numos::demo::encodeSettingsRecord(
         numos::angleModeIsDeg(), setting_complex_enabled,
-        setting_edu_steps, static_cast<uint8_t>(setting_decimal_precision));
+        setting_edu_steps, static_cast<uint8_t>(setting_decimal_precision),
+        g_persistedBrightness);
 
     LittleFS.remove(SETTINGS_TEMP_PATH);
-    File file = LittleFS.open(SETTINGS_TEMP_PATH, "w");
+    fs::File file = LittleFS.open(SETTINGS_TEMP_PATH, "w");
     if (!file) return false;
     const bool complete =
         file.write(record.data(), record.size()) == record.size();
@@ -81,11 +87,16 @@ bool SettingsApp::savePersistentState() {
         return false;
     }
     LittleFS.remove(SETTINGS_PATH);
-    return LittleFS.rename(SETTINGS_TEMP_PATH, SETTINGS_PATH);
+    const bool saved = LittleFS.rename(SETTINGS_TEMP_PATH, SETTINGS_PATH);
+    if (saved) {
+        Serial.printf("[SETTINGS] persist brightness=%u\n",
+                      static_cast<unsigned>(g_persistedBrightness));
+    }
+    return saved;
 }
 
 bool SettingsApp::loadPersistentState() {
-    File file = LittleFS.open(SETTINGS_PATH, "r");
+    fs::File file = LittleFS.open(SETTINGS_PATH, "r");
     if (!file) return false;  // normal first run
 
     std::array<uint8_t, numos::demo::kSettingsRecordSize> record{};
@@ -112,6 +123,16 @@ bool SettingsApp::loadPersistentState() {
         setting_edu_steps = decoded.educationEnabled;
     if (decoded.precisionValid)
         setting_decimal_precision = decoded.precision;
+    if (decoded.brightnessValid) {
+        setting_brightness = decoded.brightness;
+        g_persistedBrightness = decoded.brightness;
+    }
+    if (decoded.brightnessMigrated) {
+        Serial.printf("[SETTINGS] brightness migration raw=%u visible=%u\n",
+                      static_cast<unsigned>(record[9]),
+                      static_cast<unsigned>(g_persistedBrightness));
+        (void)savePersistentState();
+    }
     return true;
 }
 #elif defined(__EMSCRIPTEN__)
@@ -171,11 +192,14 @@ bool SettingsApp::loadPersistentState() {
 // Constructor / Destructor
 // ════════════════════════════════════════════════════════════════════════════
 
-SettingsApp::SettingsApp()
+SettingsApp::SettingsApp(DisplayDriver* display)
     : _screen(nullptr)
     , _container(nullptr)
     , _hintLabel(nullptr)
+    , _brightnessSlider(nullptr)
     , _focus(0)
+    , _display(display)
+    , _brightnessSession()
 {
     for (int i = 0; i < NUM_ITEMS; ++i) {
         _rows[i]   = nullptr;
@@ -211,12 +235,14 @@ void SettingsApp::begin() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void SettingsApp::end() {
+    prepareToLeave();
     if (_screen) {
         _statusBar.destroy();   // nullify dangling pointers before parent screen is freed
         lv_obj_delete(_screen);
         _screen    = nullptr;
         _container = nullptr;
         _hintLabel = nullptr;
+        _brightnessSlider = nullptr;
         for (int i = 0; i < NUM_ITEMS; ++i) {
             _rows[i] = nullptr;
             _labels[i] = nullptr;
@@ -231,12 +257,43 @@ void SettingsApp::end() {
 
 void SettingsApp::load() {
     if (!_screen) begin();
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    _brightnessSession.begin(setting_brightness);
+    setting_brightness = _brightnessSession.runtimeBrightness();
+    if (_display) _display->setBacklightLevel(setting_brightness);
+#endif
     _statusBar.setTitle("Settings");
     _statusBar.update();
     _focus = 0;
     updateValues();
     updateFocus();
     lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
+}
+
+void SettingsApp::prepareToLeave() {
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    if (!_brightnessSession.active()) return;
+
+    const uint8_t before = setting_brightness;
+    const auto decision = _brightnessSession.prepareToLeave();
+    setting_brightness = decision.runtimeBrightness;
+    if (_display && before != setting_brightness) {
+        _display->setBacklightLevel(setting_brightness);
+    }
+
+    bool saved = false;
+    if (decision.persist) {
+        g_persistedBrightness =
+            numos::settings::normalizePersistedBrightness(
+                setting_brightness);
+        saved = savePersistentState();
+    }
+    Serial.printf(
+        "[SETTINGS] brightness-exit before=%u restored=%u persist=%u saved=%u\n",
+        static_cast<unsigned>(before),
+        static_cast<unsigned>(setting_brightness),
+        decision.persist ? 1U : 0U, saved ? 1U : 0U);
+#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -259,10 +316,13 @@ void SettingsApp::createUI() {
         "Complex numbers",
         "Decimal precision",
         "Step-by-step mode",
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+        "Brightness",
+#endif
     };
 
     for (int i = 0; i < NUM_ITEMS; ++i) {
-        int y = 10 + i * (ROW_H + ROW_GAP);   // 4 rows + bottom hint fit in 215 px
+        int y = 6 + i * (ROW_H + ROW_GAP);
 
         // Row background
         _rows[i] = lv_obj_create(_container);
@@ -295,6 +355,16 @@ void SettingsApp::createUI() {
         lv_obj_align(_values[i], LV_ALIGN_RIGHT_MID, -12, 0);
     }
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    _brightnessSlider = lv_slider_create(_rows[4]);
+    lv_obj_set_size(_brightnessSlider, 112, 8);
+    lv_obj_align(_brightnessSlider, LV_ALIGN_LEFT_MID, 96, 0);
+    lv_slider_set_range(_brightnessSlider,
+                        numos::display::kMinimumPersistedBacklight,
+                        numos::display::kMaximumBacklight);
+    lv_obj_remove_flag(_brightnessSlider, LV_OBJ_FLAG_CLICKABLE);
+#endif
+
     // Hint at bottom
     // Phase 7I: plain UI hint → lv_font_montserrat_14 (stix_math_18 has no U+0020
     // space glyph → tofu at every space). The LV_SYMBOL_UP/DOWN arrows
@@ -302,7 +372,7 @@ void SettingsApp::createUI() {
     // in this build, so they already rendered as tofu — dropped here (the words
     // convey navigation just as the re-blessed RegressionApp hint does).
     _hintLabel = lv_label_create(_container);
-    lv_label_set_text(_hintLabel, "Navigate   ENTER Toggle   MODE Back");
+    lv_label_set_text(_hintLabel, "Navigate   Left/Right Adjust   MODE Back");
     lv_obj_set_style_text_font(_hintLabel, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(_hintLabel, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_hintLabel, PAD, SCREEN_H - barH - 22);
@@ -362,6 +432,36 @@ void SettingsApp::updateValues() {
         lv_label_set_text(_values[3], "OFF");
         lv_obj_set_style_text_color(_values[3], lv_color_hex(COL_VALUE_OFF), LV_PART_MAIN);
     }
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    const unsigned percent =
+        (static_cast<unsigned>(setting_brightness) * 100U +
+         numos::display::kMaximumBacklight / 2U) /
+        numos::display::kMaximumBacklight;
+    char brightnessText[8];
+    snprintf(brightnessText, sizeof(brightnessText), "%u%%", percent);
+    lv_label_set_text(_values[4], brightnessText);
+    lv_obj_set_style_text_color(_values[4], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+    lv_slider_set_value(_brightnessSlider, setting_brightness, LV_ANIM_OFF);
+#endif
+}
+
+void SettingsApp::adjustBrightness(const int delta) {
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    const int maximum = numos::display::kMaximumBacklight;
+    int next = static_cast<int>(setting_brightness) + delta;
+    if (next < numos::display::kMinimumPersistedBacklight) {
+        next = numos::display::kMinimumPersistedBacklight;
+    }
+    if (next > maximum) next = maximum;
+    if (next == setting_brightness) return;
+
+    setting_brightness = _brightnessSession.setRuntime(next);
+    if (_display) _display->setBacklightLevel(setting_brightness);
+    updateValues();
+#else
+    (void)delta;
+#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -396,13 +496,32 @@ void SettingsApp::toggleCurrent() {
         case 3:  // Step-by-step educational mode toggle
             setting_edu_steps = !setting_edu_steps;
             break;
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+        case 4:  // Minimum -> normal -> maximum -> minimum.
+            if (setting_brightness ==
+                numos::display::kMinimumPersistedBacklight) {
+                adjustBrightness(
+                    numos::display::kSafeDisplayProfile.initialBacklight);
+            } else if (setting_brightness < numos::display::kMaximumBacklight) {
+                adjustBrightness(numos::display::kMaximumBacklight -
+                                 setting_brightness);
+            } else {
+                adjustBrightness(-numos::display::kMaximumBacklight);
+            }
+            break;
+#endif
     }
 
     updateValues();
-#if defined(__EMSCRIPTEN__) || NUMOS_PRODUCTION_DEMO_PROFILE
+#if defined(__EMSCRIPTEN__)
     // One compact record per completed user action. FileSystem marks the
     // successful close dirty; JavaScript coalesces repeated actions.
     savePersistentState();
+#elif NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // Brightness writes are deferred until prepareToLeave(). Other settings
+    // retain immediate persistence, using the last committed brightness.
+    if (_focus != 4) savePersistentState();
 #endif
 }
 
@@ -445,10 +564,15 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
                 idx = (idx - 1 + NUM_PREC) % NUM_PREC;
                 setting_decimal_precision = PRECISIONS[idx];
                 updateValues();
-#if defined(__EMSCRIPTEN__) || NUMOS_PRODUCTION_DEMO_PROFILE
+#if defined(__EMSCRIPTEN__) || NUMOS_BOARD_PROD_WROOM1U_N16R8
                 savePersistentState();
 #endif
             }
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+            else if (_focus == 4) {
+                adjustBrightness(-8);
+            }
+#endif
             break;
 
         case KeyCode::RIGHT:
@@ -456,6 +580,11 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
             if (_focus == 2) {
                 toggleCurrent();
             }
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+            else if (_focus == 4) {
+                adjustBrightness(8);
+            }
+#endif
             break;
 
         default:

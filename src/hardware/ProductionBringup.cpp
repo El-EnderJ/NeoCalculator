@@ -171,8 +171,13 @@ void emitDisplayHelp() {
         "[DISPLAY] DISPLAY ROTATE 1|3 | DISPLAY BGR ON|OFF | "
         "DISPLAY INVERT ON|OFF");
     NUMOS_SERIAL.println(
-        "[DISPLAY] DISPLAY OFFSET <-32..32> <-32..32> | "
-        "DISPLAY SPI <1..40>");
+        "[DISPLAY] DISPLAY OFFSET <-32..32> <-32..32>");
+    NUMOS_SERIAL.printf(
+        "[DISPLAY] DISPLAY SPI <1..%u>%s\n",
+        static_cast<unsigned>(numos::display::kMaximumSpiHz / 1'000'000U),
+        numos::display::kMaximumSpiHz >
+                numos::display::kValidatedMaximumSpiHz
+            ? " (bring-up experiment; SAVE blocked above 40)" : "");
     NUMOS_SERIAL.println(
         "[DISPLAY] DISPLAY BACKLIGHT <0..192> | DISPLAY SAVE | "
         "DISPLAY RESET | DISPLAY SAFE");

@@ -186,6 +186,13 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
     lv_display_set_flush_cb(_lvDisp, lvglFlushCb);
     Serial.println("[LVGL] Flush callback registrado");
 
+#if defined(NUMOS_DISPLAY_PERF_TELEMETRY)
+    lv_display_add_event_cb(
+        _lvDisp, lvglPerfEventCb, LV_EVENT_ALL, this);
+    Serial.printf("[DISPLAY-PERF] telemetry=on refresh_period_ms=%u window_ms=2000\n",
+                  static_cast<unsigned>(LV_DEF_REFR_PERIOD));
+#endif
+
     lv_display_set_buffers(_lvDisp,
                            buf1, buf2,
                            bufBytes,
@@ -494,6 +501,16 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
     const uint32_t pxCount = static_cast<uint32_t>(w) * static_cast<uint32_t>(h);
     uint16_t* src = reinterpret_cast<uint16_t*>(pxMap);
 
+#if defined(NUMOS_DISPLAY_PERF_TELEMETRY)
+    const uint32_t perfFlushStartUs = micros();
+    const auto finishFlush = [self, disp, pxCount, perfFlushStartUs]() {
+        self->recordDisplayPerfFlush(pxCount, perfFlushStartUs);
+        lv_display_flush_ready(disp);
+    };
+#else
+    const auto finishFlush = [disp]() { lv_display_flush_ready(disp); };
+#endif
+
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     if (self->_xOffset != 0 || self->_yOffset != 0) {
         const numos::display::ClippedFlushPlan plan =
@@ -511,9 +528,9 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
                 self->_tft.pushColors(rowSource, width, true);
                 self->_tft.endWrite();
             },
-            [disp]() {
+            [finishFlush]() {
                 digitalWrite(TFT_CS, HIGH);
-                lv_display_flush_ready(disp);
+                finishFlush();
             });
         return;
     }
@@ -562,7 +579,7 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
         self->_dmaPending = true;
         // Leave CS low and return immediately — dmaWait()/endWrite() will be
         // invoked at the start of the next flush when _dmaPending is detected.
-        lv_display_flush_ready(disp);
+        finishFlush();
         return;
     #else
         memcpy(self->_dmaStagingBuf, src, pxCount * sizeof(uint16_t));
@@ -579,7 +596,7 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
     #ifdef DISPLAY_DRIVER_DIAG
         Serial.println("G endWrite");
     #endif
-        lv_display_flush_ready(disp);
+        finishFlush();
         return;
         }
 
@@ -593,7 +610,7 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
         Serial.println("[DisplayDriver] Starting DMA pushPixelsDMA(src)...");
         self->_tft.pushPixelsDMA(src, pxCount);
         self->_dmaPending = true;
-        lv_display_flush_ready(disp);
+        finishFlush();
         return;
     #else
         // Use blocking write for reliability
@@ -608,7 +625,7 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
     #ifdef DISPLAY_DRIVER_DIAG
         Serial.println("G endWrite");
     #endif
-        lv_display_flush_ready(disp);
+        finishFlush();
         return;
         }
 
@@ -620,7 +637,7 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
     // Start DMA from source buffer
     self->_tft.pushPixelsDMA(src, pxCount);
     self->_dmaPending = true;
-    lv_display_flush_ready(disp);
+    finishFlush();
     return;
 #else
     self->_tft.pushColors(src, pxCount, true);
@@ -632,8 +649,73 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
     Serial.println("[DisplayDriver] Write complete");
     Serial.println("G endWrite");
 #endif
-    lv_display_flush_ready(disp);
+    finishFlush();
 }
+
+#if defined(NUMOS_DISPLAY_PERF_TELEMETRY)
+void DisplayDriver::recordDisplayPerfFlush(const uint32_t pixelCount,
+                                           const uint32_t startUs) {
+    const uint32_t elapsedUs = micros() - startUs;
+    ++_perfFlushCount;
+    _perfPixelCount += pixelCount;
+    _perfFlushTotalUs += elapsedUs;
+    if (elapsedUs > _perfFlushMaxUs) _perfFlushMaxUs = elapsedUs;
+}
+
+void DisplayDriver::lvglPerfEventCb(lv_event_t* event) {
+    auto* self = static_cast<DisplayDriver*>(lv_event_get_user_data(event));
+    if (!self) return;
+
+    const lv_event_code_t code = lv_event_get_code(event);
+    if (code == LV_EVENT_REFR_START) {
+        self->_perfRefreshStartUs = micros();
+        if (self->_perfWindowStartUs == 0) {
+            self->_perfWindowStartUs = self->_perfRefreshStartUs;
+        }
+        return;
+    }
+    if (code != LV_EVENT_REFR_READY || self->_perfRefreshStartUs == 0) return;
+
+    const uint32_t nowUs = micros();
+    const uint32_t refreshUs = nowUs - self->_perfRefreshStartUs;
+    self->_perfRefreshStartUs = 0;
+    ++self->_perfFrameCount;
+    self->_perfRefreshTotalUs += refreshUs;
+    if (refreshUs > self->_perfRefreshMaxUs) {
+        self->_perfRefreshMaxUs = refreshUs;
+    }
+
+    const uint32_t windowUs = nowUs - self->_perfWindowStartUs;
+    if (windowUs < 2'000'000U) return;
+
+    const uint32_t frames = self->_perfFrameCount;
+    const uint32_t flushes = self->_perfFlushCount;
+    const uint32_t fpsTimesTen = windowUs == 0
+        ? 0
+        : static_cast<uint32_t>(
+              (static_cast<uint64_t>(frames) * 10'000'000ULL) / windowUs);
+    Serial.printf(
+        "[DISPLAY-PERF] fps_x10=%u frames=%u refresh_us=%u/%u "
+        "flush_us=%u/%u flushes_per_frame_x10=%u pixels_per_frame=%u\n",
+        static_cast<unsigned>(fpsTimesTen),
+        static_cast<unsigned>(frames),
+        static_cast<unsigned>(frames ? self->_perfRefreshTotalUs / frames : 0),
+        static_cast<unsigned>(self->_perfRefreshMaxUs),
+        static_cast<unsigned>(flushes ? self->_perfFlushTotalUs / flushes : 0),
+        static_cast<unsigned>(self->_perfFlushMaxUs),
+        static_cast<unsigned>(frames ? (flushes * 10U) / frames : 0),
+        static_cast<unsigned>(frames ? self->_perfPixelCount / frames : 0));
+
+    self->_perfWindowStartUs = nowUs;
+    self->_perfFrameCount = 0;
+    self->_perfFlushCount = 0;
+    self->_perfPixelCount = 0;
+    self->_perfRefreshTotalUs = 0;
+    self->_perfRefreshMaxUs = 0;
+    self->_perfFlushTotalUs = 0;
+    self->_perfFlushMaxUs = 0;
+}
+#endif
 
 void DisplayDriver::pushFrame() {
     if (_useSprite) _sprite.pushSprite(0, 0);

@@ -180,6 +180,7 @@ export class NumosEmulatorElement extends HTMLElement {
   #inputEnabled = false;
   #controlsOverride = null;
   #haptics = false;
+  #modifierMode = "none";
   #lastError = null;
   #lastPersistenceState = null;
   #timings = {};
@@ -203,6 +204,8 @@ export class NumosEmulatorElement extends HTMLElement {
           <button type="button" data-action="fullscreen">Fullscreen</button>
           <button type="button" data-action="controls" aria-pressed="false">Show controls</button>
           <button type="button" data-action="haptics" aria-pressed="false" hidden>Haptics off</button>
+          <button type="button" data-action="restart" hidden>Restart</button>
+          <button type="button" data-action="power" hidden>Power off</button>
         </div>
       </header>
       <div class="content">
@@ -970,6 +973,7 @@ export class NumosEmulatorElement extends HTMLElement {
     for (const group of NUMOS_WEB_KEYPAD_LAYOUT) {
       const section = document.createElement("section");
       section.className = "key-group";
+      section.dataset.group = group.name.replace(/\s+/g, "-");
       const title = document.createElement("span");
       title.textContent = group.name;
       const grid = document.createElement("div");
@@ -977,10 +981,29 @@ export class NumosEmulatorElement extends HTMLElement {
       for (const key of group.keys) {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "key";
+        button.className = `key key-${key.category}`;
+        if (key.physicalId === "r9c4") button.classList.add("key-execute");
+        if (key.alphaLabel) button.classList.add("key-has-alpha");
         button.dataset.keyCode = String(key.code);
-        button.dataset.keyId = key.id;
-        button.textContent = key.label;
+        button.dataset.keyId = key.logicalId;
+        button.dataset.physicalId = key.physicalId;
+        button.dataset.category = key.category;
+
+        const shiftLegend = document.createElement("span");
+        shiftLegend.className = "key-legend key-legend-shift";
+        shiftLegend.textContent = key.shiftLabel;
+        shiftLegend.hidden = !key.shiftLabel;
+
+        const alphaLegend = document.createElement("span");
+        alphaLegend.className = "key-legend key-legend-alpha";
+        alphaLegend.textContent = key.alphaLabel;
+        alphaLegend.hidden = !key.alphaLabel;
+
+        const primaryLegend = document.createElement("span");
+        primaryLegend.className = "key-primary";
+        primaryLegend.textContent = key.label;
+
+        button.append(shiftLegend, alphaLegend, primaryLegend);
         button.setAttribute("aria-label", key.ariaLabel);
         button.setAttribute("aria-pressed", "false");
         grid.append(button);
@@ -1005,6 +1028,12 @@ export class NumosEmulatorElement extends HTMLElement {
       } else if (action === "haptics") {
         this.#haptics = !this.#haptics;
         this.#renderHaptics();
+      } else if (action === "restart") {
+        this.#resetModifierVisual();
+        this.#ignore(this.restart());
+      } else if (action === "power") {
+        this.#resetModifierVisual();
+        this.#ignore(this.shutdown());
       } else if (action === "clear-storage") {
         this.#ignore(this.resetPersistentStorage());
       } else if (action === "shutdown") {
@@ -1027,6 +1056,7 @@ export class NumosEmulatorElement extends HTMLElement {
       }
       this.#heldPointers.set(event.pointerId, { keyCode, button });
       this.#logicalDown(keyCode);
+      this.#recordModifierPress(button);
       button.classList.add("is-pressed");
       button.setAttribute("aria-pressed", "true");
       if (this.#haptics) globalThis.navigator.vibrate?.(12);
@@ -1039,6 +1069,7 @@ export class NumosEmulatorElement extends HTMLElement {
       if (finalRelease) {
         held.button.classList.remove("is-pressed");
         held.button.setAttribute("aria-pressed", "false");
+        this.#renderModifierVisual();
       }
     };
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
@@ -1052,6 +1083,7 @@ export class NumosEmulatorElement extends HTMLElement {
       button.dataset.keyboardHeld = "true";
       const keyCode = Number(button.dataset.keyCode);
       this.#logicalDown(keyCode);
+      this.#recordModifierPress(button);
       button.classList.add("is-pressed");
       button.setAttribute("aria-pressed", "true");
     });
@@ -1065,10 +1097,63 @@ export class NumosEmulatorElement extends HTMLElement {
       this.#logicalUp(keyCode);
       button.classList.remove("is-pressed");
       button.setAttribute("aria-pressed", "false");
+      this.#renderModifierVisual();
     });
     controls.addEventListener("click", (event) => {
       if (event.target.closest?.(".key")) event.preventDefault();
     });
+  }
+
+  #recordModifierPress(button) {
+    const keyId = button.dataset.keyId;
+
+    if (keyId === "SHIFT" || keyId === "ALPHA") {
+      if (keyId === "SHIFT") {
+        this.#modifierMode = {
+          none: "shift",
+          shift: "shift-lock",
+          alpha: "shift",
+          "shift-lock": "none",
+          "alpha-lock": "shift",
+        }[this.#modifierMode] || "shift";
+      } else {
+        this.#modifierMode = {
+          none: "alpha",
+          alpha: "alpha-lock",
+          shift: "alpha",
+          "alpha-lock": "none",
+          "shift-lock": "alpha",
+        }[this.#modifierMode] || "alpha";
+      }
+    } else if (this.#modifierMode === "shift" || this.#modifierMode === "alpha") {
+      this.#modifierMode = "none";
+    }
+    this.#renderModifierVisual();
+  }
+
+  #renderModifierVisual() {
+    for (const keyId of ["SHIFT", "ALPHA"]) {
+      const button = this.#shadow.querySelector(`[data-key-id="${keyId}"]`);
+      if (!button) continue;
+      const active = this.#modifierMode.startsWith(keyId.toLowerCase());
+      const locked = active && this.#modifierMode.endsWith("-lock");
+      button.classList.toggle("is-modifier-active", active);
+      button.classList.toggle("is-modifier-locked", locked);
+      if (!button.classList.contains("is-pressed")) {
+        button.setAttribute("aria-pressed", String(active));
+      }
+      const primary = button.querySelector(".key-primary");
+      if (primary) {
+        primary.textContent = locked
+          ? `${keyId === "SHIFT" ? "SHIFT" : "ALPHA"} LOCK`
+          : keyId;
+      }
+    }
+  }
+
+  #resetModifierVisual() {
+    this.#modifierMode = "none";
+    this.#renderModifierVisual();
   }
 
   #controlsVisible() {
@@ -1127,6 +1212,8 @@ export class NumosEmulatorElement extends HTMLElement {
     const retry = this.#shadow.querySelector('[data-action="retry"]');
     const overlayStart = this.#shadow.querySelector('[data-action="overlay-start"]');
     const shutdown = this.#shadow.querySelector('[data-action="shutdown"]');
+    const restart = this.#shadow.querySelector('[data-action="restart"]');
+    const power = this.#shadow.querySelector('[data-action="power"]');
     const overlay = this.#shadow.querySelector(".overlay");
     const title = overlay.querySelector("h2");
     const description = overlay.querySelector("p");
@@ -1137,6 +1224,11 @@ export class NumosEmulatorElement extends HTMLElement {
     retry.hidden = this.#state !== "error" || !this.#lastError?.recoverable;
     overlayStart.hidden = !["idle", "waiting_for_viewport", "stopped"].includes(this.#state);
     shutdown.disabled = !ACTIVE_STATES.has(this.#state) || this.#state === "shutting_down";
+    const runtimeReady = this.#state === "ready" || this.#state === "flushing";
+    restart.hidden = !runtimeReady;
+    power.hidden = !runtimeReady;
+    restart.disabled = this.#state !== "ready";
+    power.disabled = this.#state === "shutting_down";
     overlay.hidden = this.#state === "ready" || this.#state === "flushing";
     if (!loading) this.#shadow.querySelector(".progress").hidden = true;
     if (this.#state === "error") {

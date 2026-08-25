@@ -130,12 +130,34 @@ try {
   assert.equal(ready.ready, true);
   assert.equal(ready.logicalWidth, 320);
   assert.equal(ready.logicalHeight, 240);
+  assert.equal(await page.locator("numos-emulator")
+    .locator('[data-action="restart"]').isVisible(), true,
+  "restart control must be visible while NumOS is running");
+  assert.equal(await page.locator("numos-emulator")
+    .locator('[data-action="power"]').isVisible(), true,
+  "power control must be visible while NumOS is running");
   assert.ok(progress.some((event) => event.stage === "Wasm download" &&
     event.downloadedBytes > 0 && event.totalBytes > 0));
   assert.ok(progress.some((event) => event.stage === "runtime loader"));
   assert.ok(progress.some((event) => event.stage === "storage hydration"));
   assert.equal(await canvas().getAttribute("width"), "320");
   assert.equal(await canvas().getAttribute("height"), "240");
+
+  // Real clicks on the launcher must reach the global modifier state.
+  await page.evaluate(() => { window.emulator.controls = "visible"; });
+  const launcherShift = page.locator("numos-emulator")
+    .locator('[data-key-id="SHIFT"]');
+  await launcherShift.click();
+  assert.equal((await diagnostics()).modifier, "S",
+    "launcher Shift click must reach NumOS");
+  assert.equal(await launcherShift.getAttribute("aria-pressed"), "true");
+  await launcherShift.click();
+  assert.equal((await diagnostics()).modifier, "S-LOCK",
+    "second launcher Shift click must lock NumOS");
+  await launcherShift.click();
+  assert.equal((await diagnostics()).modifier, "",
+    "third launcher Shift click must clear NumOS");
+  await page.evaluate(() => { window.emulator.controls = "hidden"; });
 
   // Keyboard events are bound to the focused Shadow DOM canvas, not window.
   const initialFocus = (await diagnostics()).menuFocus;
@@ -173,6 +195,42 @@ try {
   await waitForApp("Menu");
   await delay(350);
   await openLauncherApp(0, "Calculation");
+  const shiftKey = page.locator("numos-emulator")
+    .locator('[data-key-id="SHIFT"]');
+  await shiftKey.dispatchEvent("pointerdown", {
+    pointerId: 21, pointerType: "touch", isPrimary: true, bubbles: true,
+  });
+  await shiftKey.dispatchEvent("pointerup", {
+    pointerId: 21, pointerType: "touch", isPrimary: true, bubbles: true,
+  });
+  assert.equal(await shiftKey.getAttribute("aria-pressed"), "true",
+    "one-shot Shift must remain visibly armed after release");
+  assert.equal(await shiftKey.evaluate((element) =>
+    element.classList.contains("is-modifier-active")), true);
+  assert.equal((await diagnostics()).modifier, "S",
+    "Shift must reach the real NumOS modifier state");
+  await shiftKey.dispatchEvent("pointerdown", {
+    pointerId: 22, pointerType: "touch", isPrimary: true, bubbles: true,
+  });
+  await shiftKey.dispatchEvent("pointerup", {
+    pointerId: 22, pointerType: "touch", isPrimary: true, bubbles: true,
+  });
+  assert.equal(await shiftKey.getAttribute("aria-pressed"), "true",
+    "pressing Shift again must lock the modifier");
+  assert.equal(await shiftKey.evaluate((element) =>
+    element.classList.contains("is-modifier-locked")), true);
+  assert.equal((await diagnostics()).modifier, "S-LOCK",
+    "second Shift press must lock the real NumOS modifier state");
+  await shiftKey.dispatchEvent("pointerdown", {
+    pointerId: 23, pointerType: "touch", isPrimary: true, bubbles: true,
+  });
+  await shiftKey.dispatchEvent("pointerup", {
+    pointerId: 23, pointerType: "touch", isPrimary: true, bubbles: true,
+  });
+  assert.equal(await shiftKey.getAttribute("aria-pressed"), "false",
+    "pressing locked Shift again must clear the modifier");
+  assert.equal((await diagnostics()).modifier, "",
+    "third Shift press must clear the real NumOS modifier state");
   const giacStarted = performance.now();
   await canvas().focus();
   await page.keyboard.type("2+2");
@@ -218,7 +276,7 @@ try {
   await page.evaluate(() => { window.emulator.controls = "visible"; });
   const keyCount = await page.locator("numos-emulator")
     .locator(".key").count();
-  assert.equal(keyCount, 79);
+  assert.equal(keyCount, 50);
   const right = page.locator("numos-emulator").locator('[data-key-id="RIGHT"]');
   const down = page.locator("numos-emulator").locator('[data-key-id="DOWN"]');
   const focusBeforeTouch = (await diagnostics()).menuFocus;
@@ -302,7 +360,9 @@ try {
       window.lastShutdown = event.detail;
     }, { once: true });
   });
-  await shutdown();
+  await page.locator("numos-emulator").first()
+    .locator('[data-action="power"]').click();
+  await page.waitForFunction(() => window.emulator.state === "stopped");
   shutdownEvent = await page.evaluate(() => window.lastShutdown);
   assert.equal(shutdownEvent.giacContexts, 0);
   assert.equal(await page.locator("numos-emulator").locator("canvas").count(), 0);

@@ -704,6 +704,23 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
         return;
     }
 
+    // Match the firmware's SystemApp global modifier routing. Calculation,
+    // Calculus, and Equations own their modifier handling because their status
+    // bars update immediately; every other mode still needs SHIFT/ALPHA to
+    // update the shared KeyboardManager instead of silently discarding them.
+    const bool appOwnsModifiers =
+        g_mode == AppMode::CALCULATION ||
+        g_mode == AppMode::CALCULUS ||
+        g_mode == AppMode::EQUATIONS;
+    if (isDown && !appOwnsModifiers && kc == KeyCode::SHIFT) {
+        vpam::KeyboardManager::instance().pressShift();
+        return;
+    }
+    if (isDown && !appOwnsModifiers && kc == KeyCode::ALPHA) {
+        vpam::KeyboardManager::instance().pressAlpha();
+        return;
+    }
+
     switch (g_mode) {
         case AppMode::SPLASH:
             // Ignorar teclas durante la animación del splash
@@ -3992,6 +4009,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* numos_diagnostic_state()
         << ",\"running\":" << (!g_quit ? "true" : "false")
         << ",\"shutdown\":" << (g_shutdownComplete ? "true" : "false")
         << ",\"app\":\"" << activeAppName() << "\""
+        << ",\"modifier\":\""
+        << vpam::KeyboardManager::instance().indicatorText() << "\""
         << ",\"logicalWidth\":" << SCREEN_W
         << ",\"logicalHeight\":" << SCREEN_H
         << ",\"frameCount\":" << g_loopCount

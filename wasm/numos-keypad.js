@@ -42,7 +42,7 @@ export const NUMOS_LOGICAL_KEYS = Object.freeze([
     DIV: "÷", POW: "xʸ", SQRT: "√",
     NUM_4: "4", NUM_5: "5", NUM_6: "6", MUL: "×", SUB: "−",
     NUM_1: "1", NUM_2: "2", NUM_3: "3", ADD: "+", NEG: "(−)",
-    NUM_0: "0", DOT: ".", ENTER: "EXE", LOG_BASE: "logₙ",
+    NUM_0: "0", DOT: ".", ENTER: "ENTER", LOG_BASE: "logₙ",
     CONST_PI: "π", CONST_E: "e", PREANS: "PreAns", NEGATE: "±",
     LESS: "<", GREATER: ">",
   })[id] || id.replace("ALPHA_", "").replace("_", " "),
@@ -51,25 +51,95 @@ export const NUMOS_LOGICAL_KEYS = Object.freeze([
 
 const byId = new Map(NUMOS_LOGICAL_KEYS.map((key) => [key.id, key]));
 
-// Functional web groupings only. Their ordering is a touch-UI choice and has
-// no relationship to CAM/WROOM rows, columns, pins, or the production PCBA.
+// Final v1 physical face from neocalculator-v1-final-5x10.json.
+// Visual coordinates are intentionally separate from the production PCBA
+// electrical row/column mapping. Entries are row-major: r0c0 is top-left.
+const physicalKey = ([
+  physicalId, logicalId, label, shiftLabel, alphaLabel, category,
+]) => {
+  const logicalKey = byId.get(logicalId);
+  if (!logicalKey) throw new Error(`Unknown logical NumOS key: ${logicalId}`);
+  const secondary = [
+    shiftLabel ? `Shift ${shiftLabel}` : "",
+    alphaLabel ? `Alpha ${alphaLabel}` : "",
+  ].filter(Boolean).join(", ");
+  return Object.freeze({
+    physicalId,
+    logicalId,
+    code: logicalKey.code,
+    label,
+    shiftLabel,
+    alphaLabel,
+    category,
+    ariaLabel: secondary ? `${label}; ${secondary}` : label,
+  });
+};
+
 export const NUMOS_WEB_KEYPAD_LAYOUT = Object.freeze([
-  ["system", ["SHIFT", "ALPHA", "HOME", "BACK", "VAR", "TOOLBOX",
-    "FORMAT", "MODE", "SETUP", "AC", "DEL", "ENTER"]],
-  ["navigation", ["LEFT", "UP", "DOWN", "RIGHT", "F1", "F2", "F3", "F4", "F5"]],
-  ["apps", ["GRAPH", "TABLE", "ZOOM", "TRACE", "SHOW_STEPS", "SOLVE", "EXE"]],
-  ["numbers", ["NUM_7", "NUM_8", "NUM_9", "NUM_4", "NUM_5", "NUM_6",
-    "NUM_1", "NUM_2", "NUM_3", "NUM_0", "DOT"]],
-  ["operators", ["ADD", "SUB", "MUL", "DIV", "DIVIDE", "FRAC", "POW",
-    "SQUARE", "SQRT", "LPAREN", "RPAREN", "COMMA", "EQUAL", "EXP",
-    "FREE_EQ", "NEG", "NEGATE", "LESS", "GREATER"]],
-  ["functions", ["SIN", "COS", "TAN", "LN", "LOG", "LOG_BASE", "FACT",
-    "CONST_PI", "CONST_E"]],
-  ["variables", ["VAR_X", "VAR_Y", "ANS", "PREANS", "STO", "ON",
-    "ALPHA_A", "ALPHA_B", "ALPHA_C", "ALPHA_D", "ALPHA_E", "ALPHA_F"]],
-].map(([name, ids]) => Object.freeze({
-  name,
-  keys: Object.freeze(ids.map((id) => byId.get(id))),
-})));
+  Object.freeze({
+    name: "physical calculator",
+    keys: Object.freeze([
+      ["r0c0", "SHIFT", "SHIFT", "LOCK", "", "modifier"],
+      ["r0c1", "ALPHA", "ALPHA", "A-LCK", "A-LCK", "modifier"],
+      ["r0c2", "UP", "↑", "Pg↑", "", "navigation"],
+      ["r0c3", "MODE", "HOME", "SETUP", "", "system"],
+      ["r0c4", "AC", "BACK", "QUIT", "", "system"],
+
+      ["r1c0", "STO", "VAR", "MGR", "", "system"],
+      ["r1c1", "LEFT", "←", "HOME", "", "navigation"],
+      ["r1c2", "DOWN", "↓", "Pg↓", "", "navigation"],
+      ["r1c3", "RIGHT", "→", "END", "", "navigation"],
+      ["r1c4", "F1", "TOOLS", "CATALOG", "", "system"],
+
+      ["r2c0", "VAR_X", "x", "θ", "A", "function"],
+      ["r2c1", "DIV", "frac", "mixed", "B", "function"],
+      ["r2c2", "SQRT", "√", "∛", "C", "function"],
+      ["r2c3", "POW", "x²", "x³", "D", "function"],
+      ["r2c4", "POW", "x^□", "ⁿ√", "E", "function"],
+
+      ["r3c0", "LOG", "log", "10ˣ", "F", "function"],
+      ["r3c1", "LN", "ln", "eˣ", "G", "function"],
+      ["r3c2", "SIN", "sin", "sin⁻¹", "H", "function"],
+      ["r3c3", "COS", "cos", "cos⁻¹", "I", "function"],
+      ["r3c4", "TAN", "tan", "tan⁻¹", "J", "function"],
+
+      ["r4c0", "STO", "STO→", "RCL", "K", "system"],
+      ["r4c1", "CONST_PI", "π", "i", "L", "function"],
+      ["r4c2", "CONST_E", "e", "∞", "M", "function"],
+      ["r4c3", "LPAREN", "(", "[", "N", "operator"],
+      ["r4c4", "RPAREN", ")", "]", "O", "operator"],
+
+      ["r5c0", "FREE_EQ", "FORMAT", "TABLE", "P", "system"],
+      ["r5c1", "F1", ",", ";", "Q", "operator"],
+      ["r5c2", "FREE_EQ", "=", "≠", "R", "operator"],
+      ["r5c3", "LESS", "<", "≤", "S", "operator"],
+      ["r5c4", "GREATER", ">", "≥", "T", "operator"],
+
+      ["r6c0", "NUM_7", "7", "nPr", "U", "number"],
+      ["r6c1", "NUM_8", "8", "nCr", "V", "number"],
+      ["r6c2", "NUM_9", "9", "rand", "W", "number"],
+      ["r6c3", "DEL", "DEL", "UNDO", "", "system"],
+      ["r6c4", "AC", "AC", "OFF", "", "system"],
+
+      ["r7c0", "NUM_4", "4", "F4", "X", "number"],
+      ["r7c1", "NUM_5", "5", "F5", "Y", "number"],
+      ["r7c2", "NUM_6", "6", "F6", "Z", "number"],
+      ["r7c3", "MUL", "×", "!", "", "operator"],
+      ["r7c4", "DIV", "÷", "%", "", "operator"],
+
+      ["r8c0", "NUM_1", "1", "F1", "", "number"],
+      ["r8c1", "NUM_2", "2", "F2", "", "number"],
+      ["r8c2", "NUM_3", "3", "F3", "", "number"],
+      ["r8c3", "ADD", "+", "Σ", "", "operator"],
+      ["r8c4", "SUB", "−", "∫", "", "operator"],
+
+      ["r9c0", "NUM_0", "0", "°", "space", "number"],
+      ["r9c1", "DOT", ".", ":", "_", "number"],
+      ["r9c2", "POW", "×10ˣ", "ENG", "\"", "function"],
+      ["r9c3", "NEG", "(-)", "Ans", "PreAns", "operator"],
+      ["r9c4", "ENTER", "EXE", "≈", "", "system"],
+    ].map(physicalKey)),
+  }),
+]);
 
 export const NUMOS_LOGICAL_KEY_MAX = 79;

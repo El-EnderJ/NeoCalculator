@@ -180,10 +180,11 @@ YH4F explicitly accepts unfinished work.
 
 ## License
 
-NumOS is licensed under **GPL-3.0-or-later** (confirmed by `LICENSE-SOFTWARE`, which
-contains the full GNU GPL v3 text, and by the SPDX / "any later version" headers in
-the source files). This gives users the freedom to use, study, share and improve the
-software.
+NumOS-authored software carrying the project notice is offered under
+**GPL-3.0-or-later** (`LICENSE-SOFTWARE` contains the full GNU GPL v3 text;
+`LICENSE.md` records the licence-history qualification). This gives users the
+freedom to use, study, share and improve that software. Separately licensed
+third-party components retain their own terms.
 
 The hardware design files for NeoCalculator are separately licensed under the
 **CERN Open Hardware Licence Version 2 — Strongly Reciprocal (CERN-OHL-S v2)**

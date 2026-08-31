@@ -1,7 +1,18 @@
+/*
+ * Generated font data derived from Montserrat Font Software.
+ * Source: assets/fonts/Montserrat-Regular.ttf
+ * Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat)
+ * SPDX-License-Identifier: OFL-1.1
+ * Full licence: assets/fonts/LICENSES/Montserrat-OFL-1.1.txt
+ * Generator: lv_font_conv, invoked by scripts/generate_montserrat_math_font.sh
+ * Regenerate: bash scripts/generate_montserrat_math_font.sh
+ * DO NOT EDIT MANUALLY.
+ */
+
 /*******************************************************************************
  * Size: 14 px
  * Bpp: 4
- * Opts: --font C:/Users/Juan Ramón/Documents/Calculadora/assets/fonts/Montserrat-Regular.ttf --size 14 --bpp 4 --format lvgl --range 0x20-0x7E,0xA0-0xFF,0x370-0x3FF,0x2070-0x209F,0x2100-0x214F,0x2190-0x21FF,0x2200-0x22FF,0x25A0-0x25FF,0x27C0-0x27EF --symbols ∇∂∞∆∫∬∭∮∯∑∏√∀∃∄∴∵⇒⇔¬∧∨∈∉⊂⊆∪∩∖∅≡≢→←↔⊕∝≤≥≠±∓×⊗⊥∥∠≅∼≈°△′″‴ℏℕℤℚℝℂℍℵ⌊⌋⌈⌉†∗⋘⋙∘□ --no-compress --full-info -o C:/Users/Juan Ramón/Documents/Calculadora/src/fonts/lv_font_montserrat_math_14.c
+ * Opts: --font assets/fonts/Montserrat-Regular.ttf --size 14 --bpp 4 --format lvgl --range 0x20-0x7E,0xA0-0xFF,0x370-0x3FF,0x2070-0x209F,0x2100-0x214F,0x2190-0x21FF,0x2200-0x22FF,0x25A0-0x25FF,0x27C0-0x27EF --symbols ∇∂∞∆∫∬∭∮∯∑∏√∀∃∄∴∵⇒⇔¬∧∨∈∉⊂⊆∪∩∖∅≡≢→←↔⊕∝≤≥≠±∓×⊗⊥∥∠≅∼≈°△′″‴ℏℕℤℚℝℂℍℵ⌊⌋⌈⌉†∗⋘⋙∘□ --no-compress --full-info -o src/fonts/lv_font_montserrat_math_14.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

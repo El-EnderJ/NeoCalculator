@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -38,7 +39,17 @@ set -euo pipefail
 # ═══════════════════════════════════════════════════════════════════════════════
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FONT_FILE="${1:-${ROOT_DIR}/assets/fonts/STIXTwoMath-Regular.ttf}"
+FONT_FILE="${1:-assets/fonts/STIXTwoMath-Regular.ttf}"
+
+cd "${ROOT_DIR}"
+
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_CMD=python3
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_CMD=python
+else
+  PYTHON_CMD=python.exe
+fi
 
 # ── Normalize Windows paths to POSIX (for bash under WSL/Git Bash/MSYS2) ─────
 if [[ "${FONT_FILE}" =~ ^([A-Za-z]):[\\/](.*)$ ]]; then
@@ -137,7 +148,7 @@ SYMBOLS="${SYMBOLS_CALC}${SYMBOLS_LOGIC}${SYMBOLS_ARROWS}${SYMBOLS_RELATIONS}${S
 generate_font() {
   local size="$1"
   local bpp="$2"
-  local out_file="${ROOT_DIR}/src/fonts/stix_math_${size}.c"
+  local out_file="src/fonts/stix_math_${size}.c"
 
   echo ""
   echo "═══ Generating STIX Two Math ${size}pt (bpp=${bpp}) ═══"
@@ -151,6 +162,7 @@ generate_font() {
       --format lvgl \
       --range "${ALL_RANGES}" \
       --symbols "${SYMBOLS}" \
+      --no-compress \
       -o "${out_file}"; then
     echo "  ✓ Conversion succeeded"
   else
@@ -160,6 +172,7 @@ generate_font() {
 
   # Patch PlatformIO include path
   sed -i 's|#include "lvgl/lvgl.h"|#include "lvgl.h"|g' "${out_file}"
+  "${PYTHON_CMD}" scripts/add_font_provenance_header.py stix "${out_file}"
   echo "  ✓ Include path patched for PlatformIO"
 
   # Report glyph count from generated file

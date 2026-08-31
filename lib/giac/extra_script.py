@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # GIAC-A01: native-only build tweaks for the vendored Giac library.
 #
 # Firmware (espressif32) is untouched: the Arduino platform already injects

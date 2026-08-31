@@ -1,6 +1,8 @@
 {
   "name": "libtommath",
-  "version": "1.2.0",
+  "version": "1.3.0+git.416.652d70a",
+  "description": "LibTomMath snapshot 652d70a31fce, plus a NumOS native-build shim",
+  "license": "Unlicense AND GPL-3.0-or-later",
   "build": {
     "flags": [
       "-I."

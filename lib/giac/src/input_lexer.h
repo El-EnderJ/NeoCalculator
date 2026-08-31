@@ -1,3 +1,9 @@
+/*
+ * Modified for NumOS / NeoCalculator in 2026 for ESP32-S3 and host integration.
+ * See ../NUMOS_CHANGES.md for provenance and the file-by-file history.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
  /* -*- mode: C++; compile-command: "flex input_lexer.ll && g++ -g -I.. -c input_lexer.cc" -*- */
 /** @file input_lexer.h
  *

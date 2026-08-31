@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
 # Generate extended Montserrat fonts for LVGL with broad math coverage.
@@ -16,8 +17,18 @@ set -euo pipefail
 # - Additional explicit symbols from NeoCalculator master list
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FONT_FILE="${ROOT_DIR}/assets/fonts/Montserrat-Regular.ttf"
-OUT_DIR="${ROOT_DIR}/src/fonts"
+FONT_FILE="assets/fonts/Montserrat-Regular.ttf"
+OUT_DIR="src/fonts"
+
+cd "${ROOT_DIR}"
+
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_CMD=python3
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_CMD=python
+else
+  PYTHON_CMD=python.exe
+fi
 
 mkdir -p "${OUT_DIR}"
 
@@ -69,6 +80,11 @@ gen_font() {
 
 gen_font 12 "${OUT_DIR}/lv_font_montserrat_math_12.c"
 gen_font 14 "${OUT_DIR}/lv_font_montserrat_math_14.c"
+
+"${PYTHON_CMD}" scripts/add_font_provenance_header.py montserrat \
+  "${OUT_DIR}/lv_font_montserrat_math_12.c"
+"${PYTHON_CMD}" scripts/add_font_provenance_header.py montserrat \
+  "${OUT_DIR}/lv_font_montserrat_math_14.c"
 
 cat <<EOF
 Generated:

@@ -615,7 +615,7 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 
 | Feature | **NumOS** | NumWorks | TI-84 Plus CE | HP Prime G2 |
 |:--------|:---------:|:--------:|:-------------:|:-----------:|
-| Open Source | ✅ GPL-3.0 | ✅ Source-available | ❌ | ❌ |
+| Open Source | ✅ GPL-3.0-or-later | ✅ Source-available | ❌ | ❌ |
 | Natural Display | ✅ | ✅ | ✅ | ✅ |
 | Symbolic CAS | 🟡 Giac | ✅ SymPy | ❌ | ✅ |
 | Symbolic derivatives | 🟡 | ✅ | ❌ | ✅ |
@@ -700,8 +700,20 @@ NumOS is an open-source project in active development that welcomes community co
 ## License & Intellectual Property
 
 ### Software (Firmware)
-The **NeoCalculator** firmware (**NumOS**) is licensed under the **GNU GPL v3**. 
-We are proud to build upon the **Giac** engine by Bernard Parisse. In accordance with the GPL v3, all software source code in this repository is open for study, modification, and redistribution.
+
+NumOS-authored software carrying the project notice is offered under
+**GPL-3.0-or-later**; see [`LICENSE-SOFTWARE`](LICENSE-SOFTWARE). The repository
+also contains separately licensed third-party components and generated font
+data. The licence-history qualification is recorded in
+[`docs/LICENSING_AUDIT_2026.md`](docs/LICENSING_AUDIT_2026.md). In particular,
+the modified Giac/KhiCAS snapshot remains
+GPL-3.0-or-later, while Montserrat and STIX Two Math font software and their
+font-derived data remain under OFL-1.1.
+
+See [`LICENSE.md`](LICENSE.md),
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), and
+[`lib/giac/NUMOS_CHANGES.md`](lib/giac/NUMOS_CHANGES.md) for the precise
+component boundaries, provenance, and modification record.
 
 ### Hardware & Industrial Design
 

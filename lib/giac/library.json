@@ -1,7 +1,8 @@
 {
   "name": "giac",
-  "version": "1.9.0",
-  "description": "Giac CAS engine for NumOS",
+  "version": "1.4.9+khicas.57",
+  "description": "NumOS-adapted Giac/KhiCAS snapshot; see NUMOS_CHANGES.md",
+  "license": "GPL-3.0-or-later",
   "build": {
     "extraScript": "extra_script.py",
     "flags": [

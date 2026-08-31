@@ -562,7 +562,7 @@ Problemas descubiertos y resueltos durante el bring-up. **Esenciales** para cual
 
 | Característica | **NumOS** | NumWorks | TI-84 Plus CE | HP Prime G2 |
 |:---------------|:---------:|:--------:|:-------------:|:-----------:|
-| Open Source | ✅ MIT | ✅ MIT | ❌ | ❌ |
+| Open Source | ✅ GPL-3.0-or-later | ✅ Código disponible | ❌ | ❌ |
 | Natural Display | ✅ | ✅ | ✅ | ✅ |
 | CAS Simbólico | ✅ Pro | ✅ SymPy | ❌ | ✅ |
 | Derivadas simbólicas | ✅ | ✅ | ❌ | ✅ |
@@ -625,7 +625,15 @@ NumOS es un proyecto open-source que aspira a crecer en comunidad. ¡Las contrib
 
 ## Licencia
 
-Este proyecto está bajo la licencia **MIT**. Ver [LICENSE](LICENSE) para más detalles.
+Este repositorio distribuye componentes bajo varias licencias; no existe una
+licencia única para todo su contenido. El software creado para NumOS que lleva
+el aviso del proyecto se ofrece bajo **GPL-3.0-or-later**. Giac/KhiCAS conserva
+su GPL, las fuentes y datos derivados de Montserrat y STIX conservan la
+**OFL-1.1**, y el diseño de hardware se distribuye por separado bajo
+**CERN-OHL-S-2.0**. La transición histórica del anuncio MIT al aviso GPL del
+27 de abril de 2026 y los límites de procedencia están documentados en
+[`../../LICENSE.md`](../../LICENSE.md) y
+[`../LICENSING_AUDIT_2026.md`](../LICENSING_AUDIT_2026.md).
 
 ---
 

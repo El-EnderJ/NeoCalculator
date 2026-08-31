@@ -1,3 +1,8 @@
+/*
+ * NumOS native-build compatibility shim, added in 2026.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 #include "tommath_private.h"
 
 /*

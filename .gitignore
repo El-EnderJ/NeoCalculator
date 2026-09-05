@@ -51,6 +51,8 @@ emulator-sdl2-audit-evidence.md
 emulator-sdl2-implementation-spec.md
 emulator-sdl2-risk-register.md
 
+docs/exam-mode
+
 # Ignorar todos los archivos y carpetas que empiezan por punto
 .*
 

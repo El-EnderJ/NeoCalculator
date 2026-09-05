@@ -1,7 +1,18 @@
+/*
+ * Generated font data derived from STIX Two Math Font Software.
+ * Source: assets/fonts/STIXTwoMath-Regular.ttf
+ * Copyright 2001-2021 The STIX Fonts Project Authors (https://github.com/stipub/stixfonts)
+ * SPDX-License-Identifier: OFL-1.1
+ * Full licence: assets/fonts/LICENSES/STIXTwoMath-OFL-1.1.txt
+ * Generator: lv_font_conv, invoked by scripts/generate_stix_math_font.sh
+ * Regenerate: bash scripts/generate_stix_math_font.sh
+ * DO NOT EDIT MANUALLY.
+ */
+
 /*******************************************************************************
  * Size: 8 px
  * Bpp: 2
- * Opts: --font assets/fonts/STIXTwoMath-Regular.ttf --size 8 --bpp 2 --format lvgl --range 0x0021-0x007E,0x00B0-0x00FF,0x0391-0x03C9,0x2102,0x2115,0x2119,0x211A,0x211D,0x2124,0x2200-0x22FF,0x2308-0x230B,0x2A00-0x2AFF,0x1D400-0x1D7FF,0x27E8-0x27EB,0x2210-0x2213,0x222B-0x2233,0x2260-0x228B,0x2190-0x21FF,0x2000-0x206F,0x2070-0x209F,0x2100-0x214F,0x25A0-0x25FF,0x27C0-0x27EF,0x2900-0x297F,0x2980-0x29FF,0x2B00-0x2BFF --symbols ∇∂∞∆∫∬∭∮∯∑∏√∛∜∀∃∄∴∵⇒⇔¬∧∨∈∉⊂⊆∪∩∖∅≡≢⊄⊅⊇⊈⊊⊋→←↔↑↓↕↖↗↘↙↦↩↪⇐⇑⇓⇕≤≥≠±∓×⊗⊥∥∠≅∼≈≉≊≋≌≍≎≏≐≑≒≓≔≕≖≗≘≙≚≛≜≝≞≟≠≡≢≣αβγδεζηθικλμνξπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΠΡΣΤΥΦΧΨΩℕℤℚℝℂℍℵℏ⌊⌋⌈⌉⟨⟩⟦⟧⦃⦄†∗⋘⋙∘□△†‡•…⋮⋯⋰⋱′″‴⁗ --no-compress -o C:/Users/Juan Ramón/Documents/Calculadora/src/fonts/stix_math_8.c
+ * Opts: --font assets/fonts/STIXTwoMath-Regular.ttf --size 8 --bpp 2 --format lvgl --range 0x0021-0x007E,0x00B0-0x00FF,0x0391-0x03C9,0x2102,0x2115,0x2119,0x211A,0x211D,0x2124,0x2200-0x22FF,0x2308-0x230B,0x2A00-0x2AFF,0x1D400-0x1D7FF,0x27E8-0x27EB,0x2210-0x2213,0x222B-0x2233,0x2260-0x228B,0x2190-0x21FF,0x2000-0x206F,0x2070-0x209F,0x2100-0x214F,0x25A0-0x25FF,0x27C0-0x27EF,0x2900-0x297F,0x2980-0x29FF,0x2B00-0x2BFF --symbols ∇∂∞∆∫∬∭∮∯∑∏√∛∜∀∃∄∴∵⇒⇔¬∧∨∈∉⊂⊆∪∩∖∅≡≢⊄⊅⊇⊈⊊⊋→←↔↑↓↕↖↗↘↙↦↩↪⇐⇑⇓⇕≤≥≠±∓×⊗⊥∥∠≅∼≈≉≊≋≌≍≎≏≐≑≒≓≔≕≖≗≘≙≚≛≜≝≞≟≠≡≢≣αβγδεζηθικλμνξπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΠΡΣΤΥΦΧΨΩℕℤℚℝℂℍℵℏ⌊⌋⌈⌉⟨⟩⟦⟧⦃⦄†∗⋘⋙∘□△†‡•…⋮⋯⋰⋱′″‴⁗ --no-compress -o src/fonts/stix_math_8.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

@@ -1,3 +1,9 @@
+/*
+ * Modified for NumOS / NeoCalculator in 2026 for ESP32-S3 and host integration.
+ * See ../NUMOS_CHANGES.md for provenance and the file-by-file history.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 #ifdef NSPIRE_NEWLIB
 #include "os.h"
 #endif

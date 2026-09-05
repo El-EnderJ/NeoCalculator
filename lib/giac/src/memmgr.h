@@ -1,3 +1,9 @@
+/*
+ * Modified for NumOS / NeoCalculator in 2026 for ESP32-S3 and host integration.
+ * See ../NUMOS_CHANGES.md for provenance and the file-by-file history.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 // -*- compile-command: "sh3eb-elf-gcc -std=c99 -nostdlib -fno-exceptions -ffreestanding -fno-strict-aliasing -I. -I/home/parisse/casiolocal/include/ustl -Os -mb -m4a-nofpu -mhitachi -fno-strict-aliasing -c memmgr.c"
 //----------------------------------------------------------------
 // Statically-allocated memory manager

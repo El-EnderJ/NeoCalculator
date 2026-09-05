@@ -168,7 +168,8 @@ Both builds succeeded on this tree (toolchain xtensa-esp32s3, Arduino core):
 
 ## 8. Licensing / provenance (evidence only)
 
-- NumOS software: GPL-3.0 (`LICENSE-SOFTWARE`).
+- NumOS-authored software carrying the project notice: GPL-3.0-or-later
+  (`LICENSE-SOFTWARE`; see `LICENSE.md` for the licence-history qualification).
 - Vendored Giac sources: GPL-3.0-or-later headers (B. Parisse, Institut
   Fourier).
 - Vendored libtommath: `SPDX-License-Identifier: Unlicense`.

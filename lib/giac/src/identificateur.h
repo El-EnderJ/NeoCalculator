@@ -1,3 +1,9 @@
+/*
+ * Modified for NumOS / NeoCalculator in 2026 for ESP32-S3 and host integration.
+ * See ../NUMOS_CHANGES.md for provenance and the file-by-file history.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 // -*- mode:C++ ; compile-command: "g++ -I.. -g -c identificateur.cc" -*-
 /*
  *  Copyright (C) 2000,2014 B. Parisse, Institut Fourier, 38402 St Martin d'Heres

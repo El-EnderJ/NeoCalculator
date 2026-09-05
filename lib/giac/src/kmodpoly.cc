@@ -1,3 +1,9 @@
+/*
+ * Modified for NumOS / NeoCalculator in 2026 for ESP32-S3 and host integration.
+ * See ../NUMOS_CHANGES.md for provenance and the file-by-file history.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 // -*- mode:C++ ; compile-command: "g++-3.4 -I.. -I../include -g -c -Wall modpoly.cc  -DHAVE_CONFIG_H -DIN_GIAC" -*-
 // N.B.: compiling with g++-3.4 -O2 -D_I386_ does not work
 #include "giacPCH.h"

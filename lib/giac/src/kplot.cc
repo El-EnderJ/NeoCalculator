@@ -1,3 +1,9 @@
+/*
+ * Modified for NumOS / NeoCalculator in 2026 for ESP32-S3 and host integration.
+ * See ../NUMOS_CHANGES.md for provenance and the file-by-file history.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 /* -*- mode:C++ ; compile-command: "g++ -I. -I.. -I../include -g -c plot.cc -Wall -DIN_GIAC -DHAVE_CONFIG_H -DGIAC_GENERIC_CONSTANTS " -*- */
 // NB: Using gnuplot optimally requires patching and recompiling gnuplot
 // If you use the -DGNUPLOT_IO compile flag, you

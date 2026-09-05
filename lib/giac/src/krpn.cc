@@ -1,3 +1,9 @@
+/*
+ * Modified for NumOS / NeoCalculator in 2026 for ESP32-S3 and host integration.
+ * See ../NUMOS_CHANGES.md for provenance and the file-by-file history.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 // -*- mode:C++ ; compile-command: "g++-3.4 -I.. -g -c rpn.cc  -DIN_GIAC -DHAVE_CONFIG_H" -*-
 #include "giacPCH.h"
 /*
@@ -533,4 +539,3 @@ namespace giac {
 #ifndef NO_NAMESPACE_GIAC
 } // namespace giac
 #endif // ndef NO_NAMESPACE_GIAC
-

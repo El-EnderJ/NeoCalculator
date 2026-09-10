@@ -31,8 +31,26 @@
 #include "../math/MathAST.h"
 #include "../math/cas/SymToAST.h"
 #include "../utils/HwUxProbe.h"
+#include "../input/generated/ProductionKeypadMap.generated.h"
 #include <cmath>
 #include <cstdlib>
+
+#ifdef NATIVE_SIM
+#include <chrono>
+class CalculusTiming {
+    const char* _action;
+    int _key;
+    std::chrono::steady_clock::time_point _start = std::chrono::steady_clock::now();
+public:
+    explicit CalculusTiming(const char* action, int key = -1) : _action(action), _key(key) {}
+    ~CalculusTiming() {
+        if (std::getenv("NUMOS_CALCULUS_METRICS"))
+            std::printf("CALCULUS_TIME|%s|key=%d|us=%lld\n", _action, _key,
+                (long long)std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now()-_start).count());
+    }
+};
+#endif
 
 using namespace vpam;
 
@@ -41,12 +59,9 @@ using namespace vpam;
 // ════════════════════════════════════════════════════════════════════════════
 
 static constexpr uint32_t COL_BG_HEX      = 0xFFFFFF;
-static constexpr uint32_t COL_SEP_HEX     = 0x333333;
 static constexpr uint32_t COL_HINT_HEX    = 0x888888;
 static constexpr uint32_t COL_STEP_HEX    = 0x1A1A1A;
 static constexpr uint32_t COL_DESC_HEX    = 0x2E7D32;
-static constexpr uint32_t COL_RESULT_HEX  = 0x1565C0;  // Blue for result label
-static constexpr uint32_t COL_TAB_INACTIVE = 0xCCCCCC;
 
 // Mode-specific accent colors
 static constexpr uint32_t COL_DERIV_HEX   = 0xE05500;  // Orange for d/dx
@@ -54,33 +69,13 @@ static constexpr uint32_t COL_INTEG_HEX   = 0x6A1B9A;  // Purple for ∫dx
 
 static constexpr int SCREEN_W  = 320;
 static constexpr int SCREEN_H  = 240;
-static constexpr int BAR_H     = ui::StatusBar::HEIGHT + 1;
-static constexpr int PAD       = 6;
-static constexpr int TAB_H     = 26;   // Tab strip height
-
-// ════════════════════════════════════════════════════════════════════════════
-// Computing messages (derivative + integral)
-// ════════════════════════════════════════════════════════════════════════════
-
-static const char* DERIV_MESSAGES[] = {
-    "Differentiating...",
-    "Applying chain rule...",
-    "Simplifying result...",
-    "Computing derivative...",
-    "Leibniz to the rescue...",
-    "Finding the slope...",
-};
-static constexpr int NUM_DERIV_MSGS = sizeof(DERIV_MESSAGES) / sizeof(DERIV_MESSAGES[0]);
-
-static const char* INTEG_MESSAGES[] = {
-    "Integrating...",
-    "Searching for antiderivative...",
-    "Trying substitution...",
-    "Integrating by parts...",
-    "Riemann would be proud...",
-    "Computing integral...",
-};
-static constexpr int NUM_INTEG_MSGS = sizeof(INTEG_MESSAGES) / sizeof(INTEG_MESSAGES[0]);
+// Every region is inside the production 320 x 240 viewport.
+static constexpr int BAR_H = ui::StatusBar::HEIGHT + 1; // includes separator
+static constexpr int PAD = 6;
+static constexpr int TAB_H = 33;
+static constexpr int CONTENT_Y = BAR_H + TAB_H; // 58
+static constexpr int FOOTER_Y = 222;
+static constexpr int CONTENT_H = FOOTER_Y - CONTENT_Y; // 164
 
 // ════════════════════════════════════════════════════════════════════════════
 // Constructor / Destructor
@@ -94,15 +89,15 @@ CalculusApp::CalculusApp()
     , _inputTitle(nullptr)
     , _inputHint(nullptr)
     , _computingContainer(nullptr)
-    , _computingSpinner(nullptr)
     , _computingLabel(nullptr)
     , _resultContainer(nullptr)
     , _resultTitle(nullptr)
-    , _resultLabel(nullptr)
     , _resultFallback(nullptr)
     , _resultHint(nullptr)
     , _originalLabel(nullptr)
     , _stepsContainer(nullptr)
+    , _resultViewport(nullptr)
+    , _modeFocused(false)
     , _state(State::EDITING)
     , _calcMode(CalcMode::DERIVATIVE)
     , _stepScroll(0)
@@ -178,11 +173,52 @@ bool CalculusApp::debugResultNear(double expected, double epsilon) const {
            std::fabs(actual - expected) <= epsilon;
 }
 
+#ifdef NATIVE_SIM
+const char* CalculusApp::debugStateName() const {
+    switch (_state) {
+        case State::EDITING: return "editing";
+        case State::COMPUTING: return "computing";
+        case State::RESULT: return "result";
+        case State::STEPS: return "steps";
+    }
+    return "unknown";
+}
+const char* CalculusApp::debugFocusName() const {
+    return _state == State::EDITING ? (_modeFocused ? "mode" : "editor") : debugStateName();
+}
+bool CalculusApp::debugResultEquivalent(const std::string& expected) const {
+    if (!_giacResult.ok() || _giacResult.unevaluated || _giacResult.exactText.empty()) return false;
+    const std::string delta = "(" + _giacResult.exactText + ")-(" + expected + ")";
+    auto result = numos::GiacEngine::instance().simplify(delta.c_str());
+    return result.ok() && result.exactText == "0";
+}
+static bool fitsChildren(lv_obj_t* parent, bool viewport = false) {
+    lv_area_t p; lv_obj_get_coords(parent, &p);
+    for (uint32_t i=0; i<lv_obj_get_child_count(parent); ++i) {
+        auto* child = lv_obj_get_child(parent, i);
+        if (lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN)) continue;
+        lv_area_t c; lv_obj_get_coords(child, &c);
+        // A scroll viewport intentionally contains content taller than itself.
+        if (!viewport && (c.x1 < p.x1 || c.y1 < p.y1 || c.x2 > p.x2 || c.y2 > p.y2)) return false;
+        if (!fitsChildren(child, lv_obj_has_flag(child, LV_OBJ_FLAG_SCROLLABLE))) return false;
+    }
+    return true;
+}
+bool CalculusApp::debugLayoutFits() const {
+    if (!_scr) return false;
+    lv_obj_update_layout(_scr);
+    return fitsChildren(_scr);
+}
+#endif
+
 // ════════════════════════════════════════════════════════════════════════════
 // Lifecycle
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculusApp::begin() {
+#ifdef NATIVE_SIM
+    CalculusTiming timing("open");
+#endif
     if (_scr) return;
     createUI();
     _state = State::EDITING;
@@ -190,6 +226,9 @@ void CalculusApp::begin() {
 }
 
 void CalculusApp::end() {
+#ifdef NATIVE_SIM
+    CalculusTiming timing("teardown");
+#endif
     _inputCanvas.stopCursorBlink();
     _inputCanvas.destroy();
     _inputNode.reset();
@@ -203,6 +242,7 @@ void CalculusApp::end() {
     _originalNode.reset();
     _originalRow = nullptr;
 
+    _stepRenderers.clear();
     _statusBar.destroy();
 
     if (_scr) {
@@ -214,18 +254,22 @@ void CalculusApp::end() {
         _inputTitle        = nullptr;
         _inputHint         = nullptr;
         _computingContainer = nullptr;
-        _computingSpinner  = nullptr;
         _computingLabel    = nullptr;
         _resultContainer   = nullptr;
         _resultTitle       = nullptr;
-        _resultLabel       = nullptr;
         _resultFallback    = nullptr;
         _resultHint        = nullptr;
         _originalLabel     = nullptr;
         _stepsContainer    = nullptr;
+        _inputPlaceholder = nullptr;
+        _originalViewport = nullptr;
+        _resultViewport = nullptr;
+        _resultSeparator = nullptr;
     }
 
     _state = State::EDITING;
+    _modeFocused = false;
+    _calcMode = CalcMode::DERIVATIVE;
     _resultExpr = nullptr;
     _integralFound = false;
     _giacResult = numos::StructuredCalculusResult();
@@ -242,7 +286,7 @@ void CalculusApp::load() {
     lv_screen_load_anim(_scr, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
     _statusBar.update();
 
-    if (_state == State::EDITING) {
+    if (_state == State::EDITING && !_modeFocused) {
         _inputCanvas.startCursorBlink();
     }
 }
@@ -256,47 +300,39 @@ uint32_t CalculusApp::accentColor() const {
 }
 
 void CalculusApp::setMode(CalcMode mode) {
+#ifdef NATIVE_SIM
+    CalculusTiming timing("mode");
+#endif
     if (_calcMode == mode) return;
     _calcMode = mode;
+    // A result always belongs to its operation. Preserve authored input only.
+    _giacResult = numos::StructuredCalculusResult();
+    _resultKind = ResultKind::None;
+    _tutorStatus = TutorStatus::Unavailable;
+    showInput();
     updateTabStyles();
-
-    // Update input title and hint based on mode
-    if (_state == State::EDITING) {
-        if (_calcMode == CalcMode::DERIVATIVE) {
-            lv_label_set_text(_inputTitle, "Introduce f(x):");
-            lv_label_set_text(_inputHint, "EXE: Differentiate   GRAPH: Mode   AC: Back");
-        } else {
-            lv_label_set_text(_inputTitle, "Introduce f(x):");
-            lv_label_set_text(_inputHint, "EXE: Integrate   GRAPH: Mode   AC: Back");
-        }
-        lv_obj_set_style_text_color(_inputTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
-    }
 }
 
 void CalculusApp::updateTabStyles() {
     if (!_tabDerivative || !_tabIntegral) return;
-
-    uint32_t activeCol = accentColor();
-
-    if (_calcMode == CalcMode::DERIVATIVE) {
-        // d/dx tab active
-        lv_obj_set_style_bg_color(_tabDerivative, lv_color_hex(activeCol), LV_PART_MAIN);
-        lv_obj_set_style_text_color(_tabDerivative, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(_tabDerivative, LV_OPA_COVER, LV_PART_MAIN);
-        // ∫dx tab inactive
-        lv_obj_set_style_bg_color(_tabIntegral, lv_color_hex(COL_TAB_INACTIVE), LV_PART_MAIN);
-        lv_obj_set_style_text_color(_tabIntegral, lv_color_hex(COL_SEP_HEX), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(_tabIntegral, LV_OPA_COVER, LV_PART_MAIN);
-    } else {
-        // d/dx tab inactive
-        lv_obj_set_style_bg_color(_tabDerivative, lv_color_hex(COL_TAB_INACTIVE), LV_PART_MAIN);
-        lv_obj_set_style_text_color(_tabDerivative, lv_color_hex(COL_SEP_HEX), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(_tabDerivative, LV_OPA_COVER, LV_PART_MAIN);
-        // ∫dx tab active
-        lv_obj_set_style_bg_color(_tabIntegral, lv_color_hex(activeCol), LV_PART_MAIN);
-        lv_obj_set_style_text_color(_tabIntegral, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(_tabIntegral, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_t* tabs[] = {_tabDerivative, _tabIntegral};
+    for (int i = 0; i < 2; ++i) {
+        const bool active = i == (_calcMode == CalcMode::DERIVATIVE ? 0 : 1);
+        lv_obj_set_style_bg_color(tabs[i], lv_color_hex(active ? 0xF0F1F3 : COL_BG_HEX), 0);
+        lv_obj_set_style_text_color(tabs[i], lv_color_hex(active ? accentColor() : 0x656565), 0);
+        lv_obj_set_style_border_color(tabs[i], lv_color_hex(active ? accentColor() : 0xDDDDDD), 0);
+        lv_obj_set_style_border_width(tabs[i], active ? 3 : 1, 0);
+        lv_obj_set_style_border_side(tabs[i], LV_BORDER_SIDE_BOTTOM, 0);
+        lv_obj_set_style_outline_width(tabs[i], _modeFocused && active ? 1 : 0, 0);
+        lv_obj_set_style_outline_pad(tabs[i], 0, 0);
     }
+    lv_obj_set_style_border_color(_inputContainer,
+        lv_color_hex(_modeFocused ? 0xDDDDDD : accentColor()), 0);
+    lv_label_set_text(_inputHint, _modeFocused
+        ? LV_SYMBOL_LEFT "  " LV_SYMBOL_RIGHT " Mode     " LV_SYMBOL_DOWN " Edit"
+        : "EXE Calculate    VAR x    UP Mode");
+    if (_modeFocused) _inputCanvas.stopCursorBlink();
+    else if (_state == State::EDITING) _inputCanvas.startCursorBlink();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -304,183 +340,98 @@ void CalculusApp::updateTabStyles() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculusApp::createUI() {
-    // ── Screen ──
-    _scr = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(_scr, lv_color_hex(COL_BG_HEX), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(_scr, LV_OPA_COVER, LV_PART_MAIN);
+    _scr = lv_obj_create(nullptr);
+    lv_obj_remove_style_all(_scr);
+    lv_obj_set_size(_scr, SCREEN_W, SCREEN_H);
+    lv_obj_set_style_bg_color(_scr, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(_scr, LV_OPA_COVER, 0);
     lv_obj_remove_flag(_scr, LV_OBJ_FLAG_SCROLLABLE);
-
-    // ── StatusBar ──
     _statusBar.create(_scr);
     _statusBar.setTitle("Calculus");
     _statusBar.setBatteryLevel(100);
 
-    // ─────────────────────────────────────────────────────────────────
-    // Mode tabs (d/dx | ∫dx) — positioned below status bar
-    // ─────────────────────────────────────────────────────────────────
-    int tabY = BAR_H;
-    int tabW = SCREEN_W / 2;
-
-    _tabDerivative = lv_obj_create(_scr);
-    lv_obj_set_size(_tabDerivative, tabW, TAB_H);
-    lv_obj_set_pos(_tabDerivative, 0, tabY);
-    lv_obj_set_style_border_width(_tabDerivative, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_tabDerivative, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(_tabDerivative, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_tabDerivative, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(_tabDerivative, LV_OBJ_FLAG_CLICKABLE);
-    {
-        lv_obj_t* lbl = lv_label_create(_tabDerivative);
-        lv_label_set_text(lbl, "d/dx  Differentiate");
-        lv_obj_set_style_text_font(lbl, &stix_math_18, LV_PART_MAIN);
-        lv_obj_center(lbl);
+    auto panel = [&](lv_obj_t* parent, int x, int y, int w, int h) {
+        auto* obj = lv_obj_create(parent);
+        lv_obj_remove_style_all(obj);
+        lv_obj_set_pos(obj, x, y);
+        lv_obj_set_size(obj, w, h);
+        lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+        return obj;
+    };
+    auto label = [&](lv_obj_t* parent, const char* text, int x, int y,
+                     const lv_font_t* font = &lv_font_montserrat_12) {
+        auto* obj = lv_label_create(parent);
+        lv_label_set_text(obj, text);
+        lv_obj_set_style_text_font(obj, font, 0);
+        lv_obj_set_style_text_color(obj, lv_color_hex(0x656565), 0);
+        lv_obj_set_pos(obj, x, y);
+        return obj;
+    };
+    auto surface = [&](lv_obj_t* obj) {
+        lv_obj_set_style_bg_color(obj, lv_color_hex(0xFAFAFA), 0);
+        lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(obj, 1, 0);
+        lv_obj_set_style_border_color(obj, lv_color_hex(0xDDDDDD), 0);
+        lv_obj_set_style_radius(obj, 3, 0);
+    };
+    auto* strip = panel(_scr, PAD, BAR_H + 3, SCREEN_W - 2*PAD, TAB_H - 6);
+    lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(strip, 4, 0);
+    _tabDerivative = panel(strip, 0, 0, 152, TAB_H - 6);
+    _tabIntegral = panel(strip, 0, 0, 152, TAB_H - 6);
+    for (auto* tab : {_tabDerivative, _tabIntegral}) {
+        lv_obj_set_style_bg_opa(tab, LV_OPA_COVER, 0);
+        lv_obj_set_style_outline_color(tab, lv_color_hex(0x333333), 0);
     }
+    lv_obj_align(label(_tabDerivative, "Derivative", 0, 0, &lv_font_montserrat_14), LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_align(label(_tabIntegral, "Integral", 0, 0, &lv_font_montserrat_14), LV_ALIGN_TOP_MID, 0, 4);
 
-    _tabIntegral = lv_obj_create(_scr);
-    lv_obj_set_size(_tabIntegral, tabW, TAB_H);
-    lv_obj_set_pos(_tabIntegral, tabW, tabY);
-    lv_obj_set_style_border_width(_tabIntegral, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_tabIntegral, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(_tabIntegral, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_tabIntegral, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(_tabIntegral, LV_OBJ_FLAG_CLICKABLE);
-    {
-        lv_obj_t* lbl = lv_label_create(_tabIntegral);
-        lv_label_set_text(lbl, u8"\u222Bdx  Integrate");
-        lv_obj_set_style_text_font(lbl, &stix_math_18, LV_PART_MAIN);
-        lv_obj_center(lbl);
-    }
+    _inputContainer = panel(_scr, PAD, CONTENT_Y + 4, SCREEN_W - 2*PAD, CONTENT_H - 10);
+    surface(_inputContainer);
+    _inputTitle = label(_inputContainer, "f(x)", 8, 5);
+    auto* inputViewport = panel(_inputContainer, 2, 24, SCREEN_W - 2*PAD - 6, CONTENT_H - 40);
+    _inputCanvas.create(inputViewport);
+    _inputCanvas.setAutoHeightEnabled(false);
+    lv_obj_set_pos(_inputCanvas.obj(), 0, 0);
+    lv_obj_set_size(_inputCanvas.obj(), SCREEN_W - 2*PAD - 6, CONTENT_H - 40);
+    _inputPlaceholder = label(inputViewport, "Enter expression", 14, 52);
+    lv_obj_set_style_text_color(_inputPlaceholder, lv_color_hex(0x888888), 0);
+    _inputHint = label(_scr, "", PAD, FOOTER_Y + 2, &lv_font_montserrat_10);
 
-    updateTabStyles();
+    _computingContainer = panel(_scr, PAD, CONTENT_Y, SCREEN_W - 2*PAD, CONTENT_H);
+    _computingLabel = label(_computingContainer, "Calculating...", 8, 60);
+    lv_obj_center(_computingLabel);
 
-    int contentY = tabY + TAB_H;
-    int contentH = SCREEN_H - contentY;
-
-    // ─────────────────────────────────────────────────────────────────
-    // INPUT container
-    // ─────────────────────────────────────────────────────────────────
-    _inputContainer = lv_obj_create(_scr);
-    lv_obj_set_size(_inputContainer, SCREEN_W, contentH);
-    lv_obj_set_pos(_inputContainer, 0, contentY);
-    lv_obj_set_style_bg_opa(_inputContainer, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_inputContainer, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_inputContainer, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_inputContainer, LV_OBJ_FLAG_SCROLLABLE);
-
-    _inputTitle = lv_label_create(_inputContainer);
-    lv_label_set_text(_inputTitle, "Introduce f(x):");
-    lv_obj_set_style_text_font(_inputTitle, &stix_math_18, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_inputTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
-    lv_obj_set_pos(_inputTitle, PAD, 4);
-
-    _inputCanvas.create(_inputContainer);
-    lv_obj_set_pos(_inputCanvas.obj(), PAD + 4, 24);
-    lv_obj_set_size(_inputCanvas.obj(), SCREEN_W - 2 * PAD - 4, contentH - 50);
-
-    _inputHint = lv_label_create(_inputContainer);
-    lv_label_set_text(_inputHint, "EXE: Differentiate   GRAPH: Mode   AC: Back");
-    lv_obj_set_style_text_font(_inputHint, &stix_math_18, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_inputHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_inputHint, PAD, contentH - 18);
-
-    // ─────────────────────────────────────────────────────────────────
-    // COMPUTING container (spinner + message)
-    // ─────────────────────────────────────────────────────────────────
-    _computingContainer = lv_obj_create(_scr);
-    lv_obj_set_size(_computingContainer, SCREEN_W, contentH);
-    lv_obj_set_pos(_computingContainer, 0, contentY);
-    lv_obj_set_style_bg_opa(_computingContainer, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_computingContainer, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_computingContainer, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_computingContainer, LV_OBJ_FLAG_SCROLLABLE);
-
-    _computingLabel = lv_label_create(_computingContainer);
-    lv_label_set_text(_computingLabel, "Computing...");
-    lv_obj_set_style_text_font(_computingLabel, &stix_math_18, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_computingLabel, lv_color_hex(COL_SEP_HEX), LV_PART_MAIN);
-    lv_obj_align(_computingLabel, LV_ALIGN_CENTER, 0, -20);
-
-    _computingSpinner = lv_spinner_create(_computingContainer);
-    lv_spinner_set_anim_params(_computingSpinner, 1000, 200);
-    lv_obj_set_size(_computingSpinner, 40, 40);
-    lv_obj_align(_computingSpinner, LV_ALIGN_CENTER, 0, 25);
-    lv_obj_set_style_arc_color(_computingSpinner,
-                               lv_color_hex(accentColor()), LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(_computingSpinner,
-                               lv_color_hex(0xDDDDDD), LV_PART_MAIN);
-
-    // ─────────────────────────────────────────────────────────────────
-    // RESULT container
-    // ─────────────────────────────────────────────────────────────────
-    _resultContainer = lv_obj_create(_scr);
-    lv_obj_set_size(_resultContainer, SCREEN_W, contentH);
-    lv_obj_set_pos(_resultContainer, 0, contentY);
-    lv_obj_set_style_bg_opa(_resultContainer, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_resultContainer, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_resultContainer, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_resultContainer, LV_OBJ_FLAG_SCROLLABLE);
-
-    _resultTitle = lv_label_create(_resultContainer);
-    lv_label_set_text(_resultTitle, "Result");
-    lv_obj_set_style_text_font(_resultTitle, &stix_math_18, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_resultTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
-    lv_obj_set_pos(_resultTitle, PAD, 4);
-
-    _originalLabel = lv_label_create(_resultContainer);
-    lv_label_set_text(_originalLabel, "f(x) =");
-    lv_obj_set_style_text_font(_originalLabel, &stix_math_18, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_originalLabel, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_originalLabel, PAD, 24);
-
-    _originalCanvas.create(_resultContainer);
-    lv_obj_set_pos(_originalCanvas.obj(), PAD + 50, 20);
-    lv_obj_set_size(_originalCanvas.obj(), SCREEN_W - PAD - 54, 30);
-    lv_obj_add_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
-
-    _resultLabel = lv_label_create(_resultContainer);
-    lv_label_set_text(_resultLabel, "f'(x) =");
-    lv_obj_set_style_text_font(_resultLabel, &stix_math_18, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_resultLabel, lv_color_hex(COL_RESULT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_resultLabel, PAD, 58);
-
-    _resultCanvas.create(_resultContainer);
-    lv_obj_set_pos(_resultCanvas.obj(), PAD + 4, 78);
-    lv_obj_set_size(_resultCanvas.obj(), SCREEN_W - 2 * PAD - 4, 80);
-    lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
-
-    _resultFallback = lv_label_create(_resultContainer);
-    lv_obj_set_pos(_resultFallback, PAD + 4, 80);
-    lv_obj_set_width(_resultFallback, SCREEN_W - 2 * PAD - 8);
+    _resultContainer = panel(_scr, PAD, CONTENT_Y + 4, SCREEN_W - 2*PAD, CONTENT_H - 10);
+    surface(_resultContainer);
+    _originalLabel = label(_resultContainer, "f(x)", 8, 4);
+    _originalViewport = panel(_resultContainer, 42, 2, SCREEN_W - 2*PAD - 46, 48);
+    _originalCanvas.create(_originalViewport);
+    _originalCanvas.setAutoHeightEnabled(false);
+    lv_obj_set_pos(_originalCanvas.obj(), 0, 0);
+    lv_obj_set_size(_originalCanvas.obj(), SCREEN_W - 2*PAD - 46, 48);
+    _resultTitle = label(_resultContainer, "Result", 8, 56);
+    _resultSeparator = panel(_resultContainer, 8, 51, SCREEN_W - 2*PAD - 18, 1);
+    lv_obj_set_style_bg_color(_resultSeparator, lv_color_hex(0xDDDDDD), 0);
+    lv_obj_set_style_bg_opa(_resultSeparator, LV_OPA_COVER, 0);
+    _resultViewport = panel(_resultContainer, 2, 76, SCREEN_W - 2*PAD - 6, 74);
+    lv_obj_set_scroll_dir(_resultViewport, LV_DIR_VER);
+    lv_obj_add_flag(_resultViewport, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(_resultViewport, LV_SCROLLBAR_MODE_AUTO);
+    _resultCanvas.create(_resultViewport);
+    _resultCanvas.setAutoHeightEnabled(false);
+    lv_obj_set_size(_resultCanvas.obj(), SCREEN_W - 2*PAD - 8, 72);
+    _resultFallback = label(_resultViewport, "", 8, 5);
+    lv_obj_set_width(_resultFallback, SCREEN_W - 2*PAD - 24);
     lv_label_set_long_mode(_resultFallback, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_font(_resultFallback, &stix_math_12, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_resultFallback,
-                                lv_color_hex(COL_STEP_HEX), LV_PART_MAIN);
-    lv_obj_add_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
+    _resultHint = label(_scr, "", PAD, FOOTER_Y + 2, &lv_font_montserrat_10);
 
-    _resultHint = lv_label_create(_resultContainer);
-    lv_label_set_text(_resultHint, "STEPS: See steps    AC: New");
-    lv_obj_set_style_text_font(_resultHint, &stix_math_18, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_resultHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_resultHint, PAD, contentH - 22);
-
-    // ─────────────────────────────────────────────────────────────────
-    // STEPS container (scrollable)
-    // ─────────────────────────────────────────────────────────────────
-    _stepsContainer = lv_obj_create(_scr);
-    lv_obj_set_size(_stepsContainer, SCREEN_W, contentH);
-    lv_obj_set_pos(_stepsContainer, 0, contentY);
-    lv_obj_set_style_bg_opa(_stepsContainer, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_stepsContainer, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_stepsContainer, PAD, LV_PART_MAIN);
+    _stepsContainer = panel(_scr, PAD, CONTENT_Y + 4, SCREEN_W - 2*PAD, CONTENT_H - 10);
     lv_obj_set_flex_flow(_stepsContainer, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(_stepsContainer, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(_stepsContainer, 4, 0);
     lv_obj_add_flag(_stepsContainer, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(_stepsContainer, LV_DIR_VER);
-    // Prevent LVGL focus from being trapped in this container —
-    // scrolling is handled programmatically via handleKeySteps().
-    lv_obj_remove_flag(_stepsContainer, LV_OBJ_FLAG_CLICKABLE);
-
-    // ── Start hidden ──
+    updateTabStyles();
     hideAllContainers();
 }
 
@@ -493,6 +444,8 @@ void CalculusApp::hideAllContainers() {
     if (_computingContainer) lv_obj_add_flag(_computingContainer, LV_OBJ_FLAG_HIDDEN);
     if (_resultContainer)   lv_obj_add_flag(_resultContainer,   LV_OBJ_FLAG_HIDDEN);
     if (_stepsContainer)    lv_obj_add_flag(_stepsContainer,    LV_OBJ_FLAG_HIDDEN);
+    if (_inputHint) lv_obj_add_flag(_inputHint, LV_OBJ_FLAG_HIDDEN);
+    if (_resultHint) lv_obj_add_flag(_resultHint, LV_OBJ_FLAG_HIDDEN);
 
     _inputCanvas.stopCursorBlink();
 }
@@ -501,44 +454,51 @@ void CalculusApp::hideAllContainers() {
 // State transitions
 // ════════════════════════════════════════════════════════════════════════════
 
+#ifdef NATIVE_SIM
+static void calculusLayoutDump(lv_obj_t* obj, int depth = 0) {
+    if (!std::getenv("NUMOS_CALCULUS_LAYOUT") || !obj || lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) return;
+    lv_obj_update_layout(obj);
+    lv_area_t a; lv_obj_get_coords(obj, &a);
+    const char* text = lv_obj_check_type(obj, &lv_label_class) ? lv_label_get_text(obj) : "";
+    std::printf("CALCULUS_BOX|%d|%d,%d,%d,%d|%s\n", depth, a.x1,a.y1,a.x2,a.y2,text);
+    for (uint32_t i=0;i<lv_obj_get_child_count(obj);++i) calculusLayoutDump(lv_obj_get_child(obj,i),depth+1);
+}
+#endif
+
 void CalculusApp::showInput() {
     hideAllContainers();
     _state = State::EDITING;
     _statusBar.setTitle("Calculus");
 
     if (!_inputNode) resetInput();
+    _giacResult = numos::StructuredCalculusResult();
+    _resultKind = ResultKind::None;
     _inputCanvas.setExpression(_inputRow, &_inputCursor);
     _inputCanvas.invalidate();
 
     // Update UI for current mode
-    setMode(_calcMode);
+    updateTabStyles();
 
     lv_obj_remove_flag(_inputContainer, LV_OBJ_FLAG_HIDDEN);
-    _inputCanvas.startCursorBlink();
+    lv_obj_remove_flag(_inputHint, LV_OBJ_FLAG_HIDDEN);
+    adjustInputHeight();
+    if (!_modeFocused) _inputCanvas.startCursorBlink();
     lv_obj_invalidate(_scr);
+#ifdef NATIVE_SIM
+    calculusLayoutDump(_scr);
+#endif
 }
 
 void CalculusApp::showComputing() {
     hideAllContainers();
     _state = State::COMPUTING;
 
-    if (_calcMode == CalcMode::DERIVATIVE) {
-        _statusBar.setTitle("Differentiating");
-        int idx = rand() % NUM_DERIV_MSGS;
-        lv_label_set_text(_computingLabel, DERIV_MESSAGES[idx]);
-    } else {
-        _statusBar.setTitle("Integrating");
-        int idx = rand() % NUM_INTEG_MSGS;
-        lv_label_set_text(_computingLabel, INTEG_MESSAGES[idx]);
-    }
-
-    lv_obj_set_style_arc_color(_computingSpinner,
-                               lv_color_hex(accentColor()), LV_PART_INDICATOR);
-
+    lv_label_set_text(_computingLabel, _calcMode == CalcMode::DERIVATIVE
+        ? "Differentiating..." : "Integrating...");
     lv_obj_remove_flag(_computingContainer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_invalidate(_scr);
 
-    // Force LVGL to render the spinner before blocking compute
+    // Paint once before blocking compute; there is no per-frame math work.
     lv_timer_handler();
 }
 
@@ -552,16 +512,24 @@ void CalculusApp::showResult() {
         _statusBar.setTitle("Integral");
     }
 
+    _modeFocused = false;
+    updateTabStyles();
     buildResultDisplay();
+    lv_obj_remove_flag(_resultHint, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_remove_flag(_resultContainer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_invalidate(_scr);
+#ifdef NATIVE_SIM
+    calculusLayoutDump(_scr);
+#endif
 }
 
 void CalculusApp::showSteps() {
     hideAllContainers();
     _state = State::STEPS;
-    _statusBar.setTitle("Pasos");
+    _statusBar.setTitle("Steps");
+    lv_label_set_text(_resultHint, LV_SYMBOL_UP " " LV_SYMBOL_DOWN " Scroll    EXE Result");
+    lv_obj_remove_flag(_resultHint, LV_OBJ_FLAG_HIDDEN);
     _stepScroll = 0;
 
     buildStepsDisplay();
@@ -569,6 +537,9 @@ void CalculusApp::showSteps() {
     lv_obj_remove_flag(_stepsContainer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_scroll_to_y(_stepsContainer, 0, LV_ANIM_OFF);
     lv_obj_invalidate(_scr);
+#ifdef NATIVE_SIM
+    calculusLayoutDump(_scr);
+#endif
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -576,8 +547,24 @@ void CalculusApp::showSteps() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculusApp::handleKey(const KeyEvent& ev) {
+#ifdef NATIVE_SIM
+    CalculusTiming timing("key", (int)ev.code);
+#endif
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
+    if (_state != State::COMPUTING &&
+        (ev.code == KeyCode::GRAPH || ev.code == KeyCode::F1 || ev.code == KeyCode::F2)) {
+        if (ev.action != KeyAction::PRESS) return;
+        _modeFocused = false;
+        setMode(ev.code == KeyCode::F1 ? CalcMode::DERIVATIVE :
+                ev.code == KeyCode::F2 ? CalcMode::INTEGRAL :
+                _calcMode == CalcMode::DERIVATIVE ? CalcMode::INTEGRAL : CalcMode::DERIVATIVE);
+        KeyboardManager::instance().consumeModifier();
+        return;
+    }
+    if (ev.action == KeyAction::REPEAT &&
+        (ev.code == KeyCode::EXE || ev.code == KeyCode::ENTER || ev.code == KeyCode::FREE_EQ ||
+         ev.code == KeyCode::AC || ev.code == KeyCode::SHOW_STEPS)) return;
     switch (_state) {
         case State::EDITING:  handleKeyInput(ev);   break;
         case State::COMPUTING: /* ignore keys during compute */ break;
@@ -595,7 +582,31 @@ void CalculusApp::handleKeyInput(const KeyEvent& ev) {
     if (ev.code == KeyCode::SHIFT) { km.pressShift(); _statusBar.update(); return; }
     if (ev.code == KeyCode::ALPHA) { km.pressAlpha(); _statusBar.update(); return; }
 
+    if (_modeFocused) {
+        if (ev.action != KeyAction::PRESS) return;
+        if (ev.code == KeyCode::LEFT || ev.code == KeyCode::RIGHT) {
+            setMode(ev.code == KeyCode::LEFT ? CalcMode::DERIVATIVE : CalcMode::INTEGRAL);
+            return;
+        }
+        _modeFocused = false;
+        updateTabStyles();
+        if (ev.code == KeyCode::DOWN || ev.code == KeyCode::ENTER || ev.code == KeyCode::EXE) return;
+    }
     auto& cc = _inputCursor;
+    const auto semantic = static_cast<numos::input::SemanticId>(ev.semanticId);
+    using numos::input::SemanticId;
+    bool semanticChanged = true;
+    if (semantic >= SemanticId::alpha_A && semantic <= SemanticId::alpha_Z) {
+        cc.insertVariable('A' + static_cast<int>(semantic) - static_cast<int>(SemanticId::alpha_A));
+    } else if (semantic == SemanticId::asin || semantic == SemanticId::acos || semantic == SemanticId::atan) {
+        cc.insertFunction(semantic == SemanticId::asin ? FuncKind::ArcSin :
+                          semantic == SemanticId::acos ? FuncKind::ArcCos : FuncKind::ArcTan);
+    } else if (semantic == SemanticId::pow_e) {
+        cc.insertConstant(ConstKind::E); cc.insertPower();
+    } else {
+        semanticChanged = false;
+    }
+    if (semanticChanged) { adjustInputHeight(); refreshInput(); _statusBar.update(); return; }
     bool changed = false;
 
     switch (ev.code) {
@@ -622,10 +633,18 @@ void CalculusApp::handleKeyInput(const KeyEvent& ev) {
         case KeyCode::MUL: cc.insertOperator(OpKind::Mul); changed = true; break;
 
         // ── VPAM structures ──
+        case KeyCode::FRAC:
         case KeyCode::DIV:    cc.insertFraction(); changed = true; break;
         case KeyCode::POW:    cc.insertPower();    changed = true; break;
         case KeyCode::SQRT:   cc.insertRoot();     changed = true; break;
         case KeyCode::LPAREN: cc.insertParen();    changed = true; break;
+
+        case KeyCode::RPAREN: cc.moveRight(); changed = true; break;
+        case KeyCode::DIVIDE: cc.insertOperator(OpKind::Div); changed = true; break;
+        case KeyCode::SQUARE:
+            cc.insertPower(); cc.insertDigit('2'); cc.moveRight(); changed = true; break;
+        // Calculus has a fixed primary variable, so VAR inserts it directly.
+        case KeyCode::VAR: cc.insertVariable('x'); changed = true; break;
 
         // ── Variables ──
         case KeyCode::VAR_X: cc.insertVariable('x'); changed = true; break;
@@ -691,36 +710,33 @@ void CalculusApp::handleKeyInput(const KeyEvent& ev) {
 
         // ── AC → reset input ──
         case KeyCode::AC:
+            _inputCanvas.setExpression(nullptr, nullptr);
             _inputNode.reset();
             _inputRow = nullptr;
             showInput();
             break;
 
         // ── ENTER or = → compute ──
+        case KeyCode::EXE:
         case KeyCode::ENTER:
         case KeyCode::FREE_EQ:
             computeResult();
             break;
 
-        // ── GRAPH → toggle mode (d/dx ↔ ∫dx) ──
-        case KeyCode::GRAPH:
-            setMode(_calcMode == CalcMode::DERIVATIVE
-                    ? CalcMode::INTEGRAL : CalcMode::DERIVATIVE);
-            break;
-
-        // ── UP/DOWN → switch between derivative and integral tabs ──
-        // Allows D-Pad vertical navigation between the two mode "tabs" at the top.
         case KeyCode::UP:
+            if (cc.cursor().row == _inputRow) {
+                if (ev.action == KeyAction::PRESS) { _modeFocused = true; updateTabStyles(); }
+            } else { cc.moveUp(); changed = true; }
+            break;
         case KeyCode::DOWN:
-            setMode(_calcMode == CalcMode::DERIVATIVE
-                    ? CalcMode::INTEGRAL : CalcMode::DERIVATIVE);
+            cc.moveDown(); changed = true;
             break;
 
         default:
             break;
     }
 
-    if (km.isShift()) km.consumeModifier();
+    if (changed) km.consumeModifier();
 
     if (changed) {
         adjustInputHeight();
@@ -734,14 +750,26 @@ void CalculusApp::handleKeyInput(const KeyEvent& ev) {
 
 void CalculusApp::handleKeyResult(const KeyEvent& ev) {
     switch (ev.code) {
+        case KeyCode::TOOLBOX:
         case KeyCode::SHOW_STEPS:
-            showSteps();
+            if (_tutorStatus == TutorStatus::Agreed) showSteps();
             break;
+        case KeyCode::UP: lv_obj_scroll_by(_resultViewport, 0, 24, LV_ANIM_OFF); break;
+        case KeyCode::DOWN: lv_obj_scroll_by(_resultViewport, 0, -24, LV_ANIM_OFF); break;
+        case KeyCode::LEFT: _resultCanvas.scrollBy(24); break;
+        case KeyCode::RIGHT: _resultCanvas.scrollBy(-24); break;
         case KeyCode::AC:
+            _inputCanvas.setExpression(nullptr, nullptr);
+            _inputNode.reset(); _inputRow = nullptr;
             showInput();
             break;
-        default:
-            break;
+        case KeyCode::DEL:
+            showInput(); handleKeyInput(ev); break;
+        case KeyCode::EXE:
+        case KeyCode::ENTER:
+        case KeyCode::FREE_EQ:
+            showInput(); break;
+        default: break;
     }
 }
 
@@ -757,6 +785,8 @@ void CalculusApp::handleKeySteps(const KeyEvent& ev) {
         case KeyCode::DOWN:
             lv_obj_scroll_by(_stepsContainer, 0, -30, LV_ANIM_ON);
             break;
+        case KeyCode::EXE:
+        case KeyCode::ENTER:
         case KeyCode::AC:
         case KeyCode::DEL:
             showResult();
@@ -774,6 +804,7 @@ void CalculusApp::resetInput() {
     _inputNode = makeRow();
     _inputRow  = static_cast<NodeRow*>(_inputNode.get());
     _inputCursor.init(_inputRow);
+    _inputCanvas.resetScroll();
 }
 
 void CalculusApp::refreshInput() {
@@ -783,19 +814,12 @@ void CalculusApp::refreshInput() {
 }
 
 void CalculusApp::adjustInputHeight() {
+    // Fixed, bounded viewport. MathCanvas owns horizontal cursor following;
+    // oversized vertical structures are deliberately clipped inside this surface.
     if (!_inputRow) return;
-
+    if (_inputRow->isEmpty()) lv_obj_remove_flag(_inputPlaceholder, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(_inputPlaceholder, LV_OBJ_FLAG_HIDDEN);
     _inputRow->calculateLayout(_inputCanvas.normalMetrics());
-    int contentH = mathObjectHeightPx(_inputRow->layout(), _inputCanvas.normalMetrics(), 0);
-
-    int newH = contentH + 16;
-    if (newH < 50) newH = 50;
-    if (newH > 140) newH = 140;
-
-    int curH = lv_obj_get_height(_inputCanvas.obj());
-    if (curH > 0 && (newH - curH > 2 || curH - newH > 2)) {
-        lv_obj_set_height(_inputCanvas.obj(), newH);
-    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -857,6 +881,7 @@ bool CalculusApp::navigateBack() {
             // safely. HOME/BACK are serviced immediately after it returns.
             return true;
         case State::EDITING:
+            if (_modeFocused) { _modeFocused = false; updateTabStyles(); return true; }
             return false;
     }
     return false;
@@ -881,6 +906,9 @@ char CalculusApp::detectAuthoredVariable(const vpam::MathNode* node) const {
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculusApp::computeResult() {
+#ifdef NATIVE_SIM
+    CalculusTiming timing(_calcMode == CalcMode::DERIVATIVE ? "derivative" : "integral");
+#endif
     if (!_inputRow || _inputRow->isEmpty()) {
         _statusBar.setTitle("Empty input");
         _statusBar.update();
@@ -890,7 +918,7 @@ void CalculusApp::computeResult() {
     numos::HwUxProbe hwux("calculus",
         _calcMode == CalcMode::DERIVATIVE ? "differentiate" : "integrate");
 
-    // Show computing animation
+    // Paint a bounded busy state before the synchronous Giac call.
     showComputing();
 
     // Reset arena and steps for this computation
@@ -938,7 +966,15 @@ void CalculusApp::computeGiacResult() {
     // consumed by buildResultDisplay().
     _giacResult =
         numos::GiacEngine::instance().evaluateCalculusStructured(request);
-    if (_giacResult.ok()) runNativeTutor(request);
+    if (_giacResult.ok() && !_giacResult.unevaluated) {
+        try { runNativeTutor(request); }
+        catch (...) {
+            _casSteps.clear();
+            _resultExpr = nullptr;
+            _tutorStatus = TutorStatus::Unavailable;
+            _tutorDiagnostic.clear(); // Do not allocate while handling tutor OOM.
+        }
+    }
     showResult();
 }
 
@@ -1092,12 +1128,17 @@ void CalculusApp::buildResultDisplay() {
     lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
     if (_resultFallback)
         lv_obj_add_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
+    _resultCanvas.setExpression(nullptr, nullptr);
+    _resultCanvas.resetScroll();
+    lv_obj_scroll_to_y(_resultViewport, 0, LV_ANIM_OFF);
     _resultNode.reset();
     _resultRow = nullptr;
     _resultKind = ResultKind::None;
 
     _originalCanvas.stopCursorBlink();
     lv_obj_add_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+    _originalCanvas.setExpression(nullptr, nullptr);
+    _originalCanvas.resetScroll();
     _originalNode.reset();
     _originalRow = nullptr;
 
@@ -1106,51 +1147,56 @@ void CalculusApp::buildResultDisplay() {
         _originalNode = cloneNode(_inputRow);
         _originalRow = static_cast<NodeRow*>(_originalNode.get());
         char fLabel[16];
-        snprintf(fLabel, sizeof(fLabel), "f(%c) =", _variable);
+        snprintf(fLabel, sizeof(fLabel), "f(%c)", _variable);
         lv_label_set_text(_originalLabel, fLabel);
         lv_obj_remove_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
         _originalCanvas.setExpression(_originalRow, nullptr);
         _originalRow->calculateLayout(_originalCanvas.normalMetrics());
         _originalCanvas.invalidate();
+        int previewH = mathObjectHeightPx(_originalRow->layout(), _originalCanvas.normalMetrics(), 8);
+        previewH = std::max(48, std::min(72, previewH));
+        lv_obj_set_height(_originalViewport, previewH);
+        lv_obj_set_height(_originalCanvas.obj(), previewH);
+        lv_obj_set_y(_resultSeparator, previewH + 3);
+        lv_obj_set_y(_resultTitle, previewH + 8);
+        lv_obj_set_y(_resultViewport, previewH + 28);
+        lv_obj_set_height(_resultViewport, 150 - previewH - 28);
     }
 
-    lv_obj_set_style_text_color(
-        _resultTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
-    lv_label_set_text(
-        _resultTitle,
-        _calcMode == CalcMode::DERIVATIVE
-            ? "Giac Symbolic Derivative"
-            : (_giacResult.unevaluated
-                   ? "Unevaluated Giac Integral"
-                   : "Giac Symbolic Integral"));
-    char resultLabel[24];
-    snprintf(resultLabel, sizeof(resultLabel),
-             _calcMode == CalcMode::DERIVATIVE ? "f'(%c) =" : "F(%c) =",
-             _variable);
-    lv_label_set_text(_resultLabel, resultLabel);
-    lv_label_set_text(
-        _resultHint,
-        _tutorStatus == TutorStatus::Agreed
-            ? "STEPS: See steps    AC: New"
-            : "STEPS: Unavailable  AC: New");
+    lv_obj_set_style_text_color(_resultTitle, lv_color_hex(accentColor()), 0);
+    char title[40];
+    snprintf(title, sizeof(title), _calcMode == CalcMode::DERIVATIVE
+        ? "Derivative  f'(%c)" : "Antiderivative  F(%c)", _variable);
+    lv_label_set_text(_resultTitle, _giacResult.unevaluated
+        ? (_calcMode == CalcMode::INTEGRAL ? "Integral unevaluated" : "Derivative unevaluated") : title);
+    lv_label_set_text(_resultHint, _tutorStatus == TutorStatus::Agreed
+        ? "EXE Edit    AC Clear    TOOLS Steps"
+        : "EXE Edit    AC Clear    SHIFT 1/2 Mode");
 
     if (!_giacResult.ok()) {
-        lv_label_set_text(_resultTitle, "Giac Calculus Error");
-        lv_label_set_text(_resultLabel, "");
-        if (_resultFallback) {
-            std::string visible = "Giac diagnostic: ";
-            visible += _giacResult.diagnostic.empty()
-                ? debugStatusName() : _giacResult.diagnostic;
-            lv_label_set_text(_resultFallback, visible.c_str());
-            lv_obj_remove_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
+        const char* title = "Calculation failed";
+        const char* message = "Try a simpler expression.";
+        switch (_giacResult.status) {
+            case numos::MathEngineStatus::ParseError:
+                title = "Syntax error"; message = "Complete the expression, then press EXE."; break;
+            case numos::MathEngineStatus::Undefined:
+                title = "Undefined"; message = "Check the expression's domain."; break;
+            case numos::MathEngineStatus::Unsupported:
+                title = "Input limit"; message = "Use a shorter or simpler expression."; break;
+            case numos::MathEngineStatus::OutOfMemory:
+                title = "Memory full"; message = "Clear the input and try again."; break;
+            default: break;
         }
+        lv_label_set_text(_resultTitle, title);
+        lv_label_set_text(_resultFallback, message);
+        lv_obj_remove_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
         return;
     }
 
     if (_giacResult.hasTree) {
         _resultNode =
             numos::CalculationEngine::resultTreeToAST(_giacResult.tree);
-        if (_resultNode && _calcMode == CalcMode::INTEGRAL) {
+        if (_resultNode && _calcMode == CalcMode::INTEGRAL && !_giacResult.unevaluated) {
             // Product policy: Giac supplies the authoritative primitive;
             // NumOS presents the general antiderivative by appending + C.
             auto* row = static_cast<NodeRow*>(_resultNode.get());
@@ -1163,15 +1209,20 @@ void CalculusApp::buildResultDisplay() {
         lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
         _resultCanvas.setExpression(_resultRow, nullptr);
         _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+        const int height = mathObjectHeightPx(_resultRow->layout(), _resultCanvas.normalMetrics(), 8);
+        const int viewportH = lv_obj_get_height(_resultViewport);
+        lv_obj_set_height(_resultCanvas.obj(), std::max(height, viewportH - 2));
         _resultCanvas.invalidate();
+        if (height > lv_obj_get_height(_resultViewport) || _resultRow->layout().width > SCREEN_W - 36)
+            lv_label_set_text(_resultHint, LV_SYMBOL_LEFT " " LV_SYMBOL_RIGHT " " LV_SYMBOL_UP " " LV_SYMBOL_DOWN " Scroll    EXE Edit    AC Clear");
         _resultKind = ResultKind::Structured;
         return;
     }
 
     // Valid Giac values whose shape is unsupported by MathAST remain exact.
-    std::string visible = "Giac exact result (text): ";
+    std::string visible = "Exact: ";
     visible += _giacResult.exactText;
-    if (_calcMode == CalcMode::INTEGRAL) visible += " + C";
+    if (_calcMode == CalcMode::INTEGRAL && !_giacResult.unevaluated) visible += " + C";
     lv_label_set_text(_resultFallback, visible.c_str());
     lv_obj_remove_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
     _resultKind = ResultKind::TextFallback;
@@ -1196,7 +1247,7 @@ void CalculusApp::buildStepsDisplay() {
         lv_label_set_text(lbl, message.c_str());
         lv_obj_set_width(lbl, SCREEN_W - 2 * PAD - 8);
         lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_font(lbl, &stix_math_18, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, LV_PART_MAIN);
         lv_obj_set_style_text_color(
             lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
         return;
@@ -1207,7 +1258,7 @@ void CalculusApp::buildStepsDisplay() {
     if (steps.empty()) {
         lv_obj_t* lbl = lv_label_create(_stepsContainer);
         lv_label_set_text(lbl, "No steps available.");
-        lv_obj_set_style_text_font(lbl, &stix_math_18, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, LV_PART_MAIN);
         lv_obj_set_style_text_color(lbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
         return;
     }
@@ -1236,20 +1287,26 @@ void CalculusApp::buildStepsDisplay() {
     };
 
     // ── 2. Iterate all steps ───────────────────────────────────────
+    size_t displayIndex = 0;
     for (size_t i = 0; i < steps.size(); ++i) {
         const auto& step = steps[i];
+        // Only the native final candidate was verified. Do not turn arbitrary
+        // intermediate tutor snapshots into apparently authoritative formulas.
+        // The original and final formula reuse the authored/Giac MathASTs.
+        if (step.mathExpr && i != 0 && step.mathExpr != _resultExpr) continue;
+        ++displayIndex;
 
         // Text description label (skip if empty)
         if (!step.description.empty()) {
             char buf[200];
-            snprintf(buf, sizeof(buf), "%d. %s", (int)(i + 1),
+            snprintf(buf, sizeof(buf), "%d. %s", (int)displayIndex,
                      step.description.c_str());
 
             lv_obj_t* descLbl = lv_label_create(_stepsContainer);
             lv_label_set_text(descLbl, buf);
             lv_obj_set_width(descLbl, SCREEN_W - 2 * PAD - 8);
             lv_label_set_long_mode(descLbl, LV_LABEL_LONG_WRAP);
-            lv_obj_set_style_text_font(descLbl, &stix_math_18,
+            lv_obj_set_style_text_font(descLbl, &lv_font_montserrat_12,
                                        LV_PART_MAIN);
 
             // Smart Highlighter: use accent colour when a sub-expression
@@ -1263,24 +1320,12 @@ void CalculusApp::buildStepsDisplay() {
 
         // MathCanvas for CAS mathExpr — mandatory if present
         if (step.mathExpr) {
-            vpam::NodePtr astNode = cas::SymExprToAST::convert(step.mathExpr);
-            emitCanvas(std::move(astNode));
-        }
-
-        // Smart Highlighter: render the modified sub-expression in an
-        // orange accent label so students can see exactly what changed.
-        if (step.highlightExpr) {
-            lv_obj_t* hlLbl = lv_label_create(_stepsContainer);
-            lv_label_set_text(hlLbl, "\xe2\x96\xb6 Modified:");  // ▶ Modified:
-            lv_obj_set_style_text_font(hlLbl, &stix_math_18, LV_PART_MAIN);
-            lv_obj_set_style_text_color(hlLbl, lv_color_hex(0xE65100), LV_PART_MAIN);  // orange
-
-            vpam::NodePtr hlNode = cas::SymExprToAST::convert(step.highlightExpr);
-            emitCanvas(std::move(hlNode));
+            emitCanvas(cloneNode(i == 0 ? _inputRow : _resultRow));
         }
 
         // Snapshot fallback as MathCanvas (for steps without mathExpr)
-        if (!step.mathExpr) {
+        if (!step.mathExpr && (step.kind == cas::StepKind::Transform ||
+                               step.kind == cas::StepKind::Result)) {
             std::string eqText = step.snapshot.toString();
             if (!eqText.empty() && eqText != "0") {
                 vpam::NodePtr snapNode =
@@ -1294,7 +1339,7 @@ void CalculusApp::buildStepsDisplay() {
     lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
     lv_label_set_text(hintLbl,
                       LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
-    lv_obj_set_style_text_font(hintLbl, &stix_math_18, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hintLbl, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
                                 LV_PART_MAIN);
 }

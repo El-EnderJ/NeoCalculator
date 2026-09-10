@@ -33,7 +33,7 @@
 #include "prog.h"    // cas_setup
 #include "subst.h"   // subst, _simplify
 #include "derive.h"  // derive
-#include "intg.h"    // integrate_gen
+#include "intg.h"    // _integrate: registered command semantics
 #include "unary.h"   // unary_function_ptr/_eval full types (result tree walk)
 #include "solve.h"   // has_num_coeff
 #include "sym2poly.h"
@@ -1024,11 +1024,37 @@ MathEngineStatus computeCalculusGen(giac::context* ctx,
         ScopedRadianMode radianMode(ctx, authoredInDegrees);
         const giac::gen variable(giac::identificateur(request.variable));
         if (request.operation == CalculusOperation::Differentiate) {
-            // WHY: this is a typed Giac call, not app-authored command text.
-            // The first-derivative order is fixed by the enabled UI.
-            out = giac::derive(authored, variable, ctx);
+            // The registered first-derivative command evaluates authored
+            // quotient/function syntax before calling the derivative kernel.
+            // Like integration, parsed ASTs must enter at command level.
+            out = giac::_derive(giac::makesequence(authored, variable), ctx);
         } else {
-            out = giac::integrate_gen(authored, variable, ctx);
+            // F7: integrate_gen expects an already evaluated integrand and
+            // bypasses the registered command's quoted-variable evaluation,
+            // exactness and integration pipeline. Invoke the real command
+            // handler with typed arguments inside this same guarded context.
+            // No NumOS rewrites or native fallback participate here.
+            // The pinned handler ignores an undef returned while evaluating
+            // its integrand (e.g. 0/0), then enters primitive integration with
+            // the malformed domain value. Fail closed on Giac's own eval.
+            // Match the command's quoted variable and restore it on exceptions.
+            struct QuotedVariable {
+                giac::vecteur* vars;
+                size_t size;
+                QuotedVariable(giac::context* c, const giac::gen& v)
+                    : vars(c->quoted_global_vars), size(vars ? vars->size() : 0) {
+                    if (vars) vars->push_back(v);
+                }
+                ~QuotedVariable() { if (vars) vars->resize(size); }
+            };
+            {
+                QuotedVariable quoted(ctx, variable);
+                if (giac::is_undef(giac::eval(authored, giac::eval_level(ctx), ctx))) {
+                    diagnostic = "undefined calculus input";
+                    return MathEngineStatus::Undefined;
+                }
+            } // Restore before the command applies its own binding semantics.
+            out = giac::_integrate(giac::makesequence(authored, variable), ctx);
         }
 
         diagnostic = capture.text();

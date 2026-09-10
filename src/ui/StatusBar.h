@@ -51,6 +51,7 @@ public:
 
     // ── Ciclo de vida ────────────────────────────────────────────────────
     StatusBar() = default;
+    ~StatusBar() { destroy(); }
 
     /**
      * Crea el widget dentro de @p parent (normalmente una pantalla LVGL).
@@ -82,6 +83,8 @@ public:
      * Llamar periódicamente o tras cada tecla.
      */
     void update();
+    // Refresh after input resolution, including modifier events consumed there.
+    static void refreshActiveModifier();
 
     /** Devuelve el objeto LVGL raíz (para set pos, etc.). */
     lv_obj_t* obj() const { return _bar; }
@@ -96,6 +99,8 @@ public:
      * when no bar is alive. Never compiled into firmware.
      */
     static const char* debugActiveAngleText();
+    static const char* debugActiveModifierText();
+    static bool debugActiveModifierHeaderFits();
 #endif
 
 private:
@@ -110,9 +115,7 @@ private:
 
     uint8_t   _batLevel   = 100;      ///< Porcentaje de batería
 
-#ifdef NATIVE_SIM
-    static StatusBar* s_active;       ///< Última barra creada (debug asserts)
-#endif
+    static StatusBar* s_active;       ///< Most recently created live app bar
 
     // ── Helpers ──────────────────────────────────────────────────────────
     void updateClock();

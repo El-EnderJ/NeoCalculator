@@ -68,6 +68,20 @@ async function run(browserName, browserType) {
     timings.structuredSerialization =
       (performance.now() - serializationStart) / 1000;
     const piecewise = await math.evaluate("piecewise(x<0,-x,x)");
+    // CALCULUS-APP-REBUILD-01 / F7: the shared WASM seam must retain
+    // command parity, structured closed forms, and exact equivalence.
+    const f7 = [];
+    for (const input of ["sqrt(x)", "x*sqrt(x)", "sqrt(x+1)",
+                         "x^2*sqrt(x)", "sqrt(2*x+3)", "sqrt(x^2+1)"]) {
+      const primitive = await math.integrate(input, "x");
+      const canonical = await math.evaluate(`integrate(${input},x)`);
+      const parity = await math.simplify(`(${primitive.displayText})-(${canonical.displayText})`);
+      const derivative = await math.differentiate(primitive.displayText, "x");
+      // Use the normal command evaluator as the oracle, matching the host
+      // harness. transformStructured(Simplify) is a separate lower-level seam.
+      const check = await math.evaluate(`simplify((${derivative.displayText})-(${input}))`);
+      f7.push({ input, primitive, parity, check });
+    }
     const derivative = await math.differentiate("x^2", "x");
     await math.setAngleMode("degree");
     const degreeDerivative = await math.differentiate("sin(x)", "x");
@@ -176,7 +190,7 @@ async function run(browserName, browserType) {
     }
 
     return {
-      browserName, timings, twoPlusTwo, large, rational, radical, simplified,
+      browserName, timings, f7, twoPlusTwo, large, rational, radical, simplified,
       complex, infinity, undefinedValue, list, matrix, piecewise, derivative,
       degreeDerivative, integral, unevaluated, linear, polynomial, system,
       noSolution, identity, parameter, variableRead, variableDiagnostics,
@@ -188,6 +202,11 @@ async function run(browserName, browserType) {
     };
   }, { browserName });
   assert.deepEqual(errors, [], `${browserName} page errors`);
+  for (const entry of result.f7) {
+    assert.equal(entry.primitive.unevaluated, false, entry.input);
+    assert.equal(entry.parity.result.value, "0", entry.input);
+    assert.equal(entry.check.result.value, "0", entry.input);
+  }
   assert.equal(result.twoPlusTwo.result.kind, "integer");
   assert.equal(result.twoPlusTwo.result.value, "4");
   assert.equal(result.large.result.value, "1267650600228229401496703205376");

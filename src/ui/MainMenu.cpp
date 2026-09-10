@@ -44,6 +44,8 @@
 #include "MainMenu.h"
 #include "../display/DisplayDriver.h"
 #include "../Config.h"
+#include "ModifierBadge.h"
+#include <cstring>
 
 #if NUMOS_PRODUCTION_DEMO_PROFILE
 #include "../demo/DemoBootHealth.h"
@@ -159,8 +161,25 @@ void MainMenu::load() {
     if (_screen) {
         lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
         lv_group_set_default(_group);
+        refreshModifier();
     }
 }
+
+void MainMenu::refreshModifier() {
+    if (!_modifierLabel || _screen != lv_screen_active()) return;
+    const char* text = ui::modifierBadgeText();
+    if (std::strcmp(lv_label_get_text(_modifierLabel), text) == 0) return;
+    lv_label_set_text(_modifierLabel, text);
+}
+
+#ifdef NATIVE_SIM
+const char* MainMenu::debugModifierText() const {
+    return _modifierLabel ? lv_label_get_text(_modifierLabel) : "";
+}
+bool MainMenu::debugModifierHeaderFits() const {
+    return ui::modifierHeaderFits(_modifierLabel);
+}
+#endif
 
 bool MainMenu::moveFocusByDelta(int dCol, int dRow) {
     if (!_group || !_grid) return false;
@@ -358,13 +377,13 @@ void MainMenu::buildStatusBar() {
     lv_obj_set_style_bg_opa(bar,   LV_OPA_COVER, 0);
     lv_obj_set_style_radius(bar,   0, 0);
 
-    // Left: angle mode
+    // Right: angle mode, beside the battery
     lv_obj_t* modeLabel = lv_label_create(bar);
     lv_label_set_text(modeLabel, "rad");
     lv_obj_set_style_text_font(modeLabel, LV_FONT_DEFAULT, 0);
     lv_obj_set_style_text_color(modeLabel, lv_color_hex(COL_STATUS_TEXT), 0);
     lv_obj_set_style_text_opa(modeLabel, LV_OPA_COVER, 0);
-    lv_obj_align(modeLabel, LV_ALIGN_LEFT_MID, 8, 0);
+    lv_obj_align(modeLabel, LV_ALIGN_RIGHT_MID, -34, 0);
 
     // Centre: title
     lv_obj_t* title = lv_label_create(bar);
@@ -379,6 +398,12 @@ void MainMenu::buildStatusBar() {
     lv_obj_set_style_text_opa(title, LV_OPA_COVER, 0);
     lv_obj_set_style_text_letter_space(title, 1, 0);
     lv_obj_align(title, LV_ALIGN_CENTER, 0, 0);
+
+    _modifierLabel = lv_label_create(bar);
+    lv_label_set_text(_modifierLabel, "");
+    lv_obj_set_style_text_font(_modifierLabel, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(_modifierLabel, lv_color_hex(COL_STATUS_TEXT), 0);
+    lv_obj_align(_modifierLabel, LV_ALIGN_LEFT_MID, 8, 0);
 
     // Right: battery
     lv_obj_t* batt = lv_label_create(bar);

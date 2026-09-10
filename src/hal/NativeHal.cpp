@@ -84,6 +84,9 @@
 
 #ifdef NATIVE_SIM
 
+#ifdef __APPLE__
+#include <malloc/malloc.h>
+#endif
 #include <SDL2/SDL.h>
 #include <lvgl.h>
 #include <cstdio>
@@ -115,6 +118,8 @@
 #include "../input/KeyCodes.h"
 #include "../input/LvglKeypad.h"
 #include "../input/KeyboardManager.h"
+#include "../input/KeySemanticResolver.h"
+#include "../input/generated/ProductionKeypadMap.generated.h"
 #include "../apps/CalculationApp.h"
 #include "../apps/CalculusApp.h"
 #include "../apps/EquationsApp.h"
@@ -614,6 +619,12 @@ static KeyCode scriptNameToKeyCode(const std::string& raw)
     // cycle Data->Stats->Graph tabs (StatisticsApp.cpp:532); on the Data tab
     // LEFT/RIGHT are column nav, so GRAPH is the only key that reaches a computed
     // tab. Needed by statistics_data_smoke.numos (Phase 6C). Emulator-only.
+    if (n == "var") return KeyCode::VAR;
+    if (n == "square") return KeyCode::SQUARE;
+    if (n == "physical_frac") return KeyCode::FRAC;
+    if (n == "divide") return KeyCode::DIVIDE;
+    if (n == "toolbox" || n == "tools") return KeyCode::TOOLBOX;
+    if (n == "steps") return KeyCode::SHOW_STEPS;
     if (n == "graph")                         return KeyCode::GRAPH;
     if (n == "x" || n == "varx")              return KeyCode::VAR_X;
     if (n == "y" || n == "vary")              return KeyCode::VAR_Y;
@@ -1783,7 +1794,7 @@ static bool saveScreenshotPPM(const char* path)
 // exit != 0) para no ejecutar a medias y capturar un estado erroneo.
 // ════════════════════════════════════════════════════════════════════════════
 enum class ScriptCmdType : uint8_t {
-    Wait, Key, KeyDown, KeyUp, Screenshot, Log,
+    Wait, Key, KeyDown, KeyUp, KeyRepeat, Screenshot, Log,
     OpenApp,               // open_app NAME  (Phase 5A: lanza app por nombre)
     // Phase 4B-C: aserciones semanticas (sin OCR, sin pixeles). Comparan el
     // estado de la app activa / el resultado calculado por CalculationApp.
@@ -1824,6 +1835,16 @@ enum class ScriptCmdType : uint8_t {
     AssertCalcResultKind,      // assert_calc_result_kind structured|text_fallback|none
     AssertCalcStatus,          // assert_calc_status ok|undefined|parse_error|evaluation_error|unsupported|out_of_memory
     AssertCalcExact,           // assert_calc_exact TEXT (igualdad exacta con exactText)
+    AssertModifier,
+    ProductionModifier,
+    AssertModifierBadge,
+    CalculusSemantic,
+    AssertCalculusState,
+    AssertCalculusFocus,
+    AssertCalculusLayout,
+    AssertCalculusEquivalent,
+    CalculusProbe,
+    AssertCalculusClosed,
     AssertCalculusEngine,
     AssertCalculusStatus,
     AssertCalculusResultKind,
@@ -2011,7 +2032,7 @@ static bool loadScript(const char* path)
             sc.type  = ScriptCmdType::Wait;
             sc.waitN = n;
         }
-        else if (lc == "key" || lc == "keydown" || lc == "keyup") {
+        else if (lc == "key" || lc == "keydown" || lc == "keyup" || lc == "keyrepeat") {
             std::string name, extra;
             if (!(iss >> name)) return scriptErr(path, lineNo, "key/keydown/keyup requieren un NOMBRE de tecla");
             if (iss >> extra)   return scriptErr(path, lineNo, "demasiados argumentos para una tecla");
@@ -2019,6 +2040,7 @@ static bool loadScript(const char* path)
             if (kc == KeyCode::NONE) return scriptErr(path, lineNo, "nombre de tecla desconocido");
             sc.type = (lc == "key")     ? ScriptCmdType::Key
                     : (lc == "keydown") ? ScriptCmdType::KeyDown
+                    : (lc == "keyrepeat") ? ScriptCmdType::KeyRepeat
                                         : ScriptCmdType::KeyUp;
             sc.key  = kc;
         }
@@ -2302,6 +2324,29 @@ static bool loadScript(const char* path)
             sc.strArg = rest;
         }
         // ── GIAC-C01: Grapher engine probes (append-only) ────────────────
+        else if (lc == "production_modifier" || lc == "assert_modifier_badge") {
+            if (!(iss >> sc.strArg)) return scriptErr(path,lineNo,"value required");
+            if (lc == "production_modifier" && sc.strArg != "shift" && sc.strArg != "alpha")
+                return scriptErr(path,lineNo,"shift or alpha required");
+            sc.type = lc == "production_modifier" ? ScriptCmdType::ProductionModifier : ScriptCmdType::AssertModifierBadge;
+        }
+        else if (lc == "assert_modifier" || lc == "calculus_semantic") {
+            if (!(iss >> sc.strArg)) return scriptErr(path,lineNo,"value required");
+            sc.type = lc == "assert_modifier" ? ScriptCmdType::AssertModifier : ScriptCmdType::CalculusSemantic;
+        }
+        else if (lc == "assert_calculus_layout" || lc == "calculus_probe" || lc == "assert_calculus_closed") {
+            sc.type = lc == "calculus_probe" ? ScriptCmdType::CalculusProbe :
+                lc == "assert_calculus_closed" ? ScriptCmdType::AssertCalculusClosed : ScriptCmdType::AssertCalculusLayout;
+        }
+        else if (lc == "assert_calculus_state" || lc == "assert_calculus_focus" || lc == "assert_calculus_equivalent") {
+            std::string value;
+            std::getline(iss, value);
+            auto begin = value.find_first_not_of(" \t");
+            if (begin == std::string::npos) return scriptErr(path, lineNo, "calculus assertion requires a value");
+            sc.strArg = value.substr(begin);
+            sc.type = lc == "assert_calculus_state" ? ScriptCmdType::AssertCalculusState :
+                lc == "assert_calculus_focus" ? ScriptCmdType::AssertCalculusFocus : ScriptCmdType::AssertCalculusEquivalent;
+        }
         else if (lc == "assert_calculus_engine" ||
                  lc == "assert_calculus_status" ||
                  lc == "assert_calculus_result_kind" ||
@@ -2756,6 +2801,9 @@ static void scriptStepBegin()
             break;
         case ScriptCmdType::KeyDown:
             dispatchKey(sc.key, KeyAction::PRESS, true);
+            break;
+        case ScriptCmdType::KeyRepeat:
+            dispatchKey(sc.key, KeyAction::REPEAT, true);
             break;
         case ScriptCmdType::KeyUp:
             dispatchKey(sc.key, KeyAction::RELEASE, false);
@@ -3327,6 +3375,76 @@ static void scriptStepBegin()
             break;
         }
 
+        case ScriptCmdType::ProductionModifier: {
+            // Real production resolver consumes these events before app input.
+            const auto result = numos::input::KeySemanticResolver::resolve(
+                sc.strArg == "shift" ? KeyCode::SHIFT : KeyCode::ALPHA,
+                numos::input::InputContext::Math, KeyAction::PRESS);
+            if (result.dispatch) assertFail(sc.line,"modifier unexpectedly dispatched");
+            break;
+        }
+        case ScriptCmdType::AssertModifierBadge: {
+            const char* text = g_mode == AppMode::MENU && g_menu
+                ? g_menu->debugModifierText() : ui::StatusBar::debugActiveModifierText();
+            const std::string expected = sc.strArg == "none" ? "" :
+                sc.strArg == "S_A" ? "S A" : sc.strArg;
+            const bool fits = g_mode == AppMode::MENU && g_menu
+                ? g_menu->debugModifierHeaderFits() : ui::StatusBar::debugActiveModifierHeaderFits();
+            if (expected == text && fits) assertPass(sc.line,"visible modifier badge " + sc.strArg);
+            else assertFail(sc.line,"modifier badge mismatch: " + std::string(text));
+            break;
+        }
+        case ScriptCmdType::AssertModifier: {
+            const auto& km = vpam::KeyboardManager::instance();
+            const std::string actual = km.isShift() ? "shift" : km.isAlpha() ? "alpha" : "none";
+            if (actual == sc.strArg) assertPass(sc.line,"modifier " + actual);
+            else assertFail(sc.line,"modifier " + actual + " expected " + sc.strArg);
+            break;
+        }
+        case ScriptCmdType::CalculusSemantic: {
+            using numos::input::SemanticId;
+            if (g_mode != AppMode::CALCULUS) { assertFail(sc.line,"Calculus required"); break; }
+            SemanticId id = sc.strArg == "asin" ? SemanticId::asin :
+                sc.strArg == "acos" ? SemanticId::acos :
+                sc.strArg == "atan" ? SemanticId::atan :
+                sc.strArg == "pow_e" ? SemanticId::pow_e :
+                sc.strArg == "alpha_A" ? SemanticId::alpha_A : SemanticId::none;
+            if (id == SemanticId::none) { assertFail(sc.line,"unknown Calculus semantic"); break; }
+            // Production resolver consumes one-shot modifiers before dispatch.
+            vpam::KeyboardManager::instance().consumeModifier();
+            KeyEvent event{}; event.code=KeyCode::NONE; event.action=KeyAction::PRESS;
+            event.semanticId=static_cast<uint16_t>(id);
+            g_calculusApp->handleKey(event);
+            break;
+        }
+        case ScriptCmdType::CalculusProbe: {
+            auto countObjects = [](auto&& self, lv_obj_t* obj) -> unsigned {
+                if (!obj) return 0;
+                unsigned n = 1;
+                for (uint32_t i=0;i<lv_obj_get_child_count(obj);++i) n += self(self,lv_obj_get_child(obj,i));
+                return n;
+            };
+            unsigned timers=0;
+            for (auto* t=lv_timer_get_next(nullptr); t; t=lv_timer_get_next(t)) ++timers;
+            lv_mem_monitor_t memory{}; lv_mem_monitor(&memory);
+            size_t heap=0;
+#ifdef __APPLE__
+            malloc_statistics_t stats{}; malloc_zone_statistics(nullptr,&stats); heap=stats.size_in_use;
+#endif
+            auto giac = numos::GiacEngine::instance().runtimeDiagnostics();
+            std::printf("CALCULUS_PROBE|app=%s|objects=%u|timers=%u|pool_total=%zu|pool_free=%zu|heap=%zu|handles=%u\n",
+                activeAppName(), countObjects(countObjects,lv_screen_active()), timers,
+                memory.total_size, memory.free_size, heap, giac.liveRetainedHandles);
+            break;
+        }
+        case ScriptCmdType::AssertCalculusClosed:
+            if (g_calculusApp && !g_calculusApp->isActive()) assertPass(sc.line,"Calculus closed");
+            else assertFail(sc.line,"Calculus retained after HOME");
+            break;
+        case ScriptCmdType::AssertCalculusState:
+        case ScriptCmdType::AssertCalculusFocus:
+        case ScriptCmdType::AssertCalculusLayout:
+        case ScriptCmdType::AssertCalculusEquivalent:
         case ScriptCmdType::AssertCalculusEngine:
         case ScriptCmdType::AssertCalculusStatus:
         case ScriptCmdType::AssertCalculusResultKind:
@@ -3341,7 +3459,11 @@ static void scriptStepBegin()
                 break;
             }
             const char* actual = nullptr;
-            if (sc.type == ScriptCmdType::AssertCalculusEngine)
+            if (sc.type == ScriptCmdType::AssertCalculusState)
+                actual = g_calculusApp->debugStateName();
+            else if (sc.type == ScriptCmdType::AssertCalculusFocus)
+                actual = g_calculusApp->debugFocusName();
+            else if (sc.type == ScriptCmdType::AssertCalculusEngine)
                 actual = g_calculusApp->debugEngineName();
             else if (sc.type == ScriptCmdType::AssertCalculusStatus)
                 actual = g_calculusApp->debugStatusName();
@@ -3352,7 +3474,13 @@ static void scriptStepBegin()
             else if (sc.type == ScriptCmdType::AssertCalculusOperation)
                 actual = g_calculusApp->debugOperationName();
 
-            if (sc.type == ScriptCmdType::AssertCalculusResultExact) {
+            if (sc.type == ScriptCmdType::AssertCalculusLayout) {
+                if (g_calculusApp->debugLayoutFits()) assertPass(sc.line,"Calculus layout fits");
+                else assertFail(sc.line,"Calculus layout outside parent bounds");
+            } else if (sc.type == ScriptCmdType::AssertCalculusEquivalent) {
+                if (g_calculusApp->debugResultEquivalent(sc.strArg)) assertPass(sc.line,"Calculus equivalent " + sc.strArg);
+                else assertFail(sc.line,"Calculus not equivalent: " + g_calculusApp->debugExactText());
+            } else if (sc.type == ScriptCmdType::AssertCalculusResultExact) {
                 const std::string& exact = g_calculusApp->debugExactText();
                 if (sc.strArg == exact)
                     assertPass(sc.line,
@@ -3742,6 +3870,8 @@ static void emulatorRunFrame()
         if (g_mode == AppMode::EQUATIONS && g_equationsApp) {
             g_equationsApp->update();
         }
+        if (g_menu) g_menu->refreshModifier();
+        ui::StatusBar::refreshActiveModifier();
         lv_timer_handler();
         if (g_pointerReleasePending && g_pointerPressObserved) {
             g_pointerReleasePending = false;

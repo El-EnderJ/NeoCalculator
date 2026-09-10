@@ -26,6 +26,7 @@
  */
 
 #include "StatusBar.h"
+#include "ModifierBadge.h"
 #include "../input/KeyboardManager.h"
 #include "../math/MathEvaluator.h"   // g_angleMode, AngleMode
 
@@ -39,15 +40,28 @@
 
 namespace ui {
 
-#ifdef NATIVE_SIM
 StatusBar* StatusBar::s_active = nullptr;
 
+#ifdef NATIVE_SIM
 const char* StatusBar::debugActiveAngleText() {
     if (s_active && s_active->_angleLabel)
         return lv_label_get_text(s_active->_angleLabel);
     return "";
 }
+const char* StatusBar::debugActiveModifierText() {
+    return s_active && s_active->_modLabel
+        ? lv_label_get_text(s_active->_modLabel) : "";
+}
+bool StatusBar::debugActiveModifierHeaderFits() {
+    return s_active && modifierHeaderFits(s_active->_modLabel);
+}
 #endif
+
+void StatusBar::refreshActiveModifier() {
+    if (s_active && s_active->_bar &&
+        lv_obj_get_screen(s_active->_bar) == lv_screen_active())
+        s_active->updateModifier();
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // create() — Construye la jerarquía de widgets LVGL
@@ -72,7 +86,7 @@ void StatusBar::create(lv_obj_t* parent) {
     lv_label_set_text(_clockLabel, "00:00");
     lv_obj_set_style_text_font(_clockLabel, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(_clockLabel, lv_color_hex(COL_TEXT), LV_PART_MAIN);
-    lv_obj_align(_clockLabel, LV_ALIGN_LEFT_MID, 6, 0);
+    lv_obj_align(_clockLabel, LV_ALIGN_RIGHT_MID, -70, 0);
 
     // ── Título de la app (centrado) ───────────────────────────────────
     _titleLabel = lv_label_create(_bar);
@@ -81,12 +95,12 @@ void StatusBar::create(lv_obj_t* parent) {
     lv_obj_set_style_text_color(_titleLabel, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(_titleLabel, LV_ALIGN_CENTER, 0, 0);
 
-    // ── Indicador de modificador (a la derecha del título) ────────────
+    // Left modifier slot; title remains centered and clock sits beside RAD.
     _modLabel = lv_label_create(_bar);
     lv_label_set_text(_modLabel, "");
     lv_obj_set_style_text_font(_modLabel, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(_modLabel, lv_color_hex(0xFFD700), LV_PART_MAIN);  // Amarillo dorado
-    lv_obj_align(_modLabel, LV_ALIGN_RIGHT_MID, -80, 0);
+    lv_obj_align(_modLabel, LV_ALIGN_LEFT_MID, 6, 0);
 
     // ── Modo angular (antes de batería) ───────────────────────────────
     _angleLabel = lv_label_create(_bar);
@@ -151,9 +165,7 @@ void StatusBar::create(lv_obj_t* parent) {
     }
 #endif
 
-#ifdef NATIVE_SIM
     s_active = this;   // la barra recién creada pertenece a la app activa
-#endif
 
     // Refresco inicial
     update();
@@ -166,9 +178,7 @@ void StatusBar::create(lv_obj_t* parent) {
 void StatusBar::destroy() {
     // Los widgets LVGL son hijos de la pantalla padre;
     // se destruyen con ella. Sólo limpiamos punteros.
-#ifdef NATIVE_SIM
     if (s_active == this) s_active = nullptr;
-#endif
     _bar        = nullptr;
     _clockLabel = nullptr;
     _titleLabel = nullptr;
@@ -248,8 +258,8 @@ void StatusBar::updateClock() {
 void StatusBar::updateModifier() {
     if (!_modLabel) return;
 
-    auto& km = vpam::KeyboardManager::instance();
-    const char* txt = km.indicatorText();
+    const char* txt = modifierBadgeText();
+    if (std::strcmp(lv_label_get_text(_modLabel), txt) == 0) return;
     lv_label_set_text(_modLabel, txt);
 }
 
@@ -300,4 +310,3 @@ void StatusBar::updateBatteryIcon() {
 }
 
 } // namespace ui
-

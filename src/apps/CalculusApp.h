@@ -14,34 +14,11 @@
  */
 
 /**
- * CalculusApp.h — Unified Symbolic Calculus App for NumOS.
- *
- * Phase 4: Unified Calculus (Derivatives + Integrals) in one app.
- *
- * LVGL-native app with states:
- *   INPUT → COMPUTING → RESULT → STEPS
- *
- * Modes (selectable via tabs):
- *   DERIVATIVE — first derivative through Giac
- *   INTEGRAL   — indefinite integral through Giac
- *
- * Normal pipeline:
- *   authored MathAST → CalculationEngine controlled serializer →
- *   GiacEngine typed calculus request → structured MathAST or exact-text
- *   fallback. Native output is never displayed as the primary answer.
- *
- * Features:
- *   - Giac-authoritative symbolic differentiation and integration
- *   - Fail-closed native educational steps
- *   - Tab-based mode switching (d/dx ↔ ∫dx) via F1/F2 or GRAPH key
- *   - Automatic simplification (0+x→x, 1·x→x, x^1→x, etc.)
- *   - 2D rendering of result via MathCanvas (VPAM)
- *   - Step logger showing rules applied
- *   - Function key support (sin, cos, tan, ln, log, √, π, e)
- *   - Dynamic input height adapting to expression content
- *   - PSRAM arena-based memory (no heap fragmentation)
- *
- * Part of: NumOS CAS — Phase 4 (Unified Calculus App)
+ * CALCULUS-APP-REBUILD-01 — physical-keypad calculus at 320 x 240.
+ * VPAM authored input -> Giac command semantics -> structured NumOS result.
+ * First derivative and indefinite integral; native steps are optional,
+ * verified by Giac, and never used as an answer fallback.
+ * Editing has explicit editor/mode focus; results and steps use bounded views.
  */
 
 #pragma once
@@ -86,6 +63,10 @@ public:
     const std::string& debugExactText() const;
     bool debugResultNear(double expected, double epsilon) const;
 #ifdef NATIVE_SIM
+    const char* debugStateName() const;
+    const char* debugFocusName() const;
+    bool debugResultEquivalent(const std::string& expected) const;
+    bool debugLayoutFits() const;
     void debugForceTutorDisagreement(bool enabled) {
         _debugForceTutorDisagreement = enabled;
     }
@@ -95,7 +76,7 @@ private:
     // ── App states ───────────────────────────────────────────────────
     enum class State : uint8_t {
         EDITING,    ///< Expression input with mode tabs
-        COMPUTING,  ///< Computing (spinner)
+        COMPUTING,  ///< Computing (bounded busy label)
         RESULT,     ///< Result display (derivative or antiderivative)
         STEPS       ///< Step-by-step view
     };
@@ -123,8 +104,8 @@ private:
     ui::StatusBar   _statusBar;
 
     // Mode tabs
-    lv_obj_t*       _tabDerivative;  ///< "d/dx" tab button
-    lv_obj_t*       _tabIntegral;    ///< "∫dx" tab button
+    lv_obj_t*       _tabDerivative;  ///< Derivative mode
+    lv_obj_t*       _tabIntegral;    ///< Integral mode
 
     // INPUT state
     lv_obj_t*       _inputContainer;
@@ -135,15 +116,13 @@ private:
     vpam::NodeRow*     _inputRow;
     vpam::CursorController _inputCursor;
 
-    // COMPUTING state (loading spinner)
+    // COMPUTING state (synchronous, one busy label)
     lv_obj_t*       _computingContainer;
-    lv_obj_t*       _computingSpinner;
     lv_obj_t*       _computingLabel;
 
     // RESULT state
     lv_obj_t*       _resultContainer;
     lv_obj_t*       _resultTitle;
-    lv_obj_t*       _resultLabel;    ///< "f'(x) =" or "F(x) =" label
     lv_obj_t*       _resultFallback; ///< Labelled exact Giac text fallback
     lv_obj_t*       _resultHint;
     vpam::MathCanvas   _resultCanvas;  ///< Rendered result
@@ -169,6 +148,12 @@ private:
         vpam::MathCanvas canvas;     ///< LVGL widget for 2D rendering
     };
     std::vector<std::unique_ptr<StepRenderData>> _stepRenderers;
+
+    lv_obj_t* _inputPlaceholder = nullptr;
+    lv_obj_t* _originalViewport = nullptr;
+    lv_obj_t* _resultSeparator = nullptr;
+    lv_obj_t* _resultViewport;
+    bool _modeFocused;
 
     // ── App state ────────────────────────────────────────────────────
     State    _state;

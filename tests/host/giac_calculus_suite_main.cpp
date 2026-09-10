@@ -122,6 +122,46 @@ int main() {
               equivalent(exponentialIntegral, "exp(x)"),
           "integrate-exp", exponentialIntegral.exactText);
 
+    // CALCULUS-APP-REBUILD-01 / gauntlet F7: command-level parity and
+    // exact antiderivative equivalence, including Giac's branch semantics.
+    const char* integrands[] = {"x", "x^2", "sin(x)", "cos(x)",
+        "sqrt(x)", "x*sqrt(x)", "sqrt(x+1)", "x^2*sqrt(x)",
+        "sqrt(2*x+3)", "sqrt(x^2+1)"};
+    for (const char* input : integrands) {
+        auto result = calculus(CalculusOperation::IntegrateIndefinite, input);
+        const std::string command = std::string("integrate(") + input + ",x)";
+        auto canonical = engine.evaluate(command.c_str());
+        const std::string label = std::string("F7-command-parity-") + input;
+        check(result.ok() && !result.unevaluated && result.hasTree &&
+                  canonical.ok() && equivalent(result, canonical.exactText.c_str()),
+              label.c_str(), result.exactText);
+        auto derivativeCheck = calculus(CalculusOperation::Differentiate, result.exactText);
+        check(!result.unevaluated && equivalent(derivativeCheck, input),
+              (std::string("F7-primitive-derivative-") + input).c_str(), derivativeCheck.exactText);
+    }
+    const char* derivativeInputs[] = {"sin(x)", "cos(x)", "ln(x)", "exp(x)",
+        "x*sin(x)", "sqrt(x)", "(x^2+1)/(x+1)"};
+    const char* derivatives[] = {"cos(x)", "-sin(x)", "1/x", "exp(x)",
+        "sin(x)+x*cos(x)", "1/(2*sqrt(x))", "(x^2+2*x-1)/(x+1)^2"};
+    for (size_t i=0; i<7; ++i) {
+        auto result = calculus(CalculusOperation::Differentiate, derivativeInputs[i]);
+        check(!result.unevaluated && equivalent(result, derivatives[i]),
+              (std::string("rebuild-derivative-")+derivativeInputs[i]).c_str(), result.exactText);
+    }
+
+    // Integration protects its variable, retains the shared context, and
+    // restores that context even when Giac rejects the integrand's domain.
+    check(engine.evaluate("x:=7").ok(), "context-bind-x");
+    auto boundVariable = calculus(CalculusOperation::IntegrateIndefinite, "sqrt(x)");
+    auto boundCanonical = engine.evaluate("integrate(sqrt(x),x)");
+    check(boundVariable.ok() && !boundVariable.unevaluated && boundCanonical.ok() &&
+              boundVariable.exactText == boundCanonical.exactText,
+          "F7-bound-variable-command-parity", boundVariable.exactText + "|canonical=" + boundCanonical.exactText);
+    auto domainCheck = calculus(CalculusOperation::IntegrateIndefinite, "0/0");
+    check(domainCheck.status == MathEngineStatus::Undefined &&
+              engine.evaluate("x").exactText == "7", "context-restored-after-domain-error");
+    engine.evaluate("purge(x)");
+
     auto unevaluated = calculus(
         CalculusOperation::IntegrateIndefinite, "f(x)");
     check(unevaluated.ok() && unevaluated.unevaluated &&
@@ -133,9 +173,12 @@ int main() {
           unevaluated.exactText + "|" + unevaluated.diagnostic);
     auto infinity = calculus(
         CalculusOperation::Differentiate, "x*infinity");
-    check(infinity.ok() &&
-              infinity.exactText.find("infinity") != std::string::npos,
-          "infinity-preserved", infinity.exactText);
+    // Command semantics simplify x*infinity before differentiation. Preserve
+    // Giac's decision instead of the old unevaluated-input kernel behavior.
+    const auto canonicalInfinity = engine.evaluate("diff(x*infinity,x)");
+    check(infinity.ok() && canonicalInfinity.ok() &&
+              infinity.exactText == canonicalInfinity.exactText,
+          "infinity-command-parity", infinity.exactText);
     auto singular = calculus(
         CalculusOperation::IntegrateIndefinite, "1/(x-x)");
     check(!singular.ok() || singular.unevaluated ||

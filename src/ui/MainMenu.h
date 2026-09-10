@@ -46,6 +46,7 @@ public:
     // ── Lifecycle ────────────────────────────────────────────────────────
     void create();
     void load();
+    void refreshModifier();
 
     // ── Input ────────────────────────────────────────────────────────────
     void setLaunchCallback(std::function<void(int)> cb);
@@ -74,12 +75,15 @@ public:
     //   * debugCardNameById()     — canonical card name for an id, or nullptr if the
     //                               id is out of range (for friendly diagnostics).
     int                debugFocusedCardId() const { return focusedCardId(); }
+    const char* debugModifierText() const;
+    bool debugModifierHeaderFits() const;
     bool               debugFocusedCardCenter(int& x, int& y) const;
     static int         debugResolveCardToken(const char* token);
     static const char* debugCardNameById(int id);
 #endif
 
 private:
+    lv_obj_t* _modifierLabel = nullptr;
     // ── App descriptor ───────────────────────────────────────────────────
     struct AppEntry {
         int         id;

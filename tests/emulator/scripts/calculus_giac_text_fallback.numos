@@ -14,5 +14,5 @@ assert_calculus_engine giac
 assert_calculus_operation integrate_indefinite
 assert_calculus_status ok
 assert_calculus_result_kind structured
-assert_calculus_result_exact i/2*sqrt(pi)*erf((-i)*x)
+assert_calculus_equivalent i/2*sqrt(pi)*erf((-i)*x)
 assert_calculus_tutor_status unavailable

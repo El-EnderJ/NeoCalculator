@@ -379,6 +379,11 @@ void SystemApp::update() {
         handleKey(ev);
     }
 
+    // Physical SHIFT/ALPHA are consumed by the resolver before app dispatch.
+    // Refresh from the authoritative state; unchanged text does no LVGL work.
+    _mainMenu.refreshModifier();
+    ui::StatusBar::refreshActiveModifier();
+
     // CalculationApp es ahora LVGL-native: LVGL maneja su renderizado
     // via lv_timer_handler() en main.cpp. No se llama render().
     if (_mode == Mode::APP_CALCULATION) {

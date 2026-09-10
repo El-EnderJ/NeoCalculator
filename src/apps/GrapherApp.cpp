@@ -1578,24 +1578,34 @@ void GrapherApp::showTemplates() {
     lv_obj_remove_flag(_tplModal, LV_OBJ_FLAG_SCROLLABLE);
 
     // Card in center
-    int cardW = 260, cardH = 180;
-    int cx = (SCREEN_W - cardW) / 2, cy = (SCREEN_H - cardH) / 2;
+    int cardW = 292, cardH = 208;
+    int cx = (SCREEN_W - cardW) / 2, cy = BAR_H + 1;
     lv_obj_t* card = makeContainer(_tplModal, cx, cy, cardW, cardH, COL_BG);
     lv_obj_set_style_radius(card, 12, LV_PART_MAIN);
     lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(card, lv_color_hex(COL_ROW_BRD), LV_PART_MAIN);
 
     // Title
-    makeLabel(card, cardW / 2 - 40, 6, "Templates", 0x333333, &stix_math_18);
+    auto* title = makeLabel(card, 0, 8, "Templates", 0x333333, &lv_font_montserrat_14);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+    auto* list = makeContainer(card, 8, 32, cardW - 16, 150, COL_BG, true);
+    lv_obj_set_scroll_dir(list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(list, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(list, 28, LV_PART_MAIN);
+    makeLabel(card, 12, 188, "UP/DOWN Select    EXE Insert    AC Close",
+              0x666666, &lv_font_montserrat_10);
 
     // Create template row containers (UI shells) immediately
     _tplCount = NUM_TEMPLATES;
-    int rowH = 22, startY = 30;
+    int rowH = 28;
     _tplCardW = cardW;
     _tplRowH = rowH;
     for (int i = 0; i < _tplCount && i < 6; ++i) {
-        _tplRows[i] = makeContainer(card, 8, startY + i * (rowH + 2),
-                                     cardW - 16, rowH, COL_BG);
+        _tplRows[i] = makeContainer(list, 0, 0,
+                                     cardW - 20, rowH, COL_BG);
         lv_obj_set_style_radius(_tplRows[i], 6, LV_PART_MAIN);
     }
 
@@ -1630,20 +1640,102 @@ void GrapherApp::loadNextTemplate() {
 
     int i = _tplLoadNext;
 
-    // Inline VPAM math previews are unusable in these compact (~20px) rows:
-    // MathCanvas vertically centers using a metric that excludes the descender,
-    // so every "y = ..." template lost its 'y' tail (it read as "v") and the
-    // fraction/trig forms overflowed the row entirely. Render each template as a
-    // clean lv_font_montserrat_14 text label of the EXACT string that ENTER
-    // inserts (TEMPLATES[i].text): no canvas, no clipping, and the preview now
-    // matches what gets inserted. Touches no renderer/MathAST code. (The unused
-    // _tplCanvas[i]/_tplAST[i] members stay null-constructed; closeTemplates'
-    // destroy()/reset() over all six slots is null-safe.)
-    makeLabel(_tplRows[i], 10, (_tplRowH - 14) / 2,
-              TEMPLATES[i].text, 0x000000, &lv_font_montserrat_14);
+    // Preview and insertion share the real template AST. Let each row own
+    // enough vertical space for its math box, including descenders/fractions.
+    _tplAST[i] = buildTemplateAST(TEMPLATES[i].text);
+    auto* root = static_cast<NodeRow*>(_tplAST[i].get());
+    _tplCanvas[i].create(_tplRows[i]);
+    _tplCanvas[i].setAutoHeightEnabled(false);
+    root->calculateLayout(_tplCanvas[i].normalMetrics());
+    const int height = std::max<int>(_tplRowH,
+        root->layout().height() + vpam::MathCanvas::VPAM_VERT_PAD + 2);
+    lv_obj_set_height(_tplRows[i], height);
+    lv_obj_set_pos(_tplCanvas[i].obj(), 0, 0);
+    lv_obj_set_size(_tplCanvas[i].obj(), _tplCardW - 20, height);
+    lv_obj_set_style_bg_opa(_tplCanvas[i].obj(), LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_tplCanvas[i].obj(), 0, LV_PART_MAIN);
+    _tplCanvas[i].setExpression(root, nullptr);
+    _tplCanvas[i].stopCursorBlink();
+    // The list owns row positions; no reads of transient/unlaid-out coordinates.
+    lv_obj_update_layout(lv_obj_get_parent(_tplRows[i]));
+    refreshTemplateViewport();
 
     _tplLoadNext++;
 }
+
+void GrapherApp::refreshTemplateViewport() {
+    if (!_tplOpen || !_tplRows[_tplIdx]) return;
+    auto* list = lv_obj_get_parent(_tplRows[_tplIdx]);
+    lv_obj_update_layout(list);
+    int scroll = lv_obj_get_scroll_y(list);
+    const int top = lv_obj_get_y(_tplRows[_tplIdx]);
+    const int bottom = top + lv_obj_get_height(_tplRows[_tplIdx]);
+    if (top < scroll) scroll = top;
+    else if (bottom > scroll + lv_obj_get_height(list)) {
+        const int minimum = bottom - lv_obj_get_height(list);
+        for (int i = 0; i <= _tplIdx; ++i) {
+            const int rowTop = lv_obj_get_y(_tplRows[i]);
+            if (rowTop >= minimum) { scroll = rowTop; break; }
+        }
+    }
+    lv_obj_scroll_to_y(list, scroll, LV_ANIM_OFF);
+    lv_obj_update_layout(list);
+    lv_area_t viewport;
+    lv_obj_get_coords(list, &viewport);
+    for (int i = 0; i < _tplCount; ++i) {
+        lv_area_t row;
+        lv_obj_get_coords(_tplRows[i], &row);
+        // Retain layout space while suppressing partial mathematical previews.
+        const bool complete = row.y1 >= viewport.y1 && row.y2 <= viewport.y2;
+        lv_obj_set_style_opa(_tplRows[i], complete ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
+    }
+}
+
+#ifdef NATIVE_SIM
+bool GrapherApp::debugTemplatePreviewLayout(int selected) {
+    if (selected < 0) {
+        if (_tplOpen || _tplModal || _tplLoadTimer) return false;
+        for (int i = 0; i < 6; ++i)
+            if (_tplAST[i] || _tplCanvas[i].obj()) return false;
+        return true;
+    }
+    if (!_tplOpen || !_tplModal || selected != _tplIdx ||
+        _tplLoadNext != _tplCount || selected >= _tplCount) return false;
+    lv_obj_update_layout(_tplModal);
+    lv_obj_t* list = lv_obj_get_parent(_tplRows[0]);
+    lv_area_t viewport;
+    lv_obj_get_coords(list, &viewport);
+    if (viewport.x1 < 0 || viewport.x2 >= SCREEN_W ||
+        viewport.y1 < BAR_H || viewport.y2 >= SCREEN_H) return false;
+    int previousBottom = -32768;
+    for (int i = 0; i < _tplCount; ++i) {
+        if (!_tplAST[i] || !_tplCanvas[i].obj()) return false;
+        auto hasType = [](auto&& self, const MathNode* node, NodeType type) -> bool {
+            if (node->type() == type) return true;
+            for (int c = 0; c < node->childCount(); ++c)
+                if (self(self, node->child(c), type)) return true;
+            return false;
+        };
+        const NodeType expected = i == 5 ? NodeType::Fraction :
+            (i == 1 || i == 4) ? NodeType::Power :
+            (i == 2 || i == 3) ? NodeType::Function : NodeType::Variable;
+        if (!hasType(hasType, _tplAST[i].get(), expected)) return false;
+        const auto& math = _tplAST[i]->layout();
+        lv_area_t row;
+        lv_obj_get_coords(_tplRows[i], &row);
+        if (row.y1 <= previousBottom || lv_obj_get_parent(_tplCanvas[i].obj()) != _tplRows[i]) return false;
+        previousBottom = row.y2;
+        const int height = row.y2 - row.y1 + 1;
+        const int width = row.x2 - row.x1 + 1;
+        if (math.height() + vpam::MathCanvas::VPAM_VERT_PAD > height ||
+            math.width + 16 > width) return false;
+        if (i == selected && (row.y1 < viewport.y1 || row.y2 > viewport.y2)) return false;
+        std::printf("GRAPH_TEMPLATE|i=%d|selected=%d|x=%d|y=%d|w=%d|h=%d|math_w=%d|ascent=%d|descent=%d\n",
+            i,selected,row.x1,row.y1,width,height,math.width,math.ascent,math.descent);
+    }
+    return true;
+}
+#endif
 
 void GrapherApp::closeTemplates() {
     // Stop lazy loading timer if still running
@@ -1704,6 +1796,7 @@ void GrapherApp::handleTemplates(const KeyEvent& ev) {
             _tplIdx--;
             lv_obj_set_style_bg_color(_tplRows[_tplIdx], lv_color_hex(COL_ROW_SEL), LV_PART_MAIN);
             lv_obj_set_style_bg_opa(_tplRows[_tplIdx], LV_OPA_COVER, LV_PART_MAIN);
+            refreshTemplateViewport();
         }
         break;
     case KeyCode::DOWN:
@@ -1713,9 +1806,12 @@ void GrapherApp::handleTemplates(const KeyEvent& ev) {
             _tplIdx++;
             lv_obj_set_style_bg_color(_tplRows[_tplIdx], lv_color_hex(COL_ROW_SEL), LV_PART_MAIN);
             lv_obj_set_style_bg_opa(_tplRows[_tplIdx], LV_OPA_COVER, LV_PART_MAIN);
+            refreshTemplateViewport();
         }
         break;
+    case KeyCode::EXE:
     case KeyCode::ENTER: {
+        if (ev.action != KeyAction::PRESS) break;
         // Insert template: build AST from template text into the slot
         int idx = _exprIdx;
         if (idx >= 0 && idx < _numFuncs && _tplIdx >= 0 && _tplIdx < _tplCount) {

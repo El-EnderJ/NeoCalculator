@@ -256,3 +256,33 @@ Ownership: MathAST parenthesis geometry and call sites; MathRenderer glyph/assem
 Validation includes 16 visual cases and 21 delimiter pairs, 660 target sizes across three nominal fonts, catalog bounds, continuous stroke coverage, nested alignment and authentic assembly cases. Run `python3 scripts/test-stretchy-parens.py --bin <emulator> --out <evidence>` plus MathEnginePhaseRegression and relevant Calculation/Calculus tests. The real PCB's ordinary, fractional, nested and tall Calculus parentheses were accepted by the user: natural shapes, aligned pairs, no clipping, gaps, malformed caps or one-sided stretching.
 
 Commit: `feat(math): use authentic STIX stretchy parentheses`.
+
+## Grapher VPAM template previews
+
+The six choices (2x+3, x²−4, sin(x), cos(x), x³, 1/x) render through MathCanvas using the same real AST builder as insertion. Power, function and fraction nodes provide mathematical layout rather than raw text labels. The bounded picker sits below the status bar; flex rows use measured math height with padding. Keyboard scrolling aligns whole rows and suppresses partially visible unselected previews. Selection remains readable. Lazy loading is bounded to six previews; EXE commits once, AC closes, and HOME tears down preview ASTs, canvases and timers.
+
+Ownership: GrapherApp.cpp/.h, scripts/test-grapher-template-previews.py, and NativeHal's template assertion enum/parser/dispatcher. The reusable memory probe belongs to the earlier Calculus change; font implementation belongs to the earlier STIX change. No unrelated Grapher refactor is included.
+
+Focused checks cover six previews, six insertion AST/numeric oracles, early close and HOME, and 50 lifecycle cycles. At x=2 the templates evaluate to 7, 0, sin(2), cos(2), 8 and 0.5 in radians. This checks semantics, not just similar-looking strings. Run `python3 scripts/test-grapher-template-previews.py --bin <emulator> --out <evidence> --cycles 50` and the Grapher replays, including the intentional negative control.
+
+The existing 64 KB native Grapher pool failure occurs during initial expression-panel construction before Templates and is reproduced by the prior binary. A separate 96 KB native test configuration passes the template matrix and 50 cycles. This 64-bit host object-size limitation is not a firmware failure; the production allocator settings are unchanged.
+
+Commit: `feat(grapher): render template previews with VPAM`.
+
+## Combined PCB acceptance and automation
+
+Production board: ESP32-S3-WROOM-1U-N16R8, 16 MB flash / 8 MB OPI PSRAM, native USB VID:PID 303A:1001, MAC 44:b1:76:a7:b7:2c. The port was rediscovered as /dev/cu.usbmodem3101. Only the normal application at 0x10000 was flashed and independently digest-verified. The flashed acceptance candidate uses 118,976 bytes static RAM / 5,464,449 bytes linked flash (app binary 5,464,816 bytes). Final committed-build figures are reported separately; embedded build identity changes at each commit.
+
+**PHYSICAL EVIDENCE — USER OBSERVED:** normal boot/display/keypad; complete Calculus layout, derivatives and exact radical integrals including F7; corrected physical mode hints; fixed centered titles and visible left modifier labels; natural ordinary/fractional/nested/tall parentheses; all six mathematical template previews; x²−4 insertion and expected parabola/roots; x² graph at the origin; physical editor controls and HOME/re-entry.
+
+**User-authorized automated completion:** after these observations, the user explicitly asked to use emulator rendering and the PCB input bridge for repetitive remaining checks, and to explain those capabilities in the final report. The emulator validates screenshots, geometry, AST structure and numeric insertion parity. The PCB bridge exercises real firmware workflows while serial telemetry reports runtime behavior. Neither emulator pixels nor bridge acknowledgements are mislabeled as a remote photograph of the LCD; bridge input also does not replace physical switch-contact testing.
+
+**SERIAL-OBSERVED / INPUT-BRIDGE EXERCISED:** 15 cycles across quadratic, sine and reciprocal insertion, Graph/Table navigation, template close/reopen and HOME, plus a final reopen; 451 acknowledged key inputs and 16 clean Grapher teardowns. After warm-up: internal free heap 144,168 bytes and largest block 102,388 bytes; PSRAM free 8,191,307–8,191,523 bytes and largest block 8,126,452 bytes; LVGL returns to 34%, high-water 75%. No sustained decline, workflow reset, panic or brownout was observed. The finite run is a sanity check, not a proof that every possible leak is absent. A USB session-opening reset before test inputs is recorded separately; one deliberate normal reset establishes the starting launcher.
+
+The acceptance gate passes under this revised mixed-evidence protocol. Exact build/flash hashes, captured serial logs, preservation patches and test summaries remain in ignored `out/physical-combined-acceptance/` and are never staged. No eFuses, security settings, partitions, filesystem, experimental display profile or 80 MHz setting were changed.
+
+## Final regression and history requirements
+
+Validate each of the three commits in a clean detached worktree at its exact SHA, then run the combined suites from final HEAD: Calculus/STIX/Templates, all Calculation/Calculus/Equations/Grapher replays, native CAS/tutor, emulator, five firmware profiles, WASM Release/Debug and browser tests, accepted golden comparison and diff checks. The completion report records exact SHAs, files/hunks, outcomes and any practical limitations.
+
+Golden comparisons keep the existing masks. The newly requested header placement and mathematical Templates are intentional visible changes; they remain review differences, not silently promoted green goldens. The known graph/trace seven-pixel body differences must remain baseline-identical outside the approved header changes. The PowerShell-only auxiliary packaging limitation and the native 64 KB Grapher limitation remain explicit. No push is authorized or performed.

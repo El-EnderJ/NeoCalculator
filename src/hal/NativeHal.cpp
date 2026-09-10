@@ -1820,6 +1820,7 @@ enum class ScriptCmdType : uint8_t {
     AssertGraphSlotValid,      // assert_graph_slot_valid SLOT
     AssertGraphSlotInvalidReason, // assert_graph_slot_invalid_reason SLOT SUBSTR...
     AssertGraphRelationOp,     // assert_graph_relation_op SLOT eq|lt|gt|le|ge
+    AssertGraphTemplates,     // native VPAM preview geometry/ownership
     AssertGraphExprText,       // assert_graph_expr_text SLOT TEXT...  (igualdad exacta)
     AssertGraphTraceState,     // assert_graph_trace_state idle|navigate|trace
     AssertGraphIntersectionCount, // assert_graph_intersection_count N  (POIs Intersection, N en waitN)
@@ -2213,6 +2214,14 @@ static bool loadScript(const char* path)
             sc.type   = ScriptCmdType::AssertGraphRelationOp;
             sc.waitN  = slot;
             sc.strArg = op;
+        }
+        else if (lc == "assert_graph_templates") {
+            std::string value;
+            if (!(iss >> value)) return scriptErr(path,lineNo,"template index or closed required");
+            if (value == "closed") sc.waitN = -1;
+            else if (value.size() == 1 && value[0] >= '0' && value[0] <= '5') sc.waitN = value[0]-'0';
+            else return scriptErr(path,lineNo,"template index 0..5 or closed required");
+            sc.type = ScriptCmdType::AssertGraphTemplates;
         }
         else if (lc == "assert_graph_expr_text") {
             std::string slotTok;
@@ -3417,6 +3426,11 @@ static void scriptStepBegin()
             g_calculusApp->handleKey(event);
             break;
         }
+        case ScriptCmdType::AssertGraphTemplates:
+            if (g_grapherApp && g_grapherApp->debugTemplatePreviewLayout(sc.waitN))
+                assertPass(sc.line,"Grapher VPAM template geometry/ownership");
+            else assertFail(sc.line,"Grapher template state/geometry mismatch");
+            break;
         case ScriptCmdType::CalculusProbe: {
             auto countObjects = [](auto&& self, lv_obj_t* obj) -> unsigned {
                 if (!obj) return 0;

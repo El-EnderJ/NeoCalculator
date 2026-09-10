@@ -62,6 +62,7 @@ public:
     }
 
 #ifdef NATIVE_SIM
+    bool debugTemplatePreviewLayout(int selected); // -1 verifies closed/fully released
     // ── Emulator-only debug accessors (GR-14 assert hooks) ────────────────
     // Read-only, allocation-free views of the model state for .numos semantic
     // asserts (assert_graph_slot_kind etc. in NativeHal). Kind tokens follow
@@ -322,6 +323,7 @@ private:
     int  exprItemCount() const;  // numFuncs + 1(Add) + 2(Plot/Table)
     void showTemplates();
     void closeTemplates();
+    void refreshTemplateViewport();
     void handleTemplates(const KeyEvent& ev);
     void refreshTemplateButtons();
     static void tplLoadTimerCb(lv_timer_t* t);  // Lazy template AST loader callback

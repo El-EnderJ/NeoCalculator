@@ -46,6 +46,9 @@ const lv_font_t* mathScriptFont();
 // ScriptScript-level font (nested superscripts/subscripts).
 const lv_font_t* mathScriptScriptFont();
 
+// Supplemental STIX parenthesis variants/assembly pieces for a math em.
+const lv_font_t* mathParenthesisFont(int16_t emSize);
+
 // Returns the nominal MATH em for a generated STIX font, falling back to the
 // LVGL line height only for unknown external fonts.
 int16_t nominalMathEmSizeForFont(const lv_font_t* font);

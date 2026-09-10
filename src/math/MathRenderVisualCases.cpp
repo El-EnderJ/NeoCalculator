@@ -250,6 +250,35 @@ NodePtr buildResultUndefinedUnevaluated() {
                op(OpKind::Add), makeUnevaluated(std::move(call)));
 }
 
+// MATH-STRETCHY-PARENS-01: independent real-AST delimiter matrix.
+NodePtr parX() { return row(makeParen(row(v('x')))); }
+NodePtr xp1() { return row(v('x'), op(OpKind::Add), n("1")); }
+NodePtr rq() { return makeRoot(row(xSquared(), op(OpKind::Add), n("1"))); }
+NodePtr parSum() { return row(makeParen(xp1())); }
+NodePtr parSin() { return row(makeFunction(FuncKind::Sin, row(v('x')))); }
+NodePtr parFrac() { return row(makeParen(frac(row(n("1")), row(v('x'))))); }
+NodePtr parFracSum() { return row(makeParen(frac(xp1(), row(v('x'),op(OpKind::Sub),n("1"))))); }
+NodePtr parRoot() { return row(makeParen(makeRoot(row(v('x'))))); }
+NodePtr parRootPower() { return row(makeParen(rq())); }
+NodePtr parTall() { return row(makeParen(frac(row(rq()), xp1()))); }
+NodePtr parTallSum() { return row(makeParen(row(n("1"),op(OpKind::Add),frac(row(rq()),row(n("2")))))); }
+NodePtr parNested() { return row(makeParen(row(makeParen(xp1())))); }
+NodePtr parNestedSin() { return row(makeParen(row(makeFunction(FuncKind::Sin, row(frac(xp1(),row(v('x')))))))); }
+NodePtr parNestedRoot() { return row(makeParen(frac(row(makeRoot(row(v('x')))),row(makeParen(xp1()))))); }
+NodePtr parLog() { return row(makeFunction(FuncKind::Ln,row(rq(),op(OpKind::Sub),v('x')))); }
+NodePtr parMixed() { return row(makeParen(row(frac(row(n("2"),op(OpKind::Mul),v('x'),op(OpKind::Mul),rq(),op(OpKind::Mul),makeParen(xp1())),row(n("2"))),op(OpKind::Sub),rq()))); }
+
+NodePtr parAssembly() {
+    return row(makeParen(frac(
+        frac(frac(row(n("1")), row(v('x'))), row(n("2"))),
+        frac(row(n("3")), row(v('x'))))));
+}
+NodePtr parAssemblyNested() {
+    return row(makeParen(row(makeParen(frac(
+        frac(frac(row(n("1")), row(v('x'))), row(n("2"))),
+        frac(row(n("3")), row(v('x'))))))));
+}
+
 static constexpr MathRenderVisualCase kCases[] = {
     { "power_2_squared", "2^2", MathStyle::TEXT, buildTwoSquared },
     { "power_x_squared", "x^2", MathStyle::TEXT, buildXSquared },
@@ -283,6 +312,22 @@ static constexpr MathRenderVisualCase kCases[] = {
     { "result_piecewise", "three branch piecewise", MathStyle::DISPLAY_STYLE, buildResultPiecewise },
     { "result_nested_piecewise_matrix", "matrix nested in piecewise", MathStyle::DISPLAY_STYLE, buildResultNestedPiecewiseMatrix },
     { "result_undefined_unevaluated", "undefined and unevaluated", MathStyle::DISPLAY_STYLE, buildResultUndefinedUnevaluated },
+    { "stretch_parX", "parX", MathStyle::TEXT, parX },
+    { "stretch_parSum", "parSum", MathStyle::TEXT, parSum },
+    { "stretch_parSin", "parSin", MathStyle::TEXT, parSin },
+    { "stretch_parFrac", "parFrac", MathStyle::TEXT, parFrac },
+    { "stretch_parFracSum", "parFracSum", MathStyle::TEXT, parFracSum },
+    { "stretch_parRoot", "parRoot", MathStyle::TEXT, parRoot },
+    { "stretch_parRootPower", "parRootPower", MathStyle::TEXT, parRootPower },
+    { "stretch_parTall", "parTall", MathStyle::TEXT, parTall },
+    { "stretch_parTallSum", "parTallSum", MathStyle::TEXT, parTallSum },
+    { "stretch_parNested", "parNested", MathStyle::TEXT, parNested },
+    { "stretch_parNestedSin", "parNestedSin", MathStyle::TEXT, parNestedSin },
+    { "stretch_parNestedRoot", "parNestedRoot", MathStyle::TEXT, parNestedRoot },
+    { "stretch_parLog", "parLog", MathStyle::TEXT, parLog },
+    { "stretch_parMixed", "parMixed", MathStyle::TEXT, parMixed },
+    { "stretch_parAssembly", "STIX assembly", MathStyle::TEXT, parAssembly },
+    { "stretch_parAssemblyNested", "Nested STIX assembly", MathStyle::TEXT, parAssemblyNested },
 };
 
 } // namespace

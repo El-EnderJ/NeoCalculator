@@ -36,6 +36,7 @@
 
 #include "../ui/MathSymbols.h"
 #include "font/MathGlyphAssembly.h"
+#include "font/StixParentheses.h"
 #include "font/stix_math_italics.h"
 
 #ifdef ARDUINO
@@ -114,6 +115,17 @@ static inline AxisDelimiterGeometry symmetricAxisDelimiterGeometry(
     return out;
 }
 
+// Parentheses enclose the child ink box, not an axis-reflected line box.
+// DelimitedSubFormulaMinHeight is not a minimum for every ordinary (x).
+static inline AxisDelimiterGeometry parenthesisGeometry(
+        const LayoutResult& content) {
+    AxisDelimiterGeometry out;
+    out.ascent = static_cast<int16_t>(layoutInkAscentPx(content) + 1);
+    out.descent = static_cast<int16_t>(layoutInkDescentPx(content) + 1);
+    out.height = static_cast<int16_t>(out.ascent + out.descent);
+    return out;
+}
+
 static inline int16_t delimiterVerticalPadPx(
         const LayoutResult& content, const FontMetrics& fm) {
     const int16_t contentMinH = MathConstantsProvider(fm.emSize).delimitedSubFormulaMinHeight();
@@ -134,6 +146,14 @@ static inline void expandDelimiterGeometryToAssembly(
 
 static inline int16_t assembledDelimiterWidthPx(
         AxisDelimiterGeometry& geom, const FontMetrics& fm, uint32_t baseCp) {
+    if (baseCp == '(' || baseCp == ')') {
+        const auto plan = stixParenthesisPlan(geom.height, fm.emSize);
+        const int16_t extra = plan.height - geom.height;
+        geom.ascent = static_cast<int16_t>(geom.ascent + (extra + 1) / 2);
+        geom.descent = static_cast<int16_t>(geom.descent + extra / 2);
+        geom.height = plan.height;
+        return plan.width;
+    }
     const int16_t glyphFallbackPx = std::max<int16_t>(
         2, std::max<int16_t>(
                DelimiterAssembler::glyphWidthPx(baseCp, fm.emSize),
@@ -663,7 +683,9 @@ void NodeParen::calculateLayout(const FontMetrics& fm) {
     const auto& cl = _content->layout();
 
     const int16_t padPx = delimiterVerticalPadPx(cl, fm);
-    AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(cl, fm, padPx);
+    AxisDelimiterGeometry geom = _delimKind == DelimKind::Paren
+        ? parenthesisGeometry(cl)
+        : symmetricAxisDelimiterGeometry(cl, fm, padPx);
     _parenWidth = assembledDelimiterWidthPx(geom, fm, leftCp());
 
     // ── Layout: [leftParen] + pad + content + pad + [rightParen] ──
@@ -731,8 +753,7 @@ void NodeFunction::calculateLayout(const FontMetrics& fm) {
     _argument->calculateLayout(fm);
     const auto& argL = _argument->layout();
 
-    AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
-        argL, fm, delimiterVerticalPadPx(argL, fm));
+    AxisDelimiterGeometry geom = parenthesisGeometry(argL);
     _parenWidth = assembledDelimiterWidthPx(geom, fm, 0x0028);
     _innerPad = std::max<int16_t>(1, _parenWidth / 3);
     _parenAscent = geom.ascent;
@@ -790,8 +811,7 @@ void NodeLogBase::calculateLayout(const FontMetrics& fm) {
     _argument->calculateLayout(fm);
     const auto& argL = _argument->layout();
 
-    AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
-        argL, fm, delimiterVerticalPadPx(argL, fm));
+    AxisDelimiterGeometry geom = parenthesisGeometry(argL);
     _parenWidth = assembledDelimiterWidthPx(geom, fm, 0x0028);
     _innerPad = std::max<int16_t>(1, _parenWidth / 3);
     _parenAscent = geom.ascent;
@@ -1811,8 +1831,7 @@ void NodeCall::calculateLayout(const FontMetrics& fm) {
         content.ascent = std::max(content.ascent, argumentLayout.ascent);
         content.descent = std::max(content.descent, argumentLayout.descent);
     }
-    AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
-        content, fm, delimiterVerticalPadPx(content, fm));
+    AxisDelimiterGeometry geom = parenthesisGeometry(content);
     _delimiterWidth = assembledDelimiterWidthPx(geom, fm, 0x0028);
     _innerPad = std::max<int16_t>(1,
         MathConstantsProvider(fm.emSize).muToPx(1));

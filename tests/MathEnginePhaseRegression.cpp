@@ -8,6 +8,7 @@
 #include "src/math/MathRenderVisualCases.h"
 #include "src/math/MathStressExpressions.h"
 #include "src/math/font/MathGlyphAssembly.h"
+#include "src/math/font/StixParentheses.h"
 #include "src/ui/MathTextNormalization.h"
 
 using namespace vpam;
@@ -479,14 +480,52 @@ static void testAcceptedPowerClearanceMatrix() {
         "2^(1/2)");
 }
 
-static void testParenHonorsDelimitedSubFormulaMinHeight() {
+static void testParenthesesEncloseInkWithoutAxisInflation() {
     FontMetrics fm = defaultFontMetrics();
-    auto paren = makeParen(rowWithNumber("1"));
+    fm.ascent = 12; fm.descent = 2;
+    auto normal = makeParen(rowWithNumber("1"));
+    normal->calculateLayout(fm);
+    check(normal->layout().height() == 18,
+          "ordinary parentheses use the normal STIX ink height, not display minimum");
+    auto root = makeRoot(makePower(rowWithNumber("2"), rowWithNumber("3")));
+    root->calculateLayout(fm);
+    const auto original = root->layout();
+    auto paren = makeParen(std::move(root));
     paren->calculateLayout(fm);
-
-    const int16_t minHeight = MathConstantsProvider(fm.emSize).delimitedSubFormulaMinHeight();
-    check(paren->layout().height() >= minHeight,
-          "NodeParen target height honors DelimitedSubFormulaMinHeight");
+    const auto plan = stixParenthesisPlan(original.height() + 2, fm.emSize);
+    const int extra = plan.height - original.height() - 2;
+    check(paren->layout().ascent == original.ascent + 1 + (extra + 1) / 2,
+          "STIX variant surplus is balanced above child ink");
+    check(paren->layout().descent == original.descent + 1 + extra / 2,
+          "STIX variant surplus is balanced below child ink");
+    auto outer = makeParen(std::move(paren));
+    outer->calculateLayout(fm);
+    const auto& child = outer->child(0)->layout();
+    check(outer->layout().height() == stixParenthesisPlan(child.height()+2, fm.emSize).height,
+          "nested parentheses select the smallest enclosing authentic tier");
+    for (int em : {8,12,18}) {
+        for (int target = 1; target <= 220; ++target) {
+            const auto p = stixParenthesisPlan(target, em);
+            const auto* ink = stixParenthesisInk(em);
+            check(p.height >= target && p.width > 0, "STIX plan encloses requested height");
+            if (p.variant < 13) {
+                check(p.height >= ink[p.variant].height && p.height >= ink[p.variant+16].height,
+                      "STIX plan encloses both font glyph boxes");
+                check(p.variant == 0 || std::max(ink[p.variant-1].height,ink[p.variant+15].height) < target,
+                      "STIX plan uses smallest available size");
+            } else {
+                check(p.height == target, "assembly fills exact requested height");
+            }
+        }
+    }
+    for (size_t i = 0; i < mathRenderVisualCaseCount(); ++i) {
+        const auto& c = mathRenderVisualCases()[i];
+        if (std::strncmp(c.id, "stretch_", 8) != 0) continue;
+        auto node = c.build();
+        node->calculateLayout(fm);
+        check(node->layout().width > 0 && node->layout().height() > 0,
+              "real-AST delimiter matrix has finite positive geometry");
+    }
 }
 
 static void testBigOpDisplayLayoutMatchesRendererGeometry() {
@@ -1059,7 +1098,7 @@ static void testMathRenderVisualCasesAreDeterministicAndLayoutValid() {
     const std::size_t count = mathRenderVisualCaseCount();
     FontMetrics fm = defaultFontMetrics();
 
-    check(count == 21, "visual verification catalog has the expected fixed size");
+    check(count == 48, "visual catalog includes delimiter variants and assembly cases");
 
     bool sawTwoSquared = false;
     bool sawXSquared = false;
@@ -2052,7 +2091,7 @@ int main() {
     testPowerPublishesVisibleInkBounds();
     testPowerExponentClearsBaseBaseline();
     testAcceptedPowerClearanceMatrix();
-    testParenHonorsDelimitedSubFormulaMinHeight();
+    testParenthesesEncloseInkWithoutAxisInflation();
     testBigOpDisplayLayoutMatchesRendererGeometry();
     testMakeRelationProducesRelationAtom();
     testDisplayLimitsHonorsOperatorMinHeightThreshold();

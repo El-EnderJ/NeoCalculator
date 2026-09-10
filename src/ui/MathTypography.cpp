@@ -64,6 +64,10 @@ const lv_font_t* mathScriptScriptFont() {
     return mathScriptScriptFontFace().font;
 }
 
+const lv_font_t* mathParenthesisFont(int16_t emSize) {
+    return emSize >= 15 ? &stix_parens_18 : emSize >= 10 ? &stix_parens_12 : &stix_parens_8;
+}
+
 int16_t nominalMathEmSizeForFont(const lv_font_t* font) {
     if (font == &stix_math_18) return kStixPrimaryMathEmPx;
     if (font == &stix_math_12) return kStixScriptMathEmPx;

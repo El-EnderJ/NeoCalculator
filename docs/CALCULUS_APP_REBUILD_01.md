@@ -244,3 +244,15 @@ Stage only exact owned paths/hunks. Build intermediate NativeHal and report blob
 `feat(calculus): rebuild calculus app for 320x240`
 
 Rework the Derivative/Integral workflow for the production display, restore physical-keypad semantics, use canonical Giac calculus commands, and add focused lifecycle and F7 regression coverage.
+
+## Authentic STIX stretchy parentheses
+
+Parentheses use source STIX Two Math outlines: the smallest fitting MATH size variant, or authentic top/extender/bottom pieces beyond the largest variant. The old synthetic parenthesis curve path is removed. Other delimiter kinds and the existing global stix_math fonts are unchanged.
+
+The old extractor omitted unencoded MATH variants. `scripts/generate-stix-parentheses.py` extracts 13 variants and three assembly pieces per side into supplemental 18/12/8 px fonts. FontTools and lv_font_conv 1.5.3 reproduce the generated files byte for byte. Shared generated raster metrics drive both layout and drawing: child ink plus clearance chooses size; actual glyph width determines spacing; straight extenders are clipped between complete caps. Rendering allocates no per-frame bitmap.
+
+Ownership: MathAST parenthesis geometry and call sites; MathRenderer glyph/assembly drawing; MathTypography accessors; StixMathFont declarations; StixParentheses/ink data; three supplemental font sources and their emulator inclusion; generator; MathRenderVisualCases; geometry and raster tests. No Grapher preview behavior is part of this typography change.
+
+Validation includes 16 visual cases and 21 delimiter pairs, 660 target sizes across three nominal fonts, catalog bounds, continuous stroke coverage, nested alignment and authentic assembly cases. Run `python3 scripts/test-stretchy-parens.py --bin <emulator> --out <evidence>` plus MathEnginePhaseRegression and relevant Calculation/Calculus tests. The real PCB's ordinary, fractional, nested and tall Calculus parentheses were accepted by the user: natural shapes, aligned pairs, no clipping, gaps, malformed caps or one-sided stretching.
+
+Commit: `feat(math): use authentic STIX stretchy parentheses`.

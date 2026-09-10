@@ -30,12 +30,17 @@
 #include <cmath>
 #include <cstring>
 #include <string>
+#ifdef NATIVE_SIM
+#include <cstdio>
+#include <cstdlib>
+#endif
 
 #include "MathSymbols.h"
 #include "MathTextNormalization.h"
 #include "MathTypography.h"
 #include "../math/font/stix_math_variants.h"
 #include "../math/font/MathGlyphAssembly.h"
+#include "../math/font/StixParentheses.h"
 
 #if defined(NUMOS_MATH_STRESS_DIAGNOSTICS) || defined(NUMOS_MATH_RENDER_TRACE_ONCE)
 #include <Arduino.h>
@@ -75,7 +80,7 @@ static void strokeSeg(lv_layer_t* layer, int16_t x1, int16_t y1,
     lv_draw_line(layer, &dsc);
 }
 
-/// Draw a delimiter using vector strokes, scaled to [yTop, yBottom].
+/// Draw a non-parenthesis delimiter using vector strokes.
 ///
 /// WHY: the NumOS stix_math subset omits the OpenType extensible-delimiter
 /// assembly glyphs (U+239B..U+23B3 for parens, brackets, braces, bars). For any
@@ -84,6 +89,7 @@ static void strokeSeg(lv_layer_t* layer, int16_t x1, int16_t y1,
 /// delimiter renders as nothing at all. This vector fallback reproduces the
 /// delimiter at any height with no font dependency, so parentheses (and the
 /// other delimiters) are always visible and correctly sized.
+/// Parentheses use the supplemental STIX font below and never enter this path.
 static void drawStrokedDelimiter(lv_layer_t* layer, int16_t x,
                                  int16_t yTop, int16_t yBottom,
                                  uint32_t delimCp, lv_color_t color,
@@ -102,40 +108,6 @@ static void drawStrokedDelimiter(lv_layer_t* layer, int16_t x,
     auto vbar = [&](int16_t vx) { strokeSeg(layer, vx, yTop, vx, yBottom, stroke, color); };
 
     switch (delimCp) {
-        case 0x0028:    // (
-        case 0x0029: {  // )
-            // Quadratic Bézier: tips at the inner edge (toward content), bulging
-            // outward at the vertical middle — a single smooth parabolic arc.
-            // A quadratic is inherently hook-free (the endpoint tangent points
-            // straight at the lone control), so the tips read clean at every
-            // size; a cubic with belly-placed controls flares the tips into
-            // little hooks on tall delimiters. Left '(' bulges left; right ')'
-            // bulges right. The belly midpoint x = 0.5·xTip + 0.5·xCtrl reaches
-            // the box edge, matching the layout's reserved width. The stroke is
-            // weight-matched to the font (see `stroke` above) so the arc no
-            // longer reads lighter than the glyphs it wraps.
-            const bool left = (delimCp == 0x0028);
-            const float midY = static_cast<float>(yTop + yBottom) * 0.5f;
-            const float xTip  = left ? static_cast<float>(x + bulge)
-                                     : static_cast<float>(x);
-            const float xCtrl = left ? static_cast<float>(x - bulge)
-                                     : static_cast<float>(x + 2 * bulge);
-            const int N = 22;
-            int16_t prevX = 0, prevY = 0;
-            for (int i = 0; i <= N; ++i) {
-                const float t  = static_cast<float>(i) / N;
-                const float mt = 1.0f - t;
-                const float bx = mt * mt * xTip + 2.0f * mt * t * xCtrl + t * t * xTip;
-                const float by = mt * mt * static_cast<float>(yTop)
-                               + 2.0f * mt * t * midY
-                               + t * t * static_cast<float>(yBottom);
-                const int16_t px = static_cast<int16_t>(bx + 0.5f);
-                const int16_t py = static_cast<int16_t>(by + 0.5f);
-                if (i > 0) strokeSeg(layer, prevX, prevY, px, py, stroke, color);
-                prevX = px; prevY = py;
-            }
-            break;
-        }
         case 0x005B:    // [
         case 0x005D: {  // ]
             const bool left = (delimCp == 0x005B);
@@ -202,6 +174,51 @@ static bool drawDelimiterGlyph(lv_layer_t* layer,
                                const lv_font_t* font,
                                int16_t emSizePx) {
     if (yBottom <= yTop || font == nullptr) return false;
+
+    if (delimCp == '(' || delimCp == ')') {
+        const auto plan = stixParenthesisPlan(yBottom - yTop, emSizePx);
+        const auto* ink = stixParenthesisInk(emSizePx);
+        const lv_font_t* parenFont = ui::mathParenthesisFont(emSizePx);
+        const uint8_t side = delimCp == '(' ? 0 : 16;
+        auto drawPiece = [&](uint8_t index, int32_t top) {
+            const auto& metric = ink[index];
+            lv_draw_letter_dsc_t dsc;
+            lv_draw_letter_dsc_init(&dsc);
+            dsc.font = parenFont;
+            dsc.color = color;
+            dsc.unicode = 0xE000 + index;
+            // Same baseline/pivot contract as drawTextBaseline. No temporary
+            // text buffer or bitmap; the glyph's antialiasing is preserved.
+            lv_point_t pos = {x + metric.advance / 2,
+                              top + metric.height + metric.yOffset};
+            lv_draw_letter(layer, &dsc, &pos);
+        };
+        if (plan.variant < 13) {
+            drawPiece(side + plan.variant, yTop);
+        } else {
+            // OpenType parts: top, extender, bottom. STIX cap connectors are
+            // 250 design units; overlap only the straight stem, never the cap.
+            const int16_t overlap = std::max<int16_t>(1, (250 * emSizePx + 500) / 1000);
+            const int32_t middleTop = yTop + ink[side + 13].height - overlap;
+            const int32_t bottomTop = yBottom - ink[side + 15].height;
+            const int32_t middleBottom = bottomTop + overlap;
+            const lv_area_t savedClip = layer->_clip_area;
+            lv_area_t band = {savedClip.x1, middleTop, savedClip.x2, middleBottom - 1};
+            lv_area_t clip = savedClip;
+            clip.y1 = std::max(savedClip.y1, band.y1);
+            clip.y2 = std::min(savedClip.y2, band.y2);
+            if (clip.y1 <= clip.y2) {
+                layer->_clip_area = clip;
+                const int16_t step = std::max<int16_t>(1, ink[side + 14].height - overlap);
+                for (int32_t top = middleTop; top < middleBottom; top += step)
+                    drawPiece(side + 14, top);
+                layer->_clip_area = savedClip;
+            }
+            drawPiece(side + 13, yTop);
+            drawPiece(side + 15, bottomTop);
+        }
+        return true;
+    }
 
     const int16_t requestedHeight = static_cast<int16_t>(yBottom - yTop);
     if ((delimCp == 0x007B || delimCp == 0x007D) &&
@@ -457,10 +474,8 @@ MathCanvas::MathCanvas()
     _fmSmall.script = &_fmScriptScript;
     _fmScriptScript.script = nullptr;
 
-    // Probe once whether the active math font actually carries the extensible
-    // delimiter assembly glyphs (U+239C is the parenthesis extender). If absent
-    // (the stix_math subset omits them), layout must hug delimiter content and
-    // the renderer draws a vector delimiter fallback — see drawStrokedDelimiter.
+    // Legacy capability probe for other delimiter kinds. Parentheses use the
+    // dedicated supplemental STIX variant/assembly fonts independently.
     if (_fontNormal) {
         lv_font_glyph_dsc_t g;
         g_delimiterAssemblyRenderable =
@@ -2015,6 +2030,13 @@ void MathCanvas::drawParenBaseline(lv_layer_t* layer, const NodeParen* node,
     int16_t yBottom = static_cast<int16_t>(yBaseline + parenL.descent);
     lv_color_t parenColor = _highlightActive ? _highlightColor : lv_color_black();
 
+#ifdef NATIVE_SIM
+    if (std::getenv("NUMOS_DELIMITER_METRICS")) {
+        const auto& c = node->content()->layout();
+        std::printf("[DELIMITER] x=%d baseline=%d contentX=%d width=%d contentA=%d contentD=%d inkA=%d inkD=%d delimA=%d delimD=%d target=%d pw=%d\n",
+            x,yBaseline,x+pw+innerPad,c.width,c.ascent,c.descent,layoutInkAscentPx(c),layoutInkDescentPx(c),parenL.ascent,parenL.descent,yBottom-yTop,pw);
+    }
+#endif
     // ── Left assembled delimiter ──
     drawDelimiterGlyph(layer, x, yTop, yBottom, node->leftCp(), parenColor, font, fm.emSize);
 
@@ -2059,6 +2081,12 @@ void MathCanvas::drawFunctionBaseline(lv_layer_t* layer, const NodeFunction* nod
     int16_t yBottom = static_cast<int16_t>(yBaseline + node->parenDescent());
     lv_color_t parenColor = _highlightActive ? _highlightColor : lv_color_black();
 
+#ifdef NATIVE_SIM
+    if (std::getenv("NUMOS_DELIMITER_METRICS")) {
+        std::printf("[DELIMITER] x=%d baseline=%d contentX=%d width=%d contentA=%d contentD=%d inkA=%d inkD=%d delimA=%d delimD=%d target=%d pw=%d\n",
+            parenX,yBaseline,parenX+parenW+innerPad,argL.width,argL.ascent,argL.descent,layoutInkAscentPx(argL),layoutInkDescentPx(argL),node->parenAscent(),node->parenDescent(),yBottom-yTop,parenW);
+    }
+#endif
     // Left assembled delimiter (always parentheses for functions)
     drawDelimiterGlyph(layer, parenX, yTop, yBottom, 0x0028, parenColor, font, fm.emSize);
 
@@ -2794,4 +2822,3 @@ void MathCanvas::drawBorderRect(lv_layer_t* layer,
 }
 
 } // namespace vpam
-

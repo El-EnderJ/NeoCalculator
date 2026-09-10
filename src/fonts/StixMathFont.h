@@ -23,6 +23,11 @@ LV_FONT_DECLARE(stix_math_18);
 LV_FONT_DECLARE(stix_math_12);
 LV_FONT_DECLARE(stix_math_8);
 
+// Supplemental, unencoded OpenType MATH parenthesis variants and parts.
+LV_FONT_DECLARE(stix_parens_18);
+LV_FONT_DECLARE(stix_parens_12);
+LV_FONT_DECLARE(stix_parens_8);
+
 #ifdef __cplusplus
 }
 #endif

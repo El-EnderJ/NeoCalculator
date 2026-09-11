@@ -1451,7 +1451,7 @@ void Fluid2DApp::autoSave() {
 
 void Fluid2DApp::saveScene(const char* name) {
 #ifdef ARDUINO
-    if (!LittleFS.begin(true)) return;
+    if (!LittleFS.begin(false)) return; // Never format as a runtime retry.
     if (!LittleFS.exists("/fluid")) {
         LittleFS.mkdir("/fluid");
     }
@@ -1482,7 +1482,7 @@ void Fluid2DApp::saveScene(const char* name) {
 
 void Fluid2DApp::loadScene(const char* name) {
 #ifdef ARDUINO
-    if (!LittleFS.begin(true)) return;
+    if (!LittleFS.begin(false)) return; // Never format as a runtime retry.
 
     char path[64];
     snprintf(path, sizeof(path), "/fluid/%s", name);
@@ -1514,7 +1514,7 @@ void Fluid2DApp::loadScene(const char* name) {
 
 void Fluid2DApp::autoLoad() {
 #ifdef ARDUINO
-    if (!LittleFS.begin(true)) return;
+    if (!LittleFS.begin(false)) return; // Never format as a runtime retry.
     if (LittleFS.exists("/fluid/autosave.f2d")) {
         loadScene("autosave.f2d");
     }

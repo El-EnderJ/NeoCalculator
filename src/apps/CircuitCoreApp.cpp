@@ -1361,7 +1361,7 @@ void CircuitCoreApp::drawMultimeter(lv_layer_t* layer, int objX, int objY) {
 
 void CircuitCoreApp::saveCircuit(const char* filename) {
 #ifdef ARDUINO
-    if (!LittleFS.begin(true)) return;
+    if (!LittleFS.begin(false)) return; // Never format as a runtime retry.
 
     // Ensure /circuits/ directory exists
     if (!LittleFS.exists("/circuits")) {
@@ -1480,7 +1480,7 @@ void CircuitCoreApp::saveCircuit(const char* filename) {
 
 void CircuitCoreApp::loadCircuit(const char* filename) {
 #ifdef ARDUINO
-    if (!LittleFS.begin(true)) return;
+    if (!LittleFS.begin(false)) return; // Never format as a runtime retry.
 
     char path[64];
     snprintf(path, sizeof(path), "/circuits/%s", filename);
@@ -1717,7 +1717,7 @@ void CircuitCoreApp::autoSave() {
 
 void CircuitCoreApp::autoLoad() {
 #ifdef ARDUINO
-    if (!LittleFS.begin(true)) return;
+    if (!LittleFS.begin(false)) return; // Never format as a runtime retry.
     if (LittleFS.exists("/circuits/autosave.dat")) {
         loadCircuit("autosave.dat");
     }

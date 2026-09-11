@@ -975,7 +975,7 @@ void NeoLanguageApp::saveToFlash() {
     if (!src) return;
 
 #if defined(ARDUINO)
-    if (!LittleFS.begin(true)) {
+    if (!LittleFS.begin(false)) { // Never format as a runtime retry.
         appendConsole("[save] LittleFS unavailable.\n");
         return;
     }
@@ -1016,7 +1016,7 @@ void NeoLanguageApp::saveToFlash() {
 
 void NeoLanguageApp::loadFromFlash() {
 #ifdef ARDUINO
-    if (!LittleFS.begin(true)) return;
+    if (!LittleFS.begin(false)) return; // Never format as a runtime retry.
     if (!LittleFS.exists(NEOLANG_FILE)) return;
     File f = LittleFS.open(NEOLANG_FILE, "r");
 #else

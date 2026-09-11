@@ -174,9 +174,12 @@ void SystemApp::begin() {
 
     // ── LittleFS: cargar variables persistidas ──
     // Done AFTER menu is ready so user sees the UI, not a black screen.
-    // Proactively create vars.dat on first boot to silence vfs_api.cpp:105.
+    // WHY: missing/unavailable records are a read failure, never a reason to
+    // create or replace user files during startup.
     if (LittleFS.begin(
-#if NUMOS_PRODUCTION_DEMO_PROFILE
+#if NUMOS_PRODUCTION_DEMO_PROFILE || NUMOS_BOARD_PROD_WROOM1U_N16R8
+            // WHY: application-only production updates must never format user
+            // storage if mounting fails. Report failure and preserve the bytes.
             false
 #else
             true
@@ -231,14 +234,10 @@ void SystemApp::begin() {
                 "[FS] mount=ok safe-mode=1 optional-state=ignored");
         }
 #else
-        if (!LittleFS.exists("/vars.dat")) {
-            auto f = LittleFS.open("/vars.dat", "w");
-            if (f) { f.write(static_cast<uint8_t>(0)); f.close(); }
-        }
         if (vpam::VariableManager::instance().loadFromFlash()) {
             Serial.println("[SYSTEM] LittleFS OK, variables loaded");
         } else {
-            Serial.println("[SYSTEM] LittleFS OK, vars.dat empty (first boot)");
+            Serial.println("[SYSTEM] LittleFS mounted; variables missing, unreadable or invalid");
         }
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
         const bool settingsLoaded = SettingsApp::loadPersistentState();

@@ -94,11 +94,12 @@ def test_recovery_and_watchdog_contracts() -> None:
     require(
         re.search(
             r"LittleFS\.begin\(\s*#if NUMOS_PRODUCTION_DEMO_PROFILE\s*"
+            r"\|\| NUMOS_BOARD_PROD_WROOM1U_N16R8\s*"
             r"false\s*#else\s*true\s*#endif\s*\)",
-            system,
+            re.sub(r"//[^\n]*", "", system),
         )
         is not None,
-        "demo no-format mount or unchanged normal mount missing",
+        "production/demo no-format mount or unchanged CAM mount missing",
     )
 
     diagnostics = (ROOT / "src/demo/DemoDiagnostics.cpp").read_text(

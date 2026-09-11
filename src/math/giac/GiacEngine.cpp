@@ -1756,6 +1756,53 @@ StructuredSolveResult runStructuredSolve(
                 return result;
             }
 
+            // EQUATIONS-APP-REBUILD-01: the pinned gsolve may return relations
+            // even for a nonlinear system (x^2=1,y=x -> 1/(2*x),1/(2*x)).
+            // A free identifier alone is not evidence of a solution family.
+            // Validate a proposed family against the original, unsimplified
+            // authored equations before allowing the AllValues classification.
+            // All substitution/evaluation remains in Giac; no user bindings.
+            struct VerificationScope {
+                giac::context* ctx;
+                bool angleWasRadians;
+                size_t quotedSize;
+                VerificationScope(giac::context* c, const std::vector<giac::gen>& vars)
+                    : ctx(c), angleWasRadians(giac::angle_radian(c)),
+                      quotedSize(c->quoted_global_vars ? c->quoted_global_vars->size() : 0) {
+                    if(ctx->quoted_global_vars)
+                        ctx->quoted_global_vars->insert(ctx->quoted_global_vars->end(),vars.begin(),vars.end());
+                    // WHY: vector growth may throw; do it before changing angle
+                    // state, since a failed constructor has no destructor.
+                    giac::angle_radian(true,ctx);
+                }
+                ~VerificationScope() {
+                    giac::angle_radian(angleWasRadians,ctx);
+                    if(ctx->quoted_global_vars) ctx->quoted_global_vars->resize(quotedSize);
+                }
+            };
+            {
+                VerificationScope scope(ctx,variables);
+                bool familyCandidate=false;
+                for(const auto& value:group.values) {
+                    int budget=kSolveWalkBudget;
+                    familyCandidate=familyCandidate || containsAnyVariable(value,variables,0,budget);
+                }
+                if(familyCandidate) for(const auto& original:equationGens) {
+                    giac::gen lhs,rhs; splitEquality(original,lhs,rhs);
+                    const giac::vecteur vars(variables.begin(),variables.end());
+                    const giac::vecteur vals(group.values.begin(),group.values.end());
+                    lhs=giac::eval(giac::subst(lhs,vars,vals,false,ctx),1,ctx);
+                    rhs=giac::eval(giac::subst(rhs,vars,vals,false,ctx),1,ctx);
+                    if(giac::is_undef(lhs) || giac::is_undef(rhs) || !exactEquivalent(lhs,rhs,ctx)) {
+                        result.status=MathEngineStatus::Unsupported;
+                        result.setKind=SolutionSetKind::Unsupported;
+                        result.groups.clear();
+                        result.diagnostic="Giac output could not be verified against the original equations; no solution set is asserted";
+                        return result;
+                    }
+                }
+            }
+
             for (auto& value : group.values) {
                 try {
                     value = giac::ratnormal(value, ctx);

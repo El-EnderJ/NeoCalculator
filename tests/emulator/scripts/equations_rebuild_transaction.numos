@@ -1,0 +1,29 @@
+# EQUATIONS-APP-REBUILD-01
+wait 200
+set_equations_complex_policy real
+open_app Equations
+wait 40
+key ENTER
+key ENTER
+key x
+key =
+key 1
+key ENTER
+key ENTER
+key AC
+key x
+key =
+key 2
+key BACK
+assert_equations equation 0 x=1
+key ENTER
+key AC
+key x
+key =
+key 2
+key ENTER
+assert_equations equation 0 x=2
+assert_equations epochs invalid
+wait 4
+assert_equations layout
+log EQUATIONS_REBUILD_DONE

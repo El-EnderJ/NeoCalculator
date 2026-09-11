@@ -100,6 +100,16 @@ public:
     /// Acceso a la fila raíz (la expresión completa)
     NodeRow* rootRow() const { return _root; }
 
+    // Select an existing slot owned by this editor (e.g. an authored root index).
+    // No ownership transfer, allocation, or alteration of the root expression.
+    bool focusSlot(NodeRow* slot) {
+        const MathNode* node = slot;
+        for (int depth = 0; node && depth <= 28; ++depth, node = node->parent()) {
+            if (node == _root) { _cur.row = slot; _cur.index = 0; return true; }
+        }
+        return false;
+    }
+
     // ── Inserción de contenido ──────────────────────────────────────────
 
     /**

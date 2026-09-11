@@ -123,6 +123,28 @@ public:
     /** Objeto LVGL subyacente */
     lv_obj_t* obj() const { return _obj; }
 
+    // Read-only last-drawn cursor geometry for an enclosing editor viewport.
+    // WHY: callers follow the renderer's actual position without duplicating
+    // fraction/script/root layout formulas. No rendering behavior changes.
+    bool cursorBounds(lv_area_t& bounds) const {
+        if (!_obj || !_cursorEditable || !_cursorCtrl) return false;
+        bounds = {_cursorX, _cursorY, _cursorX + CURSOR_WIDTH - 1,
+                  _cursorY + _cursorH - 1};
+        return true;
+    }
+
+    // Opt-in bounded scrolling for read-only Equations viewports. Existing
+    // editor auto-scroll and other apps retain their current behavior.
+    void scrollBounded(int16_t delta) {
+        if (!_obj || !_root) return;
+        const int32_t excess = _root->layout().width -
+            (lv_obj_get_width(_obj) - PADDING_LEFT - PADDING_RIGHT);
+        const int32_t limit = excess > 0 ? excess : 0;
+        const int32_t requested = int32_t(_scrollX) + delta;
+        const int32_t bounded = requested > 0 ? 0 : requested < -limit ? -limit : requested;
+        scrollBy(static_cast<int16_t>(bounded - _scrollX));
+    }
+
     /** FontMetrics para la fuente normal (STIX Two Math 18) */
     const FontMetrics& normalMetrics() const { return _fmNormal; }
 

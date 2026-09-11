@@ -1,0 +1,60 @@
+# EQUATIONS-APP-REBUILD-01
+wait 200
+set_equations_complex_policy real
+open_app Equations
+wait 40
+equations_physical 0 9
+equations_physical 0 9
+equations_physical 4 2
+equations_physical 1 8
+equations_physical 4 0
+equations_physical 4 2
+equations_physical 1 8
+equations_physical 4 1
+equations_physical 1 1
+equations_physical 1 1
+equations_physical 0 9
+equations_physical 2 5
+equations_physical 2 7
+equations_physical 0 9
+equations_physical 2 1
+equations_physical 0 9
+equations_physical 0 9
+equations_physical 4 2
+equations_physical 0 8
+equations_physical 4 0
+equations_physical 4 2
+equations_physical 1 8
+equations_physical 4 1
+equations_physical 1 1
+equations_physical 1 1
+equations_physical 0 9
+equations_physical 2 5
+equations_physical 3 8
+equations_physical 0 9
+equations_physical 2 1
+equations_physical 0 9
+equations_physical 0 9
+equations_physical 4 2
+equations_physical 1 8
+equations_physical 4 0
+equations_physical 4 2
+equations_physical 0 8
+equations_physical 4 1
+equations_physical 1 1
+equations_physical 1 1
+equations_physical 0 9
+equations_physical 2 5
+equations_physical 4 9
+equations_physical 0 9
+equations_physical 2 1
+equations_physical 0 9
+assert_equations_status ok
+assert_equations_solution_count 1
+assert_equations equivalent x 0 1
+assert_equations equivalent y 0 2
+assert_equations equivalent z 0 3
+assert_equations substitution 0
+wait 4
+assert_equations layout
+log EQUATIONS_REBUILD_DONE

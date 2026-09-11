@@ -693,6 +693,7 @@ static KeyCode scriptNameToKeyCode(const std::string& raw)
 // ════════════════════════════════════════════════════════════════════════════
 static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
 {
+    if (g_mode == AppMode::EQUATIONS && kc == KeyCode::BACK && action != KeyAction::PRESS) return;
     // Emulator parity for the demo recovery contract: BACK first unwinds the
     // app's topmost modal/state, then returns one level to the launcher.
     if (isDown && kc == KeyCode::BACK &&
@@ -1730,6 +1731,21 @@ static void cleanupFsSandbox(int exitCode)
 // ════════════════════════════════════════════════════════════════════════════
 static bool saveScreenshotPPM(const char* path)
 {
+    // Read-only, opt-in geometry evidence; also usable on the unchanged UI.
+    if (std::getenv("NUMOS_EQUATIONS_BOUNDS")) {
+        lv_obj_update_layout(lv_screen_active());
+        auto walk = [&](auto&& self, lv_obj_t* obj, unsigned depth) -> void {
+            if (depth > 16 || lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) return;
+            lv_area_t a; lv_obj_get_coords(obj, &a);
+            const char* label = lv_obj_check_type(obj, &lv_label_class)
+                ? lv_label_get_text(obj) : "";
+            std::printf("EQ_BOUNDS|depth=%u|box=%d,%d,%d,%d|text=%s\n",
+                        depth, a.x1, a.y1, a.x2, a.y2, label);
+            for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+                self(self, lv_obj_get_child(obj, i), depth + 1);
+        };
+        walk(walk, lv_screen_active(), 0);
+    }
     std::FILE* f = std::fopen(path, "wb");
     if (!f) {
         std::fprintf(stderr, "[SHOT] no se pudo abrir '%s' para escribir\n", path);
@@ -1840,6 +1856,8 @@ enum class ScriptCmdType : uint8_t {
     ProductionModifier,
     AssertModifierBadge,
     CalculusSemantic,
+    AssertEquationsRebuild,
+    EquationsPhysical,
     AssertCalculusState,
     AssertCalculusFocus,
     AssertCalculusLayout,
@@ -2333,6 +2351,11 @@ static bool loadScript(const char* path)
             sc.strArg = rest;
         }
         // ── GIAC-C01: Grapher engine probes (append-only) ────────────────
+        else if (lc == "assert_equations" || lc == "equations_physical") {
+            std::getline(iss >> std::ws, sc.strArg);
+            if (sc.strArg.empty()) return scriptErr(path,lineNo,"Equations argument required");
+            sc.type = lc == "assert_equations" ? ScriptCmdType::AssertEquationsRebuild : ScriptCmdType::EquationsPhysical;
+        }
         else if (lc == "production_modifier" || lc == "assert_modifier_badge") {
             if (!(iss >> sc.strArg)) return scriptErr(path,lineNo,"value required");
             if (lc == "production_modifier" && sc.strArg != "shift" && sc.strArg != "alpha")
@@ -3408,6 +3431,30 @@ static void scriptStepBegin()
             const std::string actual = km.isShift() ? "shift" : km.isAlpha() ? "alpha" : "none";
             if (actual == sc.strArg) assertPass(sc.line,"modifier " + actual);
             else assertFail(sc.line,"modifier " + actual + " expected " + sc.strArg);
+            break;
+        }
+        case ScriptCmdType::AssertEquationsRebuild:
+            if (g_equationsApp && g_equationsApp->debugAssert(sc.strArg)) assertPass(sc.line,"Equations " + sc.strArg);
+            else assertFail(sc.line,"Equations mismatch: " + sc.strArg);
+            break;
+        case ScriptCmdType::EquationsPhysical: {
+            if (g_mode != AppMode::EQUATIONS) { assertFail(sc.line,"Equations required"); break; }
+            std::istringstream input(sc.strArg); int row=-1,col=-1; std::string repeat;
+            input >> row >> col >> repeat;
+            const auto action = repeat == "repeat" ? KeyAction::REPEAT : KeyAction::PRESS;
+            bool found=false;
+            for (const auto& key : numos::input::kProductionKeypadMap) {
+                if (key.electricalRow != row || key.electricalColumn != col) continue;
+                found=true;
+                auto resolved=numos::input::KeySemanticResolver::resolve(key.keyCode,numos::input::InputContext::Math,action);
+                if (!resolved.dispatch) break;
+                if (resolved.code == KeyCode::HOME) { returnToMenu(); break; }
+                if (resolved.code == KeyCode::BACK) { dispatchKey(KeyCode::BACK,action,true); break; }
+                KeyEvent event{}; event.code=resolved.code; event.action=action;
+                event.row=row; event.col=col; event.semanticId=static_cast<uint16_t>(resolved.semantic); event.text=resolved.text;
+                g_equationsApp->handleKey(event); break;
+            }
+            if (!found) assertFail(sc.line,"Unknown physical matrix position");
             break;
         }
         case ScriptCmdType::CalculusSemantic: {

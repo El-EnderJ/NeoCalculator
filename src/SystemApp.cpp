@@ -668,6 +668,12 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
         return;
     }
     if (ev.code == KeyCode::BACK) {
+        // Equations owns transactional drafts in every firmware profile.
+        if (_mode == Mode::APP_EQUATIONS) {
+            if (ev.action == KeyAction::PRESS &&
+                !(_equationsApp && _equationsApp->navigateBack())) returnToMenu();
+            return;
+        }
         if (_mode != Mode::MENU) {
 #if NUMOS_PRODUCTION_DEMO_PROFILE
             if (!unwindTopmostDemoState()) returnToMenu();

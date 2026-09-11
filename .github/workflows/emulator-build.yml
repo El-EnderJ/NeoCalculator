@@ -27,6 +27,7 @@ on:
       - 'scripts/compare-ppm.py'
       - 'scripts/generate-emulator-candidates.py'
       - 'scripts/check-keycode-digit-patterns.py'
+      - 'scripts/test-equations-rebuild.py'
       - '.github/workflows/emulator-build.yml'
   pull_request:
     paths:
@@ -40,6 +41,7 @@ on:
       - 'scripts/compare-ppm.py'
       - 'scripts/generate-emulator-candidates.py'
       - 'scripts/check-keycode-digit-patterns.py'
+      - 'scripts/test-equations-rebuild.py'
       - '.github/workflows/emulator-build.yml'
   workflow_dispatch:
 
@@ -168,6 +170,9 @@ jobs:
 
       - name: Build emulator (emulator_pc)
         run: pio run -e emulator_pc
+
+      - name: Equations transactional workflow and production semantic keys
+        run: python scripts/test-equations-rebuild.py --bin .pio/build/emulator_pc/program --out out/equations-rebuild/ci --cycles 50
 
       - name: Upload Linux emulator binary
         uses: actions/upload-artifact@v4

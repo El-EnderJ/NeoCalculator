@@ -1093,6 +1093,17 @@ int main() {
                   infinite.setKind == SolutionSetKind::AllValues,
               "d01-system-dependent", infinite.rawExactText);
 
+        // The vendored gsolve can emit a non-solution symbolic relation.
+        // Refusal is honest; classifying this as AllValues is mathematically false.
+        auto nonlinear = eng.solveSystemStructured({{"x^2","1"},{"y","x"}}, {"x","y"});
+        check(nonlinear.status == MathEngineStatus::Unsupported ||
+              (nonlinear.ok() && nonlinear.setKind == SolutionSetKind::Solutions && nonlinear.groups.size()==2),
+              "equations-nonlinear-never-false-family", nonlinear.rawExactText);
+        auto cancelledDenominator=eng.solveStructured({"(x^2-1)/(x-1)","0"},"x");
+        check(cancelledDenominator.ok() && cancelledDenominator.groups.size()==1 &&
+              cancelledDenominator.groups[0].values[0].exactText=="-1",
+              "equations-original-denominator-exclusion",cancelledDenominator.rawExactText);
+
         std::vector<numos::SolveEquation> sys3 = {
             {"x+y+z", "6"}, {"2*x-y+z", "3"}, {"x+2*y-z", "2"}
         };

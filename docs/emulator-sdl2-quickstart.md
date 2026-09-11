@@ -4,6 +4,9 @@ How to build and run the **native desktop emulator** (`pio run -e emulator_pc`) 
 Windows and Linux. This is a desktop *port* of NumOS (the real LVGL/UI/math code
 compiled against an SDL2 desktop HAL) — **not** a cycle-accurate ESP32 emulator.
 
+**Controls:** [complete keyboard map](#keyboard-map-phase-3a). **Toolbox / Steps: F6;
+Back: F8; Variables: V.**
+
 ---
 
 ## Do I need an ESP32-S3?
@@ -542,7 +545,8 @@ contain spaces.
 | `assert_no_error` | (Phase 4B-C) Assert the last evaluated result has no error flag. |
 | `assert_menu_focus NAME\|ID` | (Phase 9B) Assert the **launcher** card currently focused is `NAME` (a card name, case- and space-insensitive — e.g. `Grapher`, `fluid2d`) or a decimal card `ID` (`0..N-1`). Only meaningful in MENU mode (fails otherwise). Reads the focus via an emulator-only read-only accessor; unknown name/out-of-range id is a **parse** error (`exit 2`). See [Menu navigation parity](#menu-navigation-parity-phase-9b). |
 
-**Key names** map onto existing calculator `KeyCode`s (no parallel key system):
+**Key names** map onto existing calculator `KeyCode`s (no parallel key system).
+See the [complete replay vocabulary](#complete-replay-key-names); common names include:
 
 - digits `0`–`9`; operators `+` `-` `*` `/`; `^` (= `POW`); `.` (= `DOT`); `(` `)`.
 - `ENTER`, `LEFT`, `RIGHT`, `UP`, `DOWN`.
@@ -1058,68 +1062,138 @@ Regression golden has been accepted yet.**
 
 ## Keyboard map (Phase 3A)
 
-PC keys map directly to calculator `KeyCode`s in
-[`NativeHal.cpp`](../src/hal/NativeHal.cpp) (`mapSdlToKeyCode`). SDL **KEYDOWN**
-produces a press (or `REPEAT` on OS auto-repeat); SDL **KEYUP** now produces a
-release. In the launcher (MENU) only navigation/confirm keys do anything; in
-CalculationApp every mapped key is forwarded.
+**Toolbox is `F6`** in the desktop emulator. In Equations, solve first, then press
+`F6` to open Steps. **`F8` is Back** and **`v` is VAR** (the variable picker in
+an editor; result pagination or horizontal formula scrolling in Equations).
+These three shortcuts require a rebuilt emulator; older binaries have no desktop
+binding for these controls. Some laptops require `Fn` with a function key.
 
-| PC key | Calculator | PC key | Calculator |
-|:--|:--|:--|:--|
-| `Enter` / KP Enter | ENTER | `0`–`9` (top row + keypad) | NUM_0..NUM_9 |
-| Arrow keys | UP / DOWN / LEFT / RIGHT | `+ - * /` | ADD / SUB / MUL / DIV |
-| `Esc` | AC | `( )` | LPAREN / RPAREN |
-| `Backspace` / `Delete` | DEL | `^` `p` | POW |
-| `Home` / `h` | MODE (back to launcher) *(Phase 9F: `h`, not `m`)* | `.` | DOT |
-| `LShift` / `RShift` | SHIFT | `s` `c` `t` | SIN / COS / TAN |
-| `Tab` | ALPHA | `l` `m` `r` | LN / LOG / SQRT *(Phase 9F: LOG=`m`)* |
-| `Insert` | STO (Store) | `o` `e` | π / e |
-| `f` | Fraction (DIV ÷) *(Phase 9E)* | `x` `y` | VAR_X / VAR_Y |
-| `g` | GRAPH — opens/switches to Grapher *(Phase 9F)* | `b` | LOG_BASE (log_n) *(Phase 9F)* |
-| `F5` / `=` | FREE_EQ (S⇔D) | `n` | NEGATE |
-| `a` | ANS *(Phase 9A)* | | |
+The tables below list **every live desktop binding** implemented by
+`mapSdlToKeyCode` and `mapTextChar` in
+[`NativeHal.cpp`](../src/hal/NativeHal.cpp). A binding sends a calculator key;
+its effect depends on the active app and screen. Unlisted PC keys are unmapped.
 
-**Layout-aware symbol typing (Phase 10B).** Digits and the math symbols
-`0–9 + - * / ^ = ( ) .` are taken from **`SDL_TEXTINPUT`**, i.e. the character the
-**OS keyboard layout** actually produces — *after* it has applied SHIFT / AltGr /
-dead keys — rather than from the raw keysym. So you type symbols **naturally for
-your own layout**: on a Spanish keyboard `Shift`+`+` gives `*`, `Shift`+`8/9/0`
-give `( ) =`, `Shift`+`7` gives `/`; on a US keyboard the US shifted symbols apply.
-The emulator never *fakes* SHIFT — it just inserts whatever your keyboard emits.
-`mapTextChar` ([NativeHal.cpp](../src/hal/NativeHal.cpp)) maps that character to the
-calculator key:
+### Navigation, controls and modifiers
 
-| Typed char | KeyCode | | Typed char | KeyCode |
-|:--|:--|:--|:--|:--|
-| `0`–`9` | NUM_0..NUM_9 | | `=` | FREE_EQ (S⇔D; inserts `=` in the Grapher editor) |
-| `+` `-` `*` `/` | ADD / SUB / MUL / DIV | | `(` `)` | LPAREN / RPAREN |
-| `^` | POW | | `.` | DOT |
+| PC key | Calculator key | Action / note |
+|:--|:--|:--|
+| `Enter` / numeric-keypad Enter | `ENTER` | Confirm, evaluate, or activate the selected item; also serves the UI's EXE instruction |
+| Arrow keys | `UP`, `DOWN`, `LEFT`, `RIGHT` | Navigate, move the math cursor, or scroll according to the current view |
+| `Home` / `h` | `MODE` | Return to the launcher |
+| `Esc` | `AC` | Clear or cancel according to the app; also returns from Equations Steps |
+| `Backspace` / `Delete` | `DEL` | Delete; also returns from Equations Steps |
+| **`F6`** | **`TOOLBOX`** | **Open the contextual toolbox; open Steps from Equations results** |
+| **`F8`** | **`BACK`** | **Go back / cancel in apps that handle BACK** |
+| **`v`** | **`VAR`** | **Variable picker; Equations result-set pagination / Steps math scrolling** |
+| Left / right `Shift` | `SHIFT` | Calculator modifier; see the layout-aware typing note below |
+| `Tab` | `ALPHA` | Calculator ALPHA modifier |
+| `Insert` | `STO` | Store modifier in apps that support it |
+| `F5` / typed `=` | `FREE_EQ` | Exact/decimal format where supported; inserts equality in equation editors; does not evaluate |
 
-Because these now arrive via text input, their **keysyms are no longer mapped in
-`mapSdlToKeyCode`** (mapping both would double-insert: `KEYDOWN` *and* `TEXTINPUT`).
-`mapSdlToKeyCode` (the `KEYDOWN` path) keeps only navigation, control, modifiers
-(`Shift`→`SHIFT`, `Tab`→`ALPHA`, `Insert`→`STO`), `F5`→FREE_EQ, and the **letter**
-shortcuts (`s`=SIN, `p`=POW, `f`=fraction, `x`/`y`=vars, …) — letters never go
-through text input (their `TEXTINPUT` char maps to nothing, so no duplication).
-This is **live-SDL only**; the `.numos` script vocabulary (`scriptNameToKeyCode`)
-is untouched, so every test and golden is unaffected.
+### Functions, variables and constants
 
-Notes:
-- **SHIFT / ALPHA / STO** are resolved by `KeyboardManager` inside
-  CalculationApp (they do nothing in the launcher). `Insert`→STO is new in
-  Phase 3A.
-- **OS key-repeat** is forwarded as `KeyAction::REPEAT` (a held key repeats),
-  matching the hardware keyboard driver; it is distinct from a fresh PRESS.
-- Unmapped keys are logged as `[KEY] sin-mapear SDL=<name>` unless `--quiet`.
-- This is **not** the full hardware 5×10 matrix; it is a direct desktop keymap.
-- `=` toggles the **S⇔D** display form (FREE_EQ); it does **not** evaluate. Use
-  `Enter` / KP Enter to evaluate. (Both maps agree: `=`→FREE_EQ.)
-- **Phase 9E live-key ergonomics.** `f`→**Fraction** (the `KeyCode::DIV` fraction
-  template — there was no dedicated live fraction key before; `/` still works),
-  `p`→**POW** (so power needs no SHIFT, unlike `^`, which also still maps to POW),
-  and **π moved from `p` to `o`**. These are live-SDL only (`mapSdlToKeyCode`);
-  the `.numos` script vocabulary (`frac`/`pow`/`pi`, `/`, `^`) is unchanged, so
-  tests and goldens are unaffected.
+| PC key | Calculator key | Meaning |
+|:--|:--|:--|
+| `s` | `SIN` | Sine |
+| `c` | `COS` | Cosine |
+| `t` | `TAN` | Tangent |
+| `l` | `LN` | Natural logarithm |
+| `m` | `LOG` | Base-10 logarithm |
+| `b` | `LOG_BASE` | Logarithm with an explicit base |
+| `r` | `SQRT` | Square-root template |
+| `p` | `POW` | Power template without needing a shifted `^` |
+| `f` | `DIV` | Fraction template; same calculator key as `/` |
+| `o` | `CONST_PI` | Pi |
+| `e` | `CONST_E` | Euler's number |
+| `x` / `y` | `VAR_X` / `VAR_Y` | Variables x / y; use `v` to select z in Equations |
+| `a` | `ANS` | Recall the last answer |
+| `n` | `NEGATE` | Sign-change key where supported; use typed `-` for unary minus in equation entry |
+| `g` | `GRAPH` | Open Grapher from the launcher; app-specific graph/tab action elsewhere |
+
+### Layout-aware numbers and symbols
+
+| Typed character | Calculator key |
+|:--|:--|
+| `0`–`9` | `NUM_0`–`NUM_9` |
+| `+` / `-` / `*` / `/` | `ADD` / `SUB` / `MUL` / `DIV` |
+| `(` / `)` | `LPAREN` / `RPAREN` |
+| `^` | `POW` |
+| `.` | `DOT` |
+| `=` | `FREE_EQ` |
+| `<` / `>` | `LESS` / `GREATER` (Grapher inequalities) |
+
+Type symbols using your operating system's keyboard layout. Digits and symbols
+arrive through **SDL text input**, after the OS resolves Shift / AltGr / dead keys;
+they are not guessed from US key positions. For example, on a Spanish layout,
+Shift+7 produces `/` and Shift+8/9 produces parentheses. The numeric keypad works
+when it emits those characters (normally with Num Lock enabled). A comma is not
+mapped to a decimal point.
+
+Navigation, modifiers, function keys and letter shortcuts use SDL key-down/up
+instead. Letter text input is ignored, avoiding duplicate insertion. A held mapped
+key emits REPEAT; apps decide which actions may repeat. Calculator SHIFT/ALPHA
+state is app-managed: watch the global modifier badges. This direct PC map is not
+the production physical keypad's full set of shifted/alpha legends.
+
+### Equations Steps: desktop controls
+
+| Task | PC key |
+|:--|:--|
+| Open the checked explanation from results | `F6` |
+| Previous / next teaching page | Left / Right |
+| Toggle guided / summary (the checked derivation is reused) | `Enter` |
+| Scroll prose, equations, cases and restrictions | Up / Down |
+| Pan wide mathematics; cycle back to the start after its last segment | `v` |
+| Return to the ordinary result | `F8` (also `Esc` / `Backspace` / `Delete`) |
+| Return to the launcher | `Home` / `h` |
+
+Steps opens in guided mode: one instructional operation at a time. Summary mode
+retains intermediate equations. The `<>` and `^v` footer hints denote the
+horizontal and vertical arrow keys.
+
+In the editor, `F8` cancels the draft and `Enter` commits it. On paginated results,
+`v` selects the next solution set. Unsupported explanations keep the ordinary
+answer available; see [Tutor coverage](TUTOR_ENGINE_01.md#supported-methods).
+
+### Complete replay key names
+
+These are `.numos` **script tokens**, not PC key combinations. Alphabetic tokens
+are case-insensitive. Use `key NAME` for a press/release pulse, or `keydown NAME`
+and `keyup NAME` separately. The complete current `scriptNameToKeyCode` vocabulary is:
+
+| Calculator key / group | Script names and aliases |
+|:--|:--|
+| Digits | `0`–`9` |
+| Arithmetic | `+` / `add`; `-` / `sub`; `*` / `mul`; `/` / `div` / `frac` / `fraction` |
+| Power, decimal, parentheses | `^` / `pow`; `.` / `dot`; `(` / `lparen`; `)` / `rparen` |
+| Equality / formatting | `=` / `freeeq` / `sd` |
+| Inequalities | `<` / `lt` / `less`; `>` / `gt` / `greater` |
+| Confirm and navigation | `enter`, `exe`, `left`, `right`, `up`, `down` |
+| Delete, clear, launcher, back | `backspace` / `del` / `delete`; `ac` / `esc` / `escape`; `home` / `mode`; `back` |
+| Toolbox / legacy Steps | `toolbox` / `tools`; `steps` |
+| Variables | `var`; `x` / `varx`; `y` / `vary` |
+| Dedicated template keys | `square`, `physical_frac` (FRAC), `divide` (DIVIDE) |
+| Functions | `sqrt`, `sin`, `cos`, `tan`, `ln`, `log`, `logbase` / `log_n` |
+| Constants, answers, sign | `pi`, `e`, `ans`, `preans`, `negate` / `neg` |
+| Modifiers | `shift`, `alpha`, `sto` |
+| App-specific controls | `graph`, `table`, `zoom`, `f1`, `f2`, `f3`, `f4`, `f5` |
+
+**Function-key names differ between surfaces:** PC `F5` sends `FREE_EQ`, while
+script `key f5` sends the calculator's `F5`. PC `F6` corresponds to
+**`key toolbox`**, and PC `F8` to **`key back`**; `key f6` and `key f8` are not
+script tokens. Likewise PC `v` corresponds to `key var`, not `key v`.
+
+PC `F1`–`F4`, `F7`, and `F9`–`F12` remain unmapped. `TABLE`, `PREANS`, `ZOOM`,
+and the distinct calculator `EXE` and `F1`–`F5` codes have script names but no
+dedicated desktop shortcut. Other enum values are not automatically valid script
+names. A control with no handler in the active app can still be a no-op.
+
+The web emulator additionally exposes the semantic logical-key catalog in
+[`wasm/numos-keypad.js`](../wasm/numos-keypad.js), including `TOOLBOX` (72),
+`BACK` (70), and `VAR` (71). These IDs are not desktop function-key numbers.
+Keyboard shortcuts require a focused emulator canvas and a WASM build containing
+the current SDL map; a previously packaged web build does not acquire new bindings
+from a native rebuild. Browser-reserved shortcuts may be intercepted by the browser.
 
 ### Input parity: live SDL vs `.numos` script vs SerialBridge (Phase 9A)
 
@@ -1151,7 +1225,7 @@ surfaces. (Phase 9F aligned one pair: SerialBridge `g`=GRAPH now matches SDL
 **Known input limitations (deferred):**
 
 - **`TABLE`, `PREANS`, `EXE`, `F1`–`F4` have no live-SDL key** — they are reachable
-  only via `.numos` script names. Interactively, switch to the Grapher Table tab with
+  through `.numos` script names (or web logical input). Interactively, switch to the Grapher Table tab with
   the tab-bar arrows; recall Ans with `a`. (PreAns is script-only.) *(Phase 9F:
   `GRAPH` now has live key `g` — opens/switches to the Grapher — and `LOG_BASE` has
   live key `b`, so both left this list.)*

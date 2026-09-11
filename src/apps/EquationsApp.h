@@ -22,12 +22,10 @@
 #include "../math/CalculationEngine.h"
 #include "../math/giac/GiacEngine.h"
 #include "../math/CursorController.h"
-#include "../math/cas/ASTFlattener.h"
-#include "../math/cas/OmniSolver.h"
-#include "../math/cas/SystemSolver.h"
 #include "../ui/MathRenderer.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
+#include "TutorPresentation.h"
 
 // One committed equation set, one transactional draft, one Giac answer.
 // Views are constructed lazily in a bounded, reusable content viewport.
@@ -56,7 +54,7 @@ public:
 private:
     enum class State : uint8_t { EQ_LIST, TEMPLATE, EDITING, SOLVING, RESULT, STEPS };
     enum class ResultKind : uint8_t { None, Structured, TextFallback };
-    enum class TutorStatus : uint8_t { Disabled, Agreed, Unavailable };
+    enum class TutorStatus : uint8_t { Disabled, Complete, Unavailable };
     static constexpr int MAX_EQS = 3;
     static constexpr int MAX_RESULTS = 4;
     static constexpr int NUM_TEMPLATES = 4;
@@ -89,9 +87,21 @@ private:
     ResultKind _resultKind = ResultKind::None;
     TutorStatus _tutorStatus = TutorStatus::Disabled;
     std::string _tutorDiagnostic;
-    cas::SymExprArena _arena;
-    cas::OmniResult _omniResult;
-    cas::SystemResult _systemResult;
+    numos::tutor::Derivation _derivation;
+    int _stepIndex = 0;
+    unsigned _teachingPage = 0;
+    bool _stepDetail = true; // guided primitives are the default
+    numos::tutor::Locale _stepLocale = numos::tutor::Locale::English;
+    lv_obj_t* _stepProse = nullptr;
+    lv_obj_t* _stepConditions = nullptr;
+    lv_obj_t* _stepVerified = nullptr;
+    std::array<lv_obj_t*, 4> _stepLabels{};
+    std::array<tutorview::FormulaRef, 4> _stepFormulaRefs{};
+    uint8_t _stepFormulaCount = 0;
+#ifdef NATIVE_SIM
+    uint32_t _viewBuildMicros = 0, _viewConversions = 0, _viewNodesCount = 0;
+#endif
+    uint32_t _tutorBuilds = 0;
     void clearView();
     void header(const char* title, const char* hint);
     lv_obj_t* text(lv_obj_t* parent, const char* value, int x, int y, int width = 0);
@@ -113,7 +123,6 @@ private:
     int listItemCount() const;
     vpam::NodePtr buildTemplateAST(int index);
     bool splitAtEquals(vpam::NodeRow*, vpam::NodePtr&, vpam::NodePtr&);
-    cas::LinEq symEquationToLinEq(const cas::SymEquation&, const char*, int);
-    void generateTutorCandidate();
-    bool tutorCandidateAgrees() const;
+    void drawStep(bool preserveScroll = false);
+    void scrollTeaching(int delta);
 };

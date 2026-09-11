@@ -6,7 +6,8 @@
 # with the same macro set the esp32s3_n16r8 firmware uses, plus the
 # PRODUCTION seam (src/math/giac/GiacEngine.cpp) and the harness
 # (tests/host/giac_engine_suite_main.cpp) plus the focused GIAC-E01 calculus
-# executable. Successor of the GIAC-FEAS-01 spike script; there is no
+# executable and the TUTOR-ENGINE-01 replay CLI. Successor of the
+# GIAC-FEAS-01 spike script; there is no
 # experimental adapter anymore.
 #
 # -DHAVE_CONFIG_H: on firmware the Arduino-ESP32 platform injects it; native
@@ -84,7 +85,10 @@ tommath_srcs=(lib/libtommath/*.c)
 compile_one() {
   src="$1"; flags="$2"; compiler="$3"
   obj="$OUT/obj/$(basename "$src").o"
-  if [[ -f "$obj" && "$obj" -nt "$src" ]]; then return 0; fi
+  # Vendor objects retain their source cache. Project/test TUs always rebuild:
+  # GiacEngine includes the checker/catalog .inc files, and a source-only mtime
+  # cache would silently test an old implementation after a header/catalog edit.
+  if [[ "${4:-}" != always && -f "$obj" && "$obj" -nt "$src" ]]; then return 0; fi
   echo "CC $src"
   if ! $compiler $flags -c "$src" -o "$obj"; then
     : > "$OUT/compile.failed"
@@ -109,7 +113,7 @@ printf '%s\n' "${giac_srcs[@]}" | \
 
 # --- production engine + host stubs (Giac-aware project TUs) ---
 printf '%s\n' src/math/giac/GiacEngine.cpp src/math/giac/GiacHostStubs.cpp | \
-  xargs -P "$JOBS" -I{} bash -c 'compile_one "$1" "$GIAC_HOST_ENGINE_CXXFLAGS" "$GIAC_HOST_CXX"' _ {}
+  xargs -P "$JOBS" -I{} bash -c 'compile_one "$1" "$GIAC_HOST_ENGINE_CXXFLAGS" "$GIAC_HOST_CXX" always' _ {}
 
 # --- vpam::g_angleMode link closure (production MathEvaluator + deps; the
 # --- same subset emulator_pc links, proving CAS/Giac coexistence) ---
@@ -125,17 +129,18 @@ proj_srcs=(
 )
 for f in src/math/cas/*.cpp; do proj_srcs+=("$f"); done
 printf '%s\n' "${proj_srcs[@]}" | \
-  xargs -P "$JOBS" -I{} bash -c 'compile_one "$1" "$GIAC_HOST_PROJ_CXXFLAGS" "$GIAC_HOST_CXX"' _ {}
+  xargs -P "$JOBS" -I{} bash -c 'compile_one "$1" "$GIAC_HOST_PROJ_CXXFLAGS" "$GIAC_HOST_CXX" always' _ {}
 if [[ -f "$OUT/compile.failed" ]]; then
   echo "Giac host harness compilation failed" >&2
   exit 1
 fi
 
-compile_one tests/host/giac_engine_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
-compile_one tests/host/giac_calculus_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
-compile_one tests/host/neo_math_backend_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
-compile_one tests/host/giac_cross_app_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX"
-compile_one tests/host/host_rss_probe.cpp "$PROJ_CXXFLAGS" "$CXX"
+compile_one tests/host/giac_engine_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX" always
+compile_one tests/host/giac_calculus_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX" always
+compile_one tests/host/neo_math_backend_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX" always
+compile_one tests/host/giac_cross_app_suite_main.cpp "$PROJ_CXXFLAGS" "$CXX" always
+compile_one tests/host/tutor_engine_main.cpp "$PROJ_CXXFLAGS" "$CXX" always
+compile_one tests/host/host_rss_probe.cpp "$PROJ_CXXFLAGS" "$CXX" always
 
 # --- link the stable regression and focused calculus executables separately.
 # Vendored embedded Giac has a host-only, layout-sensitive failure when both
@@ -144,7 +149,7 @@ compile_one tests/host/host_rss_probe.cpp "$PROJ_CXXFLAGS" "$CXX"
 common_objs=()
 for obj in "$OUT"/obj/*.o; do
   case "$(basename "$obj")" in
-    giac_engine_suite_main.cpp.o|giac_calculus_suite_main.cpp.o|neo_math_backend_suite_main.cpp.o|giac_cross_app_suite_main.cpp.o) continue ;;
+    *_main.cpp.o) continue ;;
   esac
   common_objs+=("$obj")
 done
@@ -160,6 +165,9 @@ $CXX -o "$OUT/neo_math_backend_suite" "${common_objs[@]}" \
 echo "LINK $OUT/giac_cross_app_suite"
 $CXX -o "$OUT/giac_cross_app_suite" "${common_objs[@]}" \
   "$OUT/obj/giac_cross_app_suite_main.cpp.o" $LDFLAGS
+echo "LINK $OUT/tutor_engine"
+$CXX -o "$OUT/tutor_engine" "${common_objs[@]}" \
+  "$OUT/obj/tutor_engine_main.cpp.o" $LDFLAGS
 
 [[ "${1:-}" == "--build-only" ]] && exit 0
 # Run from $OUT so any emulator_data/ a TU creates stays out of the repo.

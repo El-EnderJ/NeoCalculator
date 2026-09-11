@@ -54,7 +54,6 @@ namespace vpam {
 
 namespace {
 
-constexpr int16_t kPlusMinusStrokeDivisor = 10;
 
 /// Render a single assembled (or variant) delimiter glyph at the given position.
 /// @param delimCp  The Unicode codepoint of the delimiter to draw (e.g. 0x0028 for '(').
@@ -579,6 +578,13 @@ FontMetrics MathCanvas::metricsFromFont(const lv_font_t* font) {
     bool widthOk = lv_font_get_glyph_dsc(font, &widthGlyph, '0', '1');
     fm.charWidth = widthOk ? static_cast<int16_t>(widthGlyph.adv_w)
                            : static_cast<int16_t>(font->line_height * 6 / 10);
+    // WHY: measure once per font profile, never query/allocate in AST layout.
+    // Include ink overhang as well as advance; this changes only the ? atom.
+    lv_font_glyph_dsc_t plusMinus;
+    if (lv_font_get_glyph_dsc(font, &plusMinus, 0x00B1, 0)) {
+        fm.plusMinusWidth = std::max<int16_t>(static_cast<int16_t>(plusMinus.adv_w),
+            static_cast<int16_t>(plusMinus.ofs_x + plusMinus.box_w));
+    }
     return fm;
 }
 
@@ -1755,47 +1761,7 @@ void MathCanvas::drawOperatorBaseline(lv_layer_t* layer, const NodeOperator* nod
     int16_t textX = x;
     lv_color_t color = _highlightActive ? _highlightColor : lv_color_hex(0x333333);
 
-    if (node->op() == OpKind::PlusMinus) {
-        const auto& opL = node->layout();
-        int16_t glyphW = static_cast<int16_t>(std::max<int16_t>(opL.width, 7));
-        int16_t glyphCenterX = static_cast<int16_t>(textX + glyphW / 2);
-
-        // Keep all strokes inside the operator box while centering around baseline axis.
-        int16_t topY = static_cast<int16_t>(yBaseline - fm.ascent + 1);
-        int16_t bottomY = static_cast<int16_t>(yBaseline + fm.descent - 1);
-        int16_t boxMidY = static_cast<int16_t>((topY + bottomY) / 2);
-        int16_t minusY = boxMidY;
-        minusY = std::max<int16_t>(topY + 1, std::min<int16_t>(minusY, bottomY - 1));
-
-        int16_t minusHalfW = static_cast<int16_t>(std::max<int16_t>((glyphW / 2) - 1, 3));
-        int16_t plusHalf = static_cast<int16_t>(std::max<int16_t>(glyphW / 5, 2));
-        int16_t plusCenterY = minusY;
-        plusCenterY = std::max<int16_t>(static_cast<int16_t>(topY + plusHalf),
-                                        std::min<int16_t>(plusCenterY,
-                                                          static_cast<int16_t>(bottomY - plusHalf)));
-
-        int16_t stroke = static_cast<int16_t>(
-            std::max<int16_t>(1, glyphW / kPlusMinusStrokeDivisor));
-
-        drawLine(layer,
-                 static_cast<int16_t>(glyphCenterX - minusHalfW), minusY,
-                 static_cast<int16_t>(glyphCenterX + minusHalfW), minusY,
-                 stroke, color);
-        drawLine(layer,
-                 static_cast<int16_t>(glyphCenterX - plusHalf), plusCenterY,
-                 static_cast<int16_t>(glyphCenterX + plusHalf), plusCenterY,
-                 stroke, color);
-        drawLine(layer,
-                 glyphCenterX,
-                 static_cast<int16_t>(std::max<int16_t>(
-                     topY, static_cast<int16_t>(plusCenterY - plusHalf))),
-                 glyphCenterX,
-                 static_cast<int16_t>(std::min<int16_t>(
-                     bottomY, static_cast<int16_t>(plusCenterY + plusHalf))),
-                 stroke, color);
-        return;
-    }
-
+    // WHY: Use the same measured STIX glyph as layout, including both strokes of ?.
     drawTextBaseline(layer, textX, yBaseline, node->symbol(), node->scriptLevel(), color);
 }
 

@@ -47,6 +47,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "../tutor/Derivation.h"
 
 namespace numos {
 
@@ -305,6 +306,16 @@ class GiacEngine {
 public:
     /// The single engine (and single giac::context) in the system.
     static GiacEngine& instance();
+
+    // TUTOR-ENGINE-01: bounded, deterministic plans; ordinary solving remains
+    // independent. The replay checker ignores all caller-supplied verdicts.
+    tutor::Derivation explainEquations(const tutor::Snapshot& input,
+                                      const StructuredSolveResult& answer);
+    tutor::Verdict verifyDerivation(const tutor::Derivation& trace,
+                                   const tutor::Snapshot& expectedInput);
+    bool tutorSnapshotCurrent(const tutor::Snapshot& input, uint32_t epoch,
+                              bool complexDomain);
+    StructuredEngineResult tutorFormula(const tutor::Equation& equation);
 
     /// Idempotent. Returns false only if the context could not be created.
     bool begin();

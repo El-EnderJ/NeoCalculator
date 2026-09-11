@@ -6,6 +6,7 @@
 
 // -*- mode:C++ ; compile-command: "g++ -I.. -I../include -DHAVE_CONFIG_H -DIN_GIAC -DGIAC_GENERIC_CONSTANTS -fno-strict-aliasing -g -c gen.cc -Wall" -*-
 #include "giacPCH.h"
+#include <cstddef>
 #if 0 // def KMALLOC // mem config, start at 0x88052800 end at 0x8807d000
 const size_t stackptr=0x38000,stack_mask=0x3ffff;
 #else
@@ -845,7 +846,11 @@ namespace giac {
   int * complex_display_ptr(const gen & g) {
     if (g.type!=_CPLX)
       return 0;
-    return (int *)(g._CPLXptr)-1;
+    // NumOS TUTOR-ENGINE-01: ref_count_t is 64-bit on LLP64 hosts.
+    // Padding between display and re is not a display flag. The old -1 int
+    // address randomly selected polar output and corrupted exact round trips.
+    char * storage=reinterpret_cast<char *>(g._CPLXptr)-offsetof(ref_complex,re);
+    return &reinterpret_cast<ref_complex *>(storage)->display;
   }
 
 #if 0

@@ -1093,12 +1093,32 @@ static void testMathTextNormalizationPreservesUtf8AndSafeOverflow() {
           "insufficient normalization buffer does not write a truncated UTF-8 string");
 }
 
+static void testPlusMinusUsesCapturedFontWidth() {
+    FontMetrics fm = defaultFontMetrics();
+    fm.plusMinusWidth = static_cast<int16_t>(fm.charWidth + 3);
+    NodeOperator pm(OpKind::PlusMinus), add(OpKind::Add);
+    pm.calculateLayout(fm); add.calculateLayout(fm);
+    check(pm.layout().width == fm.plusMinusWidth, "plus-minus uses captured font extent");
+    check(add.layout().width == fm.charWidth, "other operator geometry remains unchanged");
+    check(pm.mathClass() == MathClass::BINARY, "plus-minus keeps its binary atom class");
+    check(pm.layout().ascent == fm.ascent && pm.layout().descent == fm.descent,
+          "plus-minus keeps the common baseline box");
+    FontMetrics script = fm.superscript();
+    fm.script = &script;
+    pm.calculateLayout(fm.superscript());
+    check(pm.layout().width == script.plusMinusWidth, "plus-minus uses the selected script profile");
+    auto smallest = script.superscript();
+    auto deeper = smallest.superscript().superscript();
+    pm.calculateLayout(deeper);
+    check(pm.layout().width == smallest.plusMinusWidth, "deep plus-minus nesting retains scriptscript glyph width");
+}
+
 static void testMathRenderVisualCasesAreDeterministicAndLayoutValid() {
     const auto* cases = mathRenderVisualCases();
     const std::size_t count = mathRenderVisualCaseCount();
     FontMetrics fm = defaultFontMetrics();
 
-    check(count == 48, "visual catalog includes delimiter variants and assembly cases");
+    check(count == 49, "visual catalog includes delimiter and isolated plus-minus cases");
 
     bool sawTwoSquared = false;
     bool sawXSquared = false;
@@ -2117,6 +2137,7 @@ int main() {
     testMathTextNormalizationLeavesPlainTokensUnchanged();
     testMathTextNormalizationMapsOperatorsAndSymbols();
     testMathTextNormalizationPreservesUtf8AndSafeOverflow();
+    testPlusMinusUsesCapturedFontWidth();
     testMathRenderVisualCasesAreDeterministicAndLayoutValid();
     testPeriodicDecimalPrefixLengthCoversFormats();
     testRowTopContractAlignsTextAndFraction();

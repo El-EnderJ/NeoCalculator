@@ -119,8 +119,8 @@ def main():
     for index in range(3):
         s=system(SYSTEMS['system-3x3'][0])+keys('BACK UP UP UP')+keys('DOWN '*index)+keys('DEL')+'assert_equations count 2\n'+f'assert_equations focus {index}\n'
         run('delete-'+str(index),s)
-    run('steps-available',single('2 * x + 4 = 0')+keys('tools')+'assert_equations_tutor_status agreed\nassert_equations epochs steps\n')
-    run('steps-unavailable',single('x ^ 2 RIGHT + 1 = 0')+keys('tools')+'assert_equations state steps\nassert_equations_tutor_status unavailable\n')
+    run('steps-available',single('2 * x + 4 = 0')+keys('tools')+'assert_equations_tutor_status complete\nassert_equations epochs steps\n')
+    run('steps-unavailable',single('ln x ) = 1')+keys('tools')+'assert_equations state steps\nassert_equations_tutor_status unavailable\n')
     # Physical entry goes through the generated electrical map and real resolver.
     mapping={}
     data=(ROOT/'src/input/generated/ProductionKeypadMap.generated.h').read_text(encoding='utf-8').split('kProductionKeypadMap = {{',1)[1].split('}};',1)[0]

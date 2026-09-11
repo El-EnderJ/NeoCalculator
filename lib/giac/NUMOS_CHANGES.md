@@ -78,6 +78,13 @@ baseline artifacts and are not used as regeneration inputs.
 
 ## Change history reconstructed from Git
 
+TUTOR-ENGINE-01 (2026-09-10, local candidate): `kgen.cc` now obtains the
+complex display flag through `offsetof(ref_complex,re)` and the actual
+`display` field. Subtracting one `int` from `re` read padding on LLP64,
+where the reference count is 64 bits; repeated native exact complex results
+randomly printed polar syntax. The explicit field address is unchanged in
+meaning on ESP32/WASM. No upstream code or language resources were imported.
+
 | NumOS commit | Date | Relevant change |
 | --- | --- | --- |
 | `070630be` | 2026-04-07 | Initial Giac integration metadata and `umap.h`. |

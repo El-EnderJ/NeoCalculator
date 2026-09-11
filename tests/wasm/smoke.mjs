@@ -1,13 +1,22 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { chromium } from "playwright";
+import { NUMOS_LOGICAL_KEYS } from "../../wasm/numos-keypad.js";
 
 const variant = process.env.NUMOS_WASM_VARIANT || "release";
 const port = Number(process.env.NUMOS_WASM_PORT ||
                     (variant === "debug" ? 4174 : 4173));
 const root = fileURLToPath(
   new URL(`../../out/wasm/dist/${variant}/`, import.meta.url));
+const manifest = JSON.parse(await readFile(`${root}numos-assets.json`, "utf8"));
+const rawWasm = await readFile(new URL(
+  `../../out/wasm/${variant}/numos-emulator.wasm`, import.meta.url));
+assert.equal(manifest.assets.wasm.sha256,
+             createHash("sha256").update(rawWasm).digest("hex"),
+             "package the current raw WASM before running the browser smoke");
 const server = spawn("python3", ["-m", "http.server", String(port),
                                  "--bind", "127.0.0.1", "--directory", root], {
   stdio: ["ignore", "pipe", "pipe"],
@@ -142,7 +151,75 @@ try {
   assert.ok(state.giac.structuredSolves > beforeSolve.giac.structuredSolves);
   assert.equal(state.giac.activeContexts, 1);
 
-  await page.keyboard.press("h");
+  // Exercise the real native ABI for the append-only production controls.
+  // Static enum/catalog parity cannot detect a stale upper bound in C++.
+  const pressLogical = async (id) => {
+    const code = NUMOS_LOGICAL_KEYS.find((key) => key.id === id)?.code;
+    assert.ok(code, `missing logical key ${id}`);
+    assert.equal(await page.evaluate(
+      (value) => window.numos.pressLogicalKey(value), code), true,
+      `native runtime must accept ${id}`);
+    await delay(120);
+  };
+  const framebuffer = () => canvas.evaluate((element) =>
+    element.toDataURL("image/png"));
+  const resultFramebuffer = await framebuffer();
+  await pressLogical("TOOLBOX");
+  const guidedFramebuffer = await framebuffer();
+  assert.ok(guidedFramebuffer !== resultFramebuffer,
+            "TOOLBOX must display the C++ equation Steps view");
+  await pressLogical("EXE");
+  assert.ok(await framebuffer() !== guidedFramebuffer,
+            "EXE must expose the summary view while retaining the checked derivation");
+  await pressLogical("BACK");
+  // Diagnostics samples mallinfo while its frame-time vector is alive; wait
+  // until that vector has its fixed maximum size before comparing heap use.
+  await page.waitForFunction(() => window.numos.diagnosticState().frameMs.samples === 512,
+                             null, { timeout: 20000 });
+  const stepsSolveCount = (await diagnostics()).giac.structuredSolves;
+  const stepsHeapSamples = [];
+  for (let cycle = 0; cycle < 12; ++cycle) {
+    await pressLogical("TOOLBOX");
+    await pressLogical("BACK");
+    stepsHeapSamples.push((await diagnostics()).usedHeapBytes);
+  }
+  state = await diagnostics();
+  assert.equal(state.equations.x0Exact, "-2");
+  assert.equal(state.giac.structuredSolves, stepsSolveCount,
+               "reopening Steps must not solve again");
+  assert.ok(stepsHeapSamples.at(-1) <= stepsHeapSamples[0] + 65536,
+            `Steps lifecycle heap drift: ${stepsHeapSamples.join(",")}`);
+  assert.equal(stepsHeapSamples.every((value, index) =>
+    index === 0 || value > stepsHeapSamples[index - 1]), false,
+    `Steps heap grew after every warmed cycle: ${stepsHeapSamples.join(",")}`);
+  // Commit a different authored equation through VPAM's physical square and
+  // equality keys, then exercise the signed complex-result formulas in Steps.
+  for (const id of ["BACK", "UP", "UP", "EXE", "AC", "VAR_X", "SQUARE",
+                    "ADD", "NUM_1", "EQUAL", "NUM_0", "EXE", "DOWN", "DOWN", "EXE"])
+    await pressLogical(id);
+  await page.waitForFunction(() => {
+    const value = window.numos.diagnosticState().equations;
+    return value.solutionCount === 2 && ["i", "-i"].includes(value.x0Exact);
+  }, null, { timeout: 20000 });
+  const complexResultFramebuffer = await framebuffer();
+  await pressLogical("TOOLBOX");
+  assert.ok(await framebuffer() !== complexResultFramebuffer,
+            "complex square roots must expose their C++ Steps view");
+  await pressLogical("RIGHT"); // reach the two signed complex-root branches
+  await pressLogical("BACK");
+  // Already-isolated authored rows use the same signed-RHS STIX presentation.
+  for (const id of ["BACK", "UP", "UP", "EXE", "AC", "VAR_X", "EQUAL",
+                    "SUB", "NUM_3", "EXE", "DOWN", "DOWN", "EXE"])
+    await pressLogical(id);
+  await page.waitForFunction(() =>
+    window.numos.diagnosticState().equations.x0Exact === "-3",
+    null, { timeout: 20000 });
+  const isolatedResultFramebuffer = await framebuffer();
+  await pressLogical("TOOLBOX");
+  assert.ok(await framebuffer() !== isolatedResultFramebuffer,
+            "already-isolated negative equations must expose their Steps view");
+  await pressLogical("BACK");
+  await pressLogical("HOME");
   await waitForApp("Menu");
   await delay(350);
   const warmRetainedHandles = (await diagnostics()).giac.liveRetainedHandles;
@@ -194,6 +271,7 @@ try {
     launcherWallMs,
     firstGiacMs,
     heapSamples,
+    stepsHeapSamples,
     finalHeapBytes: state.heapBytes,
     finalUsedHeapBytes: state.usedHeapBytes,
     frameMs: state.frameMs,

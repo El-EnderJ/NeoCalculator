@@ -135,14 +135,16 @@ public:
 
     // Opt-in bounded scrolling for read-only Equations viewports. Existing
     // editor auto-scroll and other apps retain their current behavior.
-    void scrollBounded(int16_t delta) {
-        if (!_obj || !_root) return;
+    bool scrollBounded(int16_t delta) {
+        if (!_obj || !_root) return false;
         const int32_t excess = _root->layout().width -
             (lv_obj_get_width(_obj) - PADDING_LEFT - PADDING_RIGHT);
         const int32_t limit = excess > 0 ? excess : 0;
         const int32_t requested = int32_t(_scrollX) + delta;
         const int32_t bounded = requested > 0 ? 0 : requested < -limit ? -limit : requested;
+        const bool moved = bounded != _scrollX;
         scrollBy(static_cast<int16_t>(bounded - _scrollX));
+        return moved;
     }
 
     /** FontMetrics para la fuente normal (STIX Two Math 18) */

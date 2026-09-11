@@ -51,4 +51,4 @@ assert_equations_solution_exact x 0 1
 assert_equations_solution_exact y 0 2
 assert_equations_solution_exact z 0 3
 assert_equations_result_kind structured
-assert_equations_tutor_status unavailable
+assert_equations_tutor_status complete

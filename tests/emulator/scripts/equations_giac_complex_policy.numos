@@ -24,5 +24,5 @@ assert_equations_solution_count 2
 assert_equations_solution_exact x 0 -i
 assert_equations_solution_exact x 1 i
 assert_equations_result_kind structured
-assert_equations_tutor_status unavailable
+assert_equations_tutor_status complete
 

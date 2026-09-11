@@ -333,7 +333,10 @@ void NodeOperator::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
     // Width is purely the character width. All inter-atom padding is handled
     // exclusively by the TeX spacing logic in NodeRow::calculateLayout.
-    _layout.width   = fm.charWidth;
+    // WHY: STIX plus-minus is wider than a digit. Use the captured glyph extent
+    // so row layout, cursor advances and the shared glyph draw agree.
+    _layout.width   = (_op == OpKind::PlusMinus && fm.plusMinusWidth > 0)
+        ? fm.plusMinusWidth : fm.charWidth;
     _layout.ascent  = fm.ascent;
     _layout.descent = fm.descent;
 }

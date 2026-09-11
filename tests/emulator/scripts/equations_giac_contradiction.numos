@@ -18,5 +18,5 @@ assert_equations_engine giac
 assert_equations_status no_solution
 assert_equations_solution_count 0
 assert_equations_result_kind structured
-assert_equations_tutor_status unavailable
+assert_equations_tutor_status complete
 

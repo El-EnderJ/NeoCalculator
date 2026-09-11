@@ -504,6 +504,12 @@ static KeyCode mapSdlToKeyCode(SDL_Keycode sym)
         // no se mapea por keysym (evita doble inserción y respeta la distribución).
         case SDLK_F5:           return KeyCode::FREE_EQ;
 
+        // WHY: rebuilt apps expose Toolbox, Back and Variables as semantic
+        // controls; desktop users need direct access, not replay-only names.
+        case SDLK_F6:           return KeyCode::TOOLBOX;
+        case SDLK_F8:           return KeyCode::BACK;
+        case SDLK_v:            return KeyCode::VAR;
+
         // n = NEGATE
         case SDLK_n:            return KeyCode::NEGATE;
 
@@ -693,6 +699,13 @@ static KeyCode scriptNameToKeyCode(const std::string& raw)
 // ════════════════════════════════════════════════════════════════════════════
 static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
 {
+    // Public logical input uses HOME directly; desktop aliases still use MODE.
+    // Match the production global HOME boundary before dispatching to an app.
+    if (kc == KeyCode::HOME) {
+        if (action == KeyAction::PRESS && g_mode != AppMode::SPLASH && g_mode != AppMode::MENU)
+            returnToMenu();
+        return;
+    }
     if (g_mode == AppMode::EQUATIONS && kc == KeyCode::BACK && action != KeyAction::PRESS) return;
     // Emulator parity for the demo recovery contract: BACK first unwinds the
     // app's topmost modal/state, then returns one level to the launcher.
@@ -2490,10 +2503,10 @@ static bool loadScript(const char* path)
                         "assert_equations_result_kind requiere structured|text_fallback|none");
                 sc.type = ScriptCmdType::AssertEquationsResultKind;
             } else {
-                if (value != "agreed" && value != "unavailable" &&
+                if (value != "complete" && value != "unavailable" &&
                     value != "disabled")
                     return scriptErr(path, lineNo,
-                        "assert_equations_tutor_status requiere agreed|unavailable|disabled");
+                        "assert_equations_tutor_status requiere complete|unavailable|disabled");
                 sc.type = ScriptCmdType::AssertEquationsTutorStatus;
             }
             sc.strArg = value;
@@ -4161,7 +4174,9 @@ extern "C" EMSCRIPTEN_KEEPALIVE int numos_send_logical_key(int keyCode,
                                                              int actionCode)
 {
     if (!g_initialized || g_shutdownComplete || keyCode <= 0 ||
-        keyCode > static_cast<int>(KeyCode::GREATER) ||
+        // The public catalog includes the append-only semantic keys after
+        // GREATER (HOME/BACK/TOOLBOX and VPAM templates). Accept the full enum.
+        keyCode > static_cast<int>(KeyCode::EXP) ||
         actionCode < static_cast<int>(KeyAction::PRESS) ||
         actionCode > static_cast<int>(KeyAction::REPEAT)) {
         return 0;

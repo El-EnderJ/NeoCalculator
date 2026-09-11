@@ -25,6 +25,12 @@
 #include <new>
 #include <sstream>
 #include <iostream>
+#include <chrono>
+#include <array>
+#if defined(ARDUINO) && !defined(NATIVE_SIM)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
 
 #include "config.h"
 #include "gen.h"
@@ -40,6 +46,8 @@
 #include "usual.h"
 #include "lin.h"
 #include "series.h"
+#include "rpn.h"
+
 
 #include "math/giac/GiacEngine.h"
 #include "math/giac/GiacEngineInternal.h"
@@ -1702,7 +1710,23 @@ StructuredSolveResult runStructuredSolve(
         giac::vecteur raw;
         try {
             if (equationGens.size() == 1 && variables.size() == 1) {
-                raw = giac::solve(equationGens.front(), variables.front(),
+                // TUTOR-ENGINE-01 probe: this vendored direct solve entry can
+                // loop on unevaluated parser division nodes. Match the public
+                // command's side evaluation while retaining authored syntax
+                // separately for domain checks (whole equality eval loses it).
+                struct QuotedSolveVariable {
+                    giac::context* ctx;
+                    size_t size;
+                    QuotedSolveVariable(giac::context* c, const giac::gen& v)
+                        : ctx(c), size(c->quoted_global_vars ? c->quoted_global_vars->size() : 0) {
+                        if(c->quoted_global_vars)c->quoted_global_vars->push_back(v);
+                    }
+                    ~QuotedSolveVariable(){if(ctx->quoted_global_vars)ctx->quoted_global_vars->resize(size);}
+                } quoted(ctx,variables.front());
+                giac::gen left,right;
+                splitEquality(equationGens.front(),left,right);
+                const giac::gen canonical=giac::symb_equal(left.eval(1,ctx),right.eval(1,ctx));
+                raw = giac::solve(canonical, variables.front(),
                                   policy == SolveDomainPolicy::RealAndComplex ? 1 : 0,
                                   ctx);
             } else {
@@ -1740,6 +1764,7 @@ StructuredSolveResult runStructuredSolve(
         normalized.reserve(raw.size());
         for (const auto& rawItem : raw) {
             RawSolutionGroup group;
+            bool excludedCandidate=false;
             if (variables.size() == 1) {
                 giac::gen value;
                 if (!unwrapSingleValue(rawItem, variables.front(), value)) {
@@ -1787,13 +1812,17 @@ StructuredSolveResult runStructuredSolve(
                     int budget=kSolveWalkBudget;
                     familyCandidate=familyCandidate || containsAnyVariable(value,variables,0,budget);
                 }
-                if(familyCandidate) for(const auto& original:equationGens) {
+                for(const auto& original:equationGens) {
                     giac::gen lhs,rhs; splitEquality(original,lhs,rhs);
                     const giac::vecteur vars(variables.begin(),variables.end());
                     const giac::vecteur vals(group.values.begin(),group.values.end());
                     lhs=giac::eval(giac::subst(lhs,vars,vals,false,ctx),1,ctx);
                     rhs=giac::eval(giac::subst(rhs,vars,vals,false,ctx),1,ctx);
-                    if(giac::is_undef(lhs) || giac::is_undef(rhs) || !exactEquivalent(lhs,rhs,ctx)) {
+                    if(!familyCandidate && (giac::is_undef(lhs)||giac::is_undef(rhs)||giac::is_inf(lhs)||giac::is_inf(rhs))) {
+                        excludedCandidate=true;
+                        break;
+                    }
+                    if(familyCandidate && (giac::is_undef(lhs) || giac::is_undef(rhs) || !exactEquivalent(lhs,rhs,ctx))) {
                         result.status=MathEngineStatus::Unsupported;
                         result.setKind=SolutionSetKind::Unsupported;
                         result.groups.clear();
@@ -1802,6 +1831,7 @@ StructuredSolveResult runStructuredSolve(
                     }
                 }
             }
+            if(excludedCandidate)continue;
 
             for (auto& value : group.values) {
                 try {
@@ -1886,7 +1916,7 @@ StructuredSolveResult runStructuredSolve(
             result.groups.push_back(std::move(group));
         }
         result.status = MathEngineStatus::Ok;
-        result.setKind = SolutionSetKind::Solutions;
+        result.setKind = result.groups.empty()?SolutionSetKind::NoSolution:SolutionSetKind::Solutions;
         return result;
     } catch (const std::bad_alloc&) {
         result.status = MathEngineStatus::OutOfMemory;
@@ -2269,5 +2299,8 @@ giac::context* sharedContext() {
 }
 
 } // namespace giacinternal
+
+#include "../tutor/Messages.inc"
+#include "GiacTutor.inc"
 
 } // namespace numos

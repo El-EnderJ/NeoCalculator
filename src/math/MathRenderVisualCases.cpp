@@ -279,6 +279,9 @@ NodePtr parAssemblyNested() {
         frac(row(n("3")), row(v('x'))))))));
 }
 
+// Isolated operator fixture: its entire dark canvas ink must fit the measured box.
+NodePtr plusMinusGlyph() { return row(op(OpKind::PlusMinus)); }
+
 static constexpr MathRenderVisualCase kCases[] = {
     { "power_2_squared", "2^2", MathStyle::TEXT, buildTwoSquared },
     { "power_x_squared", "x^2", MathStyle::TEXT, buildXSquared },
@@ -328,6 +331,7 @@ static constexpr MathRenderVisualCase kCases[] = {
     { "stretch_parMixed", "parMixed", MathStyle::TEXT, parMixed },
     { "stretch_parAssembly", "STIX assembly", MathStyle::TEXT, parAssembly },
     { "stretch_parAssemblyNested", "Nested STIX assembly", MathStyle::TEXT, parAssemblyNested },
+    { "operator_plus_minus", "STIX plus-minus", MathStyle::TEXT, plusMinusGlyph },
 };
 
 } // namespace

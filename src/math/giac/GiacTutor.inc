@@ -1794,18 +1794,30 @@ StructuredEngineResult GiacEngine::tutorFormula(const tutor::Equation &equation)
         tutorkernel::Algebra a{_state->ctx, input};
         tutor::State conditions;
         unsigned nodes = 0;
-        // Original rational rows may still show a variable denominator: collect its
-        // authored conditions for this presentation-only walk, without evaluating it.
-        input.authored = {{equation.lhs, equation.rhs}};
-        tutor::Vector<tutor::Condition> cs;
-        std::vector<giac::gen> ds;
-        try {
-            tutorkernel::capture(a, cs, ds);
-            conditions.conditions = cs;
-        } catch (...) {
+        // WHY: closed algebraic values (including checked roots) need no extra
+        // denominator assumptions. The polynomial input scanner intentionally
+        // rejects these with an exception; that expected unwind is expensive on
+        // Xtensa. Try the SAME domain verifier with no assumptions first, not a
+        // weaker syntax/answer check. No validation or formula is cached.
+        bool safe = tutorkernel::domainSafe(a, l, conditions, 0, nodes) &&
+                    tutorkernel::domainSafe(a, r, conditions, 0, nodes);
+        if (!safe) {
+            // Original rational rows can require authored denominator exclusions.
+            // Keep their existing capture and verification path intact. At most
+            // two bounded domain walks run; the symbolic-call budget is shared.
+            input.authored = {{equation.lhs, equation.rhs}};
+            tutor::Vector<tutor::Condition> cs;
+            std::vector<giac::gen> ds;
+            try {
+                tutorkernel::capture(a, cs, ds);
+                conditions.conditions = cs;
+            } catch (...) {
+            }
+            nodes = 0;
+            safe = tutorkernel::domainSafe(a, l, conditions, 0, nodes) &&
+                   tutorkernel::domainSafe(a, r, conditions, 0, nodes);
         }
-        if (!tutorkernel::domainSafe(a, l, conditions, 0, nodes) ||
-            !tutorkernel::domainSafe(a, r, conditions, 0, nodes))
+        if (!safe)
             return out;
         int budget = kTreeNodeBudget;
         genToNode(giac::symb_equal(l.eval(1, _state->ctx), r.eval(1, _state->ctx)), _state->ctx,

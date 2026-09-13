@@ -45,6 +45,8 @@ const lv_font_t* mathScriptFont();
 
 // ScriptScript-level font (nested superscripts/subscripts).
 const lv_font_t* mathScriptScriptFont();
+// Only U+0394 uses the requested broad TeX glyph. No identifier substitution.
+const lv_font_t* mathGlyphFont(const lv_font_t* base, uint32_t codepoint);
 
 // Supplemental STIX parenthesis variants/assembly pieces for a math em.
 const lv_font_t* mathParenthesisFont(int16_t emSize);

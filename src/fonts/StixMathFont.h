@@ -22,6 +22,10 @@ extern "C" {
 LV_FONT_DECLARE(stix_math_18);
 LV_FONT_DECLARE(stix_math_12);
 LV_FONT_DECLARE(stix_math_8);
+// Single, authentic TeX-style U+0394 glyph; STIX remains the base math face.
+LV_FONT_DECLARE(tex_delta_18);
+LV_FONT_DECLARE(tex_delta_12);
+LV_FONT_DECLARE(tex_delta_8);
 
 // Supplemental, unencoded OpenType MATH parenthesis variants and parts.
 LV_FONT_DECLARE(stix_parens_18);

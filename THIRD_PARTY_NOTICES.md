@@ -135,6 +135,17 @@ scaffolding in the generated headers is marked
 
 ## Package-manager and build-time dependencies
 
+### Discriminant glyph subset
+
+`assets/fonts/NumOSDiscriminant.otf` and `src/fonts/tex_delta_{18,12,8}.c`
+contain only Greek capital Delta (U+0394) from Latin Modern Math 1.959,
+copyright 2012–2014 B. Jackowski, P. Strzelczyk and P. Pianowski.
+The renamed subset retains the authentic TeX outline. The GUST Font License
+(LPPL 1.3c or later) and LPPL text are under `assets/fonts/LICENSES/`.
+Source hash, attribution and reproducible generation are recorded in
+`assets/fonts/MANIFEST-NumOSDiscriminant.txt` and
+`scripts/generate-discriminant-font.py`. Other STIX glyphs are unchanged.
+
 `platformio.ini` resolves LVGL and TFT_eSPI through PlatformIO rather than
 vendoring them here. Their source distributions and license notices are
 provided by their respective packages. The declarations are currently not

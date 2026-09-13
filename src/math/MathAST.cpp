@@ -1499,6 +1499,15 @@ NodeSymbol::NodeSymbol(std::string name)
     : MathNode(NodeType::Symbol), _name(std::move(name)) {}
 
 void NodeSymbol::calculateLayout(const FontMetrics& fm) {
+    if (_name == "\xCE\x94" && fm.deltaWidth) {
+        // WHY: a UTF-8 quantity is one glyph, not one-byte variable D. The
+        // canvas captures its real font box before allocation-free layout.
+        applyScriptLevel(this, fm);
+        _layout.width = fm.deltaWidth;
+        _layout.ascent = _layout.inkAscent = fm.deltaAscent;
+        _layout.descent = _layout.inkDescent = fm.deltaDescent;
+        return;
+    }
     setTextLayout(this, _layout, _name, fm);
 }
 
@@ -2280,7 +2289,9 @@ NodePtr cloneNode(const MathNode* node) {
         }
         case NodeType::Function: {
             auto* fn = static_cast<const NodeFunction*>(node);
-            return makeFunction(fn->funcKind(), cloneNode(fn->argument()));
+            auto result = makeFunction(fn->funcKind(), cloneNode(fn->argument()));
+            static_cast<NodeFunction*>(result.get())->setGeneratedOperatorSpacing(fn->generatedOperatorSpacing());
+            return result;
         }
         case NodeType::LogBase: {
             auto* lb = static_cast<const NodeLogBase*>(node);

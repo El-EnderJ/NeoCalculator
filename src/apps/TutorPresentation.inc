@@ -26,13 +26,16 @@ NodePtr factor(NodePtr node) {
         return makeParen(std::move(node));
     return node;
 }
-NodePtr multiply(NodePtr left, NodePtr right) {
-    return rowOf(factor(std::move(left)), makeOperator(OpKind::Mul), factor(std::move(right)));
+NodePtr multiply(NodePtr left, NodePtr right, ProductNotation notation = ProductNotation::ScalarNatural) {
+    auto result = rowOf(factor(std::move(left)), makeOperator(OpKind::Mul), factor(std::move(right)));
+    applyGeneratedProductNotation(result.get(), notation);
+    return result;
 }
-NodePtr multiplyThree(NodePtr a, NodePtr b, NodePtr c) {
-    auto product = multiply(std::move(a), std::move(b));
+NodePtr multiplyThree(NodePtr a, NodePtr b, NodePtr c, ProductNotation notation = ProductNotation::ScalarNatural) {
+    auto product = multiply(std::move(a), std::move(b), ProductNotation::Explicit);
     auto* row = static_cast<NodeRow*>(product.get());
     row->appendChild(makeOperator(OpKind::Mul)); row->appendChild(factor(std::move(c)));
+    applyGeneratedProductNotation(product.get(), notation);
     return product;
 }
 NodePtr square(NodePtr base) {
@@ -65,7 +68,7 @@ void authoredSigns(MathNode* node,unsigned depth=0) {
     }
     for(int i=0;i<node->childCount();++i)authoredSigns(node->child(i),depth+1);
 }
-NodePtr converted(const EngineResultNode& n, unsigned depth = 0) {
+NodePtr converted(const EngineResultNode& n, unsigned depth = 0, ProductNotation notation = ProductNotation::ScalarNatural) {
     if (depth > Limits::depth) return nullptr;
     if (n.kind == EngineNodeKind::Integer || n.kind == EngineNodeKind::Decimal) {
         if (!n.text.empty() && n.text[0] == '-')
@@ -73,16 +76,16 @@ NodePtr converted(const EngineResultNode& n, unsigned depth = 0) {
         return makeNumber(n.text);
     }
     if (n.kind == EngineNodeKind::Equation && n.children.size() == 2) {
-        auto left = converted(n.children[0], depth + 1), right = converted(n.children[1], depth + 1);
+        auto left = converted(n.children[0], depth + 1, notation), right = converted(n.children[1], depth + 1, notation);
         if (!left || !right) return nullptr;
         return relation(std::move(left), std::move(right));
     }
     if (n.kind == EngineNodeKind::Rational && n.children.size() == 2) {
-        auto numerator = converted(n.children[0], depth + 1), denominator = converted(n.children[1], depth + 1);
+        auto numerator = converted(n.children[0], depth + 1, notation), denominator = converted(n.children[1], depth + 1, notation);
         if (!numerator || !denominator) return nullptr;
         return makeFraction(std::move(numerator), std::move(denominator));
     }
-    auto value = resultFormula(n);
+    auto value = resultFormula(n, 0, notation);
     compactScalarSigns(value);
     return value;
 }
@@ -101,11 +104,14 @@ NodePtr symbol(const char* value) { return makeSymbol(value); }
 NodePtr variable(const std::string& value) {
     return value.size() == 1 ? makeVariable(value[0]) : makeSymbol(value);
 }
-NodePtr equation(const Equation& e, unsigned& calls) {
+NodePtr equation(const Equation& e, unsigned& calls, ProductNotation notation = ProductNotation::ScalarNatural) {
     if (++calls > 16) return nullptr;
     auto value = GiacEngine::instance().tutorFormula(e);
-    return value.hasTree ? converted(value.tree) : nullptr;
+    return value.hasTree ? converted(value.tree, 0, notation) : nullptr;
 }
+// Semantic display role, never a user identifier or a Giac context binding.
+enum class Quantity : uint8_t { Discriminant };
+NodePtr quantity(Quantity) { return makeSymbol("\xCE\x94"); } // U+0394, Greek capital Delta
 NodePtr rowName(unsigned n) {
     return makeSubscript(makeVariable('E'), makeNumber(std::to_string(n + 1)));
 }
@@ -128,7 +134,7 @@ NodePtr build(const Derivation& d, FormulaRef ref, unsigned& calls) {
         return ref.row < branch.equations.size() ? equation(branch.equations[ref.row], calls) : nullptr;
     }
     if (ref.kind == FormulaKind::Authored)
-        return ref.row < d.input.authored.size() ? equation(d.input.authored[ref.row], calls) : nullptr;
+        return ref.row < d.input.authored.size() ? equation(d.input.authored[ref.row], calls, ProductNotation::Explicit) : nullptr;
     if (ref.kind == FormulaKind::Conditions) {
         if (ref.state >= d.states.size()) return nullptr;
         auto list = makeRow(); auto* row = static_cast<NodeRow*>(list.get());
@@ -158,7 +164,7 @@ NodePtr build(const Derivation& d, FormulaRef ref, unsigned& calls) {
             NodePtr term;
             if (step.explanation == Message::RowAddUnit || step.explanation == Message::RowSubtractUnit)
                 term = rowName(step.otherRow);
-            else term = multiply(typedTerm(amount, calls), rowName(step.otherRow));
+            else term = multiply(typedTerm(amount, calls), rowName(step.otherRow), ProductNotation::Explicit);
             right = rowOf(rowName(step.row), makeOperator(subtract ? OpKind::Sub : OpKind::Add), std::move(term));
         }
         return rowOf(rowName(step.row), symbol("\xE2\x86\x90"), std::move(right));
@@ -190,19 +196,19 @@ NodePtr build(const Derivation& d, FormulaRef ref, unsigned& calls) {
         return row;
     }
     if (ref.kind == FormulaKind::DiscriminantDefinition)
-        return relation(makeVariable('D'), rowOf(square(makeVariable('b')), makeOperator(OpKind::Sub),
+        return relation(quantity(Quantity::Discriminant), rowOf(square(makeVariable('b')), makeOperator(OpKind::Sub),
                             multiplyThree(makeNumber("4"), makeVariable('a'), makeVariable('c'))));
     if (ref.kind == FormulaKind::DiscriminantValues) {
         auto expression = rowOf(square(typedTerm(aux[1], calls)), makeOperator(OpKind::Sub),
-                            multiplyThree(makeNumber("4"), typedTerm(aux[0], calls), typedTerm(aux[2], calls)));
-        auto result = relation(makeVariable('D'), std::move(expression));
+                            multiplyThree(makeNumber("4"), typedTerm(aux[0], calls), typedTerm(aux[2], calls), ProductNotation::Explicit));
+        auto result = relation(quantity(Quantity::Discriminant), std::move(expression));
         auto* r = static_cast<NodeRow*>(result.get());
         r->appendChild(makeRelation(OpKind::Eq)); r->appendChild(typedTerm(aux[3], calls));
         return result;
     }
     if (ref.kind == FormulaKind::GeneralFormula) {
         auto numerator = rowOf(makeSymbol("-"), makeVariable('b'), makeOperator(OpKind::PlusMinus));
-        static_cast<NodeRow*>(numerator.get())->appendChild(makeRoot(makeVariable('D')));
+        static_cast<NodeRow*>(numerator.get())->appendChild(makeRoot(quantity(Quantity::Discriminant)));
         return relation(variable(name), makeFraction(std::move(numerator), multiply(makeNumber("2"), makeVariable('a'))));
     }
     if (ref.kind == FormulaKind::SubstitutedFormula) {

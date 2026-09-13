@@ -71,10 +71,11 @@ bool needsTextDisplay(const numos::EngineResultNode& node, int depth=0) {
     for(const auto& child:node.children) if(needsTextDisplay(child,depth+1)) return true;
     return false;
 }
-NodePtr resultFormula(const numos::EngineResultNode& node, int depth=0) {
+NodePtr resultFormula(const numos::EngineResultNode& node, int depth=0,
+                      numos::ProductNotation notation=numos::ProductNotation::ScalarNatural) {
     if(depth>28) return nullptr;
     if(node.kind==numos::EngineNodeKind::Equation && node.children.size()==2) {
-        auto lhs=resultFormula(node.children[0],depth+1),rhs=resultFormula(node.children[1],depth+1);
+        auto lhs=resultFormula(node.children[0],depth+1,notation),rhs=resultFormula(node.children[1],depth+1,notation);
         if(!lhs||!rhs)return nullptr;
         // WHY: a display sub-row beginning with unary minus inherits BINARY
         // from the legacy AST. REL/BINARY is a forbidden TeX pair and can
@@ -97,12 +98,12 @@ NodePtr resultFormula(const numos::EngineResultNode& node, int depth=0) {
     if(node.kind==numos::EngineNodeKind::Function && node.text=="/" && node.children.size()==2) {
         // Presentation only: the authoritative structured division maps to a
         // VPAM fraction. No parsing of printed text or arithmetic is involved.
-        auto numerator=resultFormula(node.children[0],depth+1);
-        auto denominator=resultFormula(node.children[1],depth+1);
+        auto numerator=resultFormula(node.children[0],depth+1,notation);
+        auto denominator=resultFormula(node.children[1],depth+1,notation);
         if(!numerator || !denominator) return nullptr;
         return makeFraction(std::move(numerator),std::move(denominator));
     }
-    return needsTextDisplay(node)?nullptr:numos::CalculationEngine::resultTreeToAST(node);
+    return needsTextDisplay(node)?nullptr:numos::CalculationEngine::resultTreeToAST(node,notation);
 }
 }
 

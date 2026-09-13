@@ -1,0 +1,20 @@
+NumOSDiscriminant: renamed single-glyph derivative of Latin Modern Math 1.959.
+Contains U+0394 GREEK CAPITAL LETTER DELTA only (plus the required .notdef).
+Source font copyright 2012--2014 B. Jackowski, P. Strzelczyk and P. Pianowski
+(on behalf of TeX users groups). GUST Font License / LPPL 1.3c or later.
+
+Upstream: https://ctan.org/pkg/lm-math
+Source: https://mirrors.ibiblio.org/CTAN/fonts/lm-math/opentype/latinmodern-math.otf
+Upstream SHA256: 6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f
+Modified by the NumOS project: subset and rename; glyph outline unchanged.
+No geometric scaling, stretching, triangle icon or U+2206 substitution.
+The classic TeX glyph is broader than STIX Delta. Its optically designed outline
+is not claimed to be a geometrically exact equilateral triangle.
+
+Derivative files:
+assets/fonts/NumOSDiscriminant.otf
+src/fonts/tex_delta_18.c
+src/fonts/tex_delta_12.c
+src/fonts/tex_delta_8.c
+Reproduction: scripts/generate-discriminant-font.py (fontTools; lv_font_conv 1.5.3).
+Licenses: assets/fonts/LICENSES/GUST-FONT-LICENSE.txt and LPPL-1.3c.txt.

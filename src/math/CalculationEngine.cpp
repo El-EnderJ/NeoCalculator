@@ -949,10 +949,11 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
 
 } // namespace
 
-vpam::NodePtr CalculationEngine::resultTreeToAST(const EngineResultNode& tree) {
+vpam::NodePtr CalculationEngine::resultTreeToAST(const EngineResultNode& tree, ProductNotation notation) {
     bool ok = false;
     auto row = convertToRow(tree, 0, ok);
     if (!ok) return nullptr;
+    applyGeneratedProductNotation(row.get(), notation);
     return row;
 }
 

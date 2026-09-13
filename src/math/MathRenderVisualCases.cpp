@@ -1,6 +1,7 @@
 #if defined(NUMOS_MATH_VISUAL_VERIFY) || !defined(ARDUINO)
 
 #include "MathRenderVisualCases.h"
+#include "GeneratedMathNotation.h"
 
 #include <utility>
 
@@ -282,6 +283,23 @@ NodePtr parAssemblyNested() {
 // Isolated operator fixture: its entire dark canvas ink must fit the measured box.
 NodePtr plusMinusGlyph() { return row(op(OpKind::PlusMinus)); }
 
+NodePtr notationNatural(NodePtr p) {
+    numos::applyGeneratedProductNotation(p.get(), numos::ProductNotation::ScalarNatural);
+    return p;
+}
+NodePtr notationProduct() {
+    return notationNatural(row(makeParen(row(n("2"),makeOperator(OpKind::Mul),makeVariable('x'),makeOperator(OpKind::Add),n("5"))),
+        makeOperator(OpKind::Mul),makeParen(row(makeVariable('x'),makeOperator(OpKind::Sub),n("1"))),makeRelation(OpKind::Eq),n("0")));
+}
+NodePtr notationNumbers() { return notationNatural(row(n("2"),makeOperator(OpKind::Mul),n("3"),makeRelation(OpKind::Eq),n("6"))); }
+NodePtr notationNegative() { return notationNatural(row(n("2"),makeOperator(OpKind::Mul),makeParen(row(makeOperator(OpKind::Sub),n("3"))))); }
+NodePtr notationFunction() { return notationNatural(row(n("2"),makeOperator(OpKind::Mul),makeFunction(FuncKind::Sin,row(makeVariable('x'))))); }
+NodePtr notationFraction() { return notationNatural(row(makeFraction(row(n("2")),row(n("3"))),makeOperator(OpKind::Mul),makeVariable('x'))); }
+NodePtr deltaGlyph() { return row(makeSymbol("\xCE\x94")); }
+NodePtr deltaRoot() { return row(makeRoot(deltaGlyph())); }
+NodePtr deltaFraction() { return row(makeFraction(deltaGlyph(),deltaGlyph())); }
+NodePtr deltaScripts() { return row(makePower(row(makeVariable('x')),row(makeSymbol("\xCE\x94"),makePower(row(makeVariable('y')),deltaGlyph())))); }
+
 static constexpr MathRenderVisualCase kCases[] = {
     { "power_2_squared", "2^2", MathStyle::TEXT, buildTwoSquared },
     { "power_x_squared", "x^2", MathStyle::TEXT, buildXSquared },
@@ -332,6 +350,15 @@ static constexpr MathRenderVisualCase kCases[] = {
     { "stretch_parAssembly", "STIX assembly", MathStyle::TEXT, parAssembly },
     { "stretch_parAssemblyNested", "Nested STIX assembly", MathStyle::TEXT, parAssemblyNested },
     { "operator_plus_minus", "STIX plus-minus", MathStyle::TEXT, plusMinusGlyph },
+    { "notation_product", "Natural product", MathStyle::TEXT, notationProduct },
+    { "notation_numbers", "Explicit numbers", MathStyle::TEXT, notationNumbers },
+    { "notation_negative", "Negative factor", MathStyle::TEXT, notationNegative },
+    { "notation_function", "Scalar function", MathStyle::TEXT, notationFunction },
+    { "notation_fraction", "Rational coefficient", MathStyle::TEXT, notationFraction },
+    { "notation_delta", "U+0394 Delta", MathStyle::TEXT, deltaGlyph },
+    { "notation_delta_root", "Delta under radical", MathStyle::TEXT, deltaRoot },
+    { "notation_delta_fraction", "Delta in fraction", MathStyle::TEXT, deltaFraction },
+    { "notation_delta_scripts", "Delta scripts 12/8", MathStyle::TEXT, deltaScripts },
 };
 
 } // namespace

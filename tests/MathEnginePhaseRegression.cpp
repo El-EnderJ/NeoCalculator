@@ -1118,7 +1118,7 @@ static void testMathRenderVisualCasesAreDeterministicAndLayoutValid() {
     const std::size_t count = mathRenderVisualCaseCount();
     FontMetrics fm = defaultFontMetrics();
 
-    check(count == 49, "visual catalog includes delimiter and isolated plus-minus cases");
+    check(count == 58, "visual catalog includes delimiter, plus-minus and notation cases");
 
     bool sawTwoSquared = false;
     bool sawXSquared = false;

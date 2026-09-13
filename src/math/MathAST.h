@@ -239,6 +239,7 @@ struct FontMetrics {
     int16_t numberAscent = 0;            ///< Actual digit ink above baseline from LVGL glyph boxes.
     int16_t numberDescent = 0;           ///< Actual digit ink below baseline from LVGL glyph boxes.
     int16_t plusMinusWidth = 0;        ///< Actual font advance/ink extent; captured outside layout.
+    int16_t deltaWidth = 0, deltaAscent = 0, deltaDescent = 0;
 
     /// Altura total de la caja visual usada por layout.
     int16_t height() const { return ascent + descent; }
@@ -306,6 +307,9 @@ struct FontMetrics {
         // The renderer clamps deeper nesting to the same scriptscript font.
         out.plusMinusWidth = scriptLevel >= 2 ? plusMinusWidth
             : (plusMinusWidth > 0 ? scale(plusMinusWidth, 1) : 0);
+        out.deltaWidth = scriptLevel >= 2 ? deltaWidth : scaleAllowZero(deltaWidth);
+        out.deltaAscent = scriptLevel >= 2 ? deltaAscent : scaleAllowZero(deltaAscent);
+        out.deltaDescent = scriptLevel >= 2 ? deltaDescent : scaleAllowZero(deltaDescent);
         out.numberAscent = scale(numberAscent > 0 ? numberAscent : ascent, 1);
         out.numberDescent = (numberAscent > 0 || numberDescent > 0)
             ? scaleAllowZero(numberDescent)
@@ -987,6 +991,13 @@ public:
     explicit NodeFunction(FuncKind kind, NodePtr argument = nullptr);
 
     void calculateLayout(const FontMetrics& fm) override;
+    // Generated read-only products use TeX ORD -> OP spacing before sin, etc.
+    // Authored function/editor geometry remains the default.
+    MathClass leftMathClass() const override {
+        return _generatedOperatorSpacing ? MathClass::OP : mathClass();
+    }
+    void setGeneratedOperatorSpacing(bool enabled) { _generatedOperatorSpacing = enabled; }
+    bool generatedOperatorSpacing() const { return _generatedOperatorSpacing; }
 
     int       childCount()     const override { return 1; }
     MathNode* child(int index) const override;
@@ -1009,6 +1020,7 @@ public:
 private:
     FuncKind _kind;
     NodePtr  _argument;   ///< Contenido del argumento (NodeRow)
+    bool _generatedOperatorSpacing = false;
 
     int16_t _labelWidth;  ///< Ancho del texto de la etiqueta (calculado)
     int16_t _parenWidth = 0;

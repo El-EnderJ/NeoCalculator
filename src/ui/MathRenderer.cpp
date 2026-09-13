@@ -585,6 +585,13 @@ FontMetrics MathCanvas::metricsFromFont(const lv_font_t* font) {
         fm.plusMinusWidth = std::max<int16_t>(static_cast<int16_t>(plusMinus.adv_w),
             static_cast<int16_t>(plusMinus.ofs_x + plusMinus.box_w));
     }
+    lv_font_glyph_dsc_t delta;
+    if (lv_font_get_glyph_dsc(ui::mathGlyphFont(font, 0x0394), &delta, 0x0394, 0)) {
+        fm.deltaWidth = std::max<int16_t>(static_cast<int16_t>(delta.adv_w),
+            static_cast<int16_t>(delta.ofs_x + delta.box_w));
+        fm.deltaAscent = glyphInkAscentPx(delta.box_h, delta.ofs_y);
+        fm.deltaDescent = glyphInkDescentPx(delta.ofs_y);
+    }
     return fm;
 }
 
@@ -2704,11 +2711,12 @@ void MathCanvas::drawTextBaseline(lv_layer_t* layer, int16_t x, int16_t yBaselin
         }
 
         lv_font_glyph_dsc_t glyph;
-        const bool ok = lv_font_get_glyph_dsc(font, &glyph, cp, nextCp);
+        const auto* glyphFont = ui::mathGlyphFont(font, cp);
+        const bool ok = lv_font_get_glyph_dsc(glyphFont, &glyph, cp, nextCp);
         if (ok) {
             lv_draw_letter_dsc_t dsc;
             lv_draw_letter_dsc_init(&dsc);
-            dsc.font = font;
+            dsc.font = glyphFont;
             dsc.color = color;
             dsc.opa = LV_OPA_COVER;
             dsc.unicode = cp;

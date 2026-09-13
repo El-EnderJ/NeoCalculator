@@ -64,6 +64,14 @@ const lv_font_t* mathScriptScriptFont() {
     return mathScriptScriptFontFace().font;
 }
 
+const lv_font_t* mathGlyphFont(const lv_font_t* base, uint32_t codepoint) {
+    if (codepoint != 0x0394) return base;
+    if (base == &stix_math_18) return &tex_delta_18;
+    if (base == &stix_math_12) return &tex_delta_12;
+    if (base == &stix_math_8) return &tex_delta_8;
+    return base;
+}
+
 const lv_font_t* mathParenthesisFont(int16_t emSize) {
     return emSize >= 15 ? &stix_parens_18 : emSize >= 10 ? &stix_parens_12 : &stix_parens_8;
 }

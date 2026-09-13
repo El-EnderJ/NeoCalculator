@@ -1195,7 +1195,7 @@ void CalculusApp::buildResultDisplay() {
 
     if (_giacResult.hasTree) {
         _resultNode =
-            numos::CalculationEngine::resultTreeToAST(_giacResult.tree);
+            numos::CalculationEngine::resultTreeToAST(_giacResult.tree, numos::ProductNotation::ScalarNatural);
         if (_resultNode && _calcMode == CalcMode::INTEGRAL && !_giacResult.unevaluated) {
             // Product policy: Giac supplies the authoritative primitive;
             // NumOS presents the general antiderivative by appending + C.

@@ -59,6 +59,7 @@
 #include <string>
 
 #include "MathAST.h"
+#include "GeneratedMathNotation.h"
 #include "ExactVal.h"
 #include "giac/GiacEngine.h"
 
@@ -135,7 +136,8 @@ public:
     static bool resultTreeToExactVal(const EngineResultNode& tree,
                                      vpam::ExactVal& out);
     /// Engine result tree -> MathAST row for Natural Display (strict).
-    static vpam::NodePtr resultTreeToAST(const EngineResultNode& tree);
+    static vpam::NodePtr resultTreeToAST(const EngineResultNode& tree,
+                                       ProductNotation notation = ProductNotation::Explicit);
     static ResultReusePolicy reusePolicyForResult(
         const EngineResultNode& tree);
     static ResultSToDPolicy sToDPolicyForResult(

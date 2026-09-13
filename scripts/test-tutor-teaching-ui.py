@@ -15,6 +15,7 @@ spec = importlib.util.spec_from_file_location("eq_guided_review", ROOT / "script
 eq = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(eq)
 CASES = {
+    "notation-factor": ["2 x ^ 2 RIGHT + 3 x - 5 = 0"],
     "isolated": ["x = 1"],
     "reversed": ["1 = x"],
     "physical-negative": ["x = - 3"],

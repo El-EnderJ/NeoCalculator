@@ -14,7 +14,7 @@ The [reference contract](MATH_TEX_PARITY_02_REFERENCE.md) records the primary Te
 
 ### Shared geometry and styles
 
-`MathTypography.h` preserves the original enum values and adds cramped counterparts for Display, Text, Script and ScriptScript. Fraction numerator/denominator and super/subscript transitions follow TeX; radicands are cramped and root degrees use ordinary ScriptScript. Nominal em sizes remain 18/12/8px. LVGL line heights are 31/20/14px and describe raster line boxes, not the design-unit scale. The finite 8px floor and its difference from ideal 70%/55% sizes are explicit, including in the reference comparison.
+`MathTypography.h` preserves the original enum values and adds cramped counterparts for Display, Text, Script and ScriptScript. Super/subscript transitions follow TeX; fraction numerators/denominators keep the base size at script level 0 (readable-fraction policy, TXP PD-4, restored by MATH-READABILITY-REGRESSION-01B) and step down from script level 1; radicands are cramped and root degrees take one ordinary script step. Nominal em sizes remain 18/12/8px. LVGL line heights are 31/20/14px and describe raster line boxes, not the design-unit scale. The finite 8px floor and its difference from ideal 70%/55% sizes are explicit, including in the reference comparison.
 
 `FontMetrics` distinguishes advance, italic correction, ink extents, baseline, axis and line box. Scalar Latin/Greek identifiers use verified mathematical italic glyphs; multi-letter names, functions, numbers, units and descriptive scientific labels stay upright. Existing constant and Delta policies are retained. No semantic symbol name or serialization is rewritten for presentation.
 

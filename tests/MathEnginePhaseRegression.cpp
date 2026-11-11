@@ -5,6 +5,7 @@
 #include <string>
 
 #include "src/math/MathAST.h"
+#include "src/math/MathOperatorGeometry.h"
 #include "src/math/MathRenderVisualCases.h"
 #include "src/math/MathStressExpressions.h"
 #include "src/math/font/MathGlyphAssembly.h"
@@ -285,8 +286,13 @@ static void testSpaceAfterScriptAffectsPowerAndSubscriptWidth() {
     auto subscript = makeSubscript(rowWithNumber("x"), rowWithNumber("1"));
     subscript->calculateLayout(fm);
     auto* subNode = static_cast<NodeSubscript*>(subscript.get());
+    // TXP PD-7 (MathKernInfo BottomRight cut-in, adopted by MATH-TEX-PARITY-02):
+    // an upright nucleus has no italic reserve, so the subscript starts at the
+    // base width plus the source MathKern; SpaceAfterScript follows the script.
+    check(subNode->scriptX() == subNode->base()->layout().width + subNode->mathKernPx(),
+          "NodeSubscript script starts at base width plus MathKern cut-in");
     const int16_t expectedSubWidth = static_cast<int16_t>(
-        subNode->base()->layout().width + subNode->subscript()->layout().width
+        subNode->scriptX() + subNode->subscript()->layout().width
         + scriptSpace);
     check(subscript->layout().width == expectedSubWidth,
           "NodeSubscript width includes SpaceAfterScript");
@@ -542,26 +548,41 @@ static void testBigOpDisplayLayoutMatchesRendererGeometry() {
     const auto& lowerL = node->lower()->layout();
     const auto& upperL = node->upper()->layout();
     const auto& bodyL = node->body()->layout();
-    const auto opMetrics = DelimiterAssembler::glyphMetricsForHeightPx(
-        node->operatorCodepoint(), largeOperatorTargetHeightPx(fm), fm.emSize);
-    const int16_t opH = opMetrics.valid ? opMetrics.heightPx : fm.height();
-    const int16_t symbolAscent = largeOperatorGlyphAscentPx(fm, opH);
-    const int16_t symbolDescent = largeOperatorGlyphDescentPx(fm, opH);
-    const int16_t symbolPadPx = largeOperatorSymbolPadPx(fm);
-    const int16_t limitGapPx = MathConstantsProvider(fm.emSize).upperLimitGapMin();
-    const int16_t expectedAscent = static_cast<int16_t>(
-        std::max<int16_t>(bodyL.ascent,
-            static_cast<int16_t>(symbolAscent + symbolPadPx
-                                 + limitGapPx + upperL.height())));
-    const int16_t expectedDescent = static_cast<int16_t>(
-        std::max<int16_t>(bodyL.descent,
-            static_cast<int16_t>(symbolDescent + symbolPadPx
-                                 + limitGapPx + lowerL.height())));
+    // TXP §H.9.2 (Appendix G rule 13a, OpenType form) with PD-11 (no 4 mu
+    // symbol pad), as implemented by MATH-TEX-PARITY-02: the selected display
+    // glyph is centred on the axis; the upper baseline sits above the glyph
+    // top by max(UpperLimitBaselineRiseMin, UpperLimitGapMin + inkDescent(U)),
+    // the lower baseline below the glyph bottom by
+    // max(LowerLimitBaselineDropMin, LowerLimitGapMin + inkAscent(L)).
+    const auto* opInk = stixOperatorInk(node->operatorCodepoint(), fm.emSize, true);
+    check(opInk != nullptr, "BigOp display glyph has source ink metrics");
+    if (!opInk) return;
+    const MathConstantsProvider mc(fm.emSize);
+    const int16_t symbolAscent = largeOperatorGlyphAscentPx(fm, opInk->height);
+    const int16_t symbolDescent = static_cast<int16_t>(opInk->height - symbolAscent);
+    const int16_t upperBaseline = static_cast<int16_t>(-symbolAscent - std::max<int16_t>(
+        mc.upperLimitBaselineRiseMin(),
+        static_cast<int16_t>(mc.upperLimitGapMin() + layoutInkDescentPx(upperL))));
+    const int16_t lowerBaseline = static_cast<int16_t>(symbolDescent + std::max<int16_t>(
+        mc.lowerLimitBaselineDropMin(),
+        static_cast<int16_t>(mc.lowerLimitGapMin() + layoutInkAscentPx(lowerL))));
+    const int16_t expectedAscent = std::max<int16_t>({symbolAscent, bodyL.ascent,
+        static_cast<int16_t>(upperL.ascent - upperBaseline),
+        static_cast<int16_t>(lowerL.ascent - lowerBaseline)});
+    const int16_t expectedDescent = std::max<int16_t>({int16_t(0), symbolDescent, bodyL.descent,
+        static_cast<int16_t>(upperL.descent + upperBaseline),
+        static_cast<int16_t>(lowerL.descent + lowerBaseline)});
 
     check(big->layout().ascent == expectedAscent,
           "BigOp display ascent matches renderer displayLimitGeometry");
     check(big->layout().descent == expectedDescent,
           "BigOp display descent matches renderer displayLimitGeometry");
+    // The renderer paints from largeOperatorGeometry(); layout must be its box.
+    const auto drawn = largeOperatorGeometry(node->operatorCodepoint(), fm, lowerL, upperL, bodyL);
+    check(drawn.box.ascent == big->layout().ascent && drawn.box.descent == big->layout().descent,
+          "BigOp layout box equals the geometry the renderer paints");
+    check(drawn.upperBaseline == upperBaseline && drawn.lowerBaseline == lowerBaseline,
+          "BigOp renderer limit baselines follow rule 13a");
 }
 
 static void testMakeRelationProducesRelationAtom() {
@@ -992,10 +1013,15 @@ static void testFractionDenominatorUsesInkMetricsNotLineBox() {
     auto* f = static_cast<NodeFraction*>(frac.get());
 
     const auto& denL = f->denominator()->layout();
+    // TXP PD-4 / rule 15d (MATH-TEX-PARITY-02): DenominatorShiftDown is a
+    // baseline-to-baseline OpenType constant; denominatorShiftPx() is measured
+    // from the bar bottom, so the constant is converted by +axis - barHalfDown.
+    // The gap minimum is applied to the denominator's ink ascent.
+    const MathConstantsProvider denMc(fm.emSize);
+    const int16_t barHalfDown = static_cast<int16_t>(denMc.fractionRuleThickness() / 2);
     const int16_t expectedInkShift = std::max<int16_t>(
-        MathConstantsProvider(fm.emSize).fractionDenominatorShiftDown(true),
-        static_cast<int16_t>(
-            MathConstantsProvider(fm.emSize).fractionDenominatorGapMin(true) + denL.ascent));
+        static_cast<int16_t>(denMc.fractionDenominatorShiftDown(true) + fm.axisHeight() - barHalfDown),
+        static_cast<int16_t>(denMc.fractionDenominatorGapMin(true) + denL.ascent));
     const int16_t badLineBoxShift = static_cast<int16_t>(
         MathConstantsProvider(fm.emSize).fractionDenominatorGapMin(true) + fm.lineAscent);
 

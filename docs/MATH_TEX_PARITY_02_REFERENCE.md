@@ -34,13 +34,13 @@ The source's70%/55% script percentages are recorded, but the available physical 
 | Ordinary child, delimiter content, function argument | Inherit | Inherit |
 | Superscript / upper operator limit | D/T→S, S/SS→SS | Preserve |
 | Subscript / logarithm base / lower operator limit | D/T→S, S/SS→SS | Force cramped |
-| Fraction numerator | D→T, T→S, S/SS→SS | Preserve |
-| Fraction denominator | D→T, T→S, S/SS→SS | Force cramped |
+| Fraction numerator | D/T→T at script level 0 (base size kept, PD-4); S/SS→SS | Preserve |
+| Fraction denominator | D/T→T at script level 0 (base size kept, PD-4); S/SS→SS | Force cramped |
 | Radicand | Inherit size | Force cramped |
-| Root degree | Ordinary ScriptScript | Explicitly uncramped, following TeX's root macro |
+| Root degree | One ordinary script step: D/T→S, S/SS→SS | Explicitly uncramped, following TeX's root macro |
 | Measurement nominal and uncertainty | Inherit | Inherit |
 
-Cramped is a rule state, not a fourth font size. The older full-size nested-fraction readability override is superseded by the standard transitions above.
+Cramped is a rule state, not a fourth font size. MATH-READABILITY-REGRESSION-01B restored the readable-fraction size policy (TXP PD-4): at script level 0 numerators and denominators keep the base size in Text style, and size reduction starts at script level 1. The strict TeX T→S step and the ScriptScript root degree, used by the PARITY-02 candidate `4987f4ea…`, produced 12/8 px fraction content and 8 px indices and were rejected by the user.
 
 ### Geometry contracts
 

@@ -398,23 +398,53 @@ inline FontMetrics crampedMetrics(const FontMetrics& fm) {
     out.style = crampedStyle(fm.style);
     return out;
 }
+/// Root degree (radical index): one script step, never two at level 0.
+///
+/// TeX's \root sets the index in ScriptScript, which on the 18/12/8 profile
+/// means 8 px glyphs below a level-0 radical — the illegible size PD-4
+/// rejects. The degree therefore takes the ordinary script step (12 px at
+/// level 0, 8 px from level 1) and stays uncramped, as in \root.
 inline FontMetrics rootDegreeMetrics(const FontMetrics& fm) {
-    auto out = fm;
-    while (out.scriptLevel < 2) out = out.superscript();
-    out.style = MathStyle::SCRIPTSCRIPT;
+    auto out = fm.superscript();
+    out.style = superscriptStyle(uncrampedStyle(fm.style));
     return out;
 }
+
+/// NumOS ReadableInlineFractionPolicy — fraction numerator metrics (TXP PD-4).
+///
+/// Size: at scriptLevel 0 numerator and denominator keep the base font and
+/// size; only the style switches to TEXT so the compact text-style fraction
+/// shift/gap MATH constants apply. Reduction starts at scriptLevel >= 1 and
+/// steps down through superscript() (L1 -> L2, clamped at L2).
+///
+/// Style lattice (size, style):
+///   DISPLAY L0      -> TEXT  L0          (same glyph size)
+///   TEXT    L0      -> TEXT  L0          (same glyph size; NOT TeX's SCRIPT)
+///   SCRIPT  L1      -> SCRIPTSCRIPT L2   (~44 %, via superscript())
+///   SCRIPTSCRIPT L2 -> SCRIPTSCRIPT L2   (clamped)
+///
+/// This deliberately departs from strict TeX, which steps TEXT -> SCRIPT:
+/// that produces 12 px numerators and 8 px scripts inside them, illegible on
+/// the 320x240 TFT. Cramping is unaffected by the size override (TXP §H.2):
+/// the numerator inherits the parent's cramped bit, the denominator is
+/// always cramped (fractionDenominatorMetrics).
+///
+/// Allocation-free, no UI dependency, host-testable.
 inline FontMetrics fractionPartMetrics(const FontMetrics& fm) {
-    // WHY: display fractions use text children; text fractions use script.
-    // Keeping every nested fraction at em18 was a historical readability
-    // policy, now replaced by the audited TeX transitions with an em8 floor.
-    auto out = fm.isDisplayStyle() ? fm : fm.superscript();
-    out.style = numeratorStyle(fm.style);
+    if (fm.scriptLevel >= 1) {
+        // Already inside a reduced context (exponent, subscript, limit).
+        auto out = fm.superscript();
+        out.style = numeratorStyle(fm.style);
+        return out;
+    }
+    auto out = fm;                             // same font + same size
+    out.style = isCrampedStyle(fm.style) ? crampedStyle(MathStyle::TEXT)
+                                         : MathStyle::TEXT;
     return out;
 }
 inline FontMetrics fractionDenominatorMetrics(const FontMetrics& fm) {
     auto out = fractionPartMetrics(fm);
-    out.style = denominatorStyle(fm.style);
+    out.style = crampedStyle(out.style);
     return out;
 }
 

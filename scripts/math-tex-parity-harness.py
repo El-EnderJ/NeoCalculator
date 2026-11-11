@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Compile source-frozen layout and private instrumented renderer; never publish."""
-import argparse,ctypes,hashlib,importlib.util,json,os,re,subprocess,time
+import argparse,ctypes,hashlib,importlib.util,json,os,re,subprocess,time,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 def main():
@@ -95,4 +95,8 @@ struct ParityNodeScope { ParityNodeScope(){parityScopeEnter();} ~ParityNodeScope
   with Image.open(path) as im:im.save(path.with_suffix('.png'))
   path.unlink()
  print('PASS private geometry capture',out)
+ # MathEnginePhaseRegression guards the readable-fraction size policy (TXP PD-4)
+ # and other layout invariants; it runs in this lane since MATH-READABILITY-REGRESSION-01B.
+ run('phase-regression',[sys.executable,str(repo/'scripts/test-math-engine-phase.py'),'--source',str(source),'--build',str(build),'--out',str(out/'phase-regression')])
+ print('PASS MathEnginePhaseRegression',out/'phase-regression')
 if __name__=='__main__':main()

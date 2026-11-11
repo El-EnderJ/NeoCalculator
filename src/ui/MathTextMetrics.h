@@ -57,6 +57,7 @@ inline vpam::TextAtomMetrics measureMathAtom(const void* binding,const char* tex
         } else pen+=missingMathGlyphAdvance(font);
         p+=step;
     }
+    ink.advance=int16_t(std::min<int32_t>(32767,pen));
     ink.leftPad=int16_t(-left);ink.width=int16_t(std::min<int32_t>(32767,std::max(pen,right)-left));
     return ink;
 }

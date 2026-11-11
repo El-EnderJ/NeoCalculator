@@ -1363,9 +1363,9 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
                     }
                     if(!ev.exactAST)error=quantity::Error::Allocation;
                     else {
-                        ev.exactAST->calculateLayout(vpam::defaultFontMetrics());
+                        const auto layoutStatus = vpam::calculateLayoutChecked(*ev.exactAST, vpam::defaultFontMetrics());
                         const auto box=ev.exactAST->layout();
-                        if(box.width>enginecontract::kMaxRenderedWidth || box.ascent+box.descent>enginecontract::kMaxRenderedHeight)
+                        if(layoutStatus != vpam::LayoutStatus::Ok || box.width>enginecontract::kMaxRenderedWidth || box.ascent+box.descent>enginecontract::kMaxRenderedHeight)
                             error=quantity::Error::ExpressionLimit;
                         else {
                             // WHY: an exact dimensionless sin(1 rad) must keep
@@ -1440,7 +1440,7 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
             static_cast<vpam::NodeRow*>(ev.exactAST.get())->appendChild(vpam::makeSpecialValue(vpam::SpecialValueKind::BothInfinities));
         } else ev.exactAST = resultTreeToAST(sr.tree, ProductNotation::ScalarNatural);
         if (ev.exactAST) {
-            ev.exactAST->calculateLayout(vpam::defaultFontMetrics());
+            const auto layoutStatus = vpam::calculateLayoutChecked(*ev.exactAST, vpam::defaultFontMetrics());
             const auto& layout = ev.exactAST->layout();
             const int32_t height = static_cast<int32_t>(layout.ascent) +
                                    layout.descent;
@@ -1449,7 +1449,7 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
                 static_cast<uint16_t>(std::max<int32_t>(0, layout.width)),
                 static_cast<uint16_t>(std::max<int32_t>(0, height)));
 #endif
-            if (layout.width > enginecontract::kMaxRenderedWidth ||
+            if (layoutStatus != vpam::LayoutStatus::Ok || layout.width > enginecontract::kMaxRenderedWidth ||
                 height > enginecontract::kMaxRenderedHeight) {
                 ev.exactAST.reset();
                 ev.fallbackReason = EngineFallbackReason::RenderedSizeLimit;

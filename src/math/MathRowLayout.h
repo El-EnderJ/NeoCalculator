@@ -26,6 +26,9 @@ inline AtomBoundary atomBoundary(const MathNode* node) {
             // internal signs cannot turn an operator in the outer row unary.
             return {MathClass::INNER, MathClass::INNER};
         } else if (node->type() == NodeType::Function || node->type() == NodeType::LogBase) {
+            if (node->type() == NodeType::Function &&
+                static_cast<const NodeFunction*>(node)->funcKind() == FuncKind::Factorial)
+                return {MathClass::ORD, MathClass::ORD};
             // Function label faces left as OP; its owned argument completes an
             // operand on the right. Shared for authored and generated formulas.
             return {MathClass::OP, MathClass::ORD};
@@ -110,7 +113,7 @@ struct RowLayout {
             // factored out of a transparent Row exactly once, even when nested.
             if (first) l.spaceBefore = cl.spaceBefore;
             else width += cl.spaceBefore;
-            cl.rowX = static_cast<int16_t>(width);
+            cl.rowX = fm.coordinate(width);
             width += cl.width;
             l.ascent = std::max(l.ascent, cl.ascent);
             l.descent = std::max(l.descent, cl.descent);
@@ -123,7 +126,7 @@ struct RowLayout {
             }
             first = false;
         }
-        l.width = static_cast<int16_t>(width);
+        l.width = fm.coordinate(width);
     }
     static void calculate(NodeRow& row, const FontMetrics& fm) {
         measure(row, fm);

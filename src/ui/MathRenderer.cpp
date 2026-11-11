@@ -26,6 +26,10 @@
  */
 
 #include "MathRenderer.h"
+#include "../math/MathIdentifier.h"
+#include "../math/MathOperatorGeometry.h"
+#include "../math/MathVectorDelimiterGeometry.h"
+#include "../i18n/Locale.h"
 #include "MathViewport.h"
 #include <algorithm>
 #include <cmath>
@@ -98,30 +102,19 @@ static void drawStrokedDelimiter(lv_layer_t* layer, int16_t x,
                                  int16_t emSizePx) {
     const int16_t H = static_cast<int16_t>(yBottom - yTop);
     if (H <= 0) return;
-    // Stroke weight tuned to sit close to the digit/letter weight of the math
-    // font (≈ emSize/8) so a synthetic delimiter doesn't read lighter than the
-    // glyphs it wraps; clamped to ≥2 px so it never disappears at small sizes.
-    const int16_t stroke = std::max<int16_t>(2, static_cast<int16_t>((emSizePx + 4) / 8));
-    const int16_t bulge  = std::max<int16_t>(4, std::min<int16_t>(
-                               static_cast<int16_t>(H / 5), emSizePx));
-    const int16_t footW  = std::max<int16_t>(3, static_cast<int16_t>(emSizePx / 4));
-    const int16_t inset  = static_cast<int16_t>(stroke / 2 + 1);
+    const auto geometry = vectorDelimiterGeometry(H, emSizePx, delimCp);
+    const int16_t stroke = geometry.stroke;
+    const int16_t bulge = geometry.span;
+    // WHY: the inputs bound ink, not segment centerlines. Rounded caps must
+    // remain inside that slot at both ends and on both sides of a brace.
+    x += geometry.radius;
+    yBottom = yTop + geometry.lastY;
+    yTop += geometry.firstY;
+    const int16_t inset = std::min<int16_t>(bulge / 2, stroke / 2 + 1);
 
     auto vbar = [&](int16_t vx) { strokeSeg(layer, vx, yTop, vx, yBottom, stroke, color); };
 
     switch (delimCp) {
-        case 0x005B:    // [
-        case 0x005D: {  // ]
-            const bool left = (delimCp == 0x005B);
-            const int16_t vx = left ? static_cast<int16_t>(x + inset)
-                                    : static_cast<int16_t>(x + bulge - inset);
-            const int16_t fx = left ? static_cast<int16_t>(vx + footW)
-                                    : static_cast<int16_t>(vx - footW);
-            vbar(vx);
-            strokeSeg(layer, vx, yTop, fx, yTop, stroke, color);
-            strokeSeg(layer, vx, yBottom, fx, yBottom, stroke, color);
-            break;
-        }
         case 0x007C: {  // |
             vbar(static_cast<int16_t>(x + bulge / 2));
             break;
@@ -134,10 +127,8 @@ static void drawStrokedDelimiter(lv_layer_t* layer, int16_t x,
             const int16_t outer = left ? static_cast<int16_t>(x + inset)
                                        : static_cast<int16_t>(x + bulge - inset);
             const int16_t cusp = left ? x : static_cast<int16_t>(x + bulge);
-            const int16_t shoulder = std::max<int16_t>(2,
-                static_cast<int16_t>(H / 5));
-            const int16_t cuspHalf = std::max<int16_t>(1,
-                static_cast<int16_t>(H / 18));
+            const int16_t shoulder = geometry.shoulder;
+            const int16_t cuspHalf = geometry.cuspHalf;
             // WHY: bounded segments form a recognisable scalable brace even
             // when the compact STIX subset has no OpenType brace parts.
             strokeSeg(layer, inner, yTop, outer,
@@ -233,6 +224,12 @@ static bool drawDelimiterGlyph(lv_layer_t* layer,
     }
 
     const int16_t requestedHeight = static_cast<int16_t>(yBottom - yTop);
+    // WHY: the compact subset has no extensible vertical-bar glyph. Its
+    // variant table can otherwise select a base glyph at a tall target size.
+    if (delimCp == 0x007C) {
+        drawStrokedDelimiter(layer, x, yTop, yBottom, delimCp, color, emSizePx);
+        return true;
+    }
     if ((delimCp == 0x007B || delimCp == 0x007D) &&
         requestedHeight > static_cast<int16_t>(font->line_height)) {
         drawStrokedDelimiter(layer, x, yTop, yBottom, delimCp, color, emSizePx);
@@ -335,70 +332,6 @@ static bool drawDelimiterGlyph(lv_layer_t* layer,
         return true;
     }
 
-}
-
-struct DisplayLimitGeometry {
-    int16_t symbolColumnWidth = 0;
-    int16_t symbolTop = 0;
-    int16_t symbolBottom = 0;
-    int16_t upperX = 0;
-    int16_t upperBaseline = 0;
-    int16_t lowerX = 0;
-    int16_t lowerBaseline = 0;
-    int16_t bodyX = 0;
-};
-
-static DisplayLimitGeometry displayLimitGeometry(
-        int16_t x, int16_t yBaseline, int16_t symbolWidth,
-        int16_t symbolHeight,
-        const LayoutResult& lowerL, const LayoutResult& upperL,
-        const LayoutResult& bodyL, const FontMetrics& fm,
-        int16_t limitGapPx, int16_t bodyGapPx) {
-    const int16_t symbolPadPx = largeOperatorSymbolPadPx(fm);
-    const int16_t symbolAscent = largeOperatorGlyphAscentPx(fm, symbolHeight);
-    const int16_t symbolDescent = largeOperatorGlyphDescentPx(fm, symbolHeight);
-
-    DisplayLimitGeometry out;
-    out.symbolColumnWidth = std::max({symbolWidth, lowerL.width, upperL.width});
-    out.symbolTop = static_cast<int16_t>(yBaseline - symbolAscent - symbolPadPx);
-    out.symbolBottom = static_cast<int16_t>(yBaseline + symbolDescent + symbolPadPx);
-    out.upperX = static_cast<int16_t>(x + (out.symbolColumnWidth - upperL.width) / 2);
-    out.upperBaseline = static_cast<int16_t>(out.symbolTop - limitGapPx - upperL.descent);
-    out.lowerX = static_cast<int16_t>(x + (out.symbolColumnWidth - lowerL.width) / 2);
-    out.lowerBaseline = static_cast<int16_t>(out.symbolBottom + limitGapPx + lowerL.ascent);
-    out.bodyX = static_cast<int16_t>(x + out.symbolColumnWidth + bodyGapPx);
-    return out;
-}
-
-struct InlineLimitGeometry {
-    int16_t limitsX = 0;
-    int16_t limitsWidth = 0;
-    int16_t upperX = 0;
-    int16_t upperBaseline = 0;
-    int16_t lowerX = 0;
-    int16_t lowerBaseline = 0;
-    int16_t bodyX = 0;
-};
-
-static InlineLimitGeometry inlineLimitGeometry(
-        int16_t x, int16_t yBaseline, int16_t symbolWidth,
-        const LayoutResult& lowerL, const LayoutResult& upperL,
-        const FontMetrics& fm, int16_t bodyGapPx) {
-    MathConstantsProvider mc(fm.emSize);
-    int16_t supShift = mc.superscriptShiftUp();
-    int16_t subDrop = mc.subscriptShiftDown();
-    if (supShift < 1) supShift = 1;
-    if (subDrop < 2) subDrop = 2;
-
-    InlineLimitGeometry out;
-    out.limitsX = static_cast<int16_t>(x + symbolWidth);
-    out.limitsWidth = std::max(upperL.width, lowerL.width);
-    out.upperX = static_cast<int16_t>(out.limitsX + (out.limitsWidth - upperL.width) / 2);
-    out.upperBaseline = static_cast<int16_t>(yBaseline - supShift);
-    out.lowerX = static_cast<int16_t>(out.limitsX + (out.limitsWidth - lowerL.width) / 2);
-    out.lowerBaseline = static_cast<int16_t>(yBaseline + subDrop);
-    out.bodyX = static_cast<int16_t>(out.limitsX + out.limitsWidth + bodyGapPx);
-    return out;
 }
 
 } // namespace
@@ -658,7 +591,7 @@ void MathCanvas::setExpression(NodeRow* root, const CursorController* ctrl) {
 
     // Recalculate layout and optionally grow the widget to fit the expression.
     if (_obj && _root) {
-        _root->calculateLayout(_fmNormal);
+        _layoutStatus = calculateLayoutChecked(*_root, _fmNormal);
         const auto& rl = _root->layout();
         if (_autoHeightEnabled) {
             lv_obj_update_layout(_obj);
@@ -689,6 +622,14 @@ void MathCanvas::setTraceLabel(const char* label) {
 }
 
 void MathCanvas::setMathStyle(MathStyle style) {
+    // WHY: setMathStyle must bind the same physical font in all three paths.
+    // Recreate the base profile only here (outside the geometry hot path), so
+    // switching back from SCRIPT does not leave a small font in DISPLAY.
+    _fmNormal = metricsFromFont(_fontNormal);
+    _fmNormal.script = &_fmSmall;
+    const uint8_t level = scriptLevelForStyle(style);
+    if (level == 1) _fmNormal = _fmSmall;
+    if (level == 2) _fmNormal = _fmScriptScript;
     _fmNormal.style = style;
     // WHY: MathCanvas owns the metrics consumed by layout, draw, and cursor
     // geometry, so diagnostics must switch style here instead of forking math.
@@ -696,7 +637,7 @@ void MathCanvas::setMathStyle(MathStyle style) {
         invalidate();
         return;
     }
-    _root->calculateLayout(_fmNormal);
+    _layoutStatus = calculateLayoutChecked(*_root, _fmNormal);
     invalidate();
 }
 
@@ -718,14 +659,14 @@ void MathCanvas::clearHighlightNode() {
 }
 
 int16_t MathCanvas::horizontalLimit() const {
-    if (!_obj || !_root) return 0;
+    if (!_obj || !_root || _layoutStatus != LayoutStatus::Ok) return 0;
     const int32_t content = _root->layout().width + (isCursorEditable() ? CURSOR_WIDTH : 0);
     return static_cast<int16_t>(std::max<int32_t>(0, content -
         (lv_obj_get_width(_obj) - PADDING_LEFT - PADDING_RIGHT)));
 }
 
 int16_t MathCanvas::verticalLimit() const {
-    if (!_obj || !_root) return 0;
+    if (!_obj || !_root || _layoutStatus != LayoutStatus::Ok) return 0;
     return static_cast<int16_t>(std::max<int32_t>(0, _root->layout().height() +
         (isCursorEditable() ? 1 : 0) - (lv_obj_get_height(_obj) - 2 * CURSOR_PAD)));
 }
@@ -832,7 +773,16 @@ void MathCanvas::onDraw(lv_event_t* e) {
     int16_t widgetH = static_cast<int16_t>(objArea.y2 - objArea.y1 + 1);
 
     // Recalcular layout del AST
-    _root->calculateLayout(_fmNormal);
+    _layoutStatus = calculateLayoutChecked(*_root, _fmNormal);
+    if (_layoutStatus != LayoutStatus::Ok) {
+        _cursorH = 0;
+        _scrollX = _scrollY = 0;
+        drawTextBaseline(layer, objArea.x1 + PADDING_LEFT, objArea.y1 + 18,
+            numos::i18n::isSpanish(numos::i18n::productLocale)
+                ? "Expresión demasiado grande" : "Expression too large",
+            1, lv_color_hex(0x555555));
+        return;
+    }
     const auto& rootL = _root->layout();
 
     // One geometry pass prepares all child origins with the same methods
@@ -1148,7 +1098,13 @@ void MathCanvas::drawNode(lv_layer_t* layer, const MathNode* node,
     // Compute layout once for this subtree, then keep the iterative drawing walk on the
     // cached-layout path to avoid repeated layout work on ESP32-S3 frames.
     MathNode* mutableNode = const_cast<MathNode*>(node);
-    mutableNode->calculateLayout(fm);
+    if (calculateLayoutChecked(*mutableNode, fm) != LayoutStatus::Ok) {
+        drawTextBaseline(layer, x, yTop + fm.ascent,
+            numos::i18n::isSpanish(numos::i18n::productLocale)
+                ? "Expresión demasiado grande" : "Expression too large",
+            1, lv_color_hex(0x555555));
+        return;
+    }
     preparePlacements(node, fm);
     drawNodeWithLayout(layer, node, x, yTop, fm, font, depth);
 }
@@ -1503,10 +1459,11 @@ void MathCanvas::drawFractionBaseline(lv_layer_t* layer, const NodeFraction* nod
     const FontMetrics childFm = fractionPartMetrics(fm);
 
     // ── Barra de fracción ──
-    int16_t barX1 = static_cast<int16_t>(x + ruleOverhang);
-    int16_t barX2 = static_cast<int16_t>(x + fracL.width - ruleOverhang - 1);
-    drawLine(layer, barX1, yAxis, barX2, yAxis, rulePx,
-             _highlightActive ? _highlightColor : lv_color_black());
+    // WHY: a filled integer rectangle has exact half-open bounds. A centered
+    // LVGL stroke rounded a one-pixel bar to a different Y than layout's edge.
+    drawFilledRect(layer, x, static_cast<int16_t>(yAxis - barHalfUp),
+                   fracL.width, rulePx,
+                   _highlightActive ? _highlightColor : lv_color_black(), LV_OPA_COVER);
 
     // ── Numerador: baseline = yAxis - barHalfUp - numShift ──
     int16_t numX = static_cast<int16_t>(x + ruleOverhang +
@@ -1518,7 +1475,7 @@ void MathCanvas::drawFractionBaseline(lv_layer_t* layer, const NodeFraction* nod
     int16_t denX = static_cast<int16_t>(x + ruleOverhang +
                    (fracL.width - 2 * ruleOverhang - denL.width) / 2);
     int16_t denBaseline = static_cast<int16_t>(yAxis + barHalfDown + denShift);
-    drawNodeBaseline(layer, node->denominator(), denX, denBaseline, childFm, font, depth + 1);
+    drawNodeBaseline(layer, node->denominator(), denX, denBaseline, fractionDenominatorMetrics(fm), font, depth + 1);
 
 #if defined(NUMOS_MATH_INK_OVERLAY)
     const int16_t guideX1 = x;
@@ -1566,19 +1523,18 @@ void MathCanvas::drawPowerBaseline(lv_layer_t* layer, const NodePower* node,
     // ── Exponente (fuente reducida, elevado) ──
     FontMetrics fmSup = fm.superscript();
     const auto& expL = node->exponent()->layout();
-    const SuperscriptShiftMetrics sup = superscriptShiftMetrics(fm, expL);
-    const int16_t expShift = sup.shiftPx;
+    const int16_t expShift = node->scriptShiftPx();
 
     // El baseline del exponente está a expShift sobre el baseline de la base
     int16_t expBaseline = static_cast<int16_t>(yBaseline - expShift);
 
-    int16_t expX = static_cast<int16_t>(x + baseL.width + node->italicCorrectionPx());
+    int16_t expX = static_cast<int16_t>(x + node->scriptX());
     drawNodeBaseline(layer, node->exponent(), expX, expBaseline, fmSup, _fontSmall, depth + 1);
 
 #if defined(NUMOS_MATH_INK_OVERLAY)
     const int16_t guideX1 = x;
     const int16_t guideX2 = static_cast<int16_t>(
-        x + baseL.width + node->italicCorrectionPx() + expL.width - 1);
+        x + node->scriptX() + expL.width - 1);
     const int16_t baseInkTop = static_cast<int16_t>(
         yBaseline - layoutInkAscentPx(baseL));
     const int16_t baseInkBot = static_cast<int16_t>(
@@ -1618,8 +1574,8 @@ void MathCanvas::drawRootBaseline(lv_layer_t* layer, const NodeRoot* node,
                           const FontMetrics& fm, const lv_font_t* font,
                           int depth) {
     const auto& radL  = node->radicand()->layout();
-    int16_t hookW     = NodeRoot::RADICAL_HOOK_W;
-    int16_t slopeW    = NodeRoot::RADICAL_SLOPE_W;
+    int16_t hookW     = node->hookWidthPx();
+    int16_t slopeW    = node->slopeWidthPx();
     int16_t radSymW   = static_cast<int16_t>(hookW + slopeW);
 
     const int16_t symbolX = x + node->radicalX();
@@ -1628,12 +1584,12 @@ void MathCanvas::drawRootBaseline(lv_layer_t* layer, const NodeRoot* node,
     int16_t ruleT    = node->radicalRuleThickness();
     int16_t vertGap  = node->radicalVerticalGap();
     int16_t extraAsc = node->radicalExtraAscender();
-    int16_t rightPad = NodeRoot::RADICAL_RIGHT_PAD;
+    int16_t rightPad = node->rightPadPx();
 
     // ── Key coordinates ──
     int16_t yTop      = static_cast<int16_t>(yBaseline - node->radicalAscent());
-    int16_t yBottom   = static_cast<int16_t>(yBaseline + radL.descent);
-    int16_t yOverline = static_cast<int16_t>(yTop + ruleT + extraAsc - 1);
+    int16_t yBottom   = static_cast<int16_t>(yBaseline + radL.descent - 1);
+    int16_t yOverline = static_cast<int16_t>(yBaseline + node->ruleTopOffset());
 
     // Midpoint for hook start (~60% from top)
     int16_t hookStartY = static_cast<int16_t>(yTop + (yBottom - yTop) * 6 / 10);
@@ -1654,16 +1610,16 @@ void MathCanvas::drawRootBaseline(lv_layer_t* layer, const NodeRoot* node,
     // ── Overline: horizontal line above the radicand ──
     int16_t overlineX1 = static_cast<int16_t>(symbolX + radSymW);
     int16_t overlineX2 = static_cast<int16_t>(symbolX + radSymW + radL.width + rightPad - 1);
-    drawLine(layer, overlineX1, yOverline, overlineX2, yOverline,
-             ruleT, strokeColor);
+    drawFilledRect(layer, overlineX1, yOverline, overlineX2 - overlineX1 + 1,
+                   ruleT, strokeColor, LV_OPA_COVER);
 
     // ── Radicand ──
     int16_t radX = static_cast<int16_t>(symbolX + radSymW);
-    drawNodeBaseline(layer, node->radicand(), radX, yBaseline, fm, font, depth + 1);
+    drawNodeBaseline(layer, node->radicand(), radX, yBaseline, crampedMetrics(fm), font, depth + 1);
 
     // ── Degree (if present) ──
     if (node->hasDegree()) {
-        FontMetrics fmDeg = fm.superscript();
+        FontMetrics fmDeg = rootDegreeMetrics(fm);
         int16_t degX = x + node->degreeX();
         int16_t degBaseline = yBaseline + node->degreeBaseline();
         drawNodeBaseline(layer, node->degree(), degX, degBaseline, fmDeg, _fontSmall, depth + 1);
@@ -1683,10 +1639,10 @@ void MathCanvas::drawParenBaseline(lv_layer_t* layer, const NodeParen* node,
     const auto& parenL = node->layout();
     int16_t pw = node->parenWidth();
     // Inner padding: optical breathing room proportional to paren width
-    int16_t innerPad = std::max<int16_t>(1, pw / 3);
+    const int16_t innerPad = node->innerPad();
 
-    int16_t yTop    = static_cast<int16_t>(yBaseline - parenL.ascent);
-    int16_t yBottom = static_cast<int16_t>(yBaseline + parenL.descent);
+    int16_t yTop    = static_cast<int16_t>(yBaseline - parenL.inkAscent);
+    int16_t yBottom = static_cast<int16_t>(yBaseline + parenL.inkDescent);
     lv_color_t parenColor = _highlightActive ? _highlightColor : lv_color_black();
 
 #ifdef NATIVE_SIM
@@ -1787,9 +1743,8 @@ void MathCanvas::drawLogBaseBaseline(lv_layer_t* layer, const NodeLogBase* node,
              _highlightActive ? _highlightColor : lv_color_hex(0x1a1a1a));
 
     // ── Base / subíndice (fuente reducida, bajada) ──
-    FontMetrics fmSub = fm.superscript();
-    int16_t subDrop = MathConstantsProvider(fm.emSize).subscriptShiftDown();
-    if (subDrop < 2) subDrop = 2;
+    FontMetrics fmSub = subscriptMetrics(fm);
+    const int16_t subDrop = node->scriptShiftPx();
     int16_t baseX = static_cast<int16_t>(x + node->labelWidth());
     int16_t baseBaseline = static_cast<int16_t>(yBaseline + subDrop);
     drawNodeBaseline(layer, node->base(), baseX, baseBaseline, fmSub, _fontSmall, depth + 1);
@@ -1840,7 +1795,8 @@ void MathCanvas::drawVariableBaseline(lv_layer_t* layer, const NodeVariable* nod
                               const FontMetrics& fm, const lv_font_t* font) {
     lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
 
-    drawTextBaseline(layer, x + node->textOffset(), yBaseline, node->label(), node->scriptLevel(), color);
+    char display[5];
+    drawTextBaseline(layer, x + node->textOffset(), yBaseline, identifierDisplayText(node->label(), display), node->scriptLevel(), color);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1886,14 +1842,9 @@ void MathCanvas::drawPeriodicDecimalBaseline(lv_layer_t* layer,
     // Dibujar la parte periódica (con overline)
     if (!rep.empty()) {
         drawTextBaseline(layer, cx, yBaseline, rep.c_str(), node->scriptLevel(), lv_color_black());
-        int16_t repW = fm.textAdvance(rep.c_str());
-
-        // Overline: línea horizontal sobre los dígitos periódicos
-        int16_t overY = static_cast<int16_t>(yBaseline - fm.ascent
-                        - NodePeriodicDecimal::OVERLINE_GAP);
-        drawLine(layer, cx, overY,
-                 static_cast<int16_t>(cx + repW - 1), overY,
-                 NodePeriodicDecimal::OVERLINE_T, lv_color_black());
+        drawFilledRect(layer, cx, yBaseline + node->overbarTop(),
+            node->overbarWidth(), node->overbarThickness(),
+            _highlightActive ? _highlightColor : lv_color_black(), LV_OPA_COVER);
     }
 }
 
@@ -1908,74 +1859,36 @@ void MathCanvas::drawPeriodicDecimalBaseline(lv_layer_t* layer,
 // Limits rendered in reduced font above and below the symbol.
 // ════════════════════════════════════════════════════════════════════════════
 
+void MathCanvas::drawLargeOperatorBaseline(lv_layer_t* layer, uint32_t codepoint,
+        const MathNode* lower, const MathNode* upper, const MathNode* body,
+        int16_t x, int16_t baseline, const FontMetrics& fm,
+        const lv_font_t* font, int depth) {
+    const auto g = largeOperatorGeometry(codepoint, fm, lower->layout(),
+        upper->layout(), body->layout());
+    char glyph[4];
+    largeOperatorUtf8(g.glyph, glyph);
+    drawTextBaseline(layer, x + g.symbolX, baseline + g.symbolBaseline, glyph,
+        scriptLevelForStyle(fm.style), _highlightActive ? _highlightColor : lv_color_black());
+    drawNodeBaseline(layer, upper, x + g.upperX, baseline + g.upperBaseline,
+        fm.superscript(), _fontSmall, depth + 1);
+    drawNodeBaseline(layer, lower, x + g.lowerX, baseline + g.lowerBaseline,
+        subscriptMetrics(fm), _fontSmall, depth + 1);
+    drawNodeBaseline(layer, body, x + g.bodyX, baseline, fm, font, depth + 1);
+}
+
 void MathCanvas::drawDefIntegralBaseline(lv_layer_t* layer, const NodeDefIntegral* node,
                                   int16_t x, int16_t yBaseline,
                                   const FontMetrics& fm, const lv_font_t* font,
                                   int depth) {
-    const auto& lowerL = node->lower()->layout();
-    const auto& upperL = node->upper()->layout();
-    const auto& bodyL  = node->body()->layout();
-
-    FontMetrics fmLimit = fm.superscript();
-
-    const auto symMetrics = DelimiterAssembler::glyphMetricsForHeightPx(
-        0x222B, largeOperatorTargetHeightPx(fm), fm.emSize);
-    int16_t symW = symMetrics.valid ? symMetrics.widthPx : 0;
-    int16_t symH = symMetrics.valid ? symMetrics.heightPx : fm.height();
-    if (symW < 6) symW = std::max<int16_t>(6, fm.charWidth);
-
-    int16_t limitGapPx = MathConstantsProvider(fm.emSize).upperLimitGapMin();
-    int16_t bodyGapX = largeOperatorBodyGapPx(fm);
-    int16_t dGapX = integralDifferentialGapPx(fm);
-
-    lv_color_t opColor = _highlightActive ? _highlightColor : lv_color_black();
-
-    if (shouldUseDisplayLimits(fm, symH)) {
-        // ── DISPLAY: limits above/below the integral sign ──
-        const DisplayLimitGeometry geom = displayLimitGeometry(
-            x, yBaseline, symW, symH, lowerL, upperL, bodyL,
-            fm, limitGapPx, bodyGapX);
-
-        // Draw ∫ glyph natively from STIX Two Math at the symbol column center
-        int16_t symDrawX = static_cast<int16_t>(x + (geom.symbolColumnWidth - symW) / 2);
-        drawTextBaseline(layer, symDrawX, yBaseline,
-                 numos::mathsym::SYMB_INT, node->scriptLevel(), opColor);
-
-        // Upper limit (centered above symbol)
-        drawNodeBaseline(layer, node->upper(), geom.upperX, geom.upperBaseline, fmLimit, _fontSmall, depth + 1);
-
-        // Lower limit (centered below symbol)
-        drawNodeBaseline(layer, node->lower(), geom.lowerX, geom.lowerBaseline, fmLimit, _fontSmall, depth + 1);
-
-        // Body
-        drawNodeBaseline(layer, node->body(), geom.bodyX, yBaseline, fm, font, depth + 1);
-
-        // "d" + variable
-        int16_t dX = static_cast<int16_t>(geom.bodyX + bodyL.width + dGapX);
-        drawTextBaseline(layer, dX, yBaseline, "d", node->scriptLevel(), lv_color_hex(0x333333));
-        int16_t varX = static_cast<int16_t>(dX + fm.charWidth + dGapX);
-        drawNodeBaseline(layer, node->variable(), varX, yBaseline, fm, font, depth + 1);
-    } else {
-        // ── TEXT / SCRIPT: limits as sub/superscript to the right ──
-        // Draw ∫ glyph natively at its natural position
-        drawTextBaseline(layer, x, yBaseline,
-                 numos::mathsym::SYMB_INT, node->scriptLevel(), opColor);
-
-        const InlineLimitGeometry geom = inlineLimitGeometry(
-            x, yBaseline, symW, lowerL, upperL, fm, bodyGapX);
-
-        drawNodeBaseline(layer, node->upper(), geom.upperX, geom.upperBaseline, fmLimit, _fontSmall, depth + 1);
-        drawNodeBaseline(layer, node->lower(), geom.lowerX, geom.lowerBaseline, fmLimit, _fontSmall, depth + 1);
-
-        // Body expression
-        drawNodeBaseline(layer, node->body(), geom.bodyX, yBaseline, fm, font, depth + 1);
-
-        // "d" + variable
-        int16_t dX = static_cast<int16_t>(geom.bodyX + bodyL.width + dGapX);
-        drawTextBaseline(layer, dX, yBaseline, "d", node->scriptLevel(), lv_color_hex(0x333333));
-        int16_t varX = static_cast<int16_t>(dX + fm.charWidth + dGapX);
-        drawNodeBaseline(layer, node->variable(), varX, yBaseline, fm, font, depth + 1);
-    }
+    drawLargeOperatorBaseline(layer, 0x222B, node->lower(), node->upper(),
+        node->body(), x, yBaseline, fm, font, depth);
+    const auto op = largeOperatorGeometry(0x222B, fm, node->lower()->layout(),
+        node->upper()->layout(), node->body()->layout());
+    const auto tail = integralDifferentialGeometry(fm, op.box, node->variable()->layout());
+    drawTextBaseline(layer, x + tail.dX, yBaseline, "d", node->scriptLevel(),
+        _highlightActive ? _highlightColor : lv_color_hex(0x333333));
+    drawNodeBaseline(layer, node->variable(), x + tail.variableX, yBaseline,
+        fm, font, depth + 1);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1993,57 +1906,8 @@ void MathCanvas::drawSummationBaseline(lv_layer_t* layer, const NodeSummation* n
                                 int16_t x, int16_t yBaseline,
                                 const FontMetrics& fm, const lv_font_t* font,
                                 int depth) {
-    const auto& lowerL = node->lower()->layout();
-    const auto& upperL = node->upper()->layout();
-    const auto& bodyL  = node->body()->layout();
-
-    FontMetrics fmLimit = fm.superscript();
-
-    const auto symMetrics = DelimiterAssembler::glyphMetricsForHeightPx(
-        0x2211, largeOperatorTargetHeightPx(fm), fm.emSize);
-    int16_t symW = symMetrics.valid ? symMetrics.widthPx : 0;
-    int16_t symH = symMetrics.valid ? symMetrics.heightPx : fm.height();
-    if (symW < 6) symW = std::max<int16_t>(6, fm.charWidth);
-
-    int16_t limitGapPx = MathConstantsProvider(fm.emSize).upperLimitGapMin();
-    int16_t bodyGapX = largeOperatorBodyGapPx(fm);
-
-    lv_color_t opColor = _highlightActive ? _highlightColor : lv_color_black();
-
-    if (shouldUseDisplayLimits(fm, symH)) {
-        // ── DISPLAY: limits centered above/below the ∑ symbol ──
-        const DisplayLimitGeometry geom = displayLimitGeometry(
-            x, yBaseline, symW, symH, lowerL, upperL, bodyL,
-            fm, limitGapPx, bodyGapX);
-
-        // Draw ∑ glyph natively from STIX Two Math centered in the symbol column
-        int16_t symDrawX = static_cast<int16_t>(x + (geom.symbolColumnWidth - symW) / 2);
-        drawTextBaseline(layer, symDrawX, yBaseline,
-                 numos::mathsym::SYMB_SUM, node->scriptLevel(), opColor);
-
-        // Upper limit
-        drawNodeBaseline(layer, node->upper(), geom.upperX, geom.upperBaseline, fmLimit, _fontSmall, depth + 1);
-
-        // Lower limit
-        drawNodeBaseline(layer, node->lower(), geom.lowerX, geom.lowerBaseline, fmLimit, _fontSmall, depth + 1);
-
-        // Body
-        drawNodeBaseline(layer, node->body(), geom.bodyX, yBaseline, fm, font, depth + 1);
-    } else {
-        // ── TEXT / SCRIPT: limits as sub/superscript to the right ──
-        // Draw ∑ glyph natively at its natural position
-        drawTextBaseline(layer, x, yBaseline,
-                 numos::mathsym::SYMB_SUM, node->scriptLevel(), opColor);
-
-        const InlineLimitGeometry geom = inlineLimitGeometry(
-            x, yBaseline, symW, lowerL, upperL, fm, bodyGapX);
-
-        drawNodeBaseline(layer, node->upper(), geom.upperX, geom.upperBaseline, fmLimit, _fontSmall, depth + 1);
-        drawNodeBaseline(layer, node->lower(), geom.lowerX, geom.lowerBaseline, fmLimit, _fontSmall, depth + 1);
-
-        // Body
-        drawNodeBaseline(layer, node->body(), geom.bodyX, yBaseline, fm, font, depth + 1);
-    }
+    drawLargeOperatorBaseline(layer, 0x2211, node->lower(), node->upper(),
+        node->body(), x, yBaseline, fm, font, depth);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2058,72 +1922,8 @@ void MathCanvas::drawBigOpBaseline(lv_layer_t* layer, const NodeBigOp* node,
                            int16_t x, int16_t yBaseline,
                            const FontMetrics& fm, const lv_font_t* font,
                            int depth) {
-    const auto& lowerL = node->lower()->layout();
-    const auto& upperL = node->upper()->layout();
-    const auto& bodyL  = node->body()->layout();
-
-    FontMetrics fmLimit = fm.superscript();
-
-    const auto opMetrics = DelimiterAssembler::glyphMetricsForHeightPx(
-        node->operatorCodepoint(), largeOperatorTargetHeightPx(fm), fm.emSize);
-    int16_t opW = opMetrics.valid ? opMetrics.widthPx : 0;
-    int16_t opH = opMetrics.valid ? opMetrics.heightPx : fm.height();
-    if (opW < 6) opW = std::max<int16_t>(6, fm.charWidth);
-
-    int16_t limitGapPx = MathConstantsProvider(fm.emSize).upperLimitGapMin();
-    int16_t bodyGapX = largeOperatorBodyGapPx(fm);
-
-    lv_color_t opColor = _highlightActive ? _highlightColor : lv_color_black();
-
-    if (node->useDisplayLimits()) {
-        const DisplayLimitGeometry geom = displayLimitGeometry(
-            x, yBaseline, opW, opH, lowerL, upperL, bodyL,
-            fm, limitGapPx, bodyGapX);
-
-        // Operator glyph centered in its column, on the baseline
-        int16_t opCenterX = static_cast<int16_t>(x + geom.symbolColumnWidth / 2);
-        int16_t opDrawX = static_cast<int16_t>(opCenterX - opW / 2);
-
-        // Draw operator as text at baseline
-        drawTextBaseline(layer, opDrawX, yBaseline, node->operatorUtf8(),
-                 node->scriptLevel(), opColor);
-
-        // Upper limit centered above operator
-        drawNodeBaseline(layer, node->upper(), geom.upperX, geom.upperBaseline, fmLimit, _fontSmall, depth + 1);
-
-        // Lower limit centered below operator
-        drawNodeBaseline(layer, node->lower(), geom.lowerX, geom.lowerBaseline, fmLimit, _fontSmall, depth + 1);
-
-        // Body expression
-        drawNodeBaseline(layer, node->body(), geom.bodyX, yBaseline, fm, font, depth + 1);
-    } else {
-        // ── TEXT / SCRIPT: limits as sub/superscript to the right ──
-        // Draw operator glyph at baseline
-        drawTextBaseline(layer, x, yBaseline, node->operatorUtf8(),
-                 node->scriptLevel(), opColor);
-
-        MathConstantsProvider mcT(fm.emSize);
-        int16_t supShift = mcT.superscriptShiftUp();
-        int16_t subDrop  = mcT.subscriptShiftDown();
-        if (subDrop < 2) subDrop = 2;
-        if (supShift < 1) supShift = 1;
-
-        // Limits to the right of the operator
-        int16_t limitsX = static_cast<int16_t>(x + opW);
-        int16_t upperBaseline = static_cast<int16_t>(yBaseline - supShift);
-        int16_t lowerBaseline = static_cast<int16_t>(yBaseline + subDrop);
-
-        int16_t limitsW = std::max(upperL.width, lowerL.width);
-        int16_t upperLimitX = static_cast<int16_t>(limitsX + (limitsW - upperL.width) / 2);
-        int16_t lowerLimitX = static_cast<int16_t>(limitsX + (limitsW - lowerL.width) / 2);
-
-        drawNodeBaseline(layer, node->upper(), upperLimitX, upperBaseline, fmLimit, _fontSmall, depth + 1);
-        drawNodeBaseline(layer, node->lower(), lowerLimitX, lowerBaseline, fmLimit, _fontSmall, depth + 1);
-
-        // Body expression
-        int16_t bodyX = static_cast<int16_t>(limitsX + limitsW + bodyGapX);
-        drawNodeBaseline(layer, node->body(), bodyX, yBaseline, fm, font, depth + 1);
-    }
+    drawLargeOperatorBaseline(layer, node->operatorCodepoint(), node->lower(), node->upper(),
+        node->body(), x, yBaseline, fm, font, depth);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2155,10 +1955,9 @@ void MathCanvas::drawSubscriptBaseline(lv_layer_t* layer, const NodeSubscript* n
     drawNodeBaseline(layer, node->base(), x, yBaseline, fm, font, depth + 1);
 
     // ── Subíndice (fuente reducida, bajada) ──
-    FontMetrics fmSub = fm.superscript();
-    int16_t subDrop = MathConstantsProvider(fm.emSize).subscriptShiftDown();
-    if (subDrop < 2) subDrop = 2;
-    int16_t subX = static_cast<int16_t>(x + baseL.width);
+    FontMetrics fmSub = subscriptMetrics(fm);
+    const int16_t subDrop = node->scriptShiftPx();
+    int16_t subX = static_cast<int16_t>(x + node->scriptX());
     int16_t subBaseline = static_cast<int16_t>(yBaseline + subDrop);
     drawNodeBaseline(layer, node->subscript(), subX, subBaseline, fmSub, _fontSmall, depth + 1);
 }
@@ -2167,7 +1966,8 @@ void MathCanvas::drawSymbolBaseline(lv_layer_t* layer, const NodeSymbol* node,
                                     int16_t x, int16_t yBaseline) {
     if (!layer) return;
     const lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
-    drawTextBaseline(layer, x + node->textOffset(), yBaseline, node->name().c_str(),
+    char display[5];
+    drawTextBaseline(layer, x + node->textOffset(), yBaseline, node->upright() ? node->name().c_str() : identifierDisplayText(node->name().c_str(), display),
                      node->scriptLevel(), color);
 }
 
@@ -2310,7 +2110,7 @@ void MathCanvas::drawCallBaseline(lv_layer_t* layer, const NodeCall* node,
                                   const lv_font_t* font, int depth) {
     const auto& layout = node->layout();
     const lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
-    drawTextBaseline(layer, x, yBaseline, node->name().c_str(),
+    drawTextBaseline(layer, x + node->textOffset(), yBaseline, node->name().c_str(),
                      node->scriptLevel(), color);
     const int16_t leftX = static_cast<int16_t>(x + node->labelWidth() + node->labelGap());
     const int16_t top = static_cast<int16_t>(yBaseline - layout.ascent);

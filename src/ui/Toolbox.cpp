@@ -323,7 +323,7 @@ void refresh() {
                     static_cast<vpam::NodeRow*>(root.get())->appendChild(std::move(node));
                     s->canvases[i].setExpression(nullptr,nullptr);s->previews[i]=std::move(root);s->previewIds[i]=item.entry->identity;
                 }
-                auto* root=static_cast<vpam::NodeRow*>(s->previews[i].get());root->calculateLayout(s->canvases[i].normalMetrics());
+                auto* root=static_cast<vpam::NodeRow*>(s->previews[i].get());vpam::calculateLayoutChecked(*root, s->canvases[i].normalMetrics());
                 height=std::max(27,int(root->layout().height())+4);
                 // MathCanvas includes 8 px on both sides. Reserve its complete
                 // viewport, not just the glyph box, so rules cannot be clipped.

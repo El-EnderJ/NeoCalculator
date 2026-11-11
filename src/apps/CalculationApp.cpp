@@ -237,7 +237,7 @@ void CalculationApp::resetExpression() {
 
 void CalculationApp::refreshExpression() {
     if (!_rootRow) return;
-    _rootRow->calculateLayout(_mathCanvas.normalMetrics());
+    vpam::calculateLayoutChecked(*_rootRow, _mathCanvas.normalMetrics());
     _mathCanvas.invalidate();
 }
 
@@ -1015,7 +1015,7 @@ void CalculationApp::showResult(vpam::NodePtr prepared) {
     _resultCanvas.resetScroll();   // Resetear scroll al cambiar de estado
 
     // Calcular layout del resultado
-    _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+    vpam::calculateLayoutChecked(*_resultRow, _resultCanvas.normalMetrics());
 
     // Dynamic layout: trim expression, position separator, fill result area
     applyResultLayout();
@@ -1390,7 +1390,7 @@ void CalculationApp::buildStepsDisplay() {
 
         auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
         srd->canvas.setExpression(row, nullptr);
-        row->calculateLayout(srd->canvas.normalMetrics());
+        vpam::calculateLayoutChecked(*row, srd->canvas.normalMetrics());
 
         int16_t w = row->layout().width + 24;
         int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);
@@ -2112,7 +2112,7 @@ bool CalculationApp::publishOutput(const numos::quantity::Descriptor& descriptor
         if(mode==numos::CalculationFormat::Decimal && !view->approximateCoefficient)mode=numos::CalculationFormat::Standard;
         auto prepared=quantityFormatted(*view,descriptor,mode,_engineeringShift,_fixedPlaces);
         if(!prepared)return false;
-        prepared->calculateLayout(_resultCanvas.normalMetrics());
+        if (vpam::calculateLayoutChecked(*prepared, _resultCanvas.normalMetrics()) != vpam::LayoutStatus::Ok) return false;
         const auto box=prepared->layout();if(box.width>4096 || box.height()>1024)return false;
         // WHY: coefficient, unit and AST are complete before any visible state
         // changes. The canonical value and Ans never participate in this commit.
@@ -2130,7 +2130,7 @@ bool CalculationApp::publishQuantityFormat(numos::CalculationFormat mode,int shi
 #endif
         auto prepared=quantityFormatted(*_quantityView,_outputUnit,mode,shift,places);
         if(!prepared)return false;
-        prepared->calculateLayout(_resultCanvas.normalMetrics());
+        if (vpam::calculateLayoutChecked(*prepared, _resultCanvas.normalMetrics()) != vpam::LayoutStatus::Ok) return false;
         const auto box=prepared->layout();if(box.width>4096 || box.height()>1024)return false;
         _resultMode=mode;_engineeringShift=shift;_fixedPlaces=places;
         _showDecimal=mode==numos::CalculationFormat::Decimal;

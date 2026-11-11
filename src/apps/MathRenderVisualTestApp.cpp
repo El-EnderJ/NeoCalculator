@@ -652,7 +652,7 @@ void MathRenderVisualTestApp::printSerialReport() const {
     if (!_rootRow || !_canvas.obj()) return;
 
     const auto& visualCase = mathRenderVisualCases()[_caseIndex];
-    const_cast<NodeRow*>(_rootRow)->calculateLayout(_canvas.normalMetrics());
+    vpam::calculateLayoutChecked(*const_cast<NodeRow*>(_rootRow), _canvas.normalMetrics());
     const auto& layout = _rootRow->layout();
 
     lv_obj_update_layout(_canvas.obj());

@@ -65,6 +65,11 @@ const lv_font_t* mathScriptScriptFont() {
 }
 
 const lv_font_t* mathGlyphFont(const lv_font_t* base, uint32_t codepoint) {
+    if (codepoint >= 0xE040 && codepoint <= 0xE04F) {
+        if (base == &stix_math_18) return &stix_operators_18;
+        if (base == &stix_math_12) return &stix_operators_12;
+        if (base == &stix_math_8) return &stix_operators_8;
+    }
     if (codepoint != 0x0394) return base;
     if (base == &stix_math_18) return &tex_delta_18;
     if (base == &stix_math_12) return &tex_delta_12;

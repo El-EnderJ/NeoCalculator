@@ -827,7 +827,7 @@ void CalculusApp::adjustInputHeight() {
     if (!_inputRow) return;
     if (_inputRow->isEmpty()) lv_obj_remove_flag(_inputPlaceholder, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(_inputPlaceholder, LV_OBJ_FLAG_HIDDEN);
-    _inputRow->calculateLayout(_inputCanvas.normalMetrics());
+    vpam::calculateLayoutChecked(*_inputRow, _inputCanvas.normalMetrics());
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1160,7 +1160,7 @@ void CalculusApp::buildResultDisplay() {
         lv_label_set_text(_originalLabel, fLabel);
         lv_obj_remove_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
         _originalCanvas.setExpression(_originalRow, nullptr);
-        _originalRow->calculateLayout(_originalCanvas.normalMetrics());
+        vpam::calculateLayoutChecked(*_originalRow, _originalCanvas.normalMetrics());
         _originalCanvas.invalidate();
         int previewH = mathObjectHeightPx(_originalRow->layout(), _originalCanvas.normalMetrics(), 8);
         previewH = std::max(48, std::min(72, previewH));
@@ -1217,7 +1217,7 @@ void CalculusApp::buildResultDisplay() {
         _resultRow = static_cast<NodeRow*>(_resultNode.get());
         lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
         _resultCanvas.setExpression(_resultRow, nullptr);
-        _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+        vpam::calculateLayoutChecked(*_resultRow, _resultCanvas.normalMetrics());
         const int height = mathObjectHeightPx(_resultRow->layout(), _resultCanvas.normalMetrics(), 8);
         const int viewportH = lv_obj_get_height(_resultViewport);
         lv_obj_set_height(_resultCanvas.obj(), std::max(height, viewportH - 2));
@@ -1284,7 +1284,7 @@ void CalculusApp::buildStepsDisplay() {
 
         auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
         srd->canvas.setExpression(row, nullptr);
-        row->calculateLayout(srd->canvas.normalMetrics());
+        vpam::calculateLayoutChecked(*row, srd->canvas.normalMetrics());
 
         int16_t w = row->layout().width + 24;
         int16_t h = mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);

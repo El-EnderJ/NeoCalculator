@@ -81,6 +81,7 @@ public:
     void setMathStyle(MathStyle style);
     void setAutoHeightEnabled(bool enabled);
     void setTraceLabel(const char* label);
+    LayoutStatus layoutStatus() const { return _layoutStatus; }
 
     // Only the lone Empty in the canvas root can be hidden. Pending slots in
     // fractions, powers and other templates remain visible in every canvas.
@@ -134,6 +135,7 @@ public:
     // WHY: callers follow the renderer's actual position without duplicating
     // fraction/script/root layout formulas. No rendering behavior changes.
     bool cursorBounds(lv_area_t& bounds) const {
+        if (_layoutStatus != LayoutStatus::Ok) return false;
         if (!_obj || !_cursorEditable || !_cursorCtrl) return false;
         bounds = {_cursorX, _cursorY, _cursorX + CURSOR_WIDTH - 1,
                   _cursorY + _cursorH - 1};
@@ -172,6 +174,7 @@ public:
     static constexpr int16_t  VPAM_VERT_PAD   = 6;    ///< Vertical padding (3px top + 3px bottom) — tight
 
 private:
+    LayoutStatus _layoutStatus = LayoutStatus::Ok;
     // ── Datos internos ───────────────────────────────────────────────────
     lv_obj_t*               _obj;
     NodeRow*                _root;
@@ -395,6 +398,11 @@ private:
                            int16_t x, int16_t yBaseline,
                            const FontMetrics& fm, const lv_font_t* font,
                            int depth = 0);
+
+    void drawLargeOperatorBaseline(lv_layer_t* layer, uint32_t codepoint,
+                                   const MathNode* lower, const MathNode* upper,
+                                   const MathNode* body, int16_t x, int16_t baseline,
+                                   const FontMetrics& fm, const lv_font_t* font, int depth);
 
     void drawSymbolBaseline(lv_layer_t* layer, const NodeSymbol* node,
                             int16_t x, int16_t yBaseline);

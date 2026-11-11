@@ -138,6 +138,9 @@
 #include "../math/VariableManager.h"      // Phase 8B: assert_variable lee el singleton de variables
 #include "../math/AngleModeRuntime.h"     // AM-01: set/assert_angle_mode (runtime DEG/RAD truth)
 #include "../math/giac/GiacEngine.h"      // GIAC-C01: giac_reset script hook (opaque seam)
+#include "../math/CalculationEngine.h"    // CORRECTNESS-E2E-01: serializeForGiac (dump_calc)
+#include "../math/CalculationFormat.h"    // CORRECTNESS-E2E-01: format labels (dump_calc)
+#include <cmath>
 #include "../display/DisplayDriver.h"
 #include "../ui/SplashScreen.h"
 #include "../ui/MainMenu.h"
@@ -1947,6 +1950,14 @@ enum class ScriptCmdType : uint8_t {
     AssertGraphEvalNear,       // assert_graph_eval_near SLOT T [Y] EXPECTED EPS
     AssertGiacLiveHandles,     // assert_giac_live_handles N
     GiacReset,                 // giac_reset (rebuild del contexto; handles huerfanos)
+    // CORRECTNESS-E2E-01: read-only, line-delimited observability for the
+    // keystroke-to-answer oracle harness (tests/e2e). Each prints exactly one
+    // `@E2E {json}` line; none mutates app state or fails the script.
+    DumpCalc,                  // dump_calc TAG [tree]
+    DumpGraph,                 // dump_graph TAG SLOT [X ...]
+    DumpCalculus,              // dump_calculus TAG
+    DumpEquations,             // dump_equations TAG
+    GiacEval,                  // giac_eval TAG TEXT...  (third voice: bypasses keys/AST)
 #if defined(NUMOS_NEO_APP_SMOKE)
     NeoSource,
     AssertNeoEngine,
@@ -1969,6 +1980,7 @@ struct ScriptCmd {
                                           // OpenApp (nombre canonico, para el log)
     std::vector<double> fArgs;            // GIAC-C01 assert_graph_eval_* /
                                           // assert_graph_compile_count numeros
+    std::string   textArg;                // CORRECTNESS-E2E-01 giac_eval texto Giac
     int           line  = 0;              // linea de origen (diagnostico)
 };
 
@@ -2708,6 +2720,46 @@ static bool loadScript(const char* path)
             sc.type = ScriptCmdType::AssertGiacLiveHandles;
             sc.waitN = count;
         }
+        // CORRECTNESS-E2E-01 dump hooks (read-only; see e2eDump* below).
+        else if (lc == "dump_calc" || lc == "dump_calculus" || lc == "dump_equations") {
+            std::string tag, opt, extra;
+            if (!(iss >> tag)) return scriptErr(path, lineNo, "dump_* requiere TAG");
+            if (iss >> opt) {
+                if (lc != "dump_calc" || opt != "tree" || (iss >> extra))
+                    return scriptErr(path, lineNo, "dump_*: argumento invalido (dump_calc TAG [tree])");
+                sc.waitN = 1;
+            }
+            sc.type = lc == "dump_calc" ? ScriptCmdType::DumpCalc
+                    : lc == "dump_calculus" ? ScriptCmdType::DumpCalculus
+                    : ScriptCmdType::DumpEquations;
+            sc.strArg = tag;
+        }
+        else if (lc == "dump_graph") {
+            std::string tag, slotToken, tok;
+            long slot = 0;
+            if (!(iss >> tag >> slotToken) || !parseNonNegLong(slotToken, slot) || slot > 5)
+                return scriptErr(path, lineNo, "dump_graph requiere TAG SLOT(0..5) [X ...]");
+            while (iss >> tok) {
+                char* end = nullptr;
+                const double v = std::strtod(tok.c_str(), &end);
+                if (!end || *end) return scriptErr(path, lineNo, "dump_graph: X no numerico");
+                sc.fArgs.push_back(v);
+            }
+            sc.type = ScriptCmdType::DumpGraph;
+            sc.strArg = tag;
+            sc.waitN = slot;
+        }
+        else if (lc == "giac_eval") {
+            std::string tag, rest;
+            if (!(iss >> tag)) return scriptErr(path, lineNo, "giac_eval requiere TAG TEXTO");
+            std::getline(iss, rest);
+            const size_t b = rest.find_first_not_of(" \t");
+            rest = b == std::string::npos ? std::string() : rest.substr(b);
+            if (rest.empty()) return scriptErr(path, lineNo, "giac_eval requiere TEXTO");
+            sc.type = ScriptCmdType::GiacEval;
+            sc.strArg = tag;
+            sc.textArg = rest;
+        }
 #if defined(NUMOS_NEO_APP_SMOKE)
         else if (lc == "neo_source" ||
                  lc == "assert_neo_console_contains") {
@@ -2883,6 +2935,308 @@ static void assertPass(int line, const std::string& msg)
     std::printf("[ASSERT] %s:%d: PASS - %s\n",
                 g_opts.scriptPath ? g_opts.scriptPath : "<script>", line, msg.c_str());
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// CORRECTNESS-E2E-01 — read-only observability for the e2e oracle harness.
+//
+// The harness (tests/e2e) needs, per case, machine-readable ground truth of
+// what NumOS did: the authored input AST, the exact text handed to Giac, the
+// engine status/texts and the result AST actually given to the result canvas.
+// Several of those live in private members of the apps. Rather than touching
+// shared (firmware) headers, this emulator-only TU reads them through the
+// standard explicit-instantiation access rule ([temp.spec.general]: access is
+// not checked for names in an explicit instantiation). Nothing here writes app
+// state, allocates in product paths, or runs unless a script asks for it.
+// Each command prints exactly ONE line: `@E2E {json}`.
+// ════════════════════════════════════════════════════════════════════════════
+namespace e2e {
+template <typename Tag, typename Tag::type Member>
+struct Rob { friend typename Tag::type get(Tag) { return Member; } };
+#define NUMOS_E2E_ROB(NAME, TYPE, MEMBER)                                   \
+    struct NAME { using type = TYPE; friend type get(NAME); };             \
+    template struct Rob<NAME, MEMBER>;
+
+NUMOS_E2E_ROB(CalcRootRow,   vpam::NodeRow* CalculationApp::*,  &CalculationApp::_rootRow)
+NUMOS_E2E_ROB(CalcResultRow, vpam::NodeRow* CalculationApp::*,  &CalculationApp::_resultRow)
+NUMOS_E2E_ROB(CalcMode,      numos::CalculationFormat CalculationApp::*, &CalculationApp::_resultMode)
+NUMOS_E2E_ROB(CalcFixed,     uint8_t CalculationApp::*,         &CalculationApp::_fixedPlaces)
+NUMOS_E2E_ROB(CalcEngShift,  int CalculationApp::*,             &CalculationApp::_engineeringShift)
+NUMOS_E2E_ROB(CalcApprox,    std::string CalculationApp::*,     &CalculationApp::_approxText)
+NUMOS_E2E_ROB(CalcExact,     std::string CalculationApp::*,     &CalculationApp::_exactText)
+NUMOS_E2E_ROB(CalcLabel,     lv_obj_t* CalculationApp::*,       &CalculationApp::_resultTextLabel)
+NUMOS_E2E_ROB(CalcFmtMenu,   lv_obj_t* CalculationApp::*,       &CalculationApp::_formatMenu)
+NUMOS_E2E_ROB(CalcHistIdx,   int CalculationApp::*,             &CalculationApp::_historyIndex)
+NUMOS_E2E_ROB(CalcCursor,    vpam::CursorController CalculationApp::*, &CalculationApp::_cursor)
+NUMOS_E2E_ROB(CalcChoices,   numos::CalculationFormat (CalculationApp::*)[static_cast<int>(numos::CalculationFormat::Count)], &CalculationApp::_formatChoices)
+NUMOS_E2E_ROB(CalcChoiceN,   uint8_t CalculationApp::*,         &CalculationApp::_formatChoiceCount)
+NUMOS_E2E_ROB(CalcChoice,    uint8_t CalculationApp::*,         &CalculationApp::_formatChoice)
+NUMOS_E2E_ROB(GrExprRow,     vpam::NodeRow* (GrapherApp::*)[6], &GrapherApp::_exprASTRow)
+NUMOS_E2E_ROB(GrFuncs,       grapher::CartesianFunction (GrapherApp::*)[6], &GrapherApp::_funcs)
+NUMOS_E2E_ROB(GrNumFuncs,    int GrapherApp::*,                 &GrapherApp::_numFuncs)
+NUMOS_E2E_ROB(GrRpnToGiac,   bool (*)(const std::vector<Token>&, std::string&), &grapher::GraphModel::rpnToGiacText)
+NUMOS_E2E_ROB(CuInputRow,    vpam::NodeRow* CalculusApp::*,     &CalculusApp::_inputRow)
+NUMOS_E2E_ROB(CuResultRow,   vpam::NodeRow* CalculusApp::*,     &CalculusApp::_resultRow)
+NUMOS_E2E_ROB(CuSerialized,  std::string CalculusApp::*,        &CalculusApp::_serializedInput)
+NUMOS_E2E_ROB(CuGiac,        numos::StructuredCalculusResult CalculusApp::*, &CalculusApp::_giacResult)
+NUMOS_E2E_ROB(CuVariable,    char CalculusApp::*,               &CalculusApp::_variable)
+NUMOS_E2E_ROB(EqRows,        vpam::NodeRow* (EquationsApp::*)[3], &EquationsApp::_eqRowData)
+NUMOS_E2E_ROB(EqCount,       int EquationsApp::*,               &EquationsApp::_numEquations)
+NUMOS_E2E_ROB(EqEditRow,     vpam::NodeRow* EquationsApp::*,    &EquationsApp::_editRow)
+NUMOS_E2E_ROB(EqGiac,        numos::StructuredSolveResult EquationsApp::*, &EquationsApp::_giacResult)
+#undef NUMOS_E2E_ROB
+
+static void jsonEscape(const std::string& s, std::string& out) {
+    out += '"';
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (c < 0x20) { char b[8]; std::snprintf(b, sizeof(b), "\\u%04x", c); out += b; }
+                else out += static_cast<char>(c);
+        }
+    }
+    out += '"';
+}
+static std::string js(const std::string& s) { std::string o; jsonEscape(s, o); return o; }
+
+static const char* opName(vpam::OpKind k) {
+    static const char* n[] = {"Add","Sub","Mul","Div","PlusMinus","Eq","Lt","Gt","Le","Ge","Ne",
+                              "UnitProduct","UnitAttach","UnitAttachTight"};
+    const unsigned i = static_cast<unsigned>(k);
+    return i < sizeof(n)/sizeof(n[0]) ? n[i] : "Op?";
+}
+static const char* funcName(vpam::FuncKind k) {
+    static const char* n[] = {"sin","cos","tan","asin","acos","atan","ln","log","fact"};
+    const unsigned i = static_cast<unsigned>(k);
+    return i < sizeof(n)/sizeof(n[0]) ? n[i] : "fn?";
+}
+static const char* delimName(vpam::DelimKind k) {
+    switch (k) {
+        case vpam::DelimKind::Paren: return "paren";
+        case vpam::DelimKind::Bracket: return "bracket";
+        case vpam::DelimKind::Brace: return "brace";
+        case vpam::DelimKind::Bar: return "bar";
+    }
+    return "delim?";
+}
+
+// Compact, single-line structural S-expression of a MathAST (no layout
+// metrics). Grammar (parsed by tests/e2e/common/sexpr.py):
+//   row := "[" node* "]"     node := row | "(" HEAD arg* ")"
+static void sexpr(const vpam::MathNode* n, std::string& out, int depth = 0) {
+    using namespace vpam;
+    if (!n) { out += "null"; return; }
+    if (depth > 200) { out += "(depth-limit)"; return; }
+    auto kids = [&](int from = 0) {
+        for (int i = from; i < n->childCount(); ++i) { out += ' '; sexpr(n->child(i), out, depth + 1); }
+    };
+    switch (n->type()) {
+        case NodeType::Row:
+            out += '[';
+            for (int i = 0; i < n->childCount(); ++i) { if (i) out += ' '; sexpr(n->child(i), out, depth + 1); }
+            out += ']';
+            return;
+        case NodeType::Number:
+            out += "(num "; jsonEscape(static_cast<const NodeNumber*>(n)->value(), out); out += ')'; return;
+        case NodeType::Operator:
+            out += "(op "; out += opName(static_cast<const NodeOperator*>(n)->op()); out += ')'; return;
+        case NodeType::Empty: out += "(empty)"; return;
+        case NodeType::Fraction: out += "(frac"; kids(); out += ')'; return;
+        case NodeType::Power: out += "(pow"; kids(); out += ')'; return;
+        case NodeType::Root:
+            out += static_cast<const NodeRoot*>(n)->hasDegree() ? "(root" : "(sqrt"; kids(); out += ')'; return;
+        case NodeType::Paren:
+            out += "(paren "; out += delimName(static_cast<const NodeParen*>(n)->delimKind()); kids(); out += ')'; return;
+        case NodeType::Function:
+            out += "(fn "; out += funcName(static_cast<const NodeFunction*>(n)->funcKind()); kids(); out += ')'; return;
+        case NodeType::LogBase: out += "(logb"; kids(); out += ')'; return;
+        case NodeType::Constant: {
+            const auto k = static_cast<const NodeConstant*>(n)->constKind();
+            out += k == ConstKind::Pi ? "(const pi)" : k == ConstKind::E ? "(const e)" : "(const i)"; return;
+        }
+        case NodeType::Variable: {
+            const char c = static_cast<const NodeVariable*>(n)->name();
+            out += "(var ";
+            jsonEscape(c == VAR_ANS ? std::string("Ans") : c == VAR_PREANS ? std::string("PreAns") : std::string(1, c), out);
+            out += ')'; return;
+        }
+        case NodeType::PeriodicDecimal: {
+            const auto* p = static_cast<const NodePeriodicDecimal*>(n);
+            out += p->isNegative() ? "(periodic - " : "(periodic + ";
+            jsonEscape(p->intPart(), out); out += ' '; jsonEscape(p->nonRepeat(), out); out += ' ';
+            jsonEscape(p->repeat(), out); out += ')'; return;
+        }
+        case NodeType::Symbol:
+            out += "(sym "; jsonEscape(static_cast<const NodeSymbol*>(n)->name(), out); out += ')'; return;
+        case NodeType::SpecialValue:
+            out += "(special "; jsonEscape(static_cast<const NodeSpecialValue*>(n)->label(), out); out += ')'; return;
+        case NodeType::Call:
+            out += "(call "; jsonEscape(static_cast<const NodeCall*>(n)->name(), out); kids(); out += ')'; return;
+        default: {
+            out += "(node"; out += std::to_string(static_cast<int>(n->type())); kids(); out += ')'; return;
+        }
+    }
+}
+static std::string sx(const vpam::MathNode* n) { std::string o; sexpr(n, o); return o; }
+
+static void emit(const std::string& body) {
+    std::printf("@E2E {%s}\n", body.c_str());
+    std::fflush(stdout);
+}
+static std::string kv(const char* k, const std::string& jsonValue) {
+    return std::string(",\"") + k + "\":" + jsonValue;
+}
+static std::string num(double v) {
+    if (!std::isfinite(v)) return "null";
+    char b[40]; std::snprintf(b, sizeof(b), "%.17g", v); return b;
+}
+static const char* angle() { return vpam::g_angleMode == vpam::AngleMode::DEG ? "deg" : "rad"; }
+static const char* statusName(numos::MathEngineStatus s) {
+    switch (s) {
+        case numos::MathEngineStatus::Ok: return "ok";
+        case numos::MathEngineStatus::Undefined: return "undefined";
+        case numos::MathEngineStatus::ParseError: return "parse_error";
+        case numos::MathEngineStatus::EvaluationError: return "evaluation_error";
+        case numos::MathEngineStatus::Unsupported: return "unsupported";
+        case numos::MathEngineStatus::OutOfMemory: return "out_of_memory";
+        case numos::MathEngineStatus::UnitsUnavailable: return "units_unavailable";
+        case numos::MathEngineStatus::QuantityError: return "quantity_error";
+    }
+    return "?";
+}
+
+static void dumpCalc(const std::string& tag, bool tree) {
+    std::string b = "\"tag\":" + js(tag) + kv("surface", "\"calculation\"") +
+                    kv("app", js(activeAppName())) + kv("angle", js(angle()));
+    if (g_mode != AppMode::CALCULATION || !g_calcApp || !g_calcApp->isActive()) {
+        emit(b + kv("ok", "false")); return;
+    }
+    CalculationApp& app = *g_calcApp;
+    const vpam::NodeRow* root = app.*get(CalcRootRow{});
+    std::string ser, diag;
+    const bool complete = root && numos::CalculationEngine::serializeForGiac(root, ser, diag, true);
+    const auto& cur = (app.*get(CalcCursor{})).cursor();
+    lv_obj_t* label = app.*get(CalcLabel{});
+    const bool labelVisible = label && !lv_obj_has_flag(label, LV_OBJ_FLAG_HIDDEN);
+    const auto mode = app.*get(CalcMode{});
+    b += kv("ok", "true");
+    b += kv("input", js(sx(root)));
+    b += kv("giac_in", js(ser)) + kv("giac_complete", complete ? "true" : "false") + kv("giac_diag", js(diag));
+    b += kv("cursor_root", cur.row == root ? "true" : "false") + kv("cursor_index", std::to_string(cur.index));
+    b += kv("has_result", app.debugHasResult() ? "true" : "false");
+    b += kv("status", js(app.debugCalcStatus())) + kv("kind", js(app.debugCalcResultKind()));
+    b += kv("exact", js(app.*get(CalcExact{}))) + kv("approx", js(app.*get(CalcApprox{})));
+    b += kv("display", app.debugHasResult() && !labelVisible ? js(sx(app.*get(CalcResultRow{}))) : "null");
+    b += kv("display_label", labelVisible ? js(lv_label_get_text(label)) : "null");
+    b += kv("format", std::to_string(static_cast<unsigned>(mode)));
+    b += kv("format_name", js(numos::calculationFormatLabel(mode, false)));
+    b += kv("fixed_places", std::to_string(static_cast<unsigned>(app.*get(CalcFixed{}))));
+    b += kv("eng_shift", std::to_string(app.*get(CalcEngShift{})));
+    b += kv("history_index", std::to_string(app.*get(CalcHistIdx{})));
+    b += kv("format_menu", app.*get(CalcFmtMenu{}) ? "true" : "false");
+    if (app.*get(CalcFmtMenu{})) {
+        // Choice list of the open FORMAT menu (top level) or digit picker.
+        std::string c = "[";
+        const unsigned n = app.*get(CalcChoiceN{});
+        for (unsigned i = 0; i < n && i < static_cast<unsigned>(numos::CalculationFormat::Count); ++i) {
+            if (i) c += ',';
+            c += std::to_string(static_cast<unsigned>((app.*get(CalcChoices{}))[i]));
+        }
+        b += kv("menu_choices", c + "]") + kv("menu_choice", std::to_string(static_cast<unsigned>(app.*get(CalcChoice{}))));
+    }
+    b += kv("toolbox", ui::toolbox::active() ? "true" : "false");
+    b += kv("decimal_precision", std::to_string(setting_decimal_precision));
+    if (tree) b += kv("tree", js(root ? vpam::dumpTree(root) : std::string("(null)")));
+    emit(b);
+}
+
+static void dumpGraph(const std::string& tag, int slot, const std::vector<double>& xs) {
+    std::string b = "\"tag\":" + js(tag) + kv("surface", "\"grapher\"") +
+                    kv("app", js(activeAppName())) + kv("angle", js(angle())) + kv("slot", std::to_string(slot));
+    if (g_mode != AppMode::GRAPHER || !g_grapherApp) { emit(b + kv("ok", "false")); return; }
+    GrapherApp& app = *g_grapherApp;
+    const int count = app.*get(GrNumFuncs{});
+    const vpam::NodeRow* row = (app.*get(GrExprRow{}))[slot];
+    b += kv("ok", "true") + kv("count", std::to_string(count)) + kv("input", js(sx(row)));
+    if (slot < count) {
+        const grapher::CartesianFunction& f = (app.*get(GrFuncs{}))[slot];
+        auto giac = [&](const std::vector<Token>& rpn, bool valid) {
+            std::string t;
+            if (!valid || rpn.empty() || !get(GrRpnToGiac{})(rpn, t)) return std::string("null");
+            return js(t);
+        };
+        b += kv("text", js(f.text)) + kv("valid", f.valid ? "true" : "false");
+        b += kv("kind", js(app.debugSlotKind(slot))) + kv("reason", js(app.debugSlotInvalidReason(slot)));
+        b += kv("giac_rpn", giac(f.rpn, f.rpnValid)) + kv("giac_rpn_l", giac(f.rpnL, f.rpnLValid));
+        b += kv("giac_rpn_y", giac(f.rpnY, f.rpnYValid));
+        b += kv("compile_ok", app.debugSlotCompileOk(slot) ? "true" : "false");
+        std::string vals = "[";
+        for (size_t i = 0; i < xs.size(); ++i) {
+            if (i) vals += ',';
+            vals += "[" + num(xs[i]) + "," + num(app.debugSlotEvalParam(slot, static_cast<float>(xs[i]))) + "]";
+        }
+        b += kv("values", vals + "]");
+    }
+    emit(b);
+}
+
+static void dumpCalculus(const std::string& tag) {
+    std::string b = "\"tag\":" + js(tag) + kv("surface", "\"calculus\"") +
+                    kv("app", js(activeAppName())) + kv("angle", js(angle()));
+    if (g_mode != AppMode::CALCULUS || !g_calculusApp) { emit(b + kv("ok", "false")); return; }
+    CalculusApp& app = *g_calculusApp;
+    const auto& r = app.*get(CuGiac{});
+    b += kv("ok", "true") + kv("state", js(app.debugStateName())) + kv("focus", js(app.debugFocusName()));
+    b += kv("variable", js(std::string(1, app.*get(CuVariable{}))));
+    b += kv("input", js(sx(app.*get(CuInputRow{})))) + kv("giac_in", js(app.*get(CuSerialized{})));
+    b += kv("status", js(statusName(r.status))) + kv("unevaluated", r.unevaluated ? "true" : "false");
+    b += kv("exact", js(r.exactText)) + kv("approx", js(r.approximateText)) + kv("diag", js(r.diagnostic));
+    b += kv("display", js(sx(app.*get(CuResultRow{}))));
+    emit(b);
+}
+
+static void dumpEquations(const std::string& tag) {
+    std::string b = "\"tag\":" + js(tag) + kv("surface", "\"equations\"") +
+                    kv("app", js(activeAppName())) + kv("angle", js(angle()));
+    if (g_mode != AppMode::EQUATIONS || !g_equationsApp) { emit(b + kv("ok", "false")); return; }
+    EquationsApp& app = *g_equationsApp;
+    const int n = app.*get(EqCount{});
+    const auto& r = app.*get(EqGiac{});
+    std::string eqs = "[";
+    for (int i = 0; i < n && i < 3; ++i) { if (i) eqs += ','; eqs += js(sx((app.*get(EqRows{}))[i])); }
+    b += kv("ok", "true") + kv("equations", eqs + "]") + kv("edit", js(sx(app.*get(EqEditRow{}))));
+    b += kv("status", js(statusName(r.status))) + kv("set_kind", std::to_string(static_cast<unsigned>(r.setKind)));
+    b += kv("raw_exact", js(r.rawExactText)) + kv("diag", js(r.diagnostic));
+    std::string groups = "[";
+    for (size_t g = 0; g < r.groups.size(); ++g) {
+        if (g) groups += ',';
+        groups += '[';
+        for (size_t i = 0; i < r.groups[g].values.size(); ++i) {
+            const auto& s = r.groups[g].values[i];
+            if (i) groups += ',';
+            groups += "{\"var\":" + js(s.variable) + ",\"exact\":" + js(s.exactText) +
+                      ",\"approx\":" + js(s.approximateText) + ",\"real\":" +
+                      (s.hasApproximateReal ? num(s.approximateReal) : std::string("null")) + "}";
+        }
+        groups += ']';
+    }
+    b += kv("groups", groups + "]");
+    emit(b);
+}
+
+static void giacEval(const std::string& tag, const std::string& text) {
+    auto r = numos::GiacEngine::instance().evaluateStructured(text.c_str(), true);
+    std::string b = "\"tag\":" + js(tag) + kv("surface", "\"giac\"") + kv("angle", js(angle()));
+    b += kv("ok", "true") + kv("giac_in", js(text)) + kv("status", js(statusName(r.base.status)));
+    b += kv("exact", js(r.base.exactText)) + kv("approx", js(r.base.approximateText));
+    b += kv("diag", js(r.base.diagnostic));
+    emit(b);
+}
+} // namespace e2e
 
 // Procesa el comando de script de ESTE frame. Se llama AL INICIO del bucle,
 // antes de processSdlEvents(), avance de tick y lv_timer_handler().
@@ -3395,6 +3749,12 @@ static void scriptStepBegin()
             std::printf("[SCRIPT] giac_reset: contexto reconstruido (handles huerfanos)\n");
             break;
         }
+        // CORRECTNESS-E2E-01: read-only dumps (never fail the script).
+        case ScriptCmdType::DumpCalc:      e2e::dumpCalc(sc.strArg, sc.waitN != 0); break;
+        case ScriptCmdType::DumpGraph:     e2e::dumpGraph(sc.strArg, static_cast<int>(sc.waitN), sc.fArgs); break;
+        case ScriptCmdType::DumpCalculus:  e2e::dumpCalculus(sc.strArg); break;
+        case ScriptCmdType::DumpEquations: e2e::dumpEquations(sc.strArg); break;
+        case ScriptCmdType::GiacEval:      e2e::giacEval(sc.strArg, sc.textArg); break;
         case ScriptCmdType::AssertGiacLiveHandles: {
             const uint32_t actual =
                 numos::GiacEngine::instance().runtimeDiagnostics()

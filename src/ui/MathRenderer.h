@@ -27,7 +27,7 @@
  *   · lv_draw_rect()   → placeholders (NodeEmpty), cursor
  *
  * Cursor:
- *   Línea vertical de 2 px que parpadea (lv_anim_t, 500 ms on/off).
+ *   Línea vertical azul de 1 px que parpadea (500 ms on/off).
  *   Su altura se ajusta al ascent+descent del NodeRow donde se encuentra.
  *
  * Integración:
@@ -258,11 +258,11 @@ private:
     // ── Constantes de estilo ─────────────────────────────────────────────
     static constexpr int16_t PADDING_LEFT   = 8;    ///< Margen izquierdo
     static constexpr int16_t PADDING_RIGHT  = 8;    ///< Margen derecho
-    static constexpr int16_t CURSOR_WIDTH   = 3;    ///< Grosor del cursor (px)
+    static constexpr int16_t CURSOR_WIDTH   = 1;    ///< Grosor del cursor (px)
     static constexpr int16_t CURSOR_PAD     = 1;    ///< Extensión vertical del cursor
     static constexpr uint32_t BLINK_PERIOD  = 500;  ///< Half-period for cursor blink (ms)
     static constexpr uint32_t EMPTY_COLOR   = 0xD1D1D1;  ///< Color del placeholder
-    static constexpr uint32_t CURSOR_COLOR  = 0x000000;  ///< Color del cursor (negro puro, máximo contraste)
+    static constexpr uint32_t CURSOR_COLOR  = 0x1565C0;  ///< Blue caret stays distinct from black mathematical ink
     static constexpr int16_t  EMPTY_SIZE    = 8;    ///< Tamaño del cuadrado placeholder
     // Painting walks parent links and per-node child indices. Its stack is
     // independent of tree depth; accepted nodes need no truncation indicator.

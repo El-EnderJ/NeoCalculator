@@ -1253,9 +1253,11 @@ void NodeBigOp::calculateLayout(const FontMetrics& fm) {
     _body->calculateLayout(fm);
     _lower->calculateLayout(subscriptMetrics(fm));
     _upper->calculateLayout(fm.superscript());
-    _layout = largeOperatorGeometry(_operatorCp, fm, _lower->layout(),
-        _upper->layout(), _body->layout()).box;
-    _useDisplayLimits = fm.isDisplayStyle();
+    const auto geometry = largeOperatorGeometry(_operatorCp, fm, _lower->layout(),
+        _upper->layout(), _body->layout());
+    _layout = geometry.box;
+    // TXP §H.9.4 / GAP-37: BigOp obeys the same gate as Summation and DefIntegral.
+    _useDisplayLimits = geometry.displayLimits;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1710,10 +1712,20 @@ void NodeInterval::calculateLayout(const FontMetrics& fm) {
     content.descent = std::max(_lower->layout().descent, _upper->layout().descent);
     AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
         content, fm, delimiterVerticalPadPx(content, fm));
-    _delimiterWidth = assembledDelimiterWidthPx(geom, fm, leftCp());
+    auto leftGeometry = geom;
+    auto rightGeometry = geom;
+    // WHY: both sides can have different native bitmap heights and widths.
+    // Select against the same request and union, without repeated enlargement.
+    const int16_t leftWidth = assembledDelimiterWidthPx(leftGeometry, fm, leftCp());
+    const int16_t rightWidth = assembledDelimiterWidthPx(rightGeometry, fm, rightCp());
+    _delimiterWidth = std::max(leftWidth, rightWidth);
+    _leftDelimiterAscent = leftGeometry.ascent;
+    _leftDelimiterDescent = leftGeometry.descent;
+    _rightDelimiterAscent = rightGeometry.ascent;
+    _rightDelimiterDescent = rightGeometry.descent;
     _layout.width = fm.coordinate(static_cast<int32_t>(content.width) + 2 * _delimiterWidth + 2 * _innerPad);
-    _layout.ascent = geom.ascent;
-    _layout.descent = geom.descent;
+    _layout.ascent = std::max(leftGeometry.ascent, rightGeometry.ascent);
+    _layout.descent = std::max(leftGeometry.descent, rightGeometry.descent);
 }
 
 NodePiecewise::NodePiecewise() : MathNode(NodeType::Piecewise) {}

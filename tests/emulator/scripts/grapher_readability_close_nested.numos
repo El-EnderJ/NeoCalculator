@@ -1,0 +1,41 @@
+# grapher_readability_close_nested.numos - MATH-READABILITY-02 contextual close regression.
+# Each close exits only its nearest parenthesis; the outer multiplication stays outside both.
+# Real key events only. Expected values follow the written mathematics.
+# No AST fixtures, golden images, or regenerated expectations.
+# Run in an isolated filesystem with --headless --deterministic --frames 1000.
+
+log "grapher_readability_close_nested: start"
+wait 200
+open_app Grapher
+wait 60
+assert_app Grapher
+set_angle_mode rad
+assert_angle_mode rad
+key DOWN
+key ENTER
+key y
+key =
+key (
+key x
+key +
+key (
+key 1
+key +
+key 2
+key )
+key )
+key *
+key 3
+wait 3
+screenshot grapher_readability_close_nested-input.ppm
+key ENTER
+wait 80
+screenshot grapher_readability_close_nested-result.ppm
+assert_graph_engine giac
+assert_graph_relation_count 1
+assert_graph_slot_kind 0 explicitY
+assert_graph_compile_status 0 ok
+assert_graph_eval_near 0 2 15 0
+assert_graph_eval_near 0 0 9 0
+log "grapher_readability_close_nested: PASS"
+

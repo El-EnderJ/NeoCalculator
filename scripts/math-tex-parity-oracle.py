@@ -35,8 +35,13 @@ def styles(parent,kind,index):
  sup=(2 if size<2 else 3)|cr
  if kind=='Power' and index==1:return sup
  if kind=='Subscript' and index==1:return (2 if size<2 else 3)|4
- if kind=='Fraction':return (1 if size==0 else min(3,size+1))|(4 if index==1 else cr)
- if kind=='Root':return parent|4 if index==0 else 3
+ # TXP PD-4 / §H.2: at script level 0 (Display/Text) numerator and denominator
+ # keep the base size and use Text style; from Script on they step down.
+ # Cramping is unaffected: numerator inherits it, denominator is cramped.
+ if kind=='Fraction':return (1 if size<=1 else 3)|(4 if index==1 else cr)
+ # Root degree takes one ordinary (uncramped) script step, never two at level 0
+ # (MATH-READABILITY-REGRESSION-01B; 8 px indices are the size PD-4 rejects).
+ if kind=='Root':return parent|4 if index==0 else (2 if size<2 else 3)
  if kind=='LogBase' and index==0:return (2 if size<2 else 3)|4
  if kind in ('DefIntegral','Summation','BigOp') and index<2:return (2 if size<2 else 3)|(4 if index==0 else cr)
  return parent
@@ -306,7 +311,12 @@ def analyze(cases,constants,upm,font=None):
      correction=rounded(italic.get(variant,0)*em/upm);w=max(glyph['advance'],glyph['inkX']+glyph['inkW']-glyph['x'])
      a=node['baseline']-glyph['inkY'];d=glyph['inkY']+glyph['inkH']-node['baseline'];axis=px('AxisHeight',em)
      report(case,path,'operator-axis-center',2*glyph['inkY']+glyph['inkH'],2*(node['baseline']-axis)-glyph['inkH']%2)
-     if display:
+     # TXP section H.9.4 (GAP-37): one gate for Summation, DefIntegral and BigOp. Stacked limits need display style AND
+     # the ladder's selected glyph >= DisplayOperatorMinHeight. The ladder height is derived here from the font's own base
+     # variant record, not from the product's assembler. The drawn glyph (variant above) never decides this.
+     gateHeight=math.ceil(ladder[0].AdvanceMeasurement*em/upm)
+     stacked=display and gateHeight>=px('DisplayOperatorMinHeight',em)
+     if stacked:
       umin=[a+px('UpperLimitBaselineRiseMin',em),a+px('UpperLimitGapMin',em)+idepth(upper)]
       vmin=[d+px('LowerLimitBaselineDropMin',em),d+px('LowerLimitGapMin',em)+ia(lower)]
       ue=next(y for y in range(32768) if all(y>=c for c in umin));ve=next(y for y in range(32768) if all(y>=c for c in vmin))
@@ -390,9 +400,12 @@ def main():
  if target:
   mutant=copy.deepcopy(target);mutant['frames'][0]['rects'][0]['y']+=1
   bad,_,_=analyze([mutant],constants,font['head'].unitsPerEm,font);summary['negativeControl']['fractionBarMutationDetected']=any(x['rule']=='fraction-bar-rect' for x in bad)
- target=next((c for c in cases if c['id']=='E-paren-tall' and c['style']==1 and c['frames'][0]['delimiters'] and 'inkY' in c['frames'][0]['delimiters'][0]),None)
+ # Mutate the topmost piece whose top is not bounded by its own clip: moving a
+ # clipped assembly extender (or a slack middle piece) proves nothing.
+ unclippedTop=lambda d:'inkY' in d and d['clip'][1]<d['inkY']
+ target=next((c for c in cases if c['id']=='E-paren-tall' and c['style']==1 and any(unclippedTop(d) for d in c['frames'][0]['delimiters'])),None)
  if target:
-  mutant=copy.deepcopy(target);mutant['frames'][0]['delimiters'][0]['inkY']-=1
+  mutant=copy.deepcopy(target);min((d for d in mutant['frames'][0]['delimiters'] if unclippedTop(d)),key=lambda d:d['inkY'])['inkY']-=1
   bad,_,_=analyze([mutant],constants,font['head'].unitsPerEm,font);summary['negativeControl']['delimiterInkMutationDetected']=any(x['rule']=='logical-encloses-delimiter-y' for x in bad)
  target=next((c for c in cases if c['id']=='E-brace-tall' and c['style']==1 and c['frames'][0].get('strokes')),None)
  if target:

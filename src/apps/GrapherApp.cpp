@@ -3332,6 +3332,7 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
             break;
         case KeyCode::SQRT:   if (cursorDepth() < MAX_NEST) cur.insertRoot();     else changed = false; break;
         case KeyCode::LPAREN: if (cursorDepth() < MAX_NEST) cur.insertParen();    else changed = false; break;
+        case KeyCode::RPAREN: cur.closeParen(); break;
 
         // ── Functions (depth-limited) ──
         case KeyCode::SIN: if (cursorDepth() < MAX_NEST) cur.insertFunction(FuncKind::Sin); else changed = false; break;

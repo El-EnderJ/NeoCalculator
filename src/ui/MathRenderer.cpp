@@ -914,10 +914,15 @@ void MathCanvas::onDraw(lv_event_t* e) {
     }
 #endif
 
+    // WHY: the caret must not replace script glyph strokes. An empty slot
+    // has no mathematical ink, so paint above its outline to keep it visible.
+    // Both orders retain the same logical anchor and shared CURSOR_WIDTH.
+    const NodeRow* cursorRow = cursorActive ? _cursorCtrl->cursor().row : nullptr;
+    const bool cursorOverPlaceholder = cursorRow && (cursorRow->childCount() == 0 ||
+        (cursorRow->childCount() == 1 && cursorRow->child(0)->type() == NodeType::Empty));
+    if (!cursorOverPlaceholder) drawCursor(layer);
     drawNodeWithLayout(layer, _root, baseX, rootYTop, _fmNormal, _fontNormal);
-
-    // Dibujar el cursor parpadeante
-    drawCursor(layer);
+    if (cursorOverPlaceholder) drawCursor(layer);
 
 #ifdef NUMOS_MATH_STRESS_DIAGNOSTICS
     const int64_t drawEndUs = esp_timer_get_time();
@@ -2058,10 +2063,9 @@ void MathCanvas::drawIntervalBaseline(lv_layer_t* layer,
                                       const FontMetrics& fm,
                                       const lv_font_t* font, int depth) {
     const auto& layout = node->layout();
-    const int16_t top = static_cast<int16_t>(yBaseline - layout.ascent);
-    const int16_t bottom = static_cast<int16_t>(yBaseline + layout.descent);
     const lv_color_t color = _highlightActive ? _highlightColor : lv_color_black();
-    drawDelimiterGlyph(layer, x, top, bottom, node->leftCp(), color, font, fm.emSize);
+    drawDelimiterGlyph(layer, x, yBaseline - node->leftDelimiterAscent(),
+        yBaseline + node->leftDelimiterDescent(), node->leftCp(), color, font, fm.emSize);
     int16_t childX = static_cast<int16_t>(x + node->delimiterWidth() + node->innerPad());
     drawNodeBaseline(layer, node->lower(), childX, yBaseline, fm, font, depth + 1);
     childX = static_cast<int16_t>(childX + node->lower()->layout().width);
@@ -2069,7 +2073,8 @@ void MathCanvas::drawIntervalBaseline(lv_layer_t* layer,
     childX = static_cast<int16_t>(childX + node->separatorWidth());
     drawNodeBaseline(layer, node->upper(), childX, yBaseline, fm, font, depth + 1);
     drawDelimiterGlyph(layer, static_cast<int16_t>(x + layout.width -
-        node->delimiterWidth()), top, bottom, node->rightCp(), color, font, fm.emSize);
+        node->delimiterWidth()), yBaseline - node->rightDelimiterAscent(),
+        yBaseline + node->rightDelimiterDescent(), node->rightCp(), color, font, fm.emSize);
 }
 
 void MathCanvas::drawPiecewiseBaseline(lv_layer_t* layer,

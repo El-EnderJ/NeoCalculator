@@ -166,6 +166,10 @@ public:
     /// Close the nearest authored square group, including from a nested slot.
     /// Pending placeholders remain in the tree and still reject evaluation.
     void closeBracket();
+    /// Close the nearest round group/function that contains the cursor, even
+    /// from a nested script/fraction. Existing pending slots remain untouched.
+    /// Without a round context, retain the editor's ordinary right navigation.
+    void closeParen();
 
     /**
      * Inserta una función matemática (sin, cos, tan, ln, log, etc.).
@@ -231,6 +235,9 @@ public:
     void backspace();
 
 private:
+    enum class CloseResult : uint8_t { Closed, NoContext, Invalid };
+    CloseResult closeDelimiter(DelimKind kind);
+
     Cursor   _cur;
     NodeRow* _root;
     uint32_t _epoch = 0;

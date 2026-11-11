@@ -614,18 +614,75 @@ void CursorController::insertParen(DelimKind kind) {
 
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::closeBracket() {
-    if (!_cur.isValid()) return;
-    for (MathNode* node = _cur.row; node; node = node->parent()) {
-        if (node->type() != NodeType::Paren ||
-            static_cast<NodeParen*>(node)->delimKind() != DelimKind::Bracket) continue;
-        auto* parent = node->parent();
-        if (!parent || parent->type() != NodeType::Row) return;
-        auto* row = static_cast<NodeRow*>(parent);
-        for (int i = 0; i < row->childCount(); ++i) {
-            if (row->child(i) == node) { _cur = {row, i + 1}; return; }
+    (void)closeDelimiter(DelimKind::Bracket);
+}
+
+void CursorController::closeParen() {
+    if (closeDelimiter(DelimKind::Paren) == CloseResult::NoContext) moveRight();
+}
+
+CursorController::CloseResult CursorController::closeDelimiter(DelimKind kind) {
+    if (!_cur.isValid() || !_root) return CloseResult::Invalid;
+    if (_cur.index < 0 || _cur.index > _cur.row->childCount() ||
+        _cur.row->childCount() > kLayoutMaxNodes) return CloseResult::Invalid;
+    // WHY: parent pointers alone do not prove ownership. Validate the complete
+    // path before any movement, including the no-context RIGHT fallback. A
+    // cycle, stale link or foreign tree must leave the cursor unchanged.
+    MathNode* owned = _cur.row;
+    int remainingChildren = kLayoutMaxNodes;
+    for (int depth = 0; owned != _root; ++depth) {
+        if (depth >= kLayoutMaxDepth) return CloseResult::Invalid;
+        MathNode* parent = owned->parent();
+        if (!parent) return CloseResult::Invalid;
+        const int count = parent->childCount();
+        if (count < 0 || count > remainingChildren) return CloseResult::Invalid;
+        remainingChildren -= count;
+        bool found = false;
+        for (int i = 0; i < count; ++i) {
+            if (parent->child(i) == owned) { found = true; break; }
         }
-        return;
+        if (!found) return CloseResult::Invalid;
+        owned = parent;
     }
+    // WHY: a closing delimiter exits its nearest enclosing pair, rather than
+    // merely leaving a fraction/script slot and silently regrouping later input.
+    // Parent links and a bounded sibling search need no temporary AST or heap.
+    MathNode* branch = nullptr;
+    MathNode* node = _cur.row;
+    for (int depth = 0; node && depth <= kLayoutMaxDepth;
+         ++depth, branch = node, node = node->parent()) {
+        if (node == _root) return CloseResult::NoContext;
+        bool matches = node->type() == NodeType::Paren &&
+            static_cast<NodeParen*>(node)->delimKind() == kind;
+        if (kind == DelimKind::Paren) {
+            if (node->type() == NodeType::LogBase) {
+                const auto* log = static_cast<const NodeLogBase*>(node);
+                // WHY: the base lies outside log's round pair. Do not jump an
+                // enclosing group; ordinary RIGHT advances to the argument.
+                if (branch == log->base()) return CloseResult::NoContext;
+                if (branch != log->argument()) return CloseResult::Invalid;
+                matches = true;
+            } else if (node->type() == NodeType::Function ||
+                       node->type() == NodeType::Call ||
+                       node->type() == NodeType::Measurement) {
+                matches = true;
+            }
+        }
+        if (!matches) continue;
+        auto* parent = node->parent();
+        if (!parent || parent->type() != NodeType::Row) return CloseResult::Invalid;
+        auto* row = static_cast<NodeRow*>(parent);
+        if (row->childCount() > kLayoutMaxNodes) return CloseResult::Invalid;
+        for (int i = 0; i < row->childCount(); ++i) {
+            if (row->child(i) == node) {
+                _cur = {row, i + 1};
+                return CloseResult::Closed;
+            }
+        }
+        return CloseResult::Invalid;
+    }
+    // A broken parent chain or exceeded bound must not move the cursor.
+    return CloseResult::Invalid;
 }
 
 // NAVEGACIÓN — moveRight

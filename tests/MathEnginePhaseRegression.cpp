@@ -23,6 +23,10 @@ static void check(bool condition, const char* name) {
     }
 }
 
+static void check(bool condition, const std::string& name) {
+    check(condition, name.c_str());
+}
+
 static std::string readTextFile(const char* path) {
     std::ifstream in(path);
     if (!in) return {};
@@ -543,7 +547,11 @@ static void testBigOpDisplayLayoutMatchesRendererGeometry() {
     big->calculateLayout(fm);
     auto* node = static_cast<NodeBigOp*>(big.get());
 
-    check(node->useDisplayLimits(), "product uses display limits in display style");
+    // TXP §H.9.4 / GAP-37: the product obeys the same height gate as Σ and ∫.
+    // At em 18 its ladder glyph is below DisplayOperatorMinHeight, so the node
+    // takes side limits even in display style (no per-family bypass).
+    check(!node->useDisplayLimits(),
+          "product below DisplayOperatorMinHeight uses side limits in display style");
 
     const auto& lowerL = node->lower()->layout();
     const auto& upperL = node->upper()->layout();
@@ -573,16 +581,66 @@ static void testBigOpDisplayLayoutMatchesRendererGeometry() {
         static_cast<int16_t>(upperL.descent + upperBaseline),
         static_cast<int16_t>(lowerL.descent + lowerBaseline)});
 
-    check(big->layout().ascent == expectedAscent,
+    // Gate open (an operator at least DisplayOperatorMinHeight tall, e.g. once
+    // TXP-1 size variants reach the ladder): the stacked branch is rule 13a.
+    const auto stacked = largeOperatorGeometryWithGate(node->operatorCodepoint(), fm,
+        lowerL, upperL, bodyL, mc.displayOperatorMinHeight());
+    check(stacked.displayLimits, "BigOp stacked geometry is selected once the gate is open");
+    check(stacked.box.ascent == expectedAscent,
           "BigOp display ascent matches renderer displayLimitGeometry");
-    check(big->layout().descent == expectedDescent,
+    check(stacked.box.descent == expectedDescent,
           "BigOp display descent matches renderer displayLimitGeometry");
-    // The renderer paints from largeOperatorGeometry(); layout must be its box.
-    const auto drawn = largeOperatorGeometry(node->operatorCodepoint(), fm, lowerL, upperL, bodyL);
-    check(drawn.box.ascent == big->layout().ascent && drawn.box.descent == big->layout().descent,
-          "BigOp layout box equals the geometry the renderer paints");
-    check(drawn.upperBaseline == upperBaseline && drawn.lowerBaseline == lowerBaseline,
+    check(stacked.upperBaseline == upperBaseline && stacked.lowerBaseline == lowerBaseline,
           "BigOp renderer limit baselines follow rule 13a");
+    // Gate closed (production em 18): the renderer paints from
+    // largeOperatorGeometry(); layout must be exactly that box, with side scripts.
+    const auto drawn = largeOperatorGeometry(node->operatorCodepoint(), fm, lowerL, upperL, bodyL);
+    check(!drawn.displayLimits && drawn.displayLimits == node->useDisplayLimits(),
+          "BigOp node and renderer agree on the gate result");
+    check(drawn.box.ascent == big->layout().ascent && drawn.box.descent == big->layout().descent
+              && drawn.box.width == big->layout().width,
+          "BigOp layout box equals the geometry the renderer paints");
+    check(drawn.upperBaseline < 0 && drawn.lowerBaseline > 0 && drawn.upperX > drawn.symbolX,
+          "BigOp side limits are scripts placed right of the operator");
+}
+
+// TXP §H.9.4 / GAP-37: Summation, DefIntegral and BigOp share one gate.
+static void testLargeOperatorFamiliesShareDisplayLimitGate() {
+    FontMetrics fm = defaultFontMetrics();
+    auto sum = makeSummation(rowWithNumber("n=1"), rowWithNumber("9"), rowWithNumber("n"));
+    auto integral = makeDefIntegral(rowWithNumber("0"), rowWithNumber("1"),
+                                    rowWithNumber("x"), rowWithNumber("x"));
+    auto prod = makeBigOp(BigOpKind::Product, rowWithNumber("i=1"), rowWithNumber("n"),
+                          rowWithNumber("x"));
+    sum->calculateLayout(fm);
+    integral->calculateLayout(fm);
+    prod->calculateLayout(fm);
+    struct Row { const char* name; uint32_t cp; const MathNode* node; };
+    const Row rows[] = {{"sum", 0x2211, sum.get()}, {"integral", 0x222B, integral.get()},
+                        {"product", 0x220F, prod.get()}};
+    for (const auto& r : rows) {
+        const auto& lowerL = r.node->child(0)->layout();
+        const auto& upperL = r.node->child(1)->layout();
+        const auto& bodyL = r.node->child(2)->layout();
+        const int16_t gateH = largeOperatorGateHeightPx(r.cp, fm);
+        const bool gate = shouldUseDisplayLimits(fm, gateH);
+        const auto g = largeOperatorGeometry(r.cp, fm, lowerL, upperL, bodyL);
+        check(g.displayLimits == gate,
+              std::string(r.name) + " geometry follows shouldUseDisplayLimits()");
+        check(!gate, std::string(r.name) + " ladder glyph is below DisplayOperatorMinHeight at em 18");
+        // Same inputs, gate opened by a tall-enough operator: stacked for all three.
+        const auto open = largeOperatorGeometryWithGate(r.cp, fm, lowerL, upperL, bodyL,
+            MathConstantsProvider(fm.emSize).displayOperatorMinHeight());
+        check(open.displayLimits && open.upperBaseline < open.lowerBaseline
+                  && open.upperX + upperL.width <= open.bodyX,
+              std::string(r.name) + " stacks limits once the gate is open");
+        // TEXT style never stacks, whatever the glyph height.
+        FontMetrics text = fm; text.style = MathStyle::TEXT;
+        check(!largeOperatorGeometryWithGate(r.cp, text, lowerL, upperL, bodyL, 999).displayLimits,
+              std::string(r.name) + " text style never stacks limits");
+    }
+    check(!static_cast<NodeBigOp*>(prod.get())->useDisplayLimits(),
+          "BigOp has no display-limit bypass");
 }
 
 static void testMakeRelationProducesRelationAtom() {
@@ -649,6 +707,49 @@ static void testDisplayLimitsHonorsOperatorMinHeightThreshold() {
     bool megaOp = shouldUseDisplayLimits(fm, 50);
     check(megaOp,
           "operator taller than DisplayOperatorMinHeight uses display limits");
+}
+
+// MATH-READABILITY-REGRESSION-01C: a mixed interval such as [0,+inf) has a
+// bracket on one side and a parenthesis on the other. The two native bitmap
+// families quantise to different heights/widths, so each side must be selected
+// against the same request and the box must be the union; selecting the right
+// side from the left side's already-quantised height can exceed the box.
+static void testMixedIntervalDelimitersFitLayoutBox() {
+    const FontMetrics base = defaultFontMetrics();
+    const FontMetrics profiles[] = {base, base.superscript(), base.superscript().superscript()};
+    const bool closed[4][2] = {{true, false}, {false, true}, {true, true}, {false, false}};
+    int cases = 0;
+    for (const auto& fm : profiles) {
+        for (int depth = 0; depth < 4; ++depth) {
+            for (const auto& sides : closed) {
+                NodePtr upper = rowWithNumber("1");
+                for (int i = 0; i < depth; ++i) upper = makeFraction(std::move(upper), rowWithNumber("2"));
+                auto interval = makeInterval(rowWithNumber("0"), std::move(upper), sides[0], sides[1]);
+                interval->calculateLayout(fm);
+                const auto* node = static_cast<const NodeInterval*>(interval.get());
+                const int16_t height = node->layout().height();
+                // The renderer draws each side from its own stored extent.
+                const auto left = stixParenthesisPlan(
+                    node->leftDelimiterAscent() + node->leftDelimiterDescent(), fm.emSize, sides[0]);
+                const auto right = stixParenthesisPlan(
+                    node->rightDelimiterAscent() + node->rightDelimiterDescent(), fm.emSize, sides[1]);
+                ++cases;
+                if (left.height > height || right.height > height ||
+                    left.width > node->delimiterWidth() || right.width > node->delimiterWidth()) {
+                    std::cerr << "  interval em=" << fm.emSize << " depth=" << depth
+                              << " sides=" << sides[0] << sides[1] << " box=" << height
+                              << " left=" << left.height << "x" << left.width
+                              << " right=" << right.height << "x" << right.width
+                              << " slot=" << node->delimiterWidth() << "\n";
+                }
+                check(left.height <= height && right.height <= height,
+                      "mixed interval delimiters fit the layout box height");
+                check(left.width <= node->delimiterWidth() && right.width <= node->delimiterWidth(),
+                      "mixed interval delimiters fit the reserved delimiter slot");
+            }
+        }
+    }
+    check(cases == 48, "mixed interval sweep covers 3 sizes x 4 depths x 4 closures");
 }
 
 static void testDelimKindCodepointMapping() {
@@ -2137,9 +2238,11 @@ int main() {
     testAcceptedPowerClearanceMatrix();
     testParenthesesEncloseInkWithoutAxisInflation();
     testBigOpDisplayLayoutMatchesRendererGeometry();
+    testLargeOperatorFamiliesShareDisplayLimitGate();
     testMakeRelationProducesRelationAtom();
     testDisplayLimitsHonorsOperatorMinHeightThreshold();
     testDelimKindCodepointMapping();
+    testMixedIntervalDelimitersFitLayoutBox();
     testBracketDelimiterLayout();
     testBigOpUtf8MatchesCodepoint();
     testAxisHeightUsesMathConstant();

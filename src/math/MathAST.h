@@ -525,9 +525,16 @@ inline int16_t spaceAfterScriptPx(const FontMetrics& fm) {
 inline constexpr int16_t kSuperscriptVpamAdjustPx =
     static_cast<int16_t>(NUMOS_SUPERSCRIPT_VPAM_ADJUST_PX);
 
-/// Limit placement is style-dependent; glyph-size selection is independent.
-inline bool shouldUseDisplayLimits(const FontMetrics& fm, int16_t /*glyphHeight*/) {
-    return fm.isDisplayStyle();
+/// Display-style limits (above/below) are used iff the style is DISPLAY and the
+/// operator glyph reaches OpenType MATH DisplayOperatorMinHeight (TXP §H.9.4).
+/// One rule for Summation, DefIntegral and BigOp (GAP-37): no family bypasses it.
+/// Glyph-size selection stays independent of this decision; only the limit
+/// placement branch follows the gate.
+inline bool shouldUseDisplayLimits(const FontMetrics& fm,
+                                   int16_t operatorGlyphHeightPx) {
+    if (!fm.isDisplayStyle()) return false;
+    const int16_t displayMin = MathConstantsProvider(fm.emSize).displayOperatorMinHeight();
+    return operatorGlyphHeightPx >= displayMin;
 }
 
 /// Layout metrics for a fraction, computed by fractionLayoutMetrics().
@@ -1705,6 +1712,10 @@ public:
     uint32_t leftCp() const { return _leftClosed ? 0x005B : 0x0028; }
     uint32_t rightCp() const { return _rightClosed ? 0x005D : 0x0029; }
     int16_t delimiterWidth() const { return _delimiterWidth; }
+    int16_t leftDelimiterAscent() const { return _leftDelimiterAscent; }
+    int16_t leftDelimiterDescent() const { return _leftDelimiterDescent; }
+    int16_t rightDelimiterAscent() const { return _rightDelimiterAscent; }
+    int16_t rightDelimiterDescent() const { return _rightDelimiterDescent; }
     int16_t innerPad() const { return _innerPad; }
     int16_t separatorWidth() const { return _separatorWidth; }
 private:
@@ -1715,6 +1726,8 @@ private:
     int16_t _delimiterWidth = 0;
     int16_t _innerPad = 0;
     int16_t _separatorWidth = 0;
+    int16_t _leftDelimiterAscent = 0, _leftDelimiterDescent = 0;
+    int16_t _rightDelimiterAscent = 0, _rightDelimiterDescent = 0;
 };
 
 class NodePiecewise : public MathNode {

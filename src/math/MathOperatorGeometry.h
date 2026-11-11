@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include "MathScriptGeometry.h"
+#include "font/MathGlyphAssembly.h"
 #include "font/stix_operator_ink.h"
 
 namespace vpam {
@@ -14,13 +15,28 @@ struct LargeOperatorGeometry {
     int16_t lowerX = 0, lowerBaseline = 0;
     int16_t bodyX = 0;
     uint32_t glyph = 0;
+    bool displayLimits = false; // TXP §H.9.4 gate result: limits above/below
 };
 
-inline LargeOperatorGeometry largeOperatorGeometry(uint32_t cp,
+/// Height the §H.9.4 gate compares with DisplayOperatorMinHeight: the glyph the
+/// variant ladder selects for largeOperatorTargetHeightPx() (the same input the
+/// gate had before PARITY-02 dropped it). It is independent of the source-ink
+/// glyph that is drawn, so a taller drawn variant never changes limit placement.
+inline int16_t largeOperatorGateHeightPx(uint32_t cp, const FontMetrics& fm) {
+    const auto m = DelimiterAssembler::glyphMetricsForHeightPx(
+        cp, largeOperatorTargetHeightPx(fm), fm.emSize);
+    return m.valid ? m.heightPx : fm.height();
+}
+
+inline LargeOperatorGeometry largeOperatorGeometryWithGate(uint32_t cp,
         const FontMetrics& fm, const LayoutResult& lower,
-        const LayoutResult& upper, const LayoutResult& body) {
+        const LayoutResult& upper, const LayoutResult& body,
+        int16_t gateHeightPx) {
     LargeOperatorGeometry g;
+    // Glyph selection follows the style; limit placement follows the gate.
     const bool display = fm.isDisplayStyle();
+    const bool limits = shouldUseDisplayLimits(fm, gateHeightPx);
+    g.displayLimits = limits;
     const auto* ink = stixOperatorInk(cp, fm.emSize, display);
     if (!ink) return g; // BigOpKind and the two dedicated operators are exhaustive.
     const MathConstantsProvider mc(fm.emSize);
@@ -33,9 +49,10 @@ inline LargeOperatorGeometry largeOperatorGeometry(uint32_t cp,
     // Center the actual raster on AxisHeight; do not center an estimated box.
     g.symbolBaseline = fm.coordinate(ink->height + ink->yOffset - ascent);
     const int16_t italic = mc.scalePx(ink->italicCorrectionDu);
-    if (display) {
-        // DisplayOperatorMinHeight selects a glyph, never the limit placement
-        // branch. Use the source font's true display variant even if smaller.
+    if (limits) {
+        // §H.9.4: DISPLAY style and glyph >= DisplayOperatorMinHeight. The drawn
+        // glyph is still the source font's true display variant; the gate only
+        // picks stacked limits (rule 13a) over side scripts below.
         g.upperBaseline = fm.coordinate(-ascent - std::max(mc.upperLimitBaselineRiseMin(),
             fm.coordinate(mc.upperLimitGapMin() + layoutInkDescentPx(upper))));
         g.lowerBaseline = fm.coordinate(descent + std::max(mc.lowerLimitBaselineDropMin(),
@@ -59,7 +76,7 @@ inline LargeOperatorGeometry largeOperatorGeometry(uint32_t cp,
     g.bodyX = fm.coordinate(std::max({fm.coordinate(g.symbolX + width),
         fm.coordinate(g.upperX + upper.width),
         fm.coordinate(g.lowerX + lower.width)}) + largeOperatorBodyGapPx(fm)
-        + (display ? 0 : spaceAfterScriptPx(fm)));
+        + (limits ? 0 : spaceAfterScriptPx(fm)));
     g.box.width = fm.coordinate(g.bodyX + body.width);
     g.box.ascent = std::max({ascent, body.ascent,
         fm.coordinate(upper.ascent - g.upperBaseline),
@@ -74,6 +91,13 @@ inline LargeOperatorGeometry largeOperatorGeometry(uint32_t cp,
         fm.coordinate(layoutInkDescentPx(upper) + g.upperBaseline),
         fm.coordinate(layoutInkDescentPx(lower) + g.lowerBaseline)});
     return g;
+}
+
+inline LargeOperatorGeometry largeOperatorGeometry(uint32_t cp,
+        const FontMetrics& fm, const LayoutResult& lower,
+        const LayoutResult& upper, const LayoutResult& body) {
+    return largeOperatorGeometryWithGate(cp, fm, lower, upper, body,
+                                         largeOperatorGateHeightPx(cp, fm));
 }
 
 inline void largeOperatorUtf8(uint32_t cp, char (&text)[4]) {

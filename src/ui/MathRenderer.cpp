@@ -1315,6 +1315,18 @@ void MathCanvas::paintNode(lv_layer_t* layer, const MathNode* node,
             drawTextBaseline(layer,x+unit->textOffset(),yBaseline,text,unit->scriptLevel(),
                              _highlightActive?_highlightColor:lv_color_black());break;
         }
+        case NodeType::Measurement: {
+            const auto* measure=static_cast<const NodeMeasurement*>(node);
+            const auto color=_highlightActive?_highlightColor:lv_color_black();
+            const int16_t top=yBaseline-node->layout().ascent,bottom=yBaseline+node->layout().descent;
+            drawDelimiterGlyph(layer,x,top,bottom,0x0028,color,font,fm.emSize);
+            drawNodeBaseline(layer,measure->nominal(),x+measure->nominalX(),yBaseline,fm,font,depth+1);
+            drawTextBaseline(layer,x+measure->signX(),yBaseline,"±",node->scriptLevel(),
+                             _highlightActive?_highlightColor:lv_color_black());
+            drawNodeBaseline(layer,measure->uncertainty(),x+measure->uncertaintyX(),yBaseline,fm,font,depth+1);
+            drawDelimiterGlyph(layer,x+node->layout().width-measure->delimiterWidth(),top,bottom,0x0029,color,font,fm.emSize);
+            break;
+        }
         case NodeType::QuantityReference:
             // Registers exactly one child placement; the common iterative
             // painter visits its notation once with the same bounding box.

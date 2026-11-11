@@ -207,7 +207,7 @@ Source: `src/math/units/registry.json`. IDs do not depend on order.
 | 1309 | tsubo | Japanese tsubo / Tsubo japonés | area | [661157, 2, -5, 0] ; offset [0, 1, 0, 0] | conventional_approximate | jetro: Hiroshima property area conversion; rounded |
 | 1310 | rai | Thai rai / Rai tailandés | area | [16, 1, 2, 0] ; offset [0, 1, 0, 0] | exact | thai_boi: 1rai1600m² |
 
-Definitions: 202. Catalogue items: 314. Insertable offered variants: 3674. Official prefixes: 24 + neutral. Typed references: 58.
+Definitions: 202. Catalogue items: 314. Insertable offered variants: 3674. Official prefixes: 24 + neutral. Typed references: 59.
 
 
 ## Typed physical references and contextual scales
@@ -228,6 +228,7 @@ Definitions: 202. Catalogue items: 314. Insertable offered variants: 3674. Offic
 | 12 | Tₚ | Planck temperature / Temperatura de Planck | physical_constant / measured | 1.416784e32 / 1.6e27 | sqrt(hbar*c^5/G)/k_B | codata2022: Planck temperature |
 | 13 | g₀ | Standard gravity / Gravedad estándar | physical_constant / exact | 9.80665 / 0 | 9.80665 m/s^2 | codata2022: standard acceleration of gravity |
 | 14 | e | Elementary charge / Carga elemental | physical_constant / exact | 1.602176634e-19 / 0 | 1.602176634e-19 C | codata2022: elementary charge |
+| 59 | G | Newtonian constant of gravitation / Constante de gravitación universal | physical_constant / measured | 6.67430e-11 / 1.5e-15 | G | codata2022: Newtonian constant of gravitation |
 | 100 | 1 | Unit one / Unidad uno | scale / exact | context required / not a fixed measured value | 1 | bipm: 2.3.3 dimensionless quantities |
 | 101 | % | Percent (ratio) / Porcentaje (relación) | scale / exact | context required / not a fixed measured value | 10^-2 | nist811ratios: 7.10.2 |
 | 102 | ‰ | Per mille (ratio) / Por mil (relación) | scale / exact | context required / not a fixed measured value | 10^-3 | ucum: 28 dimensionless units |

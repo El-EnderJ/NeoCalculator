@@ -27,11 +27,16 @@ async function run(browserName, browserType) {
   const executablePath = existsSync(configured) ? configured
     : existsSync(fallbacks[browserName]) ? fallbacks[browserName] : undefined;
   const browser = await browserType.launch({ headless: true, executablePath });
+  try {
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.goto(`${server.origin}/fixture.html`);
-  const result = await page.evaluate(async ({ browserName }) => {
+  let watchdog;
+  const deadline = new Promise((_, reject) => {
+    watchdog = setTimeout(() => reject(new Error(`${browserName} scalar suite exceeded 60 seconds`)), 60000);
+  });
+  const evaluation = page.evaluate(async ({ browserName }) => {
     const manifestUrl = new URL(
       "/nested/numos/numos-math-assets.json", location.href).href;
     const manifest = await (await fetch(manifestUrl)).json();
@@ -52,6 +57,10 @@ async function run(browserName, browserType) {
 
     const twoPlusTwo = await measure("firstEvaluation",
       () => math.evaluate("2+2"));
+    // Non-cardinal closed pi-angle: optional symbolic simplification must not
+    // hang the worker or crash the browser. Math.sin is the independent oracle.
+    const piAngle = await math.evaluate("sin(pi/180)");
+    const piAngleApprox = await math.approximate("sin(pi/180)");
     const large = await math.evaluate("2^100");
     const rational = await math.evaluate("1/3");
     const radical = await math.evaluate("sqrt(2)");
@@ -183,6 +192,7 @@ async function run(browserName, browserType) {
     // Low-level direct harness remains available for integration testing.
     const direct = await createNumosMathDirect({ manifestUrl });
     const directResult = await direct.evaluate("2+2");
+    const directPiAngle = await direct.evaluate("sin(pi/180)");
     const directSurface = await direct.compile2D("(x^2+y^2)-(1)", "x", "y");
     const directCircle = await directSurface.evaluate(0.5, 0.5);
     const directShutdown = await direct.shutdown();
@@ -201,7 +211,7 @@ async function run(browserName, browserType) {
     }
 
     return {
-      browserName, timings, f7, twoPlusTwo, large, rational, radical, simplified,
+      browserName, timings, f7, twoPlusTwo, piAngle, piAngleApprox, directPiAngle, large, rational, radical, simplified,
       complex, infinity, undefinedValue, list, matrix, piecewise, derivative,
       degreeDerivative, integral, unevaluated, linear, polynomial, system,
       noSolution, identity, parameter, periodic, periodicZero, periodicPole, periodicRestricted, periodicDegree, composition, compositionPole, compositionDegree, variableRead, variableDiagnostics,
@@ -212,6 +222,9 @@ async function run(browserName, browserType) {
       initialDiagnostics, oversizedMatrix, oversizedList, expandedResult,
     };
   }, { browserName });
+  let result;
+  try { result = await Promise.race([evaluation, deadline]); }
+  finally { clearTimeout(watchdog); }
   assert.deepEqual(errors, [], `${browserName} page errors`);
   for (const entry of result.f7) {
     assert.equal(entry.primitive.unevaluated, false, entry.input);
@@ -220,6 +233,9 @@ async function run(browserName, browserType) {
   }
   assert.equal(result.twoPlusTwo.result.kind, "integer");
   assert.equal(result.twoPlusTwo.result.value, "4");
+  assert.equal(result.piAngle.result.kind, "function");
+  assert.equal(result.directPiAngle.result.kind, "function");
+  assert.ok(Math.abs(Number(result.piAngleApprox.result.value) - Math.sin(Math.PI / 180)) < 1e-12);
   assert.equal(result.large.result.value, "1267650600228229401496703205376");
   assert.equal(result.rational.result.kind, "rational");
   assert.equal(result.radical.result.kind, "sqrt");
@@ -311,8 +327,8 @@ async function run(browserName, browserType) {
     cycle.usedHeapBytes === result.cycles[0].usedHeapBytes));
   assert.equal(result.initialDiagnostics.diagnostics.heapBytes,
     result.beforeCancel.diagnostics.heapBytes);
-  await browser.close();
   return result;
+  } finally { await browser.close(); }
 }
 
 try {

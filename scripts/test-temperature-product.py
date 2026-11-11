@@ -41,6 +41,6 @@ for i,tag in enumerate(('en-US','en-GB','es-ES','es-419')):
 for spanish in (False,True):
  locale='' if not spanish else keys('HOME')+'wait 20\nopen_app Settings\nwait 20\n'+keys('DOWN '*4+'RIGHT RIGHT HOME')+'wait 20\nopen_app Calculation\nwait 20\n'
  tag='es' if spanish else 'en'
- route=keys('TOOLBOX '+'DOWN '*9+'ENTER '+'DOWN '*7+'ENTER')
+ route=keys('TOOLBOX '+'DOWN '*10+'ENTER '+'DOWN '*7+'ENTER')
  run('route-'+tag,locale+route+shot(tag+'-temperature-route')+keys('RIGHT')+selected(61)+shot(tag+'-difference-route')+keys('RIGHT')+selected(61)+shot(tag+'-difference-variants')+keys('ENTER ENTER')+result('1','1','difference'))
 raise SystemExit(0 if records and all(r['passed'] for r in records.values()) else 1)

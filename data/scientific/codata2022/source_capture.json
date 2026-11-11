@@ -1,0 +1,434 @@
+{
+  "dataset": "CODATA 2022",
+  "nist_web_version": "9.0",
+  "consulted": "2026-10-07",
+  "table_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+  "table_response_sha256": "77fb90e66c40db3e6eb16630bc9c88e4c7c8beddbe5e71be406f2f26e3f67e67",
+  "constants": {
+    "c": {
+      "name": "speed of light in vacuum",
+      "value": "299792458",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "truncated": false,
+      "unit": "m s^-1",
+      "source_line": "speed of light in vacuum                                    299 792 458              (exact)                  m s^-1"
+    },
+    "bohrrada0": {
+      "name": "Bohr radius",
+      "value": "5.29177210544e-11",
+      "standard_uncertainty": "0.00000000082e-11",
+      "exact": false,
+      "truncated": false,
+      "unit": "m",
+      "source_line": "Bohr radius                                                 5.291 772 105 44 e-11    0.000 000 000 82 e-11    m"
+    },
+    "me": {
+      "name": "electron mass",
+      "value": "9.1093837139e-31",
+      "standard_uncertainty": "0.0000000028e-31",
+      "exact": false,
+      "truncated": false,
+      "unit": "kg",
+      "source_line": "electron mass                                               9.109 383 7139 e-31      0.000 000 0028 e-31      kg"
+    },
+    "hr": {
+      "name": "Hartree energy",
+      "value": "4.3597447222060e-18",
+      "standard_uncertainty": "0.0000000000048e-18",
+      "exact": false,
+      "truncated": false,
+      "unit": "J",
+      "source_line": "Hartree energy                                              4.359 744 722 2060 e-18  0.000 000 000 0048 e-18  J"
+    },
+    "aut": {
+      "name": "atomic unit of time",
+      "value": "2.4188843265864e-17",
+      "standard_uncertainty": "0.0000000000026e-17",
+      "exact": false,
+      "truncated": false,
+      "unit": "s",
+      "source_line": "atomic unit of time                                         2.418 884 326 5864 e-17  0.000 000 000 0026 e-17  s"
+    },
+    "hbar": {
+      "name": "reduced Planck constant",
+      "value": "1.054571817e-34",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "truncated": true,
+      "unit": "J s",
+      "source_line": "reduced Planck constant                                     1.054 571 817... e-34    (exact)                  J s"
+    },
+    "plkl": {
+      "name": "Planck length",
+      "value": "1.616255e-35",
+      "standard_uncertainty": "0.000018e-35",
+      "exact": false,
+      "truncated": false,
+      "unit": "m",
+      "source_line": "Planck length                                               1.616 255 e-35           0.000 018 e-35           m"
+    },
+    "plkt": {
+      "name": "Planck time",
+      "value": "5.391247e-44",
+      "standard_uncertainty": "0.000060e-44",
+      "exact": false,
+      "truncated": false,
+      "unit": "s",
+      "source_line": "Planck time                                                 5.391 247 e-44           0.000 060 e-44           s"
+    },
+    "plkm": {
+      "name": "Planck mass",
+      "value": "2.176434e-8",
+      "standard_uncertainty": "0.000024e-8",
+      "exact": false,
+      "truncated": false,
+      "unit": "kg",
+      "source_line": "Planck mass                                                 2.176 434 e-8            0.000 024 e-8            kg"
+    },
+    "plktmp": {
+      "name": "Planck temperature",
+      "value": "1.416784e32",
+      "standard_uncertainty": "0.000016e32",
+      "exact": false,
+      "truncated": false,
+      "unit": "K",
+      "source_line": "Planck temperature                                          1.416 784 e32            0.000 016 e32            K"
+    },
+    "gn": {
+      "name": "standard acceleration of gravity",
+      "value": "9.80665",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "truncated": false,
+      "unit": "m s^-2",
+      "source_line": "standard acceleration of gravity                            9.806 65                 (exact)                  m s^-2"
+    },
+    "e": {
+      "name": "elementary charge",
+      "value": "1.602176634e-19",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "truncated": false,
+      "unit": "C",
+      "source_line": "elementary charge                                           1.602 176 634 e-19       (exact)                  C"
+    },
+    "bg": {
+      "name": "Newtonian constant of gravitation",
+      "value": "6.67430e-11",
+      "standard_uncertainty": "0.00015e-11",
+      "exact": false,
+      "truncated": false,
+      "unit": "m^3 kg^-1 s^-2",
+      "source_line": "Newtonian constant of gravitation                           6.674 30 e-11            0.000 15 e-11            m^3 kg^-1 s^-2"
+    },
+    "h": {
+      "name": "Planck constant",
+      "value": "6.62607015e-34",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "truncated": false,
+      "unit": "J Hz^-1",
+      "source_line": "Planck constant                                             6.626 070 15 e-34        (exact)                  J Hz^-1"
+    },
+    "k": {
+      "name": "Boltzmann constant",
+      "value": "1.380649e-23",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "truncated": false,
+      "unit": "J K^-1",
+      "source_line": "Boltzmann constant                                          1.380 649 e-23           (exact)                  J K^-1"
+    }
+  },
+  "correlations": [
+    {
+      "a": "bohrrada0",
+      "b": "me",
+      "rho": "-0.99999",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?me|ShowSecond=Browse&First=bohrrada0",
+      "response_sha256": "646d65923ac4b016a7494527dd365cf6f4835ce8317cd27a7418985b2132dcd8",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "bohrrada0",
+      "b": "hr",
+      "rho": "-0.00575",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?hr|ShowSecond=Browse&First=bohrrada0",
+      "response_sha256": "7ea9e4b719caeceb4b34748d4c33b0d0ed3d13faaec85d6d6acdc76619367b4b",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "bohrrada0",
+      "b": "aut",
+      "rho": "0.00575",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?aut|ShowSecond=Browse&First=bohrrada0",
+      "response_sha256": "bf1e9466ee6103dd920767da8e3b921da0d71a8a66c9b5e5ce58ce9c7701217c",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "bohrrada0",
+      "b": "plkl",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkl|ShowSecond=Browse&First=bohrrada0",
+      "response_sha256": "7c213b474d9b53de12073e6861f1745a95a2a10dce8c9d8b29f9d684b0248265",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "bohrrada0",
+      "b": "plkt",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=bohrrada0",
+      "response_sha256": "798a635fd8b667f7583d7e91a27d12afd528533e8fe277148b0352bb1b8438e0",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "bohrrada0",
+      "b": "plkm",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=bohrrada0",
+      "response_sha256": "f0c84e380799e5bf5383dd1dcb8c3eb9dcb6ba173e7f04d353c0b58d3d27c408",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "bohrrada0",
+      "b": "plktmp",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=bohrrada0",
+      "response_sha256": "6b3ca21d731de2415fb71087c516f8473cd2016cd3c785df27dd6d7ee3fd0579",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "bohrrada0",
+      "b": "bg",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=bohrrada0",
+      "response_sha256": "1a7f4a676b810653da8f0fc9168514fad8323847b7e1340c403e6cbce6e0bc4d",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "me",
+      "b": "hr",
+      "rho": "0.00225",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?hr|ShowSecond=Browse&First=me",
+      "response_sha256": "fb4446a65e3bf0833adda7eaca3eb96be9d6d8897d99ae9c487bbdba3d7e98bf",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "me",
+      "b": "aut",
+      "rho": "-0.00225",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?aut|ShowSecond=Browse&First=me",
+      "response_sha256": "00fdb4cd3f8c01504e0aea1262bd724dc1a82dd10bec2b8ee81c10cb797db216",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "me",
+      "b": "plkl",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkl|ShowSecond=Browse&First=me",
+      "response_sha256": "9099b7c367c90e1b13bf31c29646dcfca9c6772cf4fe5ff7ae99e01eba4ebd9e",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "me",
+      "b": "plkt",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=me",
+      "response_sha256": "80a634929db6c885f352f58709b628723824fc1313cfad396b6fad3ae3e90eb0",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "me",
+      "b": "plkm",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=me",
+      "response_sha256": "434276c371574e8bb92704e89a71d82585cc3279321c1af8c588ab9dfe3970be",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "me",
+      "b": "plktmp",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=me",
+      "response_sha256": "c3eebcc0c7d6cb518fb65179f956954021c7267f4c485d0ca84c88df29e37b6e",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "me",
+      "b": "bg",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=me",
+      "response_sha256": "6fc85629d48192a90040f6a6d2887b77a0f376def91635d724f69822fbe477de",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "hr",
+      "b": "aut",
+      "rho": "-1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?aut|ShowSecond=Browse&First=hr",
+      "response_sha256": "aa63fde8e7741763a010cc03b42890cab5a8fad61011013a9c2f564da1561be9",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "hr",
+      "b": "plkl",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkl|ShowSecond=Browse&First=hr",
+      "response_sha256": "f5c57e26b41fafd8f435332b9d498bc7967abd90b14ab6f8109dee9c6fc20c47",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "hr",
+      "b": "plkt",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=hr",
+      "response_sha256": "409f6703b61734f952c59aa1e36801612e8f8abfe7b2112a1b42b33d048cb54e",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "hr",
+      "b": "plkm",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=hr",
+      "response_sha256": "d5eb3e3bc55db73a624fdf11dcc53f7e5dc4fabe1040164347143fd3ead2a3cb",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "hr",
+      "b": "plktmp",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=hr",
+      "response_sha256": "b9939d9f39f4d4bb9466537b6a782404b842157e534aaa5f53b860fee9e6dd25",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "hr",
+      "b": "bg",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=hr",
+      "response_sha256": "a09378426ad6da27a32a8116e84a1d4faf7b948ebb835b67ac45716472df684e",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "aut",
+      "b": "plkl",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkl|ShowSecond=Browse&First=aut",
+      "response_sha256": "8d547e89a39029f1639d505714e495b6dc114b2cc59f0a45b9f512b5c90d37c3",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "aut",
+      "b": "plkt",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=aut",
+      "response_sha256": "35a533fe03863f51115ac84e02bea6ac3cd1fa129d959ac9337787fa14d1cc34",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "aut",
+      "b": "plkm",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=aut",
+      "response_sha256": "c882c9f0bb3149cad5a7e69b75c8b125f7e08d197c25fffd520ab1f3802715b9",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "aut",
+      "b": "plktmp",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=aut",
+      "response_sha256": "cf9a8456e76ec57c19f4f27a49bc61afe0407a466adddb182327a76706e9de26",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "aut",
+      "b": "bg",
+      "rho": "0.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=aut",
+      "response_sha256": "a96a7616caa110ee724f7ace27b111fce7c4545e621498cefdcb5c7d975752f8",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plkl",
+      "b": "plkt",
+      "rho": "1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=plkl",
+      "response_sha256": "a82bef514accfcd377b52582773de4c9a0f522281252aabcd227b1babc34b050",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plkl",
+      "b": "plkm",
+      "rho": "-1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=plkl",
+      "response_sha256": "f7cbeb869034e938757c5ef5774d92feae2dbb1fb94479678f4ea2a0881dd510",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plkl",
+      "b": "plktmp",
+      "rho": "-1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=plkl",
+      "response_sha256": "6e8cbdcdbe63c5ef47d9d901e97e7ceae6fde89f11d835769467177f20982c2c",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plkl",
+      "b": "bg",
+      "rho": "1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=plkl",
+      "response_sha256": "02eabf085137825dd7ae4cd6b5f79542b3aa748253386a08f3111010dd32d4b5",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plkt",
+      "b": "plkm",
+      "rho": "-1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=plkt",
+      "response_sha256": "e228b2512d5d779123438a1aaa56738671975e08be8ae441a34cf90ced37678c",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plkt",
+      "b": "plktmp",
+      "rho": "-1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=plkt",
+      "response_sha256": "383610e966748d24ce4dd209e3dc0c3091514407fdc5df654c2c43778e7325dd",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plkt",
+      "b": "bg",
+      "rho": "1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=plkt",
+      "response_sha256": "290f17525db4ee7d96bc0fcc6c281b2235435b90d3d7941218e934c9ce42dc7d",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plkm",
+      "b": "plktmp",
+      "rho": "1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=plkm",
+      "response_sha256": "e444f0e4d21f9ca80ed5dedee0d766962e544a3904813cbecdc8fb3926707007",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plkm",
+      "b": "bg",
+      "rho": "-1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=plkm",
+      "response_sha256": "04e856305ddba000d86ce826c189d338a1344221a1ec86e37291f12573ed1d8e",
+      "source": "NIST 2022 CODATA pair query"
+    },
+    {
+      "a": "plktmp",
+      "b": "bg",
+      "rho": "-1.00000",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=plktmp",
+      "response_sha256": "052267f1a1c9cf46435a1b96e7a55000df1c2ce11946c11edcac4b2f442944f5",
+      "source": "NIST 2022 CODATA pair query"
+    }
+  ]
+}

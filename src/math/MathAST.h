@@ -101,6 +101,7 @@ enum class NodeType : uint8_t {
     Unevaluated,      // Valid expression explicitly marked unevaluated
     Unit,             // Validated unit identity, never a free variable
     QuantityReference, // Physical constant/contextual scale, distinct from units
+    Measurement,      // Standard uncertainty, two editable slots, stable source
 };
 
 enum class CollectionKind : uint8_t { List, Set };
@@ -1498,6 +1499,30 @@ private:
     NodePtr _notation;
 };
 NodePtr makeQuantityReference(numos::units::ReferenceAtom atom);
+
+class NodeMeasurement final : public MathNode {
+public:
+    NodeMeasurement(NodePtr nominal, NodePtr uncertainty, uint32_t sourceId);
+    void calculateLayout(const FontMetrics& fm) override;
+    int childCount() const override { return 2; }
+    MathNode* child(int index) const override { return index==0?_nominal.get():index==1?_uncertainty.get():nullptr; }
+    MathNode* nominal() const { return _nominal.get(); }
+    MathNode* uncertainty() const { return _uncertainty.get(); }
+    uint32_t sourceId() const { return _sourceId; }
+    MathClass mathClass() const override { return MathClass::INNER; }
+    int16_t signX() const { return _signX; }
+    int16_t uncertaintyX() const { return _uncertaintyX; }
+    int16_t nominalX() const { return _nominalX; }
+    int16_t delimiterWidth() const { return _delimiterWidth; }
+private:
+    NodePtr _nominal, _uncertainty;
+    uint32_t _sourceId;
+    int16_t _signX=0, _uncertaintyX=0;
+    int16_t _nominalX=0, _delimiterWidth=0;
+};
+// WHY: zero requests a new session source; cloning supplies the existing ID.
+// UINT32_MAX is display-only and must never enter the quantity evaluator.
+NodePtr makeMeasurement(NodePtr nominal={}, NodePtr uncertainty={}, uint32_t sourceId=0);
 
 class NodeSymbol : public MathNode {
 public:

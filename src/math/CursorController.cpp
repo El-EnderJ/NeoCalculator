@@ -137,6 +137,7 @@ bool CursorController::isCapturable(const MathNode* node) {
         case NodeType::Constant:
         case NodeType::Variable:
         case NodeType::Unit:
+        case NodeType::Measurement:
         case NodeType::QuantityReference:
         case NodeType::Symbol:
         case NodeType::SpecialValue:
@@ -194,6 +195,7 @@ NodeRow* CursorController::firstSlot(MathNode* node) {
                        ? static_cast<NodeRow*>(base)
                        : nullptr;
         }
+        case NodeType::Measurement:
         case NodeType::Call:
         case NodeType::DefIntegral: {
             auto* child=node->child(0);
@@ -252,6 +254,7 @@ NodeRow* CursorController::lastSlot(MathNode* node) {
                        ? static_cast<NodeRow*>(arg)
                        : nullptr;
         }
+        case NodeType::Measurement:
         case NodeType::Call:
         case NodeType::DefIntegral: {
             auto* child=node->child(node->childCount()-1);
@@ -648,7 +651,7 @@ void CursorController::moveRight() {
             right->type() == NodeType::Root     ||
             right->type() == NodeType::Paren    ||
             right->type() == NodeType::Function ||
-            right->type() == NodeType::LogBase || right->type() == NodeType::Call || right->type() == NodeType::DefIntegral) {
+            right->type() == NodeType::Measurement || right->type() == NodeType::LogBase || right->type() == NodeType::Call || right->type() == NodeType::DefIntegral) {
             if (enterNodeFromLeft(right)) return;
         }
 
@@ -707,7 +710,7 @@ void CursorController::moveRight() {
         }
     }
 
-    if (structParent && (structParent->type()==NodeType::Call || structParent->type()==NodeType::DefIntegral)) {
+    if (structParent && (structParent->type()==NodeType::Measurement || structParent->type()==NodeType::Call || structParent->type()==NodeType::DefIntegral)) {
         for(int i=0;i<structParent->childCount();++i) {
             if(structParent->child(i)!=_cur.row) continue;
             auto* sibling=structParent->child(i+1);
@@ -755,7 +758,7 @@ void CursorController::moveLeft() {
             left->type() == NodeType::Root     ||
             left->type() == NodeType::Paren    ||
             left->type() == NodeType::Function ||
-            left->type() == NodeType::LogBase || left->type() == NodeType::Call || left->type() == NodeType::DefIntegral) {
+            left->type() == NodeType::Measurement || left->type() == NodeType::LogBase || left->type() == NodeType::Call || left->type() == NodeType::DefIntegral) {
             _cur.index--;   // "Saltar por encima" para posicionarnos
             if (enterNodeFromRight(left)) return;
             // Si falló, quedamos a la izquierda del nodo (index ya decrementado)
@@ -816,7 +819,7 @@ void CursorController::moveLeft() {
         }
     }
 
-    if (structParent && (structParent->type()==NodeType::Call || structParent->type()==NodeType::DefIntegral)) {
+    if (structParent && (structParent->type()==NodeType::Measurement || structParent->type()==NodeType::Call || structParent->type()==NodeType::DefIntegral)) {
         for(int i=0;i<structParent->childCount();++i) {
             if(structParent->child(i)!=_cur.row) continue;
             auto* sibling=structParent->child(i-1);
@@ -950,6 +953,7 @@ void CursorController::backspace() {
     NodeRow* retained = nullptr;
     switch (left->type()) {
         case NodeType::Power: retained = static_cast<NodeRow*>(static_cast<NodePower*>(left)->base()); break;
+        case NodeType::Measurement: retained = static_cast<NodeRow*>(static_cast<NodeMeasurement*>(left)->nominal()); break;
         case NodeType::Fraction: retained = static_cast<NodeRow*>(static_cast<NodeFraction*>(left)->numerator()); break;
         case NodeType::Root: retained = static_cast<NodeRow*>(static_cast<NodeRoot*>(left)->radicand()); break;
         case NodeType::Paren: retained = static_cast<NodeRow*>(static_cast<NodeParen*>(left)->content()); break;

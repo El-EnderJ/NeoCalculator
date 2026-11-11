@@ -34,6 +34,7 @@
 #include "MathAST.h"
 #include "MathRowLayout.h"
 #include "InputSymbols.h"
+#include "ScientificUncertainty.h"
 #include <algorithm>
 
 #include "../ui/MathSymbols.h"
@@ -1493,6 +1494,41 @@ void NodeQuantityReference::calculateLayout(const FontMetrics& fm) {
     _layout = _notation->layout();
 }
 
+NodeMeasurement::NodeMeasurement(NodePtr nominal, NodePtr uncertainty, uint32_t sourceId)
+    : MathNode(NodeType::Measurement),
+      _nominal(nominal ? std::move(nominal) : makeEmptyRow()),
+      _uncertainty(uncertainty ? std::move(uncertainty) : makeEmptyRow()), _sourceId(sourceId) {
+    _nominal->setParent(this); _uncertainty->setParent(this);
+}
+NodePtr makeMeasurement(NodePtr nominal, NodePtr uncertainty, uint32_t sourceId) {
+    if(!sourceId) sourceId=numos::scientific::allocateUserSource();
+    return NodePtr(new NodeMeasurement(std::move(nominal),std::move(uncertainty),sourceId));
+}
+void NodeMeasurement::calculateLayout(const FontMetrics& fm) {
+    // WHY: measured glyph ink and MATH spacing are cached here. Paint and
+    // cursor consume these placements; neither allocates nor propagates u.
+    LayoutResult sign{};
+    const auto pad=layoutTextAtom(this,sign,"±",fm);
+    _nominal->calculateLayout(fm); _uncertainty->calculateLayout(fm);
+    const auto& a=_nominal->layout(); const auto& b=_uncertainty->layout();
+    const int gap=std::max<int>(1,MathConstantsProvider(fm.emSize).muToPx(4));
+    _signX=static_cast<int16_t>(std::min<int>(kResultWidthOverflowSentinel,a.width+gap+pad));
+    _uncertaintyX=static_cast<int16_t>(std::min<int>(kResultWidthOverflowSentinel,a.width+2*gap+sign.width));
+    _layout.width=static_cast<int16_t>(std::min<int>(kResultWidthOverflowSentinel,_uncertaintyX+b.width));
+    _layout.ascent=_layout.inkAscent=std::max({a.ascent,b.ascent,sign.ascent});
+    _layout.descent=_layout.inkDescent=std::max({a.descent,b.descent,sign.descent});
+    // WHY: the measured pair is one operand, including in products and before
+    // an attached unit. Reuse the established delimiter geometry and cache all
+    // child origins for the painter/cursor instead of exposing an ambiguous ±.
+    auto geometry=parenthesisGeometry(_layout);
+    _delimiterWidth=assembledDelimiterWidthPx(geometry,fm,0x0028);
+    _nominalX=_delimiterWidth+std::max<int>(1,MathConstantsProvider(fm.emSize).muToPx(1));
+    _signX=std::min<int>(kResultWidthOverflowSentinel,_signX+_nominalX);
+    _uncertaintyX=std::min<int>(kResultWidthOverflowSentinel,_uncertaintyX+_nominalX);
+    _layout.width=std::min<int>(kResultWidthOverflowSentinel,_layout.width+2*_nominalX);
+    _layout.ascent=geometry.ascent;_layout.descent=geometry.descent;
+}
+
 UnitScan scanUnits(const MathNode* root) {
     if(!root)return UnitScan::None;
     // WHY: inspect the authored tree before any zero-product/cancellation pass.
@@ -1511,6 +1547,7 @@ UnitScan scanUnits(const MathNode* root) {
                 if(!numos::units::valid(static_cast<const NodeQuantityReference*>(n)->atom()))return UnitScan::Invalid;
                 found=true;
             }
+            if(n->type()==NodeType::Measurement) found=true;
         }
         if(frame.next>=n->childCount()){--depth;continue;}
         const auto* child=n->child(frame.next++);if(!child)continue;
@@ -2238,6 +2275,10 @@ std::string dumpTree(const MathNode* node, int indent) {
             numos::units::symbol(a,text,sizeof(text));
             out += "Unit["+std::to_string(uint16_t(a.unit))+":"+std::to_string(uint8_t(a.prefix))+"] "+text+metrics()+"\n";break;
         }
+        case NodeType::Measurement: {
+            out += "Measurement["+std::to_string(static_cast<const NodeMeasurement*>(node)->sourceId())+"]"+metrics()+"\n";
+            out += dumpTree(node->child(0),indent+1); out += dumpTree(node->child(1),indent+1); break;
+        }
         case NodeType::QuantityReference: {
             const auto a=static_cast<const NodeQuantityReference*>(node)->atom();
             out += "QuantityReference["+std::to_string(uint16_t(a.reference))+":"+
@@ -2376,6 +2417,9 @@ NodePtr cloneNode(const MathNode* node) {
         }
         case NodeType::Unit:
             return makeUnit(static_cast<const NodeUnit*>(node)->atom());
+        case NodeType::Measurement:
+            return makeMeasurement(cloneNode(node->child(0)),cloneNode(node->child(1)),
+                static_cast<const NodeMeasurement*>(node)->sourceId());
         case NodeType::QuantityReference:
             return makeQuantityReference(static_cast<const NodeQuantityReference*>(node)->atom());
         case NodeType::Symbol:
@@ -2546,6 +2590,7 @@ CursorTargetRole searchRoleInNode(const MathNode* node,
             return searchRoleInSlot(
                 bo->body(), target, CursorTargetRole::BigOpBody, depth);
         }
+        case NodeType::Measurement:
         case NodeType::DefIntegral:
         case NodeType::Summation: {
             for (int i = 0; i < node->childCount(); ++i) {

@@ -4371,6 +4371,10 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* numos_diagnostic_state()
         << (g_calcApp && g_calcApp->debugFormatMenuOpen() ? "true" : "false")
         << ",\"format\":" << (g_calcApp ? g_calcApp->debugFormatMode() : 0)
         << ",\"choice\":" << (g_calcApp ? g_calcApp->debugFormatChoice() : 0) << "}"
+        << ",\"uncertainty\":{\"present\":" << (g_calcApp && g_calcApp->debugMeasured()?"true":"false")
+        << ",\"standard\":" << (g_calcApp?g_calcApp->debugStandardUncertainty():0)
+        << ",\"display\":" << (g_calcApp?g_calcApp->debugDisplayUncertainty():0)
+        << ",\"sources\":" << (g_calcApp?g_calcApp->debugSourceCount():0) << "}"
         << ",\"launcherMs\":" << g_launcherReadyTicks
         << ",\"appLaunches\":" << g_appLaunchCount
         << ",\"menuReturns\":" << g_menuReturnCount

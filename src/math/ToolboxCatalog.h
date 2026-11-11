@@ -6,7 +6,7 @@
 
 namespace numos::toolbox {
 enum Capability : uint8_t { Calculation=1, Equations=2, Calculus=4, Grapher=8, Cas=7, All=15 };
-enum class Recipe : uint8_t { Fraction, Power, Root, NthRoot, Paren, Abs, LogBase, Function, Constant, Variable, Call, Integral, PowerTen, Symbol, Infinity, Unit, QuantityReference };
+enum class Recipe : uint8_t { Fraction, Power, Root, NthRoot, Paren, Abs, LogBase, Function, Constant, Variable, Call, Integral, PowerTen, Symbol, Infinity, Unit, QuantityReference, Measurement };
 struct Identity {
     uint16_t id=0;
     uint16_t variant=0;
@@ -37,7 +37,7 @@ inline constexpr Category kCategories[] = {
     {13,"Calculus","Cálculo"}, {14,"Complex numbers","Complejos"},
     {15,"Arithmetic and combinatorics","Aritmética y combinatoria"},
     {11,"Trigonometry","Trigonometría"}, {17,"Rounding","Redondeo"},
-    {18,"Variables","Variables"}
+    {18,"Variables","Variables"}, {22,"Measurements","Medidas"}
 };
 inline constexpr Category kAlphabets[] = {
     {19,"Latin Alphabet","Alfabeto latino"},

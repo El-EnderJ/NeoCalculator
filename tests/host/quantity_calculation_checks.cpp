@@ -128,7 +128,9 @@ int main(){
    }
    ++generated;
  }
- error(makeQuantityReference({units::ReferenceId(1),units::PrefixId(0)}),quantity::Error::ReferencePending);
+ // SCIENTIFIC-QUANTITIES-01 promotes audited physical references to exact or
+ // uncertain quantities; contextual references above remain explicitly pending.
+ expect(makeQuantityReference({units::ReferenceId(1),units::PrefixId(0)}),"299792458",1,0,-1);
  unsigned admitted=0,atomicVariants=0;
  for(const auto& definition:units::kDefinitions) {
    if(quantity::admissible({definition.id,units::PrefixId(0)})!=quantity::Error::None)continue;

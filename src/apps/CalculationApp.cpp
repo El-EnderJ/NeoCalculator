@@ -45,6 +45,7 @@
 #include "../ui/MathTypography.h"
 #include "../ui/TutorFonts.h"
 #include "../ui/UnitQuickChoices.h"
+#include "../math/ScientificReporting.h"
 #include "../utils/HwUxProbe.h"
 #ifdef NATIVE_SIM
   #include <cstdio>
@@ -776,7 +777,8 @@ void CalculationApp::evaluateExpression() {
 bool CalculationApp::navigateBack() {
     if (ui::toolbox::back()) return true;
     if (_formatMenu) {
-        const bool components=_formatPickingComponents;closeFormatMenu();
+        const bool components=_formatPickingComponents,uncertainty=_formatPickingUncertainty;closeFormatMenu();
+        if(uncertainty){openFormatMenu();return true;}
         if(components){openFormatMenu(false,true);if(_unitMenu){_formatChoice=_unitMenu->choices.count+2;updateFormatMenu();}}
         return true;
     }
@@ -1519,6 +1521,29 @@ bool CalculationApp::debugInput(const std::string& expected) const {
         for(unsigned i=0;i<_outputUnit.count;++i)std::printf("%u:%u:%d,",unsigned(_outputUnit.terms[i].atom.unit),unsigned(_outputUnit.terms[i].atom.prefix),int(_outputUnit.terms[i].power));
         std::printf("\n");return true;
     }
+    if(expected=="uncertainty dump") {
+        if(!_quantity)return false;
+        double standard=0;
+        if(numos::quantity::standardUncertainty(*_quantity,standard)!=numos::quantity::Error::None)return false;
+        std::printf("[UNCERTAINTY] u=%.17g displayed_u=%.17g relative=%.17g provenance=%u sources=%u ids=",
+            standard,_quantityView?_quantityView->standardUncertainty:0,_quantityView?_quantityView->relativeUncertainty:0,
+            unsigned(_quantity->provenance),_quantity->uncertainty?unsigned(_quantity->uncertainty->count):0);
+        if(_quantity->uncertainty)for(unsigned i=0;i<_quantity->uncertainty->count;++i)
+            std::printf("%u:%.17g,",unsigned(_quantity->uncertainty->contributions[i].source),_quantity->uncertainty->contributions[i].coefficient);
+        std::printf("\n");return true;
+    }
+    if(expected.compare(0,18,"uncertainty count ")==0)return _quantity &&
+        (_quantity->uncertainty?_quantity->uncertainty->count:0)==std::strtoul(expected.c_str()+18,nullptr,10);
+    if(expected.compare(0,12,"uncertainty ")==0) {
+        char name[24]{};double wanted=0,tolerance=1e-10;
+        if(std::sscanf(expected.c_str()+12,"%23s %lf %lf",name,&wanted,&tolerance)<2 || !_quantity)return false;
+        double actual=0;
+        if(!std::strcmp(name,"standard")){if(numos::quantity::standardUncertainty(*_quantity,actual)!=numos::quantity::Error::None)return false;}
+        else if(!std::strcmp(name,"display") && _quantityView)actual=_quantityView->standardUncertainty;
+        else if(!std::strcmp(name,"relative") && _quantityView && _quantityView->relativeDefined)actual=_quantityView->relativeUncertainty;
+        else return false;
+        return std::isfinite(actual) && std::abs(actual-wanted)<=tolerance;
+    }
     if(expected.compare(0,19,"quantity canonical ")==0)return _quantity && _quantity->coefficient==expected.substr(19);
     if(expected.compare(0,15,"quantity error ")==0)return expected.substr(15)==numos::quantity::errorName(_quantityError);
     if(expected=="quantity none")return !_quantity;
@@ -1604,6 +1629,8 @@ bool CalculationApp::formatAvailable(numos::CalculationFormat format) const {
     if (!_hasResult || _lastStatus != numos::MathEngineStatus::Ok) return false;
     if(_quantity) {
         if(!_quantityView)return false;
+        if(format>=F::Uncertainty && format<=F::UncertaintyParenthetical)return _quantityView->hasUncertainty;
+        if(_quantityView->hasUncertainty)return format==F::Standard || format==F::Decimal || format==F::OutputUnit;
         if(format==F::Standard || format==F::OutputUnit)return true;
         if(format==F::Decimal)return bool(_quantityView->approximateCoefficient);
         numos::DecimalParts value;
@@ -1651,6 +1678,7 @@ namespace {
 vpam::NodePtr quantityFormatted(const numos::quantity::Display& view,const numos::quantity::Descriptor& unit,
         numos::CalculationFormat format,int shift,unsigned places) {
     using F=numos::CalculationFormat;
+    if(view.hasUncertainty)return numos::scientific::uncertaintyReport(view,unit,format);
     numos::DecimalParts parts;
     const auto& numeric=numos::decimalParts(view.approximate,parts)?view.approximate:view.exact;
     vpam::NodePtr coefficient;
@@ -1750,6 +1778,7 @@ vpam::NodePtr CalculationApp::formattedResult() {
 
 void CalculationApp::selectFormat(numos::CalculationFormat format) {
     if (!formatAvailable(format)) return;
+    if(format==numos::CalculationFormat::Uncertainty){openFormatMenu(false,false,false,true);return;}
     if(format==numos::CalculationFormat::OutputUnit){openFormatMenu(false,true);return;}
     if (format == numos::CalculationFormat::Fixed) { openFormatMenu(true); return; }
     if(_quantity){publishQuantityFormat(format,0,_fixedPlaces);return;}
@@ -1773,7 +1802,7 @@ void CalculationApp::engineeringFormat(int direction) {
     showResult();
 }
 
-void CalculationApp::openFormatMenu(bool pickDigits,bool pickUnits,bool pickComponents) {
+void CalculationApp::openFormatMenu(bool pickDigits,bool pickUnits,bool pickComponents,bool pickUncertainty) {
     if (_formatMenu || !_hasResult || _lastStatus != numos::MathEngineStatus::Ok) return;
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
     if(pickUnits) {
@@ -1783,7 +1812,7 @@ void CalculationApp::openFormatMenu(bool pickDigits,bool pickUnits,bool pickComp
         }
     }
 #endif
-    _formatPickingDigits = pickDigits;_formatPickingUnit=pickUnits;_formatPickingComponents=pickComponents;
+    _formatPickingDigits = pickDigits;_formatPickingUnit=pickUnits;_formatPickingComponents=pickComponents;_formatPickingUncertainty=pickUncertainty;
     _formatChoiceCount = _formatChoice = 0;
     if(pickUnits) {
         if(!_quantity)return;
@@ -1797,11 +1826,16 @@ void CalculationApp::openFormatMenu(bool pickDigits,bool pickUnits,bool pickComp
         }catch(const std::bad_alloc&){_unitMenu.reset();ui::StatusBar::showActiveNotice(numos::i18n::isSpanish(numos::i18n::productLocale)?"Sin memoria":"Low memory");return;}
 #endif
     }
+    else if(pickUncertainty) {
+        for(unsigned i=unsigned(numos::CalculationFormat::UncertaintyStandard);i<=unsigned(numos::CalculationFormat::UncertaintyParenthetical);++i)
+            _formatChoices[_formatChoiceCount++]=static_cast<numos::CalculationFormat>(i);
+    }
     else if (pickDigits) { _formatChoiceCount = 10; _formatChoice = _fixedPlaces; }
     else {
       if(_quantity)_formatChoices[_formatChoiceCount++]=numos::CalculationFormat::OutputUnit;
       for (unsigned i = 0; i < static_cast<unsigned>(numos::CalculationFormat::Count); ++i) {
         const auto format = static_cast<numos::CalculationFormat>(i);
+        if(format>=numos::CalculationFormat::UncertaintyStandard)continue;
         if(_quantity && format==numos::CalculationFormat::OutputUnit)continue;
         if (!formatAvailable(format)) continue;
         if (!_quantity && format == _resultMode) _formatChoice = _formatChoiceCount;
@@ -1842,7 +1876,7 @@ void CalculationApp::openFormatMenu(bool pickDigits,bool pickUnits,bool pickComp
     };
     label(panel, spanish ? "MOSTRAR COMO" : "DISPLAY AS", 14, 9,
           &lv_font_montserrat_12, 0x526D91);
-    label(panel, pickComponents ? (spanish?"Por componentes":"By components") : pickUnits ? (spanish?"Unidad de salida":"Output unit") : pickDigits ? (spanish ? "Decimales fijos" : "Decimal places") :
+    label(panel, pickUncertainty ? (spanish?"Incertidumbre":"Uncertainty") : pickComponents ? (spanish?"Por componentes":"By components") : pickUnits ? (spanish?"Unidad de salida":"Output unit") : pickDigits ? (spanish ? "Decimales fijos" : "Decimal places") :
           (spanish ? "Formato del resultado" : "Result format"), 14, 25,
           &lv_font_montserrat_14, 0x18283F);
     _formatMenuCounter = label(panel, "", 256, 26, &lv_font_montserrat_12, 0x758399);
@@ -1980,6 +2014,10 @@ void CalculationApp::updateFormatMenu() {
             const char* name = numos::calculationFormatLabel(_formatChoices[i], spanish);
             if (_formatChoices[i] == numos::CalculationFormat::Standard && complexResult())
                 name = spanish ? "Cartesiana (a + bi)" : "Cartesian (a + bi)";
+            if(_quantityView && _quantityView->hasUncertainty) {
+                if(_formatChoices[i]==numos::CalculationFormat::Standard)name=spanish?"Valor e incertidumbre":"Value and uncertainty";
+                if(_formatChoices[i]==numos::CalculationFormat::Decimal)name=spanish?"Más dígitos + u":"More digits + u";
+            }
             lv_label_set_text(_formatMenuLabels[slot], name);
         }
         lv_obj_set_style_text_color(_formatMenuLabels[slot], lv_color_hex(focused && !_formatPickingUnit ? 0xFFFFFF : 0x344155), 0);

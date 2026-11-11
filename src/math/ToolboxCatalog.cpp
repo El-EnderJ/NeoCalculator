@@ -208,6 +208,7 @@ static Prepared buildMath(const Entry& entry) {
     using namespace vpam;
     Prepared p;
     switch(entry.recipe) {
+        case Recipe::Measurement: p.node=makeMeasurement(); p.slot=static_cast<NodeRow*>(p.node->child(0)); break;
         case Recipe::Unit: case Recipe::QuantityReference: return {};
         case Recipe::Fraction: p.node=makeFraction(); p.slot=static_cast<NodeRow*>(p.node->child(0)); break;
         case Recipe::Power: p.node=makePower(); p.slot=static_cast<NodeRow*>(p.node->child(0)); break;

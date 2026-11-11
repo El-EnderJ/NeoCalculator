@@ -50,7 +50,7 @@ for name in a.tests:
     obj=out/(name+'.o');binary=out/(name+('.exe' if os.name=='nt' else ''))
     run(name+'-compile',[a.compiler,*flags,'-c','tests/host/'+name+'.cpp','-o',str(obj)])
     testObjects=objects
-    if name in ('toolbox_visual_checks','math_brackets_checks'):
+    if name in ('toolbox_visual_checks','math_brackets_checks','scientific_layout_checks'):
         testObjects=[*objects,build/'src/ui/MathRenderer.o']
     if name=='math_spacing_checks':
         testObjects=[*objects,build/'src/ui/MathRenderer.o']

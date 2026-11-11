@@ -21,6 +21,7 @@
 // types (everything Giac-shaped arrives as EngineResultNode).
 
 #include "CalculationEngine.h"
+#include "ScientificReporting.h"
 #include "CalculationFormat.h"
 #include "giac/EngineContracts.h"
 
@@ -298,6 +299,7 @@ struct Serializer {
                 return fail("unsupported variable");
             }
             case NodeType::Unit: return fail("typed units require the quantity engine");
+            case NodeType::Measurement: return fail("typed measurements require the quantity engine");
             case NodeType::QuantityReference: return fail("typed quantity references require the quantity engine");
             case NodeType::Symbol: {
                 const auto& text=static_cast<const vpam::NodeSymbol*>(n)->name();
@@ -1352,8 +1354,13 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
                 if(error==quantity::Error::None) {
                     ev.serialized=analyzed.value.coefficient;
                     ev.exactText=display.exact;ev.approximateText=display.approximate;
-                    ev.exactAST=quantity::compose(std::move(display.exactCoefficient),descriptor);
-                    ev.approximateAST=quantity::compose(std::move(display.approximateCoefficient),descriptor);
+                    if(display.hasUncertainty) {
+                        ev.exactAST=scientific::uncertaintyReport(display,descriptor,CalculationFormat::Standard);
+                        ev.approximateAST=scientific::uncertaintyReport(display,descriptor,CalculationFormat::Decimal);
+                    } else {
+                        ev.exactAST=quantity::compose(std::move(display.exactCoefficient),descriptor);
+                        ev.approximateAST=quantity::compose(std::move(display.approximateCoefficient),descriptor);
+                    }
                     if(!ev.exactAST)error=quantity::Error::Allocation;
                     else {
                         ev.exactAST->calculateLayout(vpam::defaultFontMetrics());
@@ -1361,7 +1368,9 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
                         if(box.width>enginecontract::kMaxRenderedWidth || box.ascent+box.descent>enginecontract::kMaxRenderedHeight)
                             error=quantity::Error::ExpressionLimit;
                         else {
-                            if(!analyzed.value.dimension.scalar())ev.quantity=std::make_shared<const quantity::Value>(std::move(analyzed.value));
+                            // WHY: an exact dimensionless sin(1 rad) must keep
+                            // canonical radian semantics when reused in DEG.
+                            if(!analyzed.value.dimension.scalar() || analyzed.value.provenance!=quantity::Value::Provenance::Exact || analyzed.value.radianFunctions)ev.quantity=std::make_shared<const quantity::Value>(std::move(analyzed.value));
                             else {
                                 auto scalar=GiacEngine::instance().evaluateStructured(ev.exactText.c_str(),true);
                                 if(scalar.hasTree)ev.exactValValid=resultTreeToExactVal(scalar.tree,ev.exactVal);

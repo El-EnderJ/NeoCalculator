@@ -38,6 +38,17 @@ def _oracle_job(args):
         return surf.oracle_lite(Value("unsupported", detail=f"oracle timeout ({ORACLE_SECONDS}s)"))
 
 
+def _oracle_timeout(arg, why):
+    from .evaluator import Value
+    surface_name, case = arg
+    return load_surface(surface_name).oracle_lite(Value("unsupported", detail=f"oracle {why}"))
+
+
+def _analyze_timeout(arg, why):
+    case = arg[1]
+    return ({"id": case["id"], "analysis_timeout": why, "findings": []}, [], [])
+
+
 def load_surface(name):
     import importlib
     return importlib.import_module(f"{name}.surface")
@@ -121,14 +132,15 @@ class Runner:
 
     # ── pipeline ───────────────────────────────────────────────────────
     def oracles(self, cases):
-        with ProcessPoolExecutor(max_workers=max(1, os.cpu_count() - 1)) as ex:
-            vals = list(ex.map(_oracle_job, [(self.name, c) for c in cases], chunksize=8))
+        from .hardpool import map_hard
+        vals = map_hard(_oracle_job, [(self.name, c) for c in cases], max(1, os.cpu_count() - 1),
+                        ORACLE_SECONDS + 15, _oracle_timeout)
         return {c["id"]: v for c, v in zip(cases, vals)}
 
     def analyze_all(self, cases, runs, oracles):
         jobs = [(self.name, c, runs[c["id"]][0], runs[c["id"]][1], oracles[c["id"]]) for c in cases]
-        with ProcessPoolExecutor(max_workers=max(1, os.cpu_count() - 1)) as ex:
-            res = list(ex.map(_analyze_job, jobs, chunksize=4))
+        from .hardpool import map_hard
+        res = map_hard(_analyze_job, jobs, max(1, os.cpu_count() - 1), ANALYZE_SECONDS + 15, _analyze_timeout)
         return {c["id"]: r for c, r in zip(cases, res)}
 
     def run(self, seed, count, start=0, confirm=True, parallel=True):

@@ -257,7 +257,13 @@ def shrink_findings(surface_name, emulator, out_dir, findings, cases, oracles, l
             continue
         seen.add(sig)
         log(f"[shrink] {f['case']} {f['invariant']}/{f['severity']} {f['path']}: {f['title']}")
-        res = shrink_one(surface, emulator, by_id[f["case"]], f, out_dir)
+        if f["invariant"] == "HANG":
+            # Each HANG probe costs the full time budget; keep the confirmed
+            # single-case script as the reproducer instead of shrinking it.
+            res = {"status": "shrunk", "steps": 0, "case": by_id[f["case"]],
+                   "paths": ["direct"], "do_i4": False}
+        else:
+            res = shrink_one(surface, emulator, by_id[f["case"]], f, out_dir)
         if res.get("status") != "shrunk":
             log(f"[shrink]   {res}")
             done.append({"finding": f, "result": res})

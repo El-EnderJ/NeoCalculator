@@ -40,7 +40,18 @@ def main(argv=None):
     ap.add_argument("--shrink", type=int, default=0, help="shrink up to N distinct confirmed findings")
     ap.add_argument("--out", default=None, help="output directory")
     ap.add_argument("--name", default=None, help="run name (default seed<seed>-n<count>)")
+    ap.add_argument("--reshrink", default=None, help="shrink the findings of an existing run directory")
     a = ap.parse_args(argv)
+    if a.reshrink:
+        from common.runner import load_surface
+        from common.shrink import shrink_findings
+        d = Path(a.reshrink)
+        s = json.loads((d / "summary.json").read_text(encoding="utf-8"))
+        surf = load_surface(s["surface"])
+        cases = [surf.generate(s["seed"], i) for i in range(s["start"], s["start"] + s["count"])]
+        findings = json.loads((d / "findings.json").read_text(encoding="utf-8"))
+        shrink_findings(s["surface"], a.emulator, d, findings, cases, {}, limit=a.shrink or 10)
+        return 0
 
     name = a.name or f"seed{a.seed}-n{a.count}" + (f"-s{a.start}" if a.start else "")
     out = Path(a.out) if a.out else DEFAULT_OUT / a.surface / name

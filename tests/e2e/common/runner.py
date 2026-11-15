@@ -82,7 +82,11 @@ class Runner:
         self.workdir = workdir or str(self.out / "tmp")
         self.log = log
         self.stats = {"emulator_seconds": 0.0, "processes": 0, "frames": 0}
-        self.single_timeout = 20
+        # Hard per-case wall-clock budget (seconds). A case that exceeds it in a
+        # fresh single-case process is recorded as a finding of class "hang"
+        # (HANG/S0) with its reproducer and never blocks the run.
+        # Configurable: --case-timeout on run.py or E2E_CASE_TIMEOUT.
+        self.single_timeout = float(os.environ.get("E2E_CASE_TIMEOUT", "10"))
 
     # ── emulator ───────────────────────────────────────────────────────
     def _run_lines(self, lines, timeout):
@@ -114,7 +118,7 @@ class Runner:
             # Budget: normal cases take well under a second each; Giac can
             # spin for minutes on some exact expressions (observed), so a
             # process gets a bounded wall-clock budget and is killed after.
-            timeout = self.single_timeout if len(chunk) == 1 else 20 + 1.5 * len(chunk)
+            timeout = self.single_timeout if len(chunk) == 1 else self.single_timeout + 1.5 * len(chunk)
             r = self._run_lines(lines, timeout)
             info = {"rc": r.returncode, "seconds": r.seconds, "frames": r.frames,
                     "header_problems": self.surf.check_header(r.by_tag)}

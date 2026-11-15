@@ -36,12 +36,17 @@ def main(argv=None):
     ap.add_argument("--batch", type=int, default=40, help="cases per emulator process")
     ap.add_argument("--i4-every", type=int, default=2, help="run I4 round trips on every Nth case (0=off)")
     ap.add_argument("--serial", action="store_true", help="one emulator process at a time")
+    ap.add_argument("--case-timeout", type=float, default=None,
+                    help="hard per-case wall-clock timeout in seconds (default 10 or E2E_CASE_TIMEOUT); "
+                         "a timed-out case becomes a 'hang' finding and never blocks the run")
     ap.add_argument("--no-confirm", action="store_true")
     ap.add_argument("--shrink", type=int, default=0, help="shrink up to N distinct confirmed findings")
     ap.add_argument("--out", default=None, help="output directory")
     ap.add_argument("--name", default=None, help="run name (default seed<seed>-n<count>)")
     ap.add_argument("--reshrink", default=None, help="shrink the findings of an existing run directory")
     a = ap.parse_args(argv)
+    if a.case_timeout is not None:
+        os.environ["E2E_CASE_TIMEOUT"] = str(a.case_timeout)
     if a.reshrink:
         from common.runner import load_surface
         from common.shrink import shrink_findings

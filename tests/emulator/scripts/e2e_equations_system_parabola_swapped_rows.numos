@@ -1,0 +1,47 @@
+# CORRECTNESS-E2E-01 W5-F02: y=2x, y=x^2 -> {(0,0),(2,4)}
+# Regression: the solution set must match the mathematical truth (count + each value).
+wait 200
+set_equations_complex_policy real
+set_angle_mode rad
+open_app Equations
+wait 60
+key ac
+key up
+key up
+key up
+key up
+key del
+key del
+key del
+key enter
+key enter
+key y
+key =
+key 2
+key x
+key enter
+key down
+key enter
+key enter
+key y
+key =
+key x
+key ^
+key 2
+key right
+key enter
+key down
+key down
+key down
+key down
+key enter
+wait 1
+dump_equations parabola_swapped_rows
+assert_equations_engine giac
+assert_equations_status ok
+assert_equations_solution_count 2
+assert_equations_solution_exact x 0 0
+assert_equations_solution_exact y 0 0
+assert_equations_solution_exact x 1 2
+assert_equations_solution_exact y 1 4
+assert_equations_result_kind structured

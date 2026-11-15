@@ -1892,8 +1892,17 @@ StructuredSolveResult runStructuredSolve(
                                   policy == SolveDomainPolicy::RealAndComplex ? 1 : 0,
                                   ctx);
             } else {
+                // WHY: the public _solve applies equal2diff to every equation
+                // before gsolve; its linearity test and elimination expect
+                // expressions. Fed raw equalities, nonlinear systems lost roots
+                // (y=x^2,y=3x -> only (0,0)) or produced relations. Authored
+                // equalities in equationGens stay untouched for verification.
+                giac::vecteur differences;
+                differences.reserve(equationGens.size());
+                for (const auto& equation : equationGens)
+                    differences.push_back(giac::equal2diff(equation));
                 raw = giac::gsolve(
-                    equationGens, giac::vecteur(variables.begin(), variables.end()),
+                    differences, giac::vecteur(variables.begin(), variables.end()),
                     policy == SolveDomainPolicy::RealAndComplex,
                     /*evalf_after=*/0, ctx);
             }

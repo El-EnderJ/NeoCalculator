@@ -1,0 +1,21 @@
+# CORRECTNESS-E2E-01 F01: 2.3 LEFT 1.5 shows 1.52.3 and must error
+# Two adjacent number nodes render as one numeral; the value computed must be
+# the value displayed. Assert-only (no screenshot, no golden, no CI wiring).
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key 2
+key .
+key 3
+key left
+key 1
+key .
+key 5
+wait 3
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status parse_error

@@ -1,0 +1,27 @@
+# CORRECTNESS-E2E-01 F01: 12+3 ENTER UP LEFT LEFT 9 shows 12+93
+# Two adjacent number nodes render as one numeral; the value computed must be
+# the value displayed. Assert-only (no screenshot, no golden, no CI wiring).
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key 1
+key 2
+key +
+key 3
+key enter
+wait 60
+wait 30
+key up
+key left
+key left
+key 9
+wait 3
+assert_calc_input serialized 12+93
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status ok
+assert_calc_exact 105

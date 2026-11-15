@@ -1,0 +1,20 @@
+# CORRECTNESS-E2E-01 F01: 3 5 LEFT 1 shows 135
+# Two adjacent number nodes render as one numeral; the value computed must be
+# the value displayed. Assert-only (no screenshot, no golden, no CI wiring).
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key 3
+key 5
+key left
+key 1
+wait 3
+assert_calc_input serialized 135
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status ok
+assert_calc_exact 135

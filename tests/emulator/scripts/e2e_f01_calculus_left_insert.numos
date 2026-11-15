@@ -1,0 +1,20 @@
+# CORRECTNESS-E2E-01 F01: Calculus 3 LEFT 5 RIGHT x shows f(x)=53x
+# Two adjacent number nodes render as one numeral; the value computed must be
+# the value displayed. Assert-only (no screenshot, no golden, no CI wiring).
+wait 200
+open_app Calculus
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key f1
+key 3
+key left
+key 5
+key right
+key x
+wait 3
+key enter
+wait 160
+assert_calculus_status ok
+assert_calculus_result_exact 53

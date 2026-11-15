@@ -1,0 +1,23 @@
+# CORRECTNESS-E2E-01 F01: 2 sqrt RIGHT RIGHT 3 LEFT DEL shows 23
+# Two adjacent number nodes render as one numeral; the value computed must be
+# the value displayed. Assert-only (no screenshot, no golden, no CI wiring).
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key 2
+key sqrt
+key right
+key right
+key 3
+key left
+key del
+wait 3
+assert_calc_input serialized 23
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status ok
+assert_calc_exact 23

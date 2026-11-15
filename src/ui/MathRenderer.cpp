@@ -948,7 +948,23 @@ void MathCanvas::computeCursorPosition(int16_t baseX, int16_t rootBaseline,
     const FontMetrics fm = placementMetrics(cur.row);
     const int16_t rowOrigin = static_cast<int16_t>(baseX + placement.x);
     const int16_t rowBaseline = static_cast<int16_t>(rootBaseline + placement.baseline);
-    const int16_t offsetX = childXOffset(cur.row, cur.index, fm);
+    int16_t offsetX = childXOffset(cur.row, cur.index, fm);
+    if (cur.digit > 0 && cur.nodeRight() && cur.nodeRight()->type() == NodeType::Number) {
+        // F01: a caret between digits of one number sits after the advance of
+        // its first `digit` characters, measured in stack chunks (no heap).
+        const std::string& value = static_cast<const NodeNumber*>(cur.nodeRight())->value();
+        const size_t count = std::min(value.size(), static_cast<size_t>(cur.digit));
+        int32_t prefix = 0;
+        char chunk[17];
+        for (size_t at = 0; at < count;) {
+            const size_t length = std::min<size_t>(16, count - at);
+            std::memcpy(chunk, value.data() + at, length);
+            chunk[length] = '\0';
+            prefix += fm.textAdvance(chunk);
+            at += length;
+        }
+        offsetX = fm.coordinate(offsetX + prefix);
+    }
     _cursorX = static_cast<int16_t>(rowOrigin + offsetX);
     _cursorY = static_cast<int16_t>(rowBaseline - fm.ascent - CURSOR_PAD);
     _cursorH = static_cast<int16_t>(fm.ascent + fm.descent + 2 * CURSOR_PAD + 1);

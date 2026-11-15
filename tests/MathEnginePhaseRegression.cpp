@@ -5,6 +5,7 @@
 #include <string>
 
 #include "src/math/MathAST.h"
+#include "src/math/CursorController.h"
 #include "src/math/MathOperatorGeometry.h"
 #include "src/math/MathRenderVisualCases.h"
 #include "src/math/MathStressExpressions.h"
@@ -2222,6 +2223,171 @@ static void testFractionDenominatorBaselineFollowsGap() {
     check(gaps.gapPx > 0, "fractionBarGaps gapPx is positive");
 }
 
+// ── CORRECTNESS-E2E-01 F01 ──────────────────────────────────────────────
+// Two adjacent NodeNumber nodes render as one numeral but serialize as an
+// implicit product. Every editor operation must leave every row canonical.
+static std::string editorShape(const MathNode* n) {
+    if (!n) return "!";
+    std::string s;
+    switch (n->type()) {
+        case NodeType::Row:
+            for (int i = 0; i < n->childCount(); ++i) s += editorShape(n->child(i));
+            return s;
+        case NodeType::Number: return "[" + static_cast<const NodeNumber*>(n)->value() + "]";
+        case NodeType::Empty: return "_";
+        case NodeType::Operator: {
+            const OpKind op = static_cast<const NodeOperator*>(n)->op();
+            return op == OpKind::Add ? "+" : op == OpKind::Sub ? "-" : op == OpKind::Mul ? "*" : "op";
+        }
+        case NodeType::Variable: return static_cast<const NodeVariable*>(n)->label();
+        case NodeType::Constant: return "pi";
+        case NodeType::Paren: return "(" + editorShape(n->child(0)) + ")";
+        default:
+            s = "<";
+            for (int i = 0; i < n->childCount(); ++i) s += (i ? "|" : "") + editorShape(n->child(i));
+            return s + ">";
+    }
+}
+
+static bool editorRowsCanonical(const MathNode* n, int depth = 0) {
+    if (!n || depth > 96) return n == nullptr;
+    const bool row = n->type() == NodeType::Row;
+    for (int i = 0; i < n->childCount(); ++i) {
+        const MathNode* c = n->child(i);
+        if (row && i > 0 && c && c->type() == NodeType::Number &&
+            n->child(i - 1)->type() == NodeType::Number) return false;
+        if (!editorRowsCanonical(c, depth + 1)) return false;
+    }
+    return true;
+}
+
+static bool editorCursorOwned(const CursorController& cc) {
+    const Cursor& cur = cc.cursor();
+    if (!cur.row || cur.index < 0 || cur.index > cur.row->childCount()) return false;
+    const MathNode* n = cur.row;
+    for (int depth = 0; n && depth <= 96; ++depth, n = n->parent())
+        if (n == cc.rootRow()) return true;
+    return false;
+}
+
+// One char per key: digits and '.', L R U D = arrows, '<' = DEL, + - * ops,
+// '(' paren, ')' = RIGHT (Calculation's RPAREN), 'c' = closeParen, 'r' = sqrt,
+// 'f' = fraction, '^' = power, 'x' variable, 'a' = Ans, 'p' = pi, 's' = sin.
+static void editorApply(CursorController& cc, char k) {
+    switch (k) {
+        case 'L': cc.moveLeft(); break;
+        case 'R': case ')': cc.moveRight(); break;
+        case 'U': cc.moveUp(); break;
+        case 'D': cc.moveDown(); break;
+        case '<': cc.backspace(); break;
+        case '+': cc.insertOperator(OpKind::Add); break;
+        case '-': cc.insertOperator(OpKind::Sub); break;
+        case '*': cc.insertOperator(OpKind::Mul); break;
+        case '(': cc.insertParen(); break;
+        case 'c': cc.closeParen(); break;
+        case 'r': cc.insertRoot(); break;
+        case 'f': cc.insertFraction(); break;
+        case '^': cc.insertPower(); break;
+        case 'x': cc.insertVariable('x'); break;
+        case 'a': cc.insertVariable('#'); break;
+        case 'p': cc.insertConstant(ConstKind::Pi); break;
+        case 's': cc.insertFunction(FuncKind::Sin); break;
+        default: cc.insertDigit(k); break;
+    }
+}
+
+static void checkEditorKeys(const char* keys, const char* expected) {
+    auto root = makeRow();
+    auto* row = static_cast<NodeRow*>(root.get());
+    row->appendChild(makeEmpty());
+    CursorController cc;
+    cc.init(row);
+    bool canonical = true;
+    for (const char* k = keys; *k; ++k) {
+        editorApply(cc, *k);
+        canonical = canonical && editorRowsCanonical(row) && editorCursorOwned(cc);
+    }
+    const std::string shape = editorShape(row);
+    check(canonical, std::string("F01 no adjacent numbers after every key of '") + keys + "' (final " + shape + ")");
+    check(shape == expected, std::string("F01 keys '") + keys + "' -> " + expected + " (got " + shape + ")");
+}
+
+static void testEditorKeepsAdjacentNumbersMerged() {
+    checkEditorKeys("3L5", "[53]");
+    checkEditorKeys("3L57", "[573]");            // digits keep typing order at one caret
+    checkEditorKeys("35L1", "[135]");
+    checkEditorKeys("2^3L5", "<[2]|[53]>");
+    checkEditorKeys("2+3L<", "[23]");
+    checkEditorKeys("2+3)5", "[52]+[3]");        // RIGHT wraps; shown 52+3
+    checkEditorKeys("5L.", "[.5]");
+    checkEditorKeys("2x3L<", "[23]");
+    checkEditorKeys("2a3L<", "[23]");
+    checkEditorKeys("2p3L<", "[23]");
+    checkEditorKeys("2(RR3L<", "[23]");
+    checkEditorKeys("2rRR3L<", "[23]");
+    checkEditorKeys("3L57<", "[53]");            // DEL inside a split number
+    checkEditorKeys("3L5Rx", "[53]x");
+    checkEditorKeys("3L5L7", "[753]");
+    checkEditorKeys("3L5+", "[5]+[3]");          // caret between 5 and 3 stays there
+    checkEditorKeys("2.3L1.5", "[1.52.3]");      // invalid literal stays ONE node
+    checkEditorKeys("12+3L9", "[12]+[93]");      // caret before 3
+    checkEditorKeys("2+3f4", "[2]+<[3]|[4]>");    // legit structures untouched
+    checkEditorKeys("2x", "[2]x");
+
+    // A recalled or externally built tree is normalised when the editor loads it.
+    auto root = makeRow();
+    auto* row = static_cast<NodeRow*>(root.get());
+    row->appendChild(makeNumber("12"));
+    row->appendChild(std::make_unique<NodeOperator>(OpKind::Add));
+    row->appendChild(makeNumber("9"));
+    row->appendChild(makeNumber("3"));
+    CursorController cc;
+    cc.init(row);
+    check(editorShape(row) == "[12]+[93]", "F01 init() merges adjacent numbers of a loaded tree (got " + editorShape(row) + ")");
+
+    // Toolbox-style insertion (insertPrepared) at a caret between digits.
+    auto root2 = makeRow();
+    auto* row2 = static_cast<NodeRow*>(root2.get());
+    row2->appendChild(makeEmpty());
+    CursorController cc2;
+    cc2.init(row2);
+    for (const char* k = "3L5"; *k; ++k) editorApply(cc2, *k);
+    auto bar = makeParen(nullptr, DelimKind::Bar);
+    NodeRow* barSlot = static_cast<NodeRow*>(bar->child(0));
+    const bool inserted = cc2.insertPrepared(std::move(bar), barSlot);
+    editorApply(cc2, '7');
+    check(inserted && editorRowsCanonical(row2) && editorCursorOwned(cc2) &&
+          editorShape(row2) == "[5]*([7])[3]",
+          "F01 insertPrepared at a mid-number caret splits there (got " + editorShape(row2) + ")");
+}
+
+static void testEditorRandomEditsKeepNumbersCanonical() {
+    static const char keys[] = "0123456789.....LLLLRRRRUD<<<<+-*(c)rf^xaps";
+    uint32_t state = 501u;
+    int bad = 0, steps = 0;
+    std::string firstBad;
+    for (int session = 0; session < 300; ++session) {
+        auto root = makeRow();
+        auto* row = static_cast<NodeRow*>(root.get());
+        row->appendChild(makeEmpty());
+        CursorController cc;
+        cc.init(row);
+        std::string trail;
+        for (int i = 0; i < 60; ++i, ++steps) {
+            state = state * 1664525u + 1013904223u;
+            const char k = keys[(state >> 8) % (sizeof(keys) - 1)];
+            trail += k;
+            editorApply(cc, k);
+            if (!editorRowsCanonical(row) || !editorCursorOwned(cc)) {
+                if (!bad++) firstBad = trail + " -> " + editorShape(row);
+                break;
+            }
+        }
+    }
+    check(bad == 0, "F01 randomized edits (seed 501, " + std::to_string(steps) + " ops) keep rows canonical; " +
+          std::to_string(bad) + " sessions broke it, first: " + firstBad);
+}
+
 int main() {
     testPlatformioValidationFlagMatrix();
     testAssemblyOverlapDistributionIsEqual();
@@ -2299,6 +2465,10 @@ int main() {
     testPowerExponentStyleDoesNotRegress();
     testDisplayFractionBehaviorPreserved();
     testInlineMixedRowBaselineMatch();
+
+    // ── CORRECTNESS-E2E-01 F01: editor never leaves adjacent numbers ──
+    testEditorKeepsAdjacentNumbersMerged();
+    testEditorRandomEditsKeepNumbersCanonical();
 
     if (failures != 0) {
         std::cerr << failures << " regression checks failed\n";

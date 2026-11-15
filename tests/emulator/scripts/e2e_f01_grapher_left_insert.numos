@@ -1,0 +1,19 @@
+# CORRECTNESS-E2E-01 F01: Grapher y=3 LEFT 5 stays 53 (no-change check)
+# Two adjacent number nodes render as one numeral; the value computed must be
+# the value displayed. Assert-only (no screenshot, no golden, no CI wiring).
+wait 200
+open_app Grapher
+wait 60
+set_angle_mode rad
+key down
+key enter
+key y
+key =
+key 3
+key left
+key 5
+key enter
+wait 30
+assert_graph_slot_valid 0
+assert_graph_eval_near 0 0 53 1e-9
+assert_graph_eval_near 0 2 53 1e-9

@@ -908,6 +908,15 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
             }
             const bool reIsZero =
                 re.kind == EngineNodeKind::Integer && re.text == "0";
+            const bool imIsOne =
+                im->kind == EngineNodeKind::Integer && im->text == "1";
+            // Rendered "re ± im·i" is a sum: group it wherever a sum would be
+            // grouped (product/fraction factor, negation operand, power
+            // base). As a power base anything but a plain i is grouped too,
+            // so (2i)^x does not read as 2·i^x.
+            if ((!reIsZero && ctxPrec >= PREC_MUL) ||
+                (ctxPrec >= PREC_POW && (imNeg || !imIsOne)))
+                return appendParenthesized(n, row, depth);
             if (!reIsZero) {
                 if (!appendConverted(re, row, PREC_ADD, depth + 1)) return false;
                 row->appendChild(vpam::makeOperator(
@@ -915,8 +924,6 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
             } else if (imNeg) {
                 row->appendChild(vpam::makeOperator(vpam::OpKind::Sub));
             }
-            const bool imIsOne =
-                im->kind == EngineNodeKind::Integer && im->text == "1";
             if (!imIsOne) {
                 if (!appendConverted(*im, row, PREC_MUL, depth + 1)) return false;
                 row->appendChild(vpam::makeOperator(vpam::OpKind::Mul));

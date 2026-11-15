@@ -1,0 +1,32 @@
+# CORRECTNESS-E2E-01 GROUPING (W5-F10): complex roots (1+i)*sqrt(2) of x^4=-16 were shown as
+# 1 + i*sqrt(2). See e2e_grouping_equations_x4_m1.numos for how the display is checked.
+wait 200
+set_equations_complex_policy complex
+open_app Equations
+wait 60
+set_angle_mode rad
+key ENTER
+key ENTER
+key x
+key ^
+key 4
+key RIGHT
+key =
+key neg
+key 1
+key 6
+key ENTER
+key DOWN
+key DOWN
+key DOWN
+key DOWN
+key ENTER
+wait 180
+assert_equations_status ok
+assert_equations_solution_count 4
+assert_equations_solution_exact x 0 (-1+i)*sqrt(2)
+assert_equations_solution_exact x 1 (-1-i)*sqrt(2)
+assert_equations_solution_exact x 2 (1+i)*sqrt(2)
+assert_equations_solution_exact x 3 (1-i)*sqrt(2)
+dump_equations G|x4_m16
+assert_equations periodic dump

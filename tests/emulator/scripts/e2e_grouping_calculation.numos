@@ -1,0 +1,121 @@
+# CORRECTNESS-E2E-01 GROUPING (W1-F02): a numeric complex a+b*i used as a factor
+# must be shown in parentheses; the screen showed 1 + i*sqrt(2) for (1+i)*sqrt(2).
+# No assert command compares the displayed tree: assert_calc_exact pins the Giac
+# result, dump_calc emits the displayed tree (@E2E "display") that the value check
+# in out/correctness-e2e-01/phase4/GROUPING/check_display.sh evaluates against it.
+# The structure itself is asserted by the host regression
+# testComplexFactorsKeepGroupingInDisplayedResult. No golden, no CI wiring.
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key toolbox
+key up
+key right
+key right
+key right
+key enter
+sdl_text nthroot
+key down
+key enter
+key 4
+key right
+key neg
+key 1
+key 6
+key right
+key enter
+wait 5
+assert_calc_status ok
+assert_calc_exact (1+i)*sqrt(2)
+dump_calc G|nthroot4_m16|S tree
+key format
+wait 5
+dump_calc G|nthroot4_m16|D tree
+key ac
+key ac
+key (
+key 1
+key +
+key sqrt
+key neg
+key 1
+key right
+key )
+key x
+key enter
+wait 5
+assert_calc_exact (1+i)*x
+dump_calc G|cplx_x|S tree
+key format
+wait 5
+dump_calc G|cplx_x|D tree
+key ac
+key ac
+key (
+key 1
+key +
+key sqrt
+key neg
+key 1
+key right
+key )
+key ^
+key x
+key right
+key enter
+wait 5
+assert_calc_exact exp(x*ln(1+i))
+dump_calc G|cplx_pow_x|S tree
+key format
+wait 5
+dump_calc G|cplx_pow_x|D tree
+key ac
+key ac
+key x
+key divide
+key (
+key 1
+key +
+key sqrt
+key neg
+key 1
+key right
+key )
+key enter
+wait 5
+assert_calc_exact x/(1+i)
+dump_calc G|x_div_cplx|S tree
+key format
+wait 5
+dump_calc G|x_div_cplx|D tree
+key ac
+key ac
+set_angle_mode deg
+key x
+key shift
+key sin
+key 6
+key right
+key enter
+wait 5
+set_angle_mode rad
+assert_calc_status ok
+dump_calc G|x_asin6_deg|S tree
+key ac
+key ac
+key x
+key (
+key neg
+key 2
+key sqrt
+key neg
+key 1
+key right
+key )
+key enter
+wait 5
+assert_calc_exact (-2*i)*x
+dump_calc G|x_neg2i|S tree

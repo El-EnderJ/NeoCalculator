@@ -5,6 +5,7 @@
 #include <string>
 
 #include "src/math/MathAST.h"
+#include "src/math/CalculationEngine.h"
 #include "src/math/CursorController.h"
 #include "src/math/MathOperatorGeometry.h"
 #include "src/math/MathRenderVisualCases.h"
@@ -2388,6 +2389,134 @@ static void testEditorRandomEditsKeepNumbersCanonical() {
           std::to_string(bad) + " sessions broke it, first: " + firstBad);
 }
 
+// ── CORRECTNESS-E2E-01 GROUPING: engine result tree -> displayed MathAST ──
+// Linear shape of a converted result: (..) = paren, {a}/{b} fraction,
+// {b}^{e} power, sqrt{r}, F<kind>{arg}, call name{args}.
+static std::string resultShape(const MathNode* n) {
+    if (!n) return "<null>";
+    std::string out;
+    auto kids = [&](const MathNode* p) {
+        std::string s;
+        for (int i = 0; i < p->childCount(); ++i) s += resultShape(p->child(i));
+        return s;
+    };
+    switch (n->type()) {
+        case NodeType::Row: return kids(n);
+        case NodeType::Number: return static_cast<const NodeNumber*>(n)->value();
+        case NodeType::Operator:
+            switch (static_cast<const NodeOperator*>(n)->op()) {
+                case OpKind::Add: return "+";
+                case OpKind::Sub: return "-";
+                case OpKind::Mul: return "*";
+                default: return "?op";
+            }
+        case NodeType::Constant: {
+            const auto k = static_cast<const NodeConstant*>(n)->constKind();
+            return k == ConstKind::Pi ? "pi" : k == ConstKind::E ? "e" : "i";
+        }
+        case NodeType::Variable: return std::string(1, static_cast<const NodeVariable*>(n)->name());
+        case NodeType::Paren: return "(" + resultShape(static_cast<const NodeParen*>(n)->content()) + ")";
+        case NodeType::Fraction: {
+            const auto* f = static_cast<const NodeFraction*>(n);
+            return "{" + resultShape(f->numerator()) + "}/{" + resultShape(f->denominator()) + "}";
+        }
+        case NodeType::Power: {
+            const auto* p = static_cast<const NodePower*>(n);
+            return "{" + resultShape(p->base()) + "}^{" + resultShape(p->exponent()) + "}";
+        }
+        case NodeType::Root: {
+            const auto* r = static_cast<const NodeRoot*>(n);
+            if (r->hasDegree()) return "root{" + resultShape(r->degree()) + "}{" + resultShape(r->radicand()) + "}";
+            return "sqrt{" + resultShape(r->radicand()) + "}";
+        }
+        case NodeType::Function: {
+            const auto* f = static_cast<const NodeFunction*>(n);
+            return "F" + std::to_string(static_cast<int>(f->funcKind())) + "{" + resultShape(f->argument()) + "}";
+        }
+        case NodeType::Call: return static_cast<const NodeCall*>(n)->name() + "{" + kids(n) + "}";
+        default: return "?node" + std::to_string(static_cast<int>(n->type()));
+    }
+}
+
+namespace grouping {
+using numos::EngineNodeKind;
+using numos::EngineResultNode;
+static EngineResultNode leaf(EngineNodeKind kind, const char* text = "") {
+    EngineResultNode n; n.kind = kind; n.text = text; return n;
+}
+static EngineResultNode node(EngineNodeKind kind, std::vector<EngineResultNode> children, const char* text = "") {
+    EngineResultNode n; n.kind = kind; n.text = text; n.children = std::move(children); return n;
+}
+static EngineResultNode I(const char* v) { return leaf(EngineNodeKind::Integer, v); }
+static EngineResultNode D(const char* v) { return leaf(EngineNodeKind::Decimal, v); }
+static EngineResultNode X() { return leaf(EngineNodeKind::Symbol, "x"); }
+static EngineResultNode Pi() { return leaf(EngineNodeKind::Pi); }
+static EngineResultNode ImagUnit() { return leaf(EngineNodeKind::ImagUnit); }
+static EngineResultNode C(EngineResultNode re, EngineResultNode im) { return node(EngineNodeKind::Complex, {re, im}); }
+static EngineResultNode Mul(std::vector<EngineResultNode> f) { return node(EngineNodeKind::Mul, std::move(f)); }
+static EngineResultNode Add(std::vector<EngineResultNode> t) { return node(EngineNodeKind::Add, std::move(t)); }
+static EngineResultNode Neg(EngineResultNode a) { return node(EngineNodeKind::Neg, {a}); }
+static EngineResultNode Inv(EngineResultNode a) { return node(EngineNodeKind::Inv, {a}); }
+static EngineResultNode Pow(EngineResultNode b, EngineResultNode e) { return node(EngineNodeKind::Pow, {b, e}); }
+static EngineResultNode Sqrt(EngineResultNode a) { return node(EngineNodeKind::Sqrt, {a}); }
+static EngineResultNode Fn(const char* name, EngineResultNode a) { return node(EngineNodeKind::Function, {a}, name); }
+static EngineResultNode Q(const char* p, const char* q) { return node(EngineNodeKind::Rational, {I(p), I(q)}); }
+
+static void checkShape(const char* id, const EngineResultNode& tree, const std::string& expected) {
+    auto ast = numos::CalculationEngine::resultTreeToAST(tree);
+    const std::string got = ast ? resultShape(ast.get()) : std::string("<conversion failed>");
+    check(got == expected, std::string("GROUPING ") + id + " -> " + expected + " (got " + got + ")");
+}
+} // namespace grouping
+
+static void testComplexFactorsKeepGroupingInDisplayedResult() {
+    using namespace grouping;
+    // A numeric complex a+b*i (a != 0) used as a factor, fraction factor,
+    // negation operand or power base must be parenthesised, like a sum.
+    checkShape("(1+i)sqrt2", Mul({C(I("1"), I("1")), Sqrt(I("2"))}), "(1+i)*sqrt{2}");
+    checkShape("(1+i)sqrt2/2", Mul({C(I("1"), I("1")), Sqrt(I("2")), Inv(I("2"))}), "{(1+i)*sqrt{2}}/{2}");
+    checkShape("(-1+i)sqrt2/2", Mul({C(I("-1"), I("1")), Sqrt(I("2")), Inv(I("2"))}), "{(-1+i)*sqrt{2}}/{2}");
+    checkShape("(1+i)pi", Mul({C(I("1"), I("1")), Pi()}), "(1+i)*pi");
+    checkShape("(1+i)x", Mul({C(I("1"), I("1")), X()}), "(1+i)*x");
+    checkShape("(-1-i)x", Mul({C(I("-1"), I("-1")), X()}), "(-1-i)*x");
+    checkShape("(1.0+i)sin x", Mul({C(D("1.0"), D("1.0")), Fn("sin", X())}), "(1.0+1.0*i)*F0{x}");
+    checkShape("x(90.0-141.97i)", Mul({X(), C(D("90.0"), D("-141.97"))}), "x*(90.0-141.97*i)");
+    checkShape("(2+3i)x/(1+i)", Mul({C(I("2"), I("3")), X(), Inv(C(I("1"), I("1")))}), "{(2+3*i)*x}/{(1+i)}");
+    checkShape("x/(1+i)", Mul({X(), Inv(C(I("1"), I("1")))}), "{x}/{(1+i)}");
+    checkShape("-(1+2i)", Neg(C(I("1"), I("2"))), "-(1+2*i)");
+    checkShape("x-(1+i)sqrt2", Add({X(), Neg(Mul({C(I("1"), I("1")), Sqrt(I("2"))}))}), "x-(1+i)*sqrt{2}");
+    checkShape("(1+i)^x", Pow(C(I("1"), I("1")), X()), "{(1+i)}^{x}");
+    checkShape("e^(x(0.35+0.79i))", Fn("exp", Mul({X(), C(D("0.35"), D("0.79"))})), "{e}^{x*(0.35+0.79*i)}");
+    // A signed or scaled imaginary as a power base: (2i)^x is not 2*i^x.
+    checkShape("(2i)^x", Pow(C(I("0"), I("2")), X()), "{(2*i)}^{x}");
+    checkShape("(-i)^x", Pow(C(I("0"), I("-1")), X()), "{(-i)}^{x}");
+    checkShape("(-2i)^x", Pow(C(I("0"), I("-2")), X()), "{(-2*i)}^{x}");
+    // Decimal zero real part renders as a sum, so it is grouped too
+    // (the 0.0 itself is a separate cosmetic item and stays).
+    checkShape("(0.0-2.0i)x", Mul({C(D("0.0"), D("-2.0")), X()}), "(0.0-2.0*i)*x");
+
+    // Unchanged shapes: complex at top level / as a term of a sum, pure
+    // imaginary factors, plain i as a base, and every real result.
+    checkShape("1+i", C(I("1"), I("1")), "1+i");
+    checkShape("1/3+i/3", C(Q("1", "3"), Q("1", "3")), "{1}/{3}+{1}/{3}*i");
+    checkShape("x-1-2i", Add({X(), C(I("-1"), I("-2"))}), "x+-1-2*i");
+    checkShape("(-2i)x", Mul({C(I("0"), I("-2")), X()}), "-2*i*x");
+    checkShape("2i x", Mul({C(I("0"), I("2")), X()}), "2*i*x");
+    checkShape("2i", C(I("0"), I("2")), "2*i");
+    checkShape("i^x", Pow(ImagUnit(), X()), "{i}^{x}");
+    checkShape("i x", Mul({ImagUnit(), X()}), "i*x");
+    checkShape("(i sqrt3-1)/2", Mul({Add({Mul({ImagUnit(), Sqrt(I("3"))}), I("-1")}), Inv(I("2"))}),
+               "{(i*sqrt{3}-1)}/{2}");
+    checkShape("(sqrt2+1)/3", Mul({Add({Sqrt(I("2")), I("1")}), Inv(I("3"))}), "{(sqrt{2}+1)}/{3}");
+    checkShape("(x+1)^2", Pow(Add({X(), I("1")}), I("2")), "{(x+1)}^{2}");
+    checkShape("(x+1)sin x", Mul({Add({X(), I("1")}), Fn("sin", X())}), "(x+1)*F0{x}");
+    checkShape("-x-1", Add({Neg(X()), I("-1")}), "-x-1");
+    checkShape("-(x+1)", Neg(Add({X(), I("1")})), "-(x+1)");
+    checkShape("x^2-(x+1)sqrt2", Add({Pow(X(), I("2")), Neg(Mul({Add({X(), I("1")}), Sqrt(I("2"))}))}),
+               "{x}^{2}-(x+1)*sqrt{2}");
+    checkShape("(-3)x", Mul({I("-3"), X()}), "(-3)*x");
+}
+
 int main() {
     testPlatformioValidationFlagMatrix();
     testAssemblyOverlapDistributionIsEqual();
@@ -2469,6 +2598,9 @@ int main() {
     // ── CORRECTNESS-E2E-01 F01: editor never leaves adjacent numbers ──
     testEditorKeepsAdjacentNumbersMerged();
     testEditorRandomEditsKeepNumbersCanonical();
+
+    // ── CORRECTNESS-E2E-01 GROUPING: complex factors keep their grouping ──
+    testComplexFactorsKeepGroupingInDisplayedResult();
 
     if (failures != 0) {
         std::cerr << failures << " regression checks failed\n";

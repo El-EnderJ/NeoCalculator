@@ -1881,13 +1881,13 @@ StructuredSolveResult runStructuredSolve(
                 splitEquality(equationGens.front(),left,right);
                 const giac::gen canonical=giac::symb_equal(left.eval(1,ctx),right.eval(1,ctx));
                 // WHY: pinned ksolve.cc first applies exp2pow(), then overwrites
-                // that result when its input is an equality. For a sqrt node
-                // this loses the normalization and can return [] for sqrt(x)=3.
-                // The public _solve path calls equal2diff BEFORE solve. Match
-                // that path only for radical rows; keep authored equations above
-                // for domain/candidate validation and never use tutor answers here.
-                const giac::gen solveInput=giac::has_op(equationGens.front(),*giac::at_sqrt)
-                    ? giac::equal2diff(canonical) : canonical;
+                // that result when its input is an equality. For radical nodes
+                // (sqrt, surd, x^(1/n)) this loses the normalization and returns
+                // [] (sqrt(x)=3, surd(x,3)=-2). The public _solve path always
+                // calls equal2diff BEFORE solve; match it for every equation.
+                // Keep authored equations above for domain/candidate validation
+                // and never use tutor answers here.
+                const giac::gen solveInput=giac::equal2diff(canonical);
                 raw = giac::solve(solveInput, variables.front(),
                                   policy == SolveDomainPolicy::RealAndComplex ? 1 : 0,
                                   ctx);

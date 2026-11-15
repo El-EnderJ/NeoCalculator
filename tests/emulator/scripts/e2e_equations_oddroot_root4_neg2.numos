@@ -1,0 +1,38 @@
+# CORRECTNESS-E2E-01 W5-F01 control: fourth root of x = -2 has no solution
+# Regression: the solution set must match the mathematical truth (count + each value).
+wait 200
+set_equations_complex_policy real
+set_angle_mode rad
+open_app Equations
+wait 60
+key ac
+key up
+key up
+key up
+key up
+key del
+key del
+key del
+key enter
+key enter
+equations_physical 4 0
+equations_physical 1 2
+key 4
+key right
+key x
+key right
+key =
+key neg
+key 2
+key enter
+key down
+key down
+key down
+key down
+key enter
+wait 1
+dump_equations root4_neg2
+assert_equations_engine giac
+assert_equations_status no_solution
+assert_equations_solution_count 0
+assert_equations_result_kind structured

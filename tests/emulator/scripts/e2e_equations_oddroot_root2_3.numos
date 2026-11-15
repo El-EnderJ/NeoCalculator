@@ -1,0 +1,38 @@
+# CORRECTNESS-E2E-01 W5-F01: index-2 indexed root of x = 3 -> 9
+# Regression: the solution set must match the mathematical truth (count + each value).
+wait 200
+set_equations_complex_policy real
+set_angle_mode rad
+open_app Equations
+wait 60
+key ac
+key up
+key up
+key up
+key up
+key del
+key del
+key del
+key enter
+key enter
+equations_physical 4 0
+equations_physical 1 2
+key 2
+key right
+key x
+key right
+key =
+key 3
+key enter
+key down
+key down
+key down
+key down
+key enter
+wait 1
+dump_equations root2_3
+assert_equations_engine giac
+assert_equations_status ok
+assert_equations_solution_count 1
+assert_equations_solution_exact x 0 9
+assert_equations_result_kind structured

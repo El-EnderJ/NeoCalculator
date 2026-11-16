@@ -241,7 +241,7 @@ void MatricesApp::createManagerView() {
     // Hint
     _managerHint = lv_label_create(_managerPanel);
     lv_label_set_text(_managerHint,
-        LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Select  ENTER Open/Run  " LV_SYMBOL_UP LV_SYMBOL_DOWN " Row");
+        LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Select  EXE Open/Run  " LV_SYMBOL_UP LV_SYMBOL_DOWN " Row");
     lv_obj_set_style_text_font(_managerHint, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_managerHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_managerHint, 6, panelH - 18);
@@ -430,10 +430,10 @@ void MatricesApp::updateManagerStyles() {
 
     // Update hint when picking second operand
     if (_pickingSecond && _managerHint) {
-        lv_label_set_text(_managerHint, "Select second matrix (A/B/C) then ENTER");
+        lv_label_set_text(_managerHint, "Select second matrix (A/B/C) then EXE");
     } else if (_managerHint) {
         lv_label_set_text(_managerHint,
-            LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Select  ENTER Open/Run  " LV_SYMBOL_UP LV_SYMBOL_DOWN " Row");
+            LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Select  EXE Open/Run  " LV_SYMBOL_UP LV_SYMBOL_DOWN " Row");
     }
 }
 
@@ -727,7 +727,7 @@ void MatricesApp::handleKeyManager(const KeyEvent& ev) {
                     // Binary op: first operand chosen, now pick second
                     _opFirstMat = _selectedItem;
                     if (_managerHint)
-                        lv_label_set_text(_managerHint, "Select SECOND matrix, then ENTER");
+                        lv_label_set_text(_managerHint, "Select SECOND matrix, then EXE");
                     updateManagerStyles();
                     return;
                 } else {
@@ -809,7 +809,7 @@ void MatricesApp::handleKeyManager(const KeyEvent& ev) {
                     _selectedItem = 0;
                     _pickingSecond = true;
                     if (_managerHint) {
-                        lv_label_set_text(_managerHint, "Select FIRST matrix, then ENTER");
+                        lv_label_set_text(_managerHint, "Select FIRST matrix, then EXE");
                     }
                     updateManagerStyles();
                 }

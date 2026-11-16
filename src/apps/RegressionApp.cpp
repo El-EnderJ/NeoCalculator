@@ -225,7 +225,7 @@ void RegressionApp::createDataTab() {
     // are absent from BOTH stix_math_18 and montserrat_14, so they already render
     // as tofu today; dropped here (the word "Nav" conveys the same meaning).
     _dataHint = lv_label_create(_dataPanel);
-    lv_label_set_text(_dataHint, "Nav  ENTER Edit  AC New row");
+    lv_label_set_text(_dataHint, "Nav  EXE Edit  AC New row");
     lv_obj_set_style_text_font(_dataHint, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(_dataHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_dataHint, 6, panelH - 18);

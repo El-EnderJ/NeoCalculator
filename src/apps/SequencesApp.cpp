@@ -213,7 +213,7 @@ void SequencesApp::createDefineTab() {
 
     // Hint — Phase 7G: plain UI prose with spaces → montserrat_14 (STIX tofus spaces)
     _defineHint = lv_label_create(_definePanel);
-    lv_label_set_text(_defineHint, "ENTER to edit, LEFT/RIGHT to switch tab");
+    lv_label_set_text(_defineHint, "EXE to edit, LEFT/RIGHT to switch tab");
     lv_obj_set_pos(_defineHint, 15, panelH - 25);
     lv_obj_set_style_text_color(_defineHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_style_text_font(_defineHint, &lv_font_montserrat_14, LV_PART_MAIN);

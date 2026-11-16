@@ -146,7 +146,7 @@ void ProbabilityApp::createUI() {
     lv_obj_set_style_pad_all(_paramPanel, 4, LV_PART_MAIN);
     lv_obj_remove_flag(_paramPanel, LV_OBJ_FLAG_SCROLLABLE);
 
-    const char* labels[NUM_FIELDS] = { "mu:", "sigma:", "x:" };
+    const char* labels[NUM_FIELDS] = { "\xCE\xBC:", "\xCF\x83:", "x:" };  // "μ:", "σ:" (in stix_math_18)
 
     for (int i = 0; i < NUM_FIELDS; ++i) {
         int y = 4 + i * 36;
@@ -201,7 +201,7 @@ void ProbabilityApp::createUI() {
     // Phase 7G: plain UI text → montserrat_14 (STIX tofus spaces). LV_SYMBOL_UP/DOWN
     // (U+F077/F078) are in neither font (already tofu) → dropped; "Select" conveys it.
     _hintLabel = lv_label_create(_screen);
-    lv_label_set_text(_hintLabel, "Select  ENTER Edit  MODE Back");
+    lv_label_set_text(_hintLabel, "Select  EXE Edit  BACK Exit");
     lv_obj_set_style_text_font(_hintLabel, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(_hintLabel, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_hintLabel, 8, SCREEN_H - 16);

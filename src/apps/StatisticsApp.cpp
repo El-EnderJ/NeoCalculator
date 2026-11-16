@@ -217,7 +217,7 @@ void StatisticsApp::createDataTab() {
     // Phase 7G: plain UI text → montserrat_14 (STIX tofus spaces). LV_SYMBOL_UP/DOWN
     // (U+F077/F078) are in neither font (already tofu) → dropped; "Nav" conveys it.
     _dataHint = lv_label_create(_dataPanel);
-    lv_label_set_text(_dataHint, "Nav  ENTER Edit  DEL Clear  AC New row");
+    lv_label_set_text(_dataHint, "Nav  EXE Edit  DEL Clear  AC New row");
     lv_obj_set_style_text_font(_dataHint, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(_dataHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_dataHint, 6, panelH - 18);

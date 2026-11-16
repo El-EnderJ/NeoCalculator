@@ -379,7 +379,7 @@ void MainMenu::buildStatusBar() {
 
     // Right: angle mode, beside the battery
     lv_obj_t* modeLabel = lv_label_create(bar);
-    lv_label_set_text(modeLabel, "rad");
+    lv_label_set_text(modeLabel, "RAD");
     lv_obj_set_style_text_font(modeLabel, LV_FONT_DEFAULT, 0);
     lv_obj_set_style_text_color(modeLabel, lv_color_hex(COL_STATUS_TEXT), 0);
     lv_obj_set_style_text_opa(modeLabel, LV_OPA_COVER, 0);

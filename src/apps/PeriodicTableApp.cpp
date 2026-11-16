@@ -306,7 +306,7 @@ void PeriodicTableApp::createMolarTab() {
     // Hint
     _molarHint = lv_label_create(_molarContainer);
     lv_label_set_text(_molarHint,
-        "A-F keys=letters  NUM=digits  ()  ENTER=calc");
+        "A-F keys=letters  NUM=digits  ()  EXE=calc");
     lv_obj_set_style_text_font(_molarHint, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_molarHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_molarHint, 0, SCREEN_H - topY - 30);
@@ -357,7 +357,7 @@ void PeriodicTableApp::createBalanceTab() {
     // Hint
     _balHint = lv_label_create(_balContainer);
     lv_label_set_text(_balHint,
-        "A-F=letters NUM=digits +=plus ==equals ENTER=balance");
+        "A-F=letters NUM=digits +=plus ==equals EXE=balance");
     lv_obj_set_style_text_font(_balHint, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_balHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_balHint, 0, SCREEN_H - topY - 30);

@@ -238,7 +238,7 @@ constexpr CatalogEntry catalog[] = {
     {"view.spanish", "Español", "", "Español", nullptr},
     {"view.solving", "Solving with Giac...", "", "Resolviendo con Giac...", nullptr},
     {"view.wait", "Please wait", "", "Espera un momento", nullptr},
-    {"view.settings_hint", "Navigate   Left/Right Adjust   MODE Back", "", "^v Elige  </> Cambia  MODE Vuelve", nullptr},
+    {"view.settings_hint", "Navigate   Left/Right Adjust   BACK Exit", "", "^v Elige  </> Cambia  BACK Vuelve", nullptr},
     {"substitution.define", "Use an auxiliary variable for the repeated expression. Its definition preserves the original domain.", "", "Sustituye la expresión que se repite por una variable auxiliar. Su definición conserva el dominio original.", nullptr},
     {"substitution.rewrite", "Rewrite the equation in the auxiliary variable using the checked power identities.", "", "Reescribe la ecuación en la variable auxiliar mediante las identidades de potencias comprobadas.", nullptr},
     {"substitution.auxiliary", "Solve the auxiliary equation completely. These are values of the auxiliary variable, not yet solutions for the original unknown.", "", "Resuelve por completo la ecuación auxiliar. Estos son valores de la variable auxiliar, no las soluciones de la incógnita original.", nullptr},

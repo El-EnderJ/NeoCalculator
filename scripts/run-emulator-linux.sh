@@ -15,7 +15,8 @@
 #
 # Build-dir resolution order (to find the binary):
 #   1. $PLATFORMIO_BUILD_DIR
-#   2. `build_dir` from platformio.ini  (ignored if it is a Windows C:\ path)
+#   2. `build_dir` from platformio.ini  (ignored if it is a Windows C:\ path;
+#      ${platformio.core_dir} expands to $PLATFORMIO_CORE_DIR or ~/.platformio)
 #   3. .pio/build  (PlatformIO default)
 # ============================================================================
 set -eu
@@ -34,6 +35,12 @@ resolve_build_dir() {
         # Grab the build_dir value, trim whitespace.
         bd=$(sed -n 's/^[[:space:]]*build_dir[[:space:]]*=[[:space:]]*\(.*\)$/\1/p' "$ini" \
              | head -n1 | sed 's/[[:space:]]*$//')
+        core="${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
+        case "$bd" in
+            '${platformio.core_dir}'*)
+                bd="$core${bd#'${platformio.core_dir}'}"
+                ;;
+        esac
         case "$bd" in
             [A-Za-z]:* | "")
                 # Windows-style path (e.g. C:/.piobuild) or empty — not usable here.

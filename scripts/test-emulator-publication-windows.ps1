@@ -16,7 +16,17 @@ function Assert-True($condition, $message) {
     Write-Host "PASS $message"
 }
 $ini = Join-Path (Split-Path -Parent $PSScriptRoot) 'platformio.ini'
-$configured = (Select-String -LiteralPath $ini -Pattern '^build_dir\s*=\s*(.+)$' | Select-Object -First 1).Matches[0].Groups[1].Value
+$configured = (Select-String -LiteralPath $ini -Pattern '^build_dir\s*=\s*(.+)$' | Select-Object -First 1).Matches[0].Groups[1].Value.Trim()
+# build_dir is derived from ${platformio.core_dir}; expand it like PlatformIO.
+$token = '${platformio.core_dir}'
+if ($configured.StartsWith($token)) {
+    $core = $env:PLATFORMIO_CORE_DIR
+    if (-not $core) {
+        $short = (Split-Path -Qualifier $HOME) + '\.platformio'
+        $core = if (Test-Path -LiteralPath $short) { $short } else { Join-Path $HOME '.platformio' }
+    }
+    $configured = $core + $configured.Substring($token.Length)
+}
 $scratch = [IO.Path]::GetFullPath($configured).TrimEnd('\') + '\'
 $stable = [IO.Path]::GetFullPath('C:\.piobuild\numOS\emulator_pc\program.exe')
 Assert-True (-not $stable.StartsWith($scratch, [StringComparison]::OrdinalIgnoreCase)) 'PlatformIO build root cannot contain the stable release'

@@ -8,10 +8,8 @@
 #
 # so PlatformIO itself builds (if needed) and then launches the native binary
 # from whatever build directory it uses — you never need to know where the
-# binary lives. In particular this sidesteps the Windows-only
-# `build_dir = C:/.piobuild/numOS-build` line in platformio.ini, which on macOS/Linux
-# would otherwise drop the binary into a literal ./C:/ folder in the repo (a
-# common source of "I built it but nothing runs" confusion).
+# binary lives. (platformio.ini puts it under ~/.piobuild/numOS-build on
+# macOS/Linux, next to PlatformIO's core dir, unless PLATFORMIO_BUILD_DIR is set.)
 #
 # Usage:
 #     ./scripts/run-emulator.sh        # build if needed, then open the window

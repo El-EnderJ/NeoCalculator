@@ -32,8 +32,5 @@
       "-<hist*>",
       "-<test.cpp>"
     ]
-  },
-  "dependencies": {
-    "libtommath": "*"
   }
 }

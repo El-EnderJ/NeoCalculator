@@ -242,6 +242,12 @@ private:
     void createUI();
     void refreshExpression();
     void resetExpression();
+    /// How an input key behaves while a successful result is shown: Fresh
+    /// starts a new empty expression, ContinueFromAns starts one seeded with
+    /// Ans (binary operators). With no result or an error shown it only hides
+    /// the result, so the key keeps editing the current expression.
+    enum class EntryStart : uint8_t { Fresh, ContinueFromAns };
+    void startEntryAfterResult(EntryStart start);
     void evaluateExpression();
     void showResult(vpam::NodePtr prepared = {});
     void clearResult();

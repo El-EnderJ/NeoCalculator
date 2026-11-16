@@ -232,6 +232,28 @@ void CalculationApp::resetExpression() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// startEntryAfterResult() — Typing after a result starts a new expression
+//
+// Without this, clearResult() only hid the result and the key was inserted at
+// the old cursor, so "2/6 ENTER sqrt 8 ENTER" evaluated (2/6)*sqrt(8).
+// LEFT/RIGHT/DEL deliberately bypass this to re-edit the previous expression.
+// An error is not a result: after one, keys keep completing/fixing the same
+// expression (e.g. "2 ^ ENTER" -> parse error -> "neg 3 ENTER" = 2^-3).
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculationApp::startEntryAfterResult(EntryStart start) {
+    if (!_hasResult || _lastStatus != numos::MathEngineStatus::Ok) {
+        clearResult();
+        return;
+    }
+    clearResult();
+    resetExpression();
+    _historyIndex = -1;
+    if (start == EntryStart::ContinueFromAns)
+        _cursor.insertVariable(vpam::VAR_ANS);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // refreshExpression() — Recalcula layout e invalida el canvas
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -333,10 +355,13 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 
     if (semantic == numos::input::SemanticId::left_bracket ||
         semantic == numos::input::SemanticId::right_bracket) {
-        clearResult();
-        if (semantic == numos::input::SemanticId::left_bracket)
+        if (semantic == numos::input::SemanticId::left_bracket) {
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertParen(vpam::DelimKind::Bracket);
-        else _cursor.closeBracket();
+        } else {
+            clearResult();
+            _cursor.closeBracket();
+        }
         _statusBar.update();
         _mathCanvas.resetCursorBlink();
         refreshExpression();
@@ -354,7 +379,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
         const char variable = static_cast<char>(
             'A' + static_cast<int>(semantic) -
             static_cast<int>(numos::input::SemanticId::alpha_A));
-        clearResult();
+        startEntryAfterResult(EntryStart::Fresh);
         _cursor.insertVariable(variable);
         _statusBar.update();
         _mathCanvas.resetCursorBlink();
@@ -364,7 +389,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
     if (semantic == numos::input::SemanticId::asin ||
         semantic == numos::input::SemanticId::acos ||
         semantic == numos::input::SemanticId::atan) {
-        clearResult();
+        startEntryAfterResult(EntryStart::Fresh);
         const auto function =
             semantic == numos::input::SemanticId::asin
                 ? vpam::FuncKind::ArcSin
@@ -414,7 +439,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
     if (km.isAlpha()) {
         char varName = alphaKeyToVarName(ev.code);
         if (varName != '\0') {
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertVariable(varName);
             km.consumeModifier();
             _statusBar.update();
@@ -448,45 +473,51 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             break;
 
         // ── Dígitos ──
-        case KeyCode::NUM_0: clearResult(); _cursor.insertDigit('0'); break;
-        case KeyCode::NUM_1: clearResult(); _cursor.insertDigit('1'); break;
-        case KeyCode::NUM_2: clearResult(); _cursor.insertDigit('2'); break;
-        case KeyCode::NUM_3: clearResult(); _cursor.insertDigit('3'); break;
-        case KeyCode::NUM_4: clearResult(); _cursor.insertDigit('4'); break;
-        case KeyCode::NUM_5: clearResult(); _cursor.insertDigit('5'); break;
-        case KeyCode::NUM_6: clearResult(); _cursor.insertDigit('6'); break;
-        case KeyCode::NUM_7: clearResult(); _cursor.insertDigit('7'); break;
-        case KeyCode::NUM_8: clearResult(); _cursor.insertDigit('8'); break;
-        case KeyCode::NUM_9: clearResult(); _cursor.insertDigit('9'); break;
+        case KeyCode::NUM_0: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('0'); break;
+        case KeyCode::NUM_1: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('1'); break;
+        case KeyCode::NUM_2: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('2'); break;
+        case KeyCode::NUM_3: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('3'); break;
+        case KeyCode::NUM_4: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('4'); break;
+        case KeyCode::NUM_5: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('5'); break;
+        case KeyCode::NUM_6: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('6'); break;
+        case KeyCode::NUM_7: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('7'); break;
+        case KeyCode::NUM_8: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('8'); break;
+        case KeyCode::NUM_9: startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('9'); break;
         // Punto decimal: la inserción correcta vive ahora en el guard compartido
         // de CursorController::insertDigit (Phase 8E). Se revierte el workaround
         // local de Phase 8D — ya no se necesita.
-        case KeyCode::DOT:   clearResult(); _cursor.insertDigit('.'); break;
+        case KeyCode::DOT:   startEntryAfterResult(EntryStart::Fresh); _cursor.insertDigit('.'); break;
 
         // ── Operadores ──
-        case KeyCode::ADD: clearResult(); _cursor.insertOperator(vpam::OpKind::Add); break;
+        case KeyCode::ADD: startEntryAfterResult(EntryStart::ContinueFromAns); _cursor.insertOperator(vpam::OpKind::Add); break;
         case KeyCode::NEG:
         case KeyCode::NEGATE:
-        case KeyCode::SUB: clearResult(); _cursor.insertOperator(vpam::OpKind::Sub); break;
-        case KeyCode::MUL: clearResult(); _cursor.insertOperator(vpam::OpKind::Mul); break;
-        case KeyCode::DIVIDE: clearResult(); _cursor.insertOperator(vpam::OpKind::Div); break;
+            // Sign key starts a new number; binary minus continues from Ans.
+            startEntryAfterResult(EntryStart::Fresh);
+            _cursor.insertOperator(vpam::OpKind::Sub);
+            break;
+        case KeyCode::SUB: startEntryAfterResult(EntryStart::ContinueFromAns); _cursor.insertOperator(vpam::OpKind::Sub); break;
+        case KeyCode::MUL: startEntryAfterResult(EntryStart::ContinueFromAns); _cursor.insertOperator(vpam::OpKind::Mul); break;
+        case KeyCode::DIVIDE: startEntryAfterResult(EntryStart::ContinueFromAns); _cursor.insertOperator(vpam::OpKind::Div); break;
 
         // ── Estructuras VPAM ──
         case KeyCode::DIV:
-        case KeyCode::FRAC:   clearResult(); _cursor.insertFraction(); break;
-        case KeyCode::POW:    clearResult(); _cursor.insertPower();    break;
+            // "/" key: fraction template that captures Ans as numerator.
+            startEntryAfterResult(EntryStart::ContinueFromAns); _cursor.insertFraction(); break;
+        case KeyCode::FRAC:   startEntryAfterResult(EntryStart::Fresh); _cursor.insertFraction(); break;
+        case KeyCode::POW:    startEntryAfterResult(EntryStart::ContinueFromAns); _cursor.insertPower();    break;
         case KeyCode::SQUARE:
-            clearResult();
+            startEntryAfterResult(EntryStart::ContinueFromAns);
             _cursor.insertPower();
             _cursor.insertDigit('2');
             break;
-        case KeyCode::SQRT:   clearResult(); _cursor.insertRoot();     break;
+        case KeyCode::SQRT:   startEntryAfterResult(EntryStart::Fresh); _cursor.insertRoot();     break;
         case KeyCode::LPAREN:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertParen(km.isShift() ? vpam::DelimKind::Bracket : vpam::DelimKind::Paren);
             if (km.isShift()) km.consumeModifier();
             break;
-        case KeyCode::LBRACKET: clearResult(); _cursor.insertParen(vpam::DelimKind::Bracket); break;
+        case KeyCode::LBRACKET: startEntryAfterResult(EntryStart::Fresh); _cursor.insertParen(vpam::DelimKind::Bracket); break;
         case KeyCode::RBRACKET: clearResult(); _cursor.closeBracket(); break;
         case KeyCode::RPAREN:
             clearResult();
@@ -504,7 +535,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 
         // ── Funciones trigonométricas / logarítmicas ──
         case KeyCode::SIN:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             if (km.isShift()) {
                 _cursor.insertFunction(vpam::FuncKind::ArcSin);
                 km.consumeModifier();
@@ -513,7 +544,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             }
             break;
         case KeyCode::COS:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             if (km.isShift()) {
                 _cursor.insertFunction(vpam::FuncKind::ArcCos);
                 km.consumeModifier();
@@ -522,7 +553,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             }
             break;
         case KeyCode::TAN:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             if (km.isShift()) {
                 _cursor.insertFunction(vpam::FuncKind::ArcTan);
                 km.consumeModifier();
@@ -533,7 +564,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 
         // ── Logaritmos ──
         case KeyCode::LN:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertFunction(vpam::FuncKind::Ln);
             break;
         case KeyCode::LOG:
@@ -541,50 +572,50 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
                 if (_cursor.insertPowerOfTen()) clearResult();
                 km.consumeModifier();
             } else {
-                clearResult();
+                startEntryAfterResult(EntryStart::Fresh);
                 _cursor.insertFunction(vpam::FuncKind::Log);
             }
             break;
         case KeyCode::LOG_BASE:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertLogBase();
             break;
 
         // ── Constantes algebraicas ──
         case KeyCode::CONST_PI:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertConstant(vpam::ConstKind::Pi);
             break;
         case KeyCode::CONST_E:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertConstant(vpam::ConstKind::E);
             break;
 
         // ── Variables directas (teclado físico o serial) ──
         case KeyCode::VAR_X:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertVariable('x');
             break;
         case KeyCode::VAR_Y:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertVariable('y');
             break;
         case KeyCode::ANS:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertVariable(vpam::VAR_ANS);
             break;
         case KeyCode::PREANS:
-            clearResult();
+            startEntryAfterResult(EntryStart::Fresh);
             _cursor.insertVariable(vpam::VAR_PREANS);
             break;
 
         // ── Variables Alpha (via serial o mapeo directo) ──
-        case KeyCode::ALPHA_A: clearResult(); _cursor.insertVariable('A'); break;
-        case KeyCode::ALPHA_B: clearResult(); _cursor.insertVariable('B'); break;
-        case KeyCode::ALPHA_C: clearResult(); _cursor.insertVariable('C'); break;
-        case KeyCode::ALPHA_D: clearResult(); _cursor.insertVariable('D'); break;
-        case KeyCode::ALPHA_E: clearResult(); _cursor.insertVariable('E'); break;
-        case KeyCode::ALPHA_F: clearResult(); _cursor.insertVariable('F'); break;
+        case KeyCode::ALPHA_A: startEntryAfterResult(EntryStart::Fresh); _cursor.insertVariable('A'); break;
+        case KeyCode::ALPHA_B: startEntryAfterResult(EntryStart::Fresh); _cursor.insertVariable('B'); break;
+        case KeyCode::ALPHA_C: startEntryAfterResult(EntryStart::Fresh); _cursor.insertVariable('C'); break;
+        case KeyCode::ALPHA_D: startEntryAfterResult(EntryStart::Fresh); _cursor.insertVariable('D'); break;
+        case KeyCode::ALPHA_E: startEntryAfterResult(EntryStart::Fresh); _cursor.insertVariable('E'); break;
+        case KeyCode::ALPHA_F: startEntryAfterResult(EntryStart::Fresh); _cursor.insertVariable('F'); break;
 
         // ── Navegación ──
         case KeyCode::LEFT:
@@ -664,11 +695,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 
         // ── FACT: factorización en primos ──
         case KeyCode::FACT:
-            if (_hasResult) {
-                clearResult();
-                resetExpression();
-                _cursor.insertVariable(vpam::VAR_ANS);
-            }
+            startEntryAfterResult(EntryStart::ContinueFromAns);
             changed = _cursor.insertFactorial();
             break;
 

@@ -1,0 +1,51 @@
+# calc_semantic_operator_after_result_ans.numos — a binary operator typed
+# right after a result continues from Ans; DEL re-edits the previous input.
+#
+# READINESS-01: before the fix the operator was appended to the old
+# expression ("2+3" then "*4" -> 2+3*4 = 14). Now it starts "Ans*".
+#
+#   2 + 3 ENTER       -> 5
+#   * 4 ENTER         -> Ans*4 = 20
+#   - 6 ENTER         -> Ans-6 = 14
+#   DEL 9 ENTER       -> DEL re-edits "Ans-6" into "Ans-9" = 14-9 = 5
+#
+# Run: program --headless --deterministic --script <this> --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse · 3 screenshot · 4 assertion failure.
+
+log "calc_semantic_operator_after_result_ans: waiting for launcher"
+wait 200
+open_app Calculation
+wait 60
+
+key 2
+key +
+key 3
+key ENTER
+wait 120
+assert_no_error
+assert_result 5
+
+key *
+key 4
+key ENTER
+wait 120
+assert_no_error
+assert_result 20
+assert_variable ans 20
+
+key -
+key 6
+key ENTER
+wait 120
+assert_no_error
+assert_result 14
+
+# DEL keeps the old behaviour: it re-edits the previous expression.
+key del
+key 9
+key ENTER
+wait 120
+assert_app Calculation
+assert_no_error
+assert_result 5
+log "calc_semantic_operator_after_result_ans: PASS (Ans*4 == 20, Ans-6 == 14, DEL re-edit == 5)"

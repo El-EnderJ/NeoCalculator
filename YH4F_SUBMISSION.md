@@ -61,7 +61,7 @@ be assumed to be stable or complete:
 
 - **Equations app** and **Calculus app** — solver and symbolic differentiation/integration experiments; usable in places but still rough (the Equations "steps" view is alpha).
 - **Symbolic / CAS work, including Giac integration** — a symbolic pipeline and a Giac-based backend are being integrated. Treat as in-progress, not a validated CAS. A CAS unit-test suite exists but is compile-time gated and off by default.
-- **Other apps** — physics/simulation labs, scripting, statistics/regression/sequences/probability, matrices, and chemistry modules range from prototype to experimental.
+- **Other apps** — physics/simulation labs, scripting, statistics/regression/sequences/probability, matrices, and chemistry modules range from prototype to experimental. The Python app is a preview backed by a simulated engine, not MicroPython.
 - **Physical keyboard / custom PCB** — prototype stage; only a few of the planned key-matrix columns are wired so far.
 
 ## How to see or try the project
@@ -172,7 +172,7 @@ YH4F explicitly accepts unfinished work.
 
 - Stabilise the core calculator workflow (input → evaluate → display) end to end.
 - Improve the Calculation app (entry edge cases, history, formatting).
-- Improve the Grapher (multi-function graphing, tracing, robustness).
+- Improve the Grapher (tracing, robustness; multi-function graphing already works).
 - Finish and clean up the natural math rendering.
 - Continue the symbolic/Giac integration as an experimental track.
 - Bring up and test the first custom PCB prototypes.

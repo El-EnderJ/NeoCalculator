@@ -31,3 +31,11 @@
 
 Conserva los cambios existentes del usuario y de otras tareas. Las instrucciones
 de arquitectura C++/ESP32 de las instrucciones globales también se aplican aquí.
+
+## Commit attribution
+
+Applies to this repository and every worktree of it, with no exceptions:
+
+- Never add a `Co-Authored-By:` trailer to any commit, for Claude or any other model.
+- Never add "Generated with Claude Code" or any similar line to commit messages, PR descriptions or code comments.
+- Every commit has exactly one author and one committer: the git identity already configured in this repo (`git config user.name` / `user.email`). Never set, override or invent an identity; if none is configured, stop and ask.

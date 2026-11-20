@@ -1,0 +1,115 @@
+# NeoCalculator keycap sticker generator — configuration
+# Used by make_stickers.py (same folder). All lengths are in millimetres,
+# all font sizes in PostScript points (1 pt = 0.3528 mm).
+# Paths are relative to the repository root.
+
+sources:
+  # Canonical keypad layout; the firmware header below is generated from it
+  # by scripts/generate-production-keypad.py. Labels are read from here.
+  layout_json: hardware/keyboard/neocalculator-v1-final-5x10-revision-c-canonical.json
+  # Generated firmware keymap, used to cross-check every printed legend
+  # against what the firmware really resolves for that key and plane.
+  firmware_keymap: src/input/generated/ProductionKeypadMap.generated.h
+  # Firmware sources searched to see whether a semantic-only action has a handler.
+  firmware_src: src
+  # Key-top mesh used by `make_stickers.py --measure` to re-derive key_top.
+  key_stl: hardware/enclosure/key.stl
+  case_top_stl: hardware/enclosure/case-top.stl
+
+# ── Key geometry ────────────────────────────────────────────────────────────
+# MEASURED from hardware/enclosure/key.stl (not placeholders):
+#   flat top face (normal +Z, z = 5.029): 10.730 x 8.330 mm, corner radius 1.765 mm
+#   (circle fit on the 104 corner-arc vertices of the outline, max error 0.0001 mm).
+#   Re-check any time with:  python hardware/keyboard/stickers/make_stickers.py --measure The cap walls have a
+#   slight draft (10.79 x 8.39 mm at the flange); the flange below is
+#   11.60 x 9.20 mm and sits hidden under the case.
+# Cross-check: hardware/enclosure/case-top.stl has 50 identical openings of
+#   11.2 x 8.8 mm on a 13.2 x 9.8 mm pitch (same pitch as the PCB switches in
+#   production-keypad-map.generated.csv). ASSEMBLY.md: one key.stl for all 50 keys.
+# All 50 keys are the same size, so there is a single key size.
+key_top:
+  width: 10.73
+  height: 8.33
+  corner_radius: 1.765
+
+sticker:
+  inset: 0.4                # removed from each side of the key top, so edges don't lift
+  corner_radius: auto       # auto = key_top.corner_radius - inset (1.365 mm); or a number
+  text_padding: 0.45        # minimum distance from sticker edge to any ink
+  cut_line_color: "#A8A8A8"
+  cut_line_width_pt: 0.25
+
+fonts:
+  # First existing file wins. DejaVu Sans covers every glyph used here
+  # (arrows, ≤ ≥ ≠ ≈ ∞ Σ ∫ π θ ⁻¹ ˣ °). matplotlib also ships DejaVu Sans,
+  # which the script finds automatically as a last resort.
+  regular:
+    - /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+    - C:/Windows/Fonts/DejaVuSans.ttf
+    - ~/AppData/Local/Microsoft/Windows/Fonts/DejaVuSans.ttf
+    - ~/Library/Fonts/DejaVuSans.ttf
+  bold:
+    - /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+    - C:/Windows/Fonts/DejaVuSans-Bold.ttf
+    - ~/AppData/Local/Microsoft/Windows/Fonts/DejaVuSans-Bold.ttf
+    - ~/Library/Fonts/DejaVuSans-Bold.ttf
+  primary_weight: bold
+  secondary_weight: bold
+
+font_sizes:
+  primary_max: 10.0          # big centred legend; shrinks to fit
+  primary_min: 5.0
+  secondary: 4.6             # SHIFT / ALPHA corner legends; shrinks to fit
+  secondary_min: 3.4
+  min_horizontal_scale: 0.78 # long labels are condensed down to this before shrinking
+
+colors:
+  text: "#1F1F1F"
+  shift_legend: "#8A5A00"    # amber (layout JSON: "amber upper-left printed legend")
+  alpha_legend: "#C2410C"    # orange (layout JSON: "orange upper-right printed legend")
+  # Light, neutral backgrounds per layout-JSON key category, for sorting after cutting.
+  category_background:
+    number:     "#F5F3EE"
+    operator:   "#E2EAF3"
+    function:   "#E4EFE2"
+    navigation: "#ECE6F3"
+    system:     "#F4E6E2"
+    modifier:   "#FFFFFF"    # SHIFT / ALPHA use modifier_background below
+  modifier_background:
+    SHIFT: "#F6E3B4"
+    ALPHA: "#F8D6C2"
+  modifier_text:
+    SHIFT: "#6B4500"
+    ALPHA: "#9A3412"
+
+# Override any legend by key id (r<row>c<col> in the layout JSON).
+# Keys: primary / shift / alpha. An empty string hides that legend.
+# Example:  r6c3: {primary: "⌫"}
+label_overrides: {}
+
+# Print secondary legends the layout marks printLegend: false (e.g. the hidden
+# SHIFT+1…6 soft keys F1–F6). Default false = follow the layout.
+print_hidden_legends: false
+
+page:
+  size: [210.0, 297.0]       # A4 portrait
+  margin: 12.0               # >= 10 mm, home printers can't print to the edge
+  sticker_gap: 3.0           # gap between neighbouring stickers (>= 3 mm)
+  set_gap: 12.0              # gap between the two keyboard sets
+  copies_per_sheet: 2        # full keyboard sets on page 1
+  crop_mark_length: 3.0
+  crop_mark_offset: 1.0
+
+calibration:
+  square: 50.0
+  ruler: 100.0
+
+fit_test:
+  # Page 2: one sticker per inset value so you can pick the best fit.
+  insets: [0.2, 0.4, 0.6]
+  sample_key: r7c1           # key used for the labelled fit-test sticker ("5")
+
+output:
+  pdf: neocalculator-keycap-stickers.pdf
+  preview_dpi: 200
+  preview_prefix: neocalculator-keycap-stickers-preview

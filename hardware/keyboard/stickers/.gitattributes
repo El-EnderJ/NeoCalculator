@@ -1,0 +1,4 @@
+# Generated binaries: never convert line endings (a PDF without NUL bytes looks like text to git).
+*.pdf binary
+*.png binary
+*.ttf binary

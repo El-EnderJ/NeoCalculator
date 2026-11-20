@@ -30,8 +30,9 @@ sticker:
   outline_darken: 0.20
 
 # ── Type ────────────────────────────────────────────────────────────────────
-# Noto Sans (variable: weight + width axes) for everything, Noto Sans Math for
-# arrows and math operators Noto Sans lacks (emboldened to the same stem weight).
+# Noto Sans (variable: weight + width axes) for words, digits and arithmetic keys;
+# Noto Sans Math for arrows it lacks (emboldened to the same stem weight).
+# Mathematical legends use TeX / Computer Modern instead: see `tex:` below.
 # Text is converted to outlines and shaped with HarfBuzz (kerning, 'case').
 # Paths relative to this folder. Subsets of the OFL fonts, see fonts/OFL.txt.
 fonts:
@@ -110,3 +111,17 @@ output:
   detail: neocalculator-keycap-stickers-detail.png
   preview_dpi: 150
   detail_dpi: 600
+
+# ── TeX math ───────────────────────────────────────────────────────────────
+# Mathematical legends (variables, sin/cos/log, x², 10ˣ, √, fractions, π, ≤ …)
+# are typeset by matplotlib's mathtext (TeX layout rules) in Computer Modern,
+# the LaTeX fonts: 𝑥 is cmmi10 math italic. Words, digits and arithmetic keys
+# stay in Noto Sans.
+tex:
+  enabled: true
+  upright_constants: "ei"   # e and i upright (\mathrm); set "" for LaTeX-default italic
+  embolden_em: 0.03         # stroke added to Computer Modern so it holds up at keycap size
+  min_stroke_mm: 0.085      # minimum added stroke (keeps 1.2 mm secondary legends printable)
+  tight_superscripts: true  # x², x⁻¹ spaced like TeX (mathtext sets them a little loose)
+  rule_em: 0.045            # fraction bars / radical lines / placeholder boxes
+  scale: 1.0

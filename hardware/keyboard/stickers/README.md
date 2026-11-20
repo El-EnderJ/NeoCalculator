@@ -8,7 +8,7 @@ Print-ready labels for the 50 flat key tops of the NeoCalculator prototype, at t
 | `neocalculator-keycap-fit-test.pdf` | Fit test: sample stickers at three inset values and the real key outline. |
 | `neocalculator-keycap-stickers-preview.png`, `-detail.png` | Previews of the sheet (150 dpi) and of one set (600 dpi). |
 | `make_stickers.py`, `stickers.yaml` | Generator and its settings (geometry, type sizes, colours, overrides). |
-| `fonts/` | Subsets of Noto Sans (variable) and Noto Sans Math, SIL OFL 1.1 (`fonts/OFL.txt`). |
+| `fonts/` | Subsets of Noto Sans (variable) and Noto Sans Math, SIL OFL 1.1 (`fonts/OFL.txt`). Computer Modern comes with matplotlib. |
 
 ## Printing
 
@@ -23,13 +23,16 @@ Print-ready labels for the 50 flat key tops of the NeoCalculator prototype, at t
 
 - **Geometry:** key top 10.73 × 8.33 mm, r 1.765 mm. Measured from `hardware/enclosure/key.stl` and cross-checked against the 50 openings in `case-top.stl`. The sticker is 0.4 mm smaller per side: 9.93 × 7.53 mm. Re-measure with `--measure`.
 - **Legends:** taken from `neocalculator-v1-final-5x10-revision-c-canonical.json` and checked plane by plane (primary / SHIFT / ALPHA) against `src/input/generated/ProductionKeypadMap.generated.h`. Any mismatch stops the build.
-- **Type:** all text is shaped with HarfBuzz (kerning, case forms) and converted to vector outlines, so the PDF looks the same in every viewer and printer.
+- **Math in TeX:** every mathematical legend is typeset by matplotlib's `mathtext` engine, which follows TeX's layout rules, in **Computer Modern**, the LaTeX fonts. This covers:
+  - variables in math italic (𝑥, 𝑦, 𝑡, 𝜃, 𝑛, cmmi10) and π as in LaTeX;
+  - `\sin`, `\log` and `\ln` as upright operators;
+  - TeX superscripts, fractions and radicals (cmex10).
+
+  `e` and `i` are upright (`\mathrm`, ISO 80000-2; set `tex.upright_constants: ""` for italic). Empty slots are laid out by TeX and drawn as outline boxes. Computer Modern is a light text face, so a small stroke is added (`tex.embolden_em`) to keep it legible at keycap size.
+- **Everything else in Noto Sans:** words, digits and arithmetic keys use Noto Sans, shaped with HarfBuzz (kerning, case forms). All text is converted to vector outlines, so the PDF looks the same in every viewer and printer.
 - **Width:** long words are narrowed on Noto Sans's own width axis instead of being stretched. Arrows and math operators come from Noto Sans Math, thickened to the same stem weight as the text.
 - **Sizes by key type:** each key type has a fixed cap height and shares one size, so a row of keys reads evenly. The types are digits, operators, punctuation, function names (sin, log …), short words (DEL, AC, EXE, VAR), long words (SHIFT, HOME, FORMAT …) and math templates. All of these are set in `stickers.yaml`.
-- **Math:** typeset rather than written as text:
-  - variables in italic (x, y, t, θ, n), while e, i and π stay upright per ISO 80000-2;
-  - real superscripts (`x²`, `sin⁻¹`, `10ˣ`), true minus signs;
-  - fractions, radicals and placeholder boxes drawn at the text's stem weight.
+- **Root template:** the nth-root template shows both slots (index and radicand), because that is what the key inserts.
 - **Secondary legends:** SHIFT is upper-left in amber and ALPHA is upper-right in orange, as the layout JSON specifies. They hang from the same top line and use the corner space that the rounded corners leave free.
 - **Not printed:** legends the layout marks `printLegend: false`. These are SHIFT+1…6 (F1–F6), the SHIFT/ALPHA locks and the combined SHIFT+ALPHA plane. Set `print_hidden_legends: true` to print them anyway.
 - **Overrides:** change a legend with `label_overrides`, e.g. `r6c3: {primary: "⌫"}`.
@@ -41,7 +44,7 @@ Full legend table: `python hardware/keyboard/stickers/make_stickers.py --labels`
 ## Regenerating
 
 ```
-pip install reportlab pyyaml fonttools uharfbuzz numpy pymupdf
+pip install reportlab pyyaml fonttools uharfbuzz numpy matplotlib pymupdf
 python hardware/keyboard/stickers/make_stickers.py --verify
 ```
 

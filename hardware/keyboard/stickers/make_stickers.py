@@ -7,15 +7,15 @@ NeoCalculator keycap label stickers: print-ready vector PDF at true 1:1 scale.
     python hardware/keyboard/stickers/make_stickers.py --measure  # re-derive key size from key.stl
     python hardware/keyboard/stickers/make_stickers.py --labels   # legend table (Markdown)
 
-Requirements: Python 3.9+, reportlab, PyYAML, fontTools, uharfbuzz, numpy.
+Requirements: Python 3.9+, reportlab, PyYAML, fontTools, uharfbuzz, numpy, matplotlib.
 Optional: PyMuPDF (pip install pymupdf) for --verify and the PNG previews.
 
-Typography: every legend is shaped with HarfBuzz (kerning, case-sensitive forms)
-from Noto Sans (variable weight/width) and converted to vector outlines, so the
-PDF prints identically everywhere. Width is narrowed on the font's own width axis
-(never by stretching). Math legends are typeset: italic variables, real
-superscripts, fractions, radicals and placeholder boxes drawn at the stem weight
-of the surrounding text. Legend sizes come from per-role cap heights
+Typography: mathematical legends (x, y, θ, sin, log, x², 10ˣ, fractions, radicals,
+π, ≤ …) are typeset by matplotlib's mathtext engine, which follows TeX's layout
+rules, in Computer Modern, the LaTeX fonts (the 𝑥 is cmmi10 math italic). Words,
+digits and arithmetic keys are set in Noto Sans (variable weight/width), shaped
+with HarfBuzz. Everything is converted to vector outlines, so the PDF prints
+identically everywhere. Legend sizes come from per-role cap heights
 (stickers.yaml), shared across a role so keys read evenly.
 """
 
@@ -414,6 +414,174 @@ def is_plain(label: str) -> bool:
     return not re.search(r"\\[A-Za-z,]|\^", label)
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# TeX math: matplotlib's mathtext engine (TeX layout rules) with the Computer
+# Modern fonts LaTeX uses (cmmi10 math italic, cmr10, cmsy10, cmex10).
+# ═════════════════════════════════════════════════════════════════════════════
+
+TEX_FUNCTIONS = {"sin", "cos", "tan", "log", "ln", "exp", "sinh", "cosh", "tanh"}
+TEX_SYMBOLS = {"θ": r"\theta ", "π": r"\pi ", "∞": r"\infty ", "≠": r"\neq ", "≤": r"\leq ",
+               "≥": r"\geq ", "≈": r"\approx ", "Σ": r"\Sigma ", "°": r"{}^{\circ}",
+               "×": r"\times ", "÷": r"\div ", "−": "-"}
+TEX_PLACEHOLDER = 0x25A0          # ■ (\blacksquare, an ordinary symbol): laid out, then drawn as an empty slot
+_TEX_PATHS: dict = {}
+
+
+def tex_source(label: str, cfg: dict) -> str | None:
+    """TeX for a mathematical legend, or None if the legend is set in the sans."""
+    tx = cfg.get("tex") or {}
+    if not tx.get("enabled", True) or not label:
+        return None
+    s = re.sub("[" + "".join(SUPERSCRIPTS) + "]+",
+               lambda m: "^{" + "".join(SUPERSCRIPTS[c] for c in m.group(0)) + "}", label)
+    has_cmd = bool(re.search(r"\\[A-Za-z]|\^", s))
+    letters = re.findall(r"[A-Za-z]+", re.sub(r"\\[A-Za-z]+", "", s))
+    mathy = has_cmd or any(c in TEX_SYMBOLS for c in s if c not in "×÷−") or \
+        any(w in TEX_FUNCTIONS or (len(w) == 1 and w.islower()) or re.fullmatch(r"n[A-Z]r|[a-z]{3,}", w)
+            for w in letters)
+    if not mathy or any(w.isupper() and len(w) > 1 for w in letters):
+        return None                      # words (SETUP, Ans …), digits, punctuation, arrows
+    out, i = [], 0
+    upright = tx.get("upright_constants", "ei")
+    while i < len(s):
+        if s[i] == "\\":
+            m = re.match(r"\\([A-Za-z]+|.)", s[i:])
+            name = m.group(1)
+            out.append({"square": r"\blacksquare ", "lvert": "|", "rvert": "|"}.get(name, "\\" + name + " "))
+            i += len(m.group(0))
+            continue
+        m = re.match(r"[A-Za-z]+", s[i:])
+        if m:
+            w = m.group(0)
+            if w in TEX_FUNCTIONS:
+                out.append("\\" + w + " ")
+            elif len(w) == 1:
+                out.append(r"\mathrm{%s}" % w if w in upright else w)
+            else:
+                out.append(r"\mathrm{%s}" % w)
+            i += len(w)
+            continue
+        out.append(TEX_SYMBOLS.get(s[i], s[i]))
+        i += 1
+    tex = "".join(out).strip()
+    # The nth-root template inserts two slots (index and radicand): show both.
+    tex = re.sub(r"(\\sqrt \[[^\]]*\])\{\\, \}", r"\1{\\blacksquare }", tex)
+    if tx.get("tight_superscripts", True):
+        # mathtext sets x² looser than TeX does; pull exponents of single-letter bases back
+        tex = re.sub(r"(?<![\\A-Za-z])([A-Za-z])\^\{", r"\1^{\\!", tex)
+        tex = re.sub(r"(?<![\\A-Za-z])([A-Za-z])\^([^{])", r"\1^{\\!\2}", tex)
+    return tex
+
+
+class TexNode(Node):
+    """A TeX formula as outlines: glyphs + rules from mathtext, placeholders drawn as boxes."""
+
+    def __init__(self, tex: str, size: float, cfg: dict):
+        import matplotlib
+        matplotlib.rcParams["mathtext.fontset"] = "cm"
+        from matplotlib.font_manager import FontProperties
+        try:
+            from matplotlib.ft2font import LoadFlags
+        except ImportError:      # matplotlib < 3.10
+            from matplotlib import ft2font as _ft
+
+            class LoadFlags:
+                NO_HINTING = _ft.LOAD_NO_HINTING
+        from matplotlib.mathtext import MathTextParser
+        tx = cfg.get("tex") or {}
+        self.tex, self.size = tex, size
+        parsed = MathTextParser("path").parse(f"${tex}$", 72, FontProperties(size=size))
+        self.rule = max(mm(tx.get("min_stroke_mm", 0.05)), tx.get("rule_em", 0.045) * size)
+        # Computer Modern is a light text face; a small stroke compensates for the
+        # tiny print size (it is what optical sizes like cmr5/cmr7 do).
+        self.emb = max(mm(tx.get("min_stroke_mm", 0.05)), tx.get("embolden_em", 0.02) * size)
+        self.items = []    # ("glyph", verts, codes) / ("rect", x, y, w, h) / ("slot", x0, y0, x1, y1)
+        xs, ys = [], []
+        for g in parsed.glyphs:
+            if len(g) == 6:      # matplotlib ≥ 3.10: (font, size, char, glyph index, x, y)
+                font, fontsize, ccode, gidx, ox, oy = g
+            else:                # older: (font, size, char, x, y)
+                font, fontsize, ccode, ox, oy = g
+                gidx = None
+            key = (font.fname, gidx if gidx is not None else ("c", ccode))
+            if key not in _TEX_PATHS:
+                font.clear()
+                font.set_size(100, 72)
+                if gidx is not None:
+                    font.load_glyph(gidx, flags=LoadFlags.NO_HINTING)
+                else:
+                    font.load_char(ccode, flags=LoadFlags.NO_HINTING)
+                _TEX_PATHS[key] = font.get_path()
+            verts, codes = _TEX_PATHS[key]
+            v = verts * (fontsize / 100.0) + [ox, oy]
+            if ccode == TEX_PLACEHOLDER:
+                # the ■ glyph's square, slightly reduced, drawn as an outline: an empty slot
+                pts = v[codes != 79]
+                x0, y0 = pts[:, 0].min(), pts[:, 1].min()
+                x1, y1 = pts[:, 0].max(), pts[:, 1].max()
+                inset = 0.06 * (x1 - x0)
+                self.items.append(("slot", x0 + inset, y0 + inset, x1 - inset, y1 - inset))
+                xs += [x0, x1]
+                ys += [y0, y1]
+            else:
+                self.items.append(("glyph", v, codes))
+                pts = v[codes != 79]          # CLOSEPOLY carries a dummy (0, 0) vertex
+                if len(pts):
+                    xs += [pts[:, 0].min(), pts[:, 0].max()]
+                    ys += [pts[:, 1].min(), pts[:, 1].max()]
+        for ox, oy, w, h in parsed.rects:
+            # TeX rules (fraction bars, radical vinculum) at the formula's stroke weight
+            h2 = max(h, self.rule)
+            yc = oy + h / 2
+            self.items.append(("rect", ox, yc - h2 / 2, w, h2))
+            xs += [ox, ox + w]
+            ys += [yc - h2 / 2, yc + h2 / 2]
+        e = self.emb / 2
+        self.w = float(parsed.width)
+        self.x0, self.x1 = float(min(xs)) - e, float(max(xs)) + e
+        self.asc, self.desc = float(max(ys)) + e, -float(min(ys)) + e
+        self.cap_h = 0.683 * size
+
+    def draw(self, c, x, y):
+        c.saveState()
+        c.translate(x, y)
+        c.setLineJoin(1)
+        for it in self.items:
+            if it[0] == "glyph":
+                _, v, codes = it
+                p = c.beginPath()
+                i, cur, start = 0, (0.0, 0.0), (0.0, 0.0)
+                while i < len(codes):
+                    cd = codes[i]
+                    if cd == 1:                      # MOVETO
+                        cur = start = tuple(v[i]); p.moveTo(*cur); i += 1
+                    elif cd == 2:                    # LINETO
+                        cur = tuple(v[i]); p.lineTo(*cur); i += 1
+                    elif cd == 3:                    # CURVE3 (quadratic) → cubic
+                        (qx, qy), (ex, ey) = v[i], v[i + 1]
+                        sx, sy = cur
+                        p.curveTo(sx + 2 / 3 * (qx - sx), sy + 2 / 3 * (qy - sy),
+                                  ex + 2 / 3 * (qx - ex), ey + 2 / 3 * (qy - ey), ex, ey)
+                        cur = (ex, ey); i += 2
+                    elif cd == 4:                    # CURVE4
+                        p.curveTo(*v[i], *v[i + 1], *v[i + 2]); cur = tuple(v[i + 2]); i += 3
+                    else:                            # CLOSEPOLY
+                        p.close(); cur = start; i += 1
+                c.setLineWidth(self.emb)
+                c.drawPath(p, stroke=1, fill=1, fillMode=FILL_NON_ZERO)
+            elif it[0] == "rect":
+                _, rx, ry, rw, rh = it
+                c.rect(rx, ry, rw, rh, stroke=0, fill=1)
+            else:
+                _, x0, y0, x1, y1 = it
+                lw = self.rule * 1.1
+                c.setLineWidth(lw)
+                c.setLineJoin(0)
+                c.rect(x0 + lw / 2, y0 + lw / 2, x1 - x0 - lw, y1 - y0 - lw, stroke=1, fill=0)
+                c.setLineJoin(1)
+        c.restoreState()
+
+
 def typeset(src: str, base: Style, size: float, fonts: Fonts, cfg: dict) -> Node:
     variables = cfg["typography"]["italic_variables"]
     var_list = bool(re.fullmatch(r"[a-zθ](,[a-zθ])+", src))
@@ -518,6 +686,23 @@ def typeset(src: str, base: Style, size: float, fonts: Fonts, cfg: dict) -> Node
         return items[0] if len(items) == 1 else Row(items)
 
     return parse_until(None, size)
+
+
+TEX_CAP_RATIO = 0.683   # Computer Modern cap height / em
+
+
+def legend(label: str, st: Style, size: float, fonts: Fonts, cfg: dict) -> Node:
+    """Build a legend: TeX (Computer Modern) for math, Noto Sans for everything else.
+    `size` is a Noto Sans size; TeX legends are scaled to the same cap height."""
+    tex = tex_source(label, cfg)
+    if tex is not None:
+        node = TexNode(tex, size * fonts.cap_ratio / TEX_CAP_RATIO * (cfg.get("tex") or {}).get("scale", 1.0), cfg)
+        node.is_tex = True
+        return node
+    node = typeset(normalise(label, cfg), st, size, fonts, cfg)
+    node.cap_h = size * fonts.cap_ratio
+    node.is_tex = False
+    return node
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -703,7 +888,7 @@ class StickerLayout:
         top, bot = self._area(key)
         cy = (top + bot) / 2
         if rc["align"] == "cap":
-            base = cy + size * self.fonts.cap_ratio / PT_PER_MM / 2
+            base = cy + node.cap_h / PT_PER_MM / 2
         else:
             base = cy + (node.asc - node.desc) / 2 / PT_PER_MM
         return self.w / 2 - (node.x0 + node.x1) / 2 / PT_PER_MM, base
@@ -719,11 +904,13 @@ class StickerLayout:
 
     def _try(self, key: Key, role: str, size: float):
         rc = self.cfg["typography"]["roles"][role]
-        label = normalise(key.primary, self.cfg)
         for wd in [s for s in self.steps if rc["min_width"] - 1e-9 <= s <= rc["width"] + 1e-9]:
-            node = typeset(label, Style(rc["weight"], wd, False, role in ("word", "short")), size, self.fonts, self.cfg)
+            node = legend(key.primary, Style(rc["weight"], wd, False, role in ("word", "short")),
+                          size, self.fonts, self.cfg)
             if self._ok(key, node, role, size):
-                return node, wd
+                return node, (0 if node.is_tex else wd)
+            if node.is_tex:
+                break
         return None
 
     def _max_size(self, key: Key, role: str) -> float:
@@ -749,7 +936,7 @@ class StickerLayout:
 
     def secondary(self, key: Key, on_dark: bool) -> list[Placed]:
         col, sec = self.cfg["colors"], self.cfg["typography"]["secondary"]
-        labels = [normalise(s, self.cfg) if s else "" for s in (key.shift, key.alpha)]
+        labels = [s or "" for s in (key.shift, key.alpha)]
         if not any(labels):
             return []
         size = self.sec_size
@@ -758,7 +945,7 @@ class StickerLayout:
         while True:
             for wd in widths_ok:
                 st = Style(sec["weight"], wd, False, False)
-                nodes = [typeset(s, st, size, self.fonts, self.cfg) if s else None for s in labels]
+                nodes = [legend(s, st, size, self.fonts, self.cfg) if s else None for s in labels]
                 need = sum((n.x1 - n.x0) / PT_PER_MM for n in nodes if n) + (sec["gap"] if all(nodes) else 0)
                 if need <= avail + 1e-9:
                     break
@@ -768,6 +955,18 @@ class StickerLayout:
                     raise LayoutError(f"{key.id}: secondary legends do not fit")
                 continue
             break
+        # a tall legend (fraction, integral) is reduced on its own to fit the band
+        cap = sec["cap"]
+
+        def bottom(n):
+            return self.band_base + max(0.0, n.asc / PT_PER_MM - cap) + n.desc / PT_PER_MM
+
+        for i, (n, s) in enumerate(zip(nodes, labels)):
+            f = 1.0
+            while n is not None and bottom(n) > self.primary_top - 0.22 + 1e-9:
+                f *= 0.95
+                n = legend(s, st, size * f, self.fonts, self.cfg)
+            nodes[i] = n
         sc = col["shift_on_dark"] if on_dark else col["shift"]
         ac = col["alpha_on_dark"] if on_dark else col["alpha"]
         out = []
@@ -777,7 +976,7 @@ class StickerLayout:
             x = self.side_pad - n.x0 / PT_PER_MM if side == "L" else self.w - self.side_pad - n.x1 / PT_PER_MM
             # legends that rise above cap height (arrows, exponents, brackets) hang from the
             # same top line instead of poking above it
-            over = max(0.0, n.asc / PT_PER_MM - size * self.fonts.cap_ratio / PT_PER_MM)
+            over = max(0.0, n.asc / PT_PER_MM - cap)
             out.append(Placed(n, x, self.band_base + over, color, size, wd))
         return out
 
@@ -808,7 +1007,7 @@ class StickerLayout:
             for j in range(i + 1, len(rects)):
                 a, b = rects[i], rects[j]
                 if a[0] < b[2] + 0.15 and b[0] < a[2] + 0.15 and a[1] < b[3] + 0.15 and b[1] < a[3] + 0.15:
-                    raise LayoutError(f"{key.id}: legends collide")
+                    raise LayoutError(f"{key.id}: legends collide: " + ", ".join("(%.2f %.2f %.2f %.2f)" % r for r in (a, b)))
 
 
 def draw_sticker_form(c, name: str, key: Key, lay: StickerLayout, cfg: dict) -> list[Placed]:
@@ -1183,10 +1382,10 @@ def main() -> int:
     for kid, pl in report.items():
         p = pl[-1]
         by_role.setdefault(role_of(keys[kid], cfg), set()).add(
-            (round(p.size / PT_PER_MM * fonts.cap_ratio, 2), p.width))
+            (round(p.size / PT_PER_MM * fonts.cap_ratio, 2), p.width or "TeX"))
     for role, vals in sorted(by_role.items()):
         caps = sorted({v[0] for v in vals})
-        widths = sorted({v[1] for v in vals}, reverse=True)
+        widths = sorted({v[1] for v in vals}, key=str, reverse=True)
         print(f"  {role:5s}: cap height {caps[0]:.2f}–{caps[-1]:.2f} mm, widths {widths}")
     if args.verify:
         good = verify(cfg, HERE / o["pdf"], HERE / o["fit_test_pdf"], plan, fit_sizes)

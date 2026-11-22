@@ -75,6 +75,13 @@ void ProductionKeypadScanner::transition(const std::size_t keyIndex,
     }
 }
 
+bool ProductionKeypadScanner::injectEvent(const uint8_t row,
+                                          const uint8_t column,
+                                          const KeyAction action) {
+    if (row >= kRows || column >= kColumns) return false;
+    return pushEvent(index(row, column), action);
+}
+
 bool ProductionKeypadScanner::pushEvent(const std::size_t keyIndex,
                                         const KeyAction action) {
     const auto& mapping = kProductionKeypadMap[keyIndex];

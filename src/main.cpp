@@ -50,6 +50,8 @@ uint8_t setting_brightness = 96;
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 #include "hardware/ProductionSafeStartup.h"
 #include "display/ProductionDisplayRuntime.h"
+#include "input/KeyboardManager.h"
+#include "input/PhysicalKeyRoute.h"
 #endif
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
@@ -104,6 +106,41 @@ static DisplayDriver g_display;
 static SystemApp     g_app(g_display, g_keypad);
 static SerialBridge  g_serial;
 static SplashScreen  g_splash;
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+// Serial keys default to the physical path: PRESS+RELEASE of the matrix key
+// (and its SHIFT/ALPHA plane) is queued at the scanner output, so the
+// resolver, SystemApp and the app see exactly what a pressed key produces.
+// `LKEY <key>` keeps the legacy direct-to-app path (SystemApp::injectKey).
+static void tapMatrixKey(const uint8_t row, const uint8_t col) {
+    g_keypad.injectPhysical(row, col, KeyAction::PRESS);
+    g_keypad.injectPhysical(row, col, KeyAction::RELEASE);
+}
+
+static void injectSerialPhysical(const KeyEvent& ev) {
+    if (ev.row >= 0 && ev.col >= 0) {
+        tapMatrixKey(static_cast<uint8_t>(ev.row), static_cast<uint8_t>(ev.col));
+        return;
+    }
+    const auto route = numos::input::physicalRouteFor(ev.code);
+    if (!route.found) {
+        Serial.printf("[SB] code=%d has no production key; use LKEY\n", (int)ev.code);
+        return;
+    }
+    auto& modifiers = vpam::KeyboardManager::instance();
+    if (route.shift && !modifiers.isShift()) {
+        const auto shift = numos::input::physicalRouteFor(KeyCode::SHIFT);
+        tapMatrixKey(shift.row, shift.col);
+    }
+    if (route.alpha && !modifiers.isAlpha()) {
+        const auto alpha = numos::input::physicalRouteFor(KeyCode::ALPHA);
+        tapMatrixKey(alpha.row, alpha.col);
+    }
+    tapMatrixKey(route.row, route.col);
+    Serial.printf("[SB] physical r%u c%u%s%s\n", unsigned(route.row), unsigned(route.col),
+                  route.shift ? " +shift" : "", route.alpha ? " +alpha" : "");
+}
+#endif
+
 #if NUMOS_PRODUCTION_DEMO_PROFILE
 static uint32_t g_demoLauncherReadyMs = 0;
 static numos::demo::DemoDiagnostics g_demoDiagnostics(
@@ -403,7 +440,14 @@ void loop() {
 #endif
 
     KeyEvent serialEv;
-    while (g_serial.pollEvent(serialEv)) {
+    bool serialDirect = false;
+    while (g_serial.pollEvent(serialEv, &serialDirect)) {
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+        if (!serialDirect) {
+            injectSerialPhysical(serialEv);
+            continue;
+        }
+#endif
         g_app.injectKey(serialEv);
     }
 

@@ -21,7 +21,7 @@ key =
 key 1
 key enter
 wait 80
-key graph
+lkey graph
 wait 80
 # Trace mode on an implicit curve (evalAt returns NaN -> cursor hidden, no crash)
 key enter

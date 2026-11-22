@@ -7,22 +7,22 @@ log "home_return: baseline launcher"
 wait 180
 assert_app Menu
 # 1) HOME from Expressions
-key graph
+lkey graph
 wait 40
 assert_app Grapher
 key home
 wait 50
 assert_app Menu
 # 2) HOME from Graph tab
-key graph
+lkey graph
 wait 30
-key graph
+lkey graph
 wait 40
 key home
 wait 50
 assert_app Menu
 # 3) HOME from Table tab
-key graph
+lkey graph
 wait 30
 key table
 wait 40
@@ -30,14 +30,14 @@ key home
 wait 50
 assert_app Menu
 # 4) HOME from Trace (commit y=x, Graph tab, ENTER toggles trace -> POI timer)
-key graph
+lkey graph
 wait 30
 key down
 key enter
 key x
 key enter
 wait 30
-key graph
+lkey graph
 wait 30
 key enter
 wait 40
@@ -45,7 +45,7 @@ key home
 wait 50
 assert_app Menu
 # 5) HOME from Templates modal (add empty slot, RIGHT opens templates)
-key graph
+lkey graph
 wait 30
 key down
 key enter
@@ -55,7 +55,7 @@ key home
 wait 50
 assert_app Menu
 # 6) HOME mid-edit (partial expression, never committed)
-key graph
+lkey graph
 wait 30
 key down
 key enter
@@ -64,7 +64,7 @@ key home
 wait 50
 assert_app Menu
 # 7) re-entry still works after all that
-key graph
+lkey graph
 wait 40
 assert_app Grapher
 key home

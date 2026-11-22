@@ -45,7 +45,7 @@ key lt
 key 1
 key enter
 wait 60
-key graph
+lkey graph
 wait 120
 screenshot out/grapher_mixed_relations_graph.ppm
 key table

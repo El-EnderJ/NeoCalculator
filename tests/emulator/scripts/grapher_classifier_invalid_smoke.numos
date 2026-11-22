@@ -36,7 +36,7 @@ assert_graph_slot_invalid_reason 1 one-sided
 assert_graph_slot_kind 2 invalid
 assert_graph_slot_invalid_reason 2 one-sided
 screenshot out/grapher_classifier_invalid_expr.ppm
-key graph
+lkey graph
 wait 200
 assert_graph_trace_state navigate
 screenshot out/grapher_classifier_invalid_graph.ppm

@@ -25,12 +25,12 @@ key =
 key 1
 key enter
 wait 80
-key graph
+lkey graph
 wait 80
 # TRACE -> NAVIGATE, then zoom in 3x (centered on origin) so the circle is large.
-key zoom
-key zoom
-key zoom
+lkey zoom
+lkey zoom
+lkey zoom
 wait 150
 screenshot out/grapher_implicit_circle_smoke.ppm
 assert_app Grapher

@@ -121,6 +121,7 @@
 #include "../input/LvglKeypad.h"
 #include "../input/KeyboardManager.h"
 #include "../input/KeySemanticResolver.h"
+#include "../input/PhysicalKeyRoute.h"
 #include "../input/generated/ProductionKeypadMap.generated.h"
 #include "../apps/CalculationApp.h"
 #include "../apps/CalculusApp.h"
@@ -726,10 +727,13 @@ static KeyCode scriptNameToKeyCode(const std::string& raw)
 // despacho: MENU sintetiza PRESS+RELEASE para gridnav (solo en isDown), CALC
 // reenvia a CalculationApp::handleKey con el caso especial MODE -> returnToMenu.
 // ════════════════════════════════════════════════════════════════════════════
-static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
+static void dispatchEvent(const KeyEvent& event, bool isDown)
 {
-    KeyEvent modalEvent{}; modalEvent.code=kc; modalEvent.action=action;
-    if(ui::toolbox::searching() && action!=KeyAction::RELEASE && vpam::KeyboardManager::instance().isAlpha() && kc!=KeyCode::ALPHA && kc!=KeyCode::SHIFT) {
+    const KeyCode kc = event.code;
+    const KeyAction action = event.action;
+    KeyEvent modalEvent = event;
+    // Logical (direct) keys only: a physical event was already resolved.
+    if(event.row<0 && ui::toolbox::searching() && action!=KeyAction::RELEASE && vpam::KeyboardManager::instance().isAlpha() && kc!=KeyCode::ALPHA && kc!=KeyCode::SHIFT) {
         auto resolved=numos::input::KeySemanticResolver::resolve(kc,numos::input::InputContext::Text,action);
         if(resolved.dispatch){modalEvent.code=resolved.code;modalEvent.semanticId=uint16_t(resolved.semantic);modalEvent.text=resolved.text;}
     }
@@ -834,11 +838,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_equationsApp) {
-                KeyEvent ke;
-                ke.code = kc;
-                ke.action = action;
-                ke.row = -1;
-                ke.col = -1;
+                KeyEvent ke = event;
                 g_equationsApp->handleKey(ke);
             }
             break;
@@ -853,11 +853,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             // RELEASE. handleKey() lo ignora igual que en el firmware
             // (CalculationApp.cpp filtra todo lo que no sea PRESS/REPEAT).
             {
-                KeyEvent ke;
-                ke.code   = kc;
-                ke.action = action;
-                ke.row    = -1;
-                ke.col    = -1;
+                KeyEvent ke = event;
                 if (!g_opts.quiet) {
                     std::printf("[CALC] handleKey(code=%d action=%d)\n",
                                 static_cast<int>(kc),
@@ -873,11 +869,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_calculusApp) {
-                KeyEvent ke;
-                ke.code = kc;
-                ke.action = action;
-                ke.row = -1;
-                ke.col = -1;
+                KeyEvent ke = event;
                 g_calculusApp->handleKey(ke);
             }
             break;
@@ -891,11 +883,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_settingsApp) {
-                KeyEvent ke;
-                ke.code   = kc;
-                ke.action = action;
-                ke.row    = -1;
-                ke.col    = -1;
+                KeyEvent ke = event;
                 g_settingsApp->handleKey(ke);
             }
             break;
@@ -908,11 +896,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_statsApp) {
-                KeyEvent ke;
-                ke.code   = kc;
-                ke.action = action;
-                ke.row    = -1;
-                ke.col    = -1;
+                KeyEvent ke = event;
                 g_statsApp->handleKey(ke);
             }
             break;
@@ -925,11 +909,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_probApp) {
-                KeyEvent ke;
-                ke.code   = kc;
-                ke.action = action;
-                ke.row    = -1;
-                ke.col    = -1;
+                KeyEvent ke = event;
                 g_probApp->handleKey(ke);
             }
             break;
@@ -942,11 +922,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_seqApp) {
-                KeyEvent ke;
-                ke.code   = kc;
-                ke.action = action;
-                ke.row    = -1;
-                ke.col    = -1;
+                KeyEvent ke = event;
                 g_seqApp->handleKey(ke);
             }
             break;
@@ -959,11 +935,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_regApp) {
-                KeyEvent ke;
-                ke.code   = kc;
-                ke.action = action;
-                ke.row    = -1;
-                ke.col    = -1;
+                KeyEvent ke = event;
                 g_regApp->handleKey(ke);
             }
             break;
@@ -977,11 +949,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_grapherApp) {
-                KeyEvent ke;
-                ke.code   = kc;
-                ke.action = action;
-                ke.row    = -1;
-                ke.col    = -1;
+                KeyEvent ke = event;
                 g_grapherApp->handleKey(ke);
             }
             break;
@@ -992,11 +960,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_mathVisualApp) {
-                KeyEvent ke;
-                ke.code = kc;
-                ke.action = action;
-                ke.row = -1;
-                ke.col = -1;
+                KeyEvent ke = event;
                 g_mathVisualApp->handleKey(ke);
             }
             break;
@@ -1008,11 +972,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 break;
             }
             if (g_neoLangApp) {
-                KeyEvent ke;
-                ke.code   = kc;
-                ke.action = action;
-                ke.row    = -1;
-                ke.col    = -1;
+                KeyEvent ke = event;
                 g_neoLangApp->handleKey(ke);
             }
             break;
@@ -1035,6 +995,68 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                 }
             }
             break;
+    }
+}
+
+// Logical (direct-to-app) key: no matrix position, no production resolver.
+static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
+{
+    KeyEvent event{};
+    event.code = kc;
+    event.action = action;
+    dispatchEvent(event, isDown);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// dispatchPhysical — DEVICE-INPUT-PATH-01: one matrix event, exactly as the
+// firmware handles a scanned key (SystemApp::handleKey on the production
+// board): RELEASE only reaches the Toolbox; an open Toolbox owns SHIFT/ALPHA;
+// everything else goes through KeySemanticResolver (which owns the modifiers)
+// and the resolved code, semantic id and text reach the application.
+// ════════════════════════════════════════════════════════════════════════════
+static void dispatchPhysical(int row, int col, KeyAction action)
+{
+    KeyEvent raw{};
+    raw.code = numos::input::physicalKeyCodeAt(row, col);
+    raw.action = action;
+    raw.row = row;
+    raw.col = col;
+    if (raw.code == KeyCode::NONE) return;
+    if (action == KeyAction::RELEASE) { ui::toolbox::handle(raw); return; }
+    if (ui::toolbox::active() &&
+        (raw.code == KeyCode::SHIFT || raw.code == KeyCode::ALPHA) &&
+        ui::toolbox::handle(raw)) return;
+    auto context = ui::toolbox::searching() ? numos::input::InputContext::Text
+                                            : numos::input::InputContext::Math;
+#if defined(NUMOS_NEO_APP_SMOKE)
+    if (g_mode == AppMode::NEO_LANGUAGE) context = numos::input::InputContext::Code;
+#endif
+    const auto resolved = numos::input::KeySemanticResolver::resolve(raw.code, context, action);
+    if (!resolved.dispatch) return;
+    KeyEvent event = raw;
+    event.code = resolved.code;
+    event.semanticId = static_cast<uint16_t>(resolved.semantic);
+    event.text = resolved.text;
+    dispatchEvent(event, action == KeyAction::PRESS);
+}
+
+static void tapPhysical(int row, int col)
+{
+    dispatchPhysical(row, col, KeyAction::PRESS);
+    dispatchPhysical(row, col, KeyAction::RELEASE);
+}
+
+// Latch the modifier plane a logical key needs (unless already latched).
+static void latchPhysicalModifiers(const numos::input::PhysicalKeyRoute& route)
+{
+    const auto& km = vpam::KeyboardManager::instance();
+    if (route.shift && !km.isShift()) {
+        const auto shift = numos::input::physicalRouteFor(KeyCode::SHIFT);
+        tapPhysical(shift.row, shift.col);
+    }
+    if (route.alpha && !km.isAlpha()) {
+        const auto alpha = numos::input::physicalRouteFor(KeyCode::ALPHA);
+        tapPhysical(alpha.row, alpha.col);
     }
 }
 
@@ -1974,6 +1996,7 @@ enum class ScriptCmdType : uint8_t {
 struct ScriptCmd {
     ScriptCmdType type;
     KeyCode       key   = KeyCode::NONE;  // Key/KeyDown/KeyUp
+    bool          logical = false;        // lkey*: direct-to-app (no matrix/resolver)
     long          waitN = 0;              // Wait (frames) / OpenApp (id resuelto) /
                                           // AssertVariable (nombre de variable como char)
     std::string   strArg;                 // Screenshot (ruta) / Log (mensaje) /
@@ -2117,17 +2140,29 @@ static bool loadScript(const char* path)
             sc.type  = ScriptCmdType::Wait;
             sc.waitN = n;
         }
-        else if (lc == "key" || lc == "keydown" || lc == "keyup" || lc == "keyrepeat") {
+        else if (lc == "key" || lc == "keydown" || lc == "keyup" || lc == "keyrepeat" ||
+                 lc == "lkey" || lc == "lkeydown" || lc == "lkeyup" || lc == "lkeyrepeat") {
+            // DEVICE-INPUT-PATH-01: key* injects through the production matrix
+            // path (scanner event -> KeySemanticResolver -> app), like a pressed
+            // key. lkey* is the explicit direct-to-app logical path.
+            const bool logical = lc[0] == 'l';
+            const std::string verb = logical ? lc.substr(1) : lc;
             std::string name, extra;
             if (!(iss >> name)) return scriptErr(path, lineNo, "key/keydown/keyup requieren un NOMBRE de tecla");
             if (iss >> extra)   return scriptErr(path, lineNo, "demasiados argumentos para una tecla");
             KeyCode kc = scriptNameToKeyCode(name);
             if (kc == KeyCode::NONE) return scriptErr(path, lineNo, "nombre de tecla desconocido");
-            sc.type = (lc == "key")     ? ScriptCmdType::Key
-                    : (lc == "keydown") ? ScriptCmdType::KeyDown
-                    : (lc == "keyrepeat") ? ScriptCmdType::KeyRepeat
-                                        : ScriptCmdType::KeyUp;
+            // On the keypad "=" is the equals-sign key; FREE_EQ (approximate)
+            // is SHIFT+EXE and keeps its own names (freeeq / sd).
+            if (!logical && name == "=") kc = KeyCode::EQUAL;
+            if (!logical && !numos::input::physicalRouteFor(kc).found)
+                return scriptErr(path, lineNo, "la tecla no existe en el teclado de produccion; usa lkey");
+            sc.type = (verb == "key")     ? ScriptCmdType::Key
+                    : (verb == "keydown") ? ScriptCmdType::KeyDown
+                    : (verb == "keyrepeat") ? ScriptCmdType::KeyRepeat
+                                          : ScriptCmdType::KeyUp;
             sc.key  = kc;
+            sc.logical = logical;
         }
         else if (lc == "sdl_text" || lc == "sdl_down" || lc == "sdl_up" || lc == "sdl_repeat") {
             std::string value;
@@ -3253,18 +3288,23 @@ static void scriptStepBegin()
             g_scriptWait = sc.waitN;     // 0 => el siguiente comando corre el proximo frame
             break;
         case ScriptCmdType::Key:
-            dispatchKey(sc.key, KeyAction::PRESS,   true);
-            dispatchKey(sc.key, KeyAction::RELEASE, false);
-            break;
         case ScriptCmdType::KeyDown:
-            dispatchKey(sc.key, KeyAction::PRESS, true);
-            break;
         case ScriptCmdType::KeyRepeat:
-            dispatchKey(sc.key, KeyAction::REPEAT, true);
+        case ScriptCmdType::KeyUp: {
+            const KeyAction action = sc.type == ScriptCmdType::KeyUp ? KeyAction::RELEASE
+                : sc.type == ScriptCmdType::KeyRepeat ? KeyAction::REPEAT : KeyAction::PRESS;
+            if (sc.logical) {
+                dispatchKey(sc.key, action, action != KeyAction::RELEASE);
+                if (sc.type == ScriptCmdType::Key) dispatchKey(sc.key, KeyAction::RELEASE, false);
+                break;
+            }
+            const auto route = numos::input::physicalRouteFor(sc.key);
+            if (sc.type == ScriptCmdType::Key || sc.type == ScriptCmdType::KeyDown)
+                latchPhysicalModifiers(route);
+            dispatchPhysical(route.row, route.col, action);
+            if (sc.type == ScriptCmdType::Key) dispatchPhysical(route.row, route.col, KeyAction::RELEASE);
             break;
-        case ScriptCmdType::KeyUp:
-            dispatchKey(sc.key, KeyAction::RELEASE, false);
-            break;
+        }
         case ScriptCmdType::SdlText:
         case ScriptCmdType::SdlDown:
         case ScriptCmdType::SdlUp:

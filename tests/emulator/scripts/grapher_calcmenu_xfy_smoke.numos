@@ -35,7 +35,7 @@ key enter
 wait 50
 # Graph opens directly in a centred Trace for x=f(y); ENTER opens the Calculate menu
 # with Root/Minimum/Maximum/Integral/Tangent all available (Intersection greyed).
-key graph
+lkey graph
 wait 120
 key enter
 wait 80

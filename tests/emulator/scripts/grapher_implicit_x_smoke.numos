@@ -18,7 +18,7 @@ key enter
 key x
 key enter
 wait 80
-key graph
+lkey graph
 wait 120
 # Flush the deliberately-deferred first replot without panning/zooming/tracing:
 # ac: TRACE->NAVIGATE (no viewport change); 0: neutral key -> handleGraphNav replot.

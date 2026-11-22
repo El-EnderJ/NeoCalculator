@@ -33,6 +33,10 @@ public:
     static constexpr int CONNECTED_COLS = 0; // Legacy CAM hardware remains off.
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // Physical-equivalent injection (serial test harness): queues an event
+    // at the scanner output, so it is dispatched exactly like a pressed key.
+    bool injectPhysical(uint8_t row, uint8_t column, KeyAction action);
+
     const numos::input::ProductionKeyState& diagnosticState(
         uint8_t row, uint8_t column) const;
     uint16_t diagnosticActiveColumns(uint8_t row) const;

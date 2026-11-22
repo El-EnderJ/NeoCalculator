@@ -57,7 +57,7 @@ key down
 key enter
 wait 30
 screenshot out/grapher_template_all_expr.ppm
-key graph
+lkey graph
 wait 100
 key ac
 key 0

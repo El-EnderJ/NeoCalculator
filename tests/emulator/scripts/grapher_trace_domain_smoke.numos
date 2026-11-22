@@ -21,7 +21,7 @@ key x
 key right
 key enter
 wait 60
-key graph
+lkey graph
 wait 60
 key enter
 wait 20

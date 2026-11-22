@@ -2,7 +2,7 @@
 wait 200
 open_app Calculus
 wait 60
-key GRAPH
+lkey GRAPH
 key sin
 key sin
 key x

@@ -22,13 +22,13 @@ key =
 key 1
 key enter
 wait 80
-key graph
+lkey graph
 wait 80
 # TRACE -> NAVIGATE, then zoom in 3x (centered on origin).
 key ac
-key zoom
-key zoom
-key zoom
+lkey zoom
+lkey zoom
+lkey zoom
 wait 150
 screenshot out/grapher_aspect_circle_smoke.ppm
 assert_app Grapher

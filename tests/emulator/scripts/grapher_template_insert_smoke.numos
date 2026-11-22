@@ -16,7 +16,7 @@ key down
 key enter
 wait 40
 screenshot out/grapher_template_insert_smoke.ppm
-key graph
+lkey graph
 wait 100
 key ac
 key 0

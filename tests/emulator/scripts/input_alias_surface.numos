@@ -35,12 +35,14 @@ wait 200
 # Phase 9A additions (must resolve to LOG_BASE / ZOOM — existing KeyCodes).
 key logbase
 key log_n
-key zoom
+lkey zoom
 
 # Phase 8B + app/var/const alias surface (all map to existing KeyCodes).
 key ans
 key preans
-key exe
+# DEVICE-INPUT-PATH-01: the physical EXE key is ENTER and launches the
+# focused app, so the no-op batch keeps the logical EXE code.
+lkey exe
 key table
 key f1
 key f2
@@ -65,6 +67,12 @@ key dot
 key sd
 key freeeq
 wait 20
+# DEVICE-INPUT-PATH-01: on the keypad SHIFT+EXE (sd/freeeq) keeps SHIFT
+# latched and SHIFT+HOME is SETUP, so release it (Once -> Locked -> Off).
+assert_modifier shift
+key shift
+key shift
+assert_modifier none
 
 # Still at the launcher: none of the tokens above is an LVGL nav key, so nothing
 # launched. (Phase 9F: `graph` is tested separately below — it now LAUNCHES the
@@ -75,7 +83,7 @@ log "input_alias_surface: PASS - alias tokens parsed and dispatched (still at Me
 # Phase 9F: `graph` (GRAPH) is no longer a launcher no-op — it opens the Grapher
 # (NativeHal dispatchKey MENU -> launchApp(1)). Validate its parse + new dispatch
 # semantics, then return home so the canary ends back at the launcher.
-key graph
+lkey graph
 wait 20
 assert_app Grapher
 key home

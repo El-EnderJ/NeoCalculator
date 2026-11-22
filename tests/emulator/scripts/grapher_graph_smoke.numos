@@ -75,7 +75,7 @@ key enter
 wait 80
 
 # Switch to the Graph tab (createGraphPanel + native Kandinsky buffer allocation).
-key graph
+lkey graph
 wait 120
 
 # Flush the app's deliberately-deferred first replot WITHOUT panning/zooming/tracing:

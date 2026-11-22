@@ -22,12 +22,12 @@ key lt
 key 1
 key enter
 wait 80
-key graph
+lkey graph
 wait 60
 # Pan->zoom 3x centered on origin so the disk fills the view.
-key zoom
-key zoom
-key zoom
+lkey zoom
+lkey zoom
+lkey zoom
 wait 120
 screenshot out/grapher_ineq_disk_smoke.ppm
 assert_app Grapher

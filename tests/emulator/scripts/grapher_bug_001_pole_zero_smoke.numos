@@ -30,15 +30,15 @@ wait 60
 assert_graph_relation_count 1
 assert_graph_slot_kind 0 explicitY
 assert_graph_slot_valid 0
-key graph
+lkey graph
 wait 100
 assert_app Grapher
 assert_graph_trace_state trace
 screenshot out/grapher_bug_001_pole_zero_default.ppm
 wait 5
-key zoom
+lkey zoom
 wait 40
-key zoom
+lkey zoom
 wait 60
 assert_app Grapher
 assert_graph_trace_state trace

@@ -158,6 +158,11 @@ bool Keyboard::pollEvent(KeyEvent& event) {
     return _productionScanner.pollEvent(event);
 }
 
+bool Keyboard::injectPhysical(const uint8_t row, const uint8_t column,
+                              const KeyAction action) {
+    return _productionScanner.injectEvent(row, column, action);
+}
+
 void Keyboard::setEnabled(const bool enabled) {
     if (!_initialized || _enabled == enabled) return;
     if (!enabled) {

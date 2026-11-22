@@ -14,7 +14,7 @@ key =
 key x
 key enter
 wait 80
-key graph
+lkey graph
 wait 80
 # flush deferred first replot via a neutral nav key, then screenshot
 key ac

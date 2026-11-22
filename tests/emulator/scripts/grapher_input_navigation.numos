@@ -47,7 +47,7 @@ key enter
 wait 80
 
 # Graph tab (lazy Kandinsky panel; TRACE mode; first replot deferred).
-key graph
+lkey graph
 wait 120
 
 # AC: TRACE -> NAVIGATE (no viewport change; does NOT exit the app).

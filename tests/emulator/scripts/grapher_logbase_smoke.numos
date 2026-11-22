@@ -38,7 +38,7 @@ key enter
 wait 40
 
 # Plot and tabulate (must not hang on the change-of-base expression).
-key graph
+lkey graph
 wait 80
 key ac
 key 0

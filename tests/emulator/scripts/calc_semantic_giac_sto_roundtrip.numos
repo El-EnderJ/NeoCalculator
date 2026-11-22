@@ -28,8 +28,10 @@ assert_variable A 4
 key ac
 wait 10
 
+# DEVICE-INPUT-PATH-01: A is ALPHA + x,t,θ,n on the production keypad; the
+# legacy ALPHA + 1 chord is "{" there. Storing still uses STO 1 (see report).
 key alpha
-key 1
+key x
 key +
 key 1
 key ENTER

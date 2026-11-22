@@ -84,7 +84,7 @@ key enter
 
 # Switch Data -> Equation: GRAPH is the only key that leaves the Data tab, and it triggers
 # recompute() + updateEquationDisplay() over the typed points {(1,2),(2,4),(3,6)} -> y = 2x.
-key graph
+lkey graph
 wait 120
 
 # Screenshot FIRST so the artifact exists even if a later assertion fails.

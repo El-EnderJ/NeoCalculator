@@ -16,7 +16,7 @@ key ^
 key 2
 key enter
 wait 80
-key graph
+lkey graph
 wait 80
 key ac
 key 0

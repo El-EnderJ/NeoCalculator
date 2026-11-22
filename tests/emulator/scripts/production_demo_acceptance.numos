@@ -61,8 +61,10 @@ key 1
 wait 20
 assert_variable A 4
 key ac
+# DEVICE-INPUT-PATH-01: A is ALPHA + x,t,θ,n on the production keypad; the
+# legacy ALPHA + 1 chord is "{" there. Storing still uses STO 1 (see report).
 key alpha
-key 1
+key x
 key +
 key 2
 key enter
@@ -113,7 +115,7 @@ assert_graph_engine giac
 assert_graph_slot_valid 0
 assert_graph_compile_status 0 ok
 assert_graph_eval_near 0 2 4 1e-9
-key graph
+lkey graph
 wait 30
 key home
 wait 60

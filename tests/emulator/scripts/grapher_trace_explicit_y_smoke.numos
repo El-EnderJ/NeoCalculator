@@ -34,7 +34,7 @@ key right
 key enter
 wait 80
 # Graph tab opens directly in a centred Trace for an x=f(y) curve (no ENTER needed).
-key graph
+lkey graph
 wait 100
 # Walk the cursor up the parabola along y; x = y^2 is recomputed and re-centred each step.
 key right

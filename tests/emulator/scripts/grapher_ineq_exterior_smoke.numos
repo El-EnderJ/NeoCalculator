@@ -20,10 +20,10 @@ key gt
 key 1
 key enter
 wait 80
-key graph
+lkey graph
 wait 60
-key zoom
-key zoom
+lkey zoom
+lkey zoom
 wait 120
 screenshot out/grapher_ineq_exterior_smoke.ppm
 assert_app Grapher

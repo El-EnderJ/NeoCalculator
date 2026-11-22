@@ -41,9 +41,9 @@ key enter
 wait 60
 # Phase 10G: the Graph tab opens directly in a centred Trace for an implicit
 # equation; zoom once so the circle is large, then ENTER opens the Calculate menu.
-key graph
+lkey graph
 wait 60
-key zoom
+lkey zoom
 wait 40
 key enter
 wait 80

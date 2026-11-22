@@ -36,6 +36,14 @@
  *   S            → SHIFT
  *   g            → GRAPH
  *   t            → SIN  (trig shortcut)
+ *
+ * Injection path (production WROOM board): every key is queued at the keypad
+ * scanner output as PRESS+RELEASE of the matrix key that produces it (with
+ * SHIFT/ALPHA first when it lives on a modifier plane), so it takes exactly
+ * the path of a pressed key: KeySemanticResolver -> SystemApp -> app.
+ *   P <row> <col>   press+release one electrical matrix position
+ *   LKEY <key>      direct-to-app logical key (the legacy path, no resolver)
+ * Boards without the production scanner keep the direct path.
  */
 
 #pragma once
@@ -58,19 +66,22 @@ public:
 
     /// Non-blocking: reads available serial chars, pushes events.
     /// Returns true if at least one event was generated.
-    bool pollEvent(KeyEvent &outEvent);
+    bool pollEvent(KeyEvent &outEvent, bool* direct = nullptr);
     void setLineHandler(LineHandler handler, void* context);
 
 private:
     // Small circular buffer for generated events
     static const int BUF_SIZE = 32;
     KeyEvent _buf[BUF_SIZE];
+    bool _bufDirect[BUF_SIZE];
+    bool _lineDirect = false;   // current line carries the LKEY prefix
     int _head;
     int _tail;
     LineHandler _lineHandler = nullptr;
     void* _lineHandlerContext = nullptr;
 
     void push(KeyCode code, const char* label);
-    bool pop(KeyEvent &out);
+    void pushMatrix(int row, int col);
+    bool pop(KeyEvent &out, bool* direct);
     void processChar(int ch);
 };

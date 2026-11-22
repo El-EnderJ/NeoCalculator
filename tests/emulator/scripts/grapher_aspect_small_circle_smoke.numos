@@ -21,12 +21,12 @@ key ^
 key 2
 key enter
 wait 80
-key graph
+lkey graph
 wait 80
 key ac
-key zoom
-key zoom
-key zoom
+lkey zoom
+lkey zoom
+lkey zoom
 wait 150
 screenshot out/grapher_aspect_small_circle_smoke.ppm
 assert_app Grapher

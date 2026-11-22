@@ -46,7 +46,7 @@ key log
 key x
 key enter
 wait 40
-key graph
+lkey graph
 wait 100
 key ac
 key 0

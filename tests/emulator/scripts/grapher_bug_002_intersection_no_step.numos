@@ -43,7 +43,7 @@ wait 40
 assert_graph_relation_count 2
 assert_graph_slot_kind 0 explicitY
 assert_graph_slot_kind 1 implicit
-key graph
+lkey graph
 wait 120
 assert_graph_trace_state trace
 # Open Calculate immediately — NO trace-step arrow first. The menu-open seeds

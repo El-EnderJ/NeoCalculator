@@ -21,7 +21,7 @@ key 4
 key y
 key enter
 wait 80
-key graph
+lkey graph
 wait 120
 screenshot out/grapher_ineq_halfplane_smoke.ppm
 assert_app Grapher

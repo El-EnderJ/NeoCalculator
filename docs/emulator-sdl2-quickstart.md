@@ -546,8 +546,9 @@ contain spaces.
 |:--|:--|
 | `# ...` | Comment (whole line ignored). Blank lines ignored too. |
 | `wait N` | Idle `N` emulator frames (`N ≥ 0`). At `--step-ms 16`, `N` frames ≈ `16·N` ms of virtual time. |
-| `key NAME` | Inject a PRESS+RELEASE pulse of `NAME` (the normal "tap a key"). |
-| `keydown NAME` / `keyup NAME` | Inject only the press / only the release. |
+| `key NAME` | Inject a PRESS+RELEASE pulse of `NAME` (the normal "tap a key") **through the production keypad path** (DEVICE-INPUT-PATH-01): `NAME` is mapped to the matrix key that produces it (SHIFT/ALPHA is latched first when it lives on a modifier plane), and the event goes through `KeySemanticResolver` exactly as on the PCB (`SystemApp::handleKey`): EXE resolves to ENTER, SHIFT/ALPHA are consumed by the resolver, RELEASE only reaches the Toolbox. `=` is the equals-sign key; `/`, `frac`, `div` are the fraction-template key; `mode` is HOME. A name with no production key (e.g. `graph`, `zoom`) is a parse error. |
+| `keydown NAME` / `keyup NAME` / `keyrepeat NAME` | Inject only the press / only the release / one repeat, on the same production path. |
+| `lkey NAME` (`lkeydown`, `lkeyup`, `lkeyrepeat`) | Legacy **direct-to-app logical** key: the `KeyCode` goes straight to the app with no matrix position and no resolver. Use it only for keys that do not exist on the production keypad, and say why in a comment. |
 | `screenshot PATH` | Dump a 320×240 PPM at `PATH`, captured *after* this frame's render. |
 | `log "message"` | Print `message` to stdout (handy for CI log markers). |
 | `open_app NAME` | (Phase 5A) Launch an app directly by name through the same `launchApp()` the launcher uses — deterministic, no fragile grid navigation. `NAME` ∈ `Calculation`/`Statistics`/`Probability`/`Sequences`/`Regression`/`Settings`/`MathShowcase` (aliases `Calc`, `Stats`, `Prob`, `Seq`, `Reg`, `Showcase`/`Math_Showcase`). Use it from the launcher (MENU) state. |

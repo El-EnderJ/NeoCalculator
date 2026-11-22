@@ -45,6 +45,10 @@ public:
     void ingestRow(uint8_t row, uint16_t pressedColumns, uint32_t nowMs);
 
     bool pollEvent(KeyEvent& event);
+    // Test seam: queue one event for (row,column) exactly as the debouncer
+    // would after a stable transition. The event then takes the same path as
+    // a pressed key (resolver, SystemApp, application).
+    bool injectEvent(uint8_t row, uint8_t column, KeyAction action);
     void forceReleaseAll(uint32_t nowMs);
     void reset();
 

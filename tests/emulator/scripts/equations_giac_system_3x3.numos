@@ -1,4 +1,7 @@
 # GIAC-D01: enabled 3x3 mode; ALPHA+y authors z in the AST.
+# DEVICE-INPUT-PATH-01: lowercase z is only reachable through the legacy
+# logical chord ALPHA + y (lkey). On the production keypad ALPHA + 6 gives
+# uppercase Z, which the solver does not take as the third unknown (open).
 wait 200
 open_app Equations
 wait 60
@@ -8,8 +11,8 @@ key x
 key +
 key y
 key +
-key ALPHA
-key y
+lkey ALPHA
+lkey y
 key =
 key 6
 key ENTER
@@ -22,8 +25,8 @@ key x
 key -
 key y
 key +
-key ALPHA
-key y
+lkey ALPHA
+lkey y
 key =
 key 3
 key ENTER
@@ -36,8 +39,8 @@ key 2
 key *
 key y
 key -
-key ALPHA
-key y
+lkey ALPHA
+lkey y
 key =
 key 2
 key ENTER

@@ -72,7 +72,7 @@ key enter
 
 # Switch Data -> Stats: GRAPH is the only key that leaves the Data tab, and it triggers
 # recompute() + updateStatsDisplay() over the typed dataset {1,2,3}.
-key graph
+lkey graph
 wait 120
 
 # Screenshot FIRST so the artifact exists even if a later assertion fails.

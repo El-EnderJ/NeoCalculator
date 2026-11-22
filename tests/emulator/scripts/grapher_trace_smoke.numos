@@ -69,7 +69,7 @@ key enter
 wait 80
 
 # Switch to the Graph tab (TRACE mode by default; first replot is deferred).
-key graph
+lkey graph
 wait 120
 
 # Advance the trace cursor once: triggers the first replot (curve) AND reveals the

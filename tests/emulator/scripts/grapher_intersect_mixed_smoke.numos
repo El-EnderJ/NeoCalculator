@@ -48,7 +48,7 @@ key enter
 wait 40
 # The line auto-traces on Graph entry; one RIGHT step recomputes POIs (the cross-
 # kind finder runs in the async POI pass) and the markers paint on completion.
-key graph
+lkey graph
 wait 80
 key right
 wait 220

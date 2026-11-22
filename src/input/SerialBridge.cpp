@@ -20,9 +20,11 @@
  */
 
 #include "SerialBridge.h"
+#include "PhysicalKeyRoute.h"
 #include "NumosSerialBackend.h"
 #include "math/giac/GiacBridge.h"
 #include <ctype.h>
+#include <cstdio>
 #include <string>
 #include <algorithm>
 
@@ -32,6 +34,7 @@ SerialBridge::SerialBridge()
     : _head(0), _tail(0)
 {
     memset(_buf, 0, sizeof(_buf));
+    memset(_bufDirect, 0, sizeof(_bufDirect));
 }
 
 void SerialBridge::begin() {
@@ -80,24 +83,45 @@ void SerialBridge::push(KeyCode code, const char* label) {
     if (next == _tail) return;  // Buffer full, drop event
 
     _buf[_head] = ev;
+    _bufDirect[_head] = _lineDirect;
     _head = next;
 
     // Debug feedback
-    Serial.print("[Key] PC Input: '");
+    Serial.print(_lineDirect ? "[Key] PC Input (direct): '" : "[Key] PC Input: '");
     Serial.print(label);
     Serial.println("'");
 }
 
-bool SerialBridge::pop(KeyEvent &out) {
+void SerialBridge::pushMatrix(int row, int col) {
+    const KeyCode code = numos::input::physicalKeyCodeAt(row, col);
+    if (code == KeyCode::NONE) {
+        Serial.printf("[SB] No matrix key at r%d c%d\n", row, col);
+        return;
+    }
+    int next = (_head + 1) % BUF_SIZE;
+    if (next == _tail) return;
+    KeyEvent ev;
+    ev.code = code;
+    ev.action = KeyAction::PRESS;
+    ev.row = row;
+    ev.col = col;
+    _buf[_head] = ev;
+    _bufDirect[_head] = false;
+    _head = next;
+    Serial.printf("[Key] PC Input: matrix r%d c%d\n", row, col);
+}
+
+bool SerialBridge::pop(KeyEvent &out, bool* direct) {
     if (_tail == _head) return false;
     out = _buf[_tail];
+    if (direct) *direct = _bufDirect[_tail];
     _tail = (_tail + 1) % BUF_SIZE;
     return true;
 }
 
 // ── Main API ──
 
-bool SerialBridge::pollEvent(KeyEvent &outEvent) {
+bool SerialBridge::pollEvent(KeyEvent &outEvent, bool* direct) {
     // 1. Read all available serial chars and convert to events
     while (Serial.available() > 0) {
         int ch = Serial.read();
@@ -105,7 +129,7 @@ bool SerialBridge::pollEvent(KeyEvent &outEvent) {
     }
 
     // 2. Pop one event from queue
-    return pop(outEvent);
+    return pop(outEvent, direct);
 }
 
 // ── Character → KeyCode mapping ──
@@ -141,6 +165,7 @@ void SerialBridge::processChar(int ch) {
         auto lpos = inputBuffer.find_first_not_of(" \t\r\n");
         auto rpos = inputBuffer.find_last_not_of(" \t\r\n");
         std::string line;
+        _lineDirect = false;
         if (lpos == std::string::npos) {
             // Empty line -> treat as ENTER key
             inputBuffer.clear();
@@ -174,6 +199,34 @@ void SerialBridge::processChar(int ch) {
         // for keys that have no unambiguous single-character representation.
         std::string upper = line;
         std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return std::toupper(c); });
+        // "LKEY <key>": explicit direct-to-app (legacy) path for this line.
+        if (upper.compare(0, 5, "LKEY ") == 0 && line.size() > 5) {
+            _lineDirect = true;
+            line = line.substr(line.find_first_not_of(' ', 5));
+            upper = upper.substr(upper.find_first_not_of(' ', 5));
+        }
+        // "P <row> <col>": one electrical matrix position.
+        if (!_lineDirect && upper.size() > 2 && upper[0] == 'P' && upper[1] == ' ') {
+            int row = -1, col = -1;
+            if (std::sscanf(upper.c_str() + 2, "%d %d", &row, &col) == 2) pushMatrix(row, col);
+            else Serial.println("[SB] usage: P <row> <col>");
+            inputBuffer.clear();
+            return;
+        }
+        // Named keys of the production keypad that have no single-character alias.
+        static const struct { const char* name; KeyCode code; } kNamedKeys[] = {
+            {"TOOLBOX", KeyCode::TOOLBOX}, {"EXP", KeyCode::EXP}, {"NEG", KeyCode::NEGATE},
+            {"FORMAT", KeyCode::FORMAT}, {"SHIFT", KeyCode::SHIFT}, {"ALPHA", KeyCode::ALPHA},
+            {"LEFT", KeyCode::LEFT}, {"RIGHT", KeyCode::RIGHT}, {"UP", KeyCode::UP},
+            {"DOWN", KeyCode::DOWN}, {"TABLE", KeyCode::TABLE}, {"SQUARE", KeyCode::SQUARE},
+            {"POW", KeyCode::POW}, {"MUL", KeyCode::MUL}, {"DIVIDE", KeyCode::DIVIDE},
+            {"FRAC", KeyCode::FRAC}, {"EQUAL", KeyCode::EQUAL}, {"BACK", KeyCode::BACK},
+            {"VAR", KeyCode::VAR}, {"STO", KeyCode::STO}, {"COMMA", KeyCode::COMMA},
+            {"E", KeyCode::CONST_E}, {"X", KeyCode::VAR_X},
+        };
+        for (const auto& key : kNamedKeys) {
+            if (upper == key.name) { push(key.code, key.name); inputBuffer.clear(); return; }
+        }
         if (upper == "HOME") { push(KeyCode::MODE, "MODE/HOME"); inputBuffer.clear(); return; }
         if (upper == "AC")   { push(KeyCode::AC, "AC"); inputBuffer.clear(); return; }
         if (upper == "DEL")  { push(KeyCode::DEL, "DEL"); inputBuffer.clear(); return; }
@@ -231,7 +284,8 @@ void SerialBridge::processChar(int ch) {
                 case ')' : push(KeyCode::RPAREN, ")"); break;
 
                 case 'p': case '^': push(KeyCode::POW, "POW"); break;
-                case '=': push(KeyCode::FREE_EQ, "="); break;
+                // Physical path: "=" is the equals-sign key (FREE_EQ is SHIFT+EXE).
+                case '=': push(_lineDirect ? KeyCode::FREE_EQ : KeyCode::EQUAL, "="); break;
                 case 'f': push(KeyCode::DIV, "DIV (FRAC)"); break;
                 case 'x': push(KeyCode::VAR_X, "VAR_X"); break;
                 case 'y': push(KeyCode::VAR_Y, "VAR_Y"); break;
@@ -240,7 +294,7 @@ void SerialBridge::processChar(int ch) {
                 case 'r': push(KeyCode::SQRT,  "SQRT");  break;
                 case 'R':  push(KeyCode::SHIFT, "SHIFT"); push(KeyCode::SQRT, "SQRT (=nthROOT)"); break;
                 case 'n':  push(KeyCode::SHOW_STEPS, "STEPS"); break;
-                case 'u':  push(KeyCode::FREE_EQ, "= (FREE_EQ)"); break;
+                case 'u':  push(_lineDirect ? KeyCode::FREE_EQ : KeyCode::EQUAL, "= (EQUAL)"); break;
                 case 'C':  push(KeyCode::AC, "AC"); break;
                 case '<':  push(KeyCode::EXE, "EXE"); break;
                 case 'F':  push(KeyCode::F1, "F1"); break;

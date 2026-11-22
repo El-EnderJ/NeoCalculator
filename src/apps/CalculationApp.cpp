@@ -636,9 +636,13 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
         case KeyCode::ALPHA_F: startEntryAfterResult(EntryStart::Fresh); _cursor.insertVariable('F'); break;
 
         // ── Navegación ──
+        // Result scrolling rule (shared with CalculusApp): a result scrolls
+        // only with SHIFT + arrow; plain LEFT/RIGHT always re-edit and plain
+        // UP/DOWN browse history. A wide result takes precedence, otherwise
+        // SHIFT + LEFT/RIGHT exposes the wide authored expression.
         case KeyCode::LEFT:
-            if (_hasResult && (km.isShift() || _resultCanvas.hasHorizontalOverflow())) {
-                (km.isShift() ? _mathCanvas : _resultCanvas).scrollBounded(20);
+            if (_hasResult && km.isShift()) {
+                (_resultCanvas.hasHorizontalOverflow() ? _resultCanvas : _mathCanvas).scrollBounded(20);
                 changed = false;
             } else {
                 // Caret navigation leaves result view: the caret becomes
@@ -648,8 +652,8 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             }
             break;
         case KeyCode::RIGHT:
-            if (_hasResult && (km.isShift() || _resultCanvas.hasHorizontalOverflow())) {
-                (km.isShift() ? _mathCanvas : _resultCanvas).scrollBounded(-20);
+            if (_hasResult && km.isShift()) {
+                (_resultCanvas.hasHorizontalOverflow() ? _resultCanvas : _mathCanvas).scrollBounded(-20);
                 changed = false;
             } else {
                 clearResult();

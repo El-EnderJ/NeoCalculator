@@ -756,28 +756,49 @@ void CalculusApp::handleKeyInput(const KeyEvent& ev) {
 // RESULT state keys
 // ────────────────────────────────────────────────────────────────────
 
+// Result scrolling rule (shared with CalculationApp): a result scrolls only with
+// SHIFT + arrow (SHIFT+LEFT/RIGHT horizontal, SHIFT+UP/DOWN vertical). Every
+// other editing key (digits, operators, functions, DEL, plain arrows) returns
+// to the editor of the current expression and is applied there, so no EXE is
+// needed first.
 void CalculusApp::handleKeyResult(const KeyEvent& ev) {
+    auto& km = KeyboardManager::instance();
+    // Direct (logical) modifier keys; on the PCB the resolver consumes them.
+    if (ev.code == KeyCode::SHIFT) { km.pressShift(); _statusBar.update(); return; }
+    if (ev.code == KeyCode::ALPHA) { km.pressAlpha(); _statusBar.update(); return; }
+    const bool arrow = ev.code == KeyCode::UP || ev.code == KeyCode::DOWN ||
+                       ev.code == KeyCode::LEFT || ev.code == KeyCode::RIGHT;
+    if (arrow && km.isShift()) {
+        switch (ev.code) {
+            case KeyCode::UP: lv_obj_scroll_by(_resultViewport, 0, 24, LV_ANIM_OFF); break;
+            case KeyCode::DOWN: lv_obj_scroll_by(_resultViewport, 0, -24, LV_ANIM_OFF); break;
+            case KeyCode::LEFT: _resultCanvas.scrollBy(24); break;
+            default: _resultCanvas.scrollBy(-24); break;
+        }
+        km.consumeModifier();
+        _statusBar.update();
+        return;
+    }
     switch (ev.code) {
         case KeyCode::TOOLBOX:
         case KeyCode::SHOW_STEPS:
             if (_tutorStatus == TutorStatus::Agreed) showSteps();
             break;
-        case KeyCode::UP: lv_obj_scroll_by(_resultViewport, 0, 24, LV_ANIM_OFF); break;
-        case KeyCode::DOWN: lv_obj_scroll_by(_resultViewport, 0, -24, LV_ANIM_OFF); break;
-        case KeyCode::LEFT: _resultCanvas.scrollBy(24); break;
-        case KeyCode::RIGHT: _resultCanvas.scrollBy(-24); break;
         case KeyCode::AC:
             _inputCanvas.setExpression(nullptr, nullptr);
             _inputNode.reset(); _inputRow = nullptr;
             showInput();
             break;
-        case KeyCode::DEL:
-            showInput(); handleKeyInput(ev); break;
         case KeyCode::EXE:
         case KeyCode::ENTER:
         case KeyCode::FREE_EQ:
             showInput(); break;
-        default: break;
+        default:
+            // Unimplemented semantic-only keys do nothing, as in the editor.
+            if (ev.code == KeyCode::NONE && ev.semanticId == 0) break;
+            showInput();
+            handleKeyInput(ev);
+            break;
     }
 }
 
@@ -1223,7 +1244,7 @@ void CalculusApp::buildResultDisplay() {
         lv_obj_set_height(_resultCanvas.obj(), std::max(height, viewportH - 2));
         _resultCanvas.invalidate();
         if (height > lv_obj_get_height(_resultViewport) || _resultRow->layout().width > SCREEN_W - 36)
-            lv_label_set_text(_resultHint, LV_SYMBOL_LEFT " " LV_SYMBOL_RIGHT " " LV_SYMBOL_UP " " LV_SYMBOL_DOWN " Scroll    EXE Edit    AC Clear");
+            lv_label_set_text(_resultHint, "SHIFT " LV_SYMBOL_LEFT " " LV_SYMBOL_RIGHT " " LV_SYMBOL_UP " " LV_SYMBOL_DOWN " Scroll    EXE Edit    AC Clear");
         _resultKind = ResultKind::Structured;
         return;
     }

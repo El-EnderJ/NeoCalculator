@@ -1,0 +1,48 @@
+# calculus_input_path_edit_after_result.numos — DEVICE-INPUT-PATH-01 (2.2).
+# After a Calculus result, editing keys go straight back to the editor of the
+# current expression (no EXE first); SHIFT + arrows scroll the result.
+wait 200
+open_app Calculus
+wait 60
+key 3
+key exe
+wait 150
+assert_calculus_state result
+assert_calculus_result_exact 0
+key 5
+assert_calculus_state editing
+key exe
+wait 150
+assert_calculus_result_exact 0
+key ac
+key x
+key square
+key exe
+wait 150
+assert_calculus_state result
+assert_calculus_equivalent 2*x
+key shift
+key down
+assert_calculus_state result
+assert_modifier none
+key shift
+key left
+assert_calculus_state result
+key +
+assert_calculus_state editing
+key x
+key exe
+wait 150
+assert_calculus_state result
+assert_calculus_equivalent 2*x+1
+key left
+assert_calculus_state editing
+key exe
+wait 150
+# DEL edits at the caret, which LEFT left before the last x: x^2+x -> x^2 x.
+key del
+assert_calculus_state editing
+key exe
+wait 150
+assert_calculus_equivalent 3*x^2
+log "calculus_input_path_edit_after_result: PASS"

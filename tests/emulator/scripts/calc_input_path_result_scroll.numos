@@ -1,0 +1,29 @@
+# calc_input_path_result_scroll.numos — DEVICE-INPUT-PATH-01 (2.2 rule).
+# A result scrolls only with SHIFT + arrow; plain LEFT/RIGHT re-edit even when
+# the result is wider than the screen.
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key 2
+key pow
+key 1
+key 2
+key 0
+key right
+key exe
+wait 120
+assert_calc_exact 1329227995784915872903807060280344576
+key shift
+key left
+assert_calc_exact 1329227995784915872903807060280344576
+assert_modifier none
+key shift
+key right
+assert_calc_exact 1329227995784915872903807060280344576
+key left
+assert_calc_input no_result
+key 5
+assert_calc_input serialized ((2)^(1205))
+log "calc_input_path_result_scroll: PASS"

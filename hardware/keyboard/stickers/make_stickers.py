@@ -132,6 +132,9 @@ class Fonts:
         self.italic = Face(HERE / f["italic"])
         self.math = Face(HERE / f["math"])
         self.cap_ratio = self.upright.cap / self.upright.upm
+        # Math-font characters drawn exactly as designed: emboldening them would close
+        # the gap between their strokes (≈ printed small). See typography.keep_as_designed.
+        self.as_designed = set((cfg.get("typography") or {}).get("keep_as_designed", ""))
         self.axis_ratio = self.math.ft["MATH"].table.MathConstants.AxisHeight.Value / self.math.upm
 
     def chain(self, st: Style):
@@ -204,10 +207,14 @@ class Run(Node):
 
     def __init__(self, text: str, st: Style, size: float, fonts: Fonts):
         chain = fonts.chain(st)
+        if any(ch in fonts.as_designed for ch in text):
+            chain = chain + [(chain[-1][0], chain[-1][1], 0.0)]   # math font, not emboldened
         segs: list[list] = []
         for ch in text:
             for i, (face, _, _) in enumerate(chain):
                 if ord(ch) in face.cmap:
+                    if ch in fonts.as_designed and face is fonts.math:
+                        i = len(chain) - 1
                     break
             else:
                 raise MissingGlyph(f"U+{ord(ch):04X} {ch!r} not in any font")
@@ -427,7 +434,7 @@ TEX_PLACEHOLDER = 0x25A0          # ■ (\blacksquare, an ordinary symbol): laid
 _TEX_PATHS: dict = {}
 
 
-def tex_source(label: str, cfg: dict) -> str | None:
+def tex_source(label: str, cfg: dict, secondary: bool = False) -> str | None:
     """TeX for a mathematical legend, or None if the legend is set in the sans."""
     tx = cfg.get("tex") or {}
     if not tx.get("enabled", True) or not label:
@@ -464,8 +471,13 @@ def tex_source(label: str, cfg: dict) -> str | None:
         out.append(TEX_SYMBOLS.get(s[i], s[i]))
         i += 1
     tex = "".join(out).strip()
+    if re.fullmatch(r"[a-zθ](,[a-zθ])+", label):
+        tex = tex.replace(",", r",\,")       # x, t, θ, n: room after each comma
     # The nth-root template inserts two slots (index and radicand): show both.
     tex = re.sub(r"(\\sqrt \[[^\]]*\])\{\\, \}", r"\1{\\blacksquare }", tex)
+    if not secondary:
+        # main legend: display-style fraction, numerator and denominator at full size
+        tex = re.sub(r"\\frac(?=\s*\{)", r"\\dfrac", tex)
     if tx.get("tight_superscripts", True):
         # mathtext sets x² looser than TeX does; pull exponents of single-letter bases back
         tex = re.sub(r"(?<![\\A-Za-z])([A-Za-z])\^\{", r"\1^{\\!", tex)
@@ -478,7 +490,6 @@ class TexNode(Node):
 
     def __init__(self, tex: str, size: float, cfg: dict):
         import matplotlib
-        matplotlib.rcParams["mathtext.fontset"] = "cm"
         from matplotlib.font_manager import FontProperties
         try:
             from matplotlib.ft2font import LoadFlags
@@ -490,13 +501,14 @@ class TexNode(Node):
         from matplotlib.mathtext import MathTextParser
         tx = cfg.get("tex") or {}
         self.tex, self.size = tex, size
-        parsed = MathTextParser("path").parse(f"${tex}$", 72, FontProperties(size=size))
-        self.rule = max(mm(tx.get("min_stroke_mm", 0.05)), tx.get("rule_em", 0.045) * size)
-        # Computer Modern is a light text face; a small stroke compensates for the
-        # tiny print size (it is what optical sizes like cmr5/cmr7 do).
-        self.emb = max(mm(tx.get("min_stroke_mm", 0.05)), tx.get("embolden_em", 0.02) * size)
-        self.items = []    # ("glyph", verts, codes) / ("rect", x, y, w, h) / ("slot", x0, y0, x1, y1)
-        xs, ys = [], []
+        with matplotlib.rc_context(TEX_FONTSETS[tx.get("font", "cm")]["rc"]):
+            parsed = MathTextParser("path").parse(f"${tex}$", 72, FontProperties(size=size))
+        self.rule = max(mm(tx.get("min_rule_mm", 0.12)), tx.get("rule_em", 0.045) * size)
+        # Optional extra stroke (for a light face such as Computer Modern). With a bold
+        # face it stays 0: thickening a font fills its counters when printed small.
+        self.emb = max(mm(tx.get("min_stroke_mm", 0.0)), tx.get("embolden_em", 0.0) * size)
+        self.cfg_tex = tx
+        self.items = []    # ("glyph", verts, codes, bbox) / ("rect", x, y, w, h) / ("slot", x0, y0, x1, y1)
         for g in parsed.glyphs:
             if len(g) == 6:      # matplotlib ≥ 3.10: (font, size, char, glyph index, x, y)
                 font, fontsize, ccode, gidx, ox, oy = g
@@ -520,27 +532,107 @@ class TexNode(Node):
                 x0, y0 = pts[:, 0].min(), pts[:, 1].min()
                 x1, y1 = pts[:, 0].max(), pts[:, 1].max()
                 inset = 0.06 * (x1 - x0)
-                self.items.append(("slot", x0 + inset, y0 + inset, x1 - inset, y1 - inset))
-                xs += [x0, x1]
-                ys += [y0, y1]
+                self.items.append(["slot", x0 + inset, y0 + inset, x1 - inset, y1 - inset])
             else:
-                self.items.append(("glyph", v, codes))
                 pts = v[codes != 79]          # CLOSEPOLY carries a dummy (0, 0) vertex
-                if len(pts):
-                    xs += [pts[:, 0].min(), pts[:, 0].max()]
-                    ys += [pts[:, 1].min(), pts[:, 1].max()]
+                bbox = ((pts[:, 0].min(), pts[:, 1].min(), pts[:, 0].max(), pts[:, 1].max())
+                        if len(pts) else None)
+                self.items.append(("glyph", v, codes, bbox))
         for ox, oy, w, h in parsed.rects:
             # TeX rules (fraction bars, radical vinculum) at the formula's stroke weight
             h2 = max(h, self.rule)
             yc = oy + h / 2
-            self.items.append(("rect", ox, yc - h2 / 2, w, h2))
-            xs += [ox, ox + w]
-            ys += [yc - h2 / 2, yc + h2 / 2]
+            self.items.append(["rect", ox, yc - h2 / 2, w, h2])
+        self._tidy_slots(size)
+        xs, ys = [], []
+        for it in self.items:
+            if it[0] == "glyph" and it[3] is not None:
+                xs += [it[3][0], it[3][2]]
+                ys += [it[3][1], it[3][3]]
+            elif it[0] == "rect":
+                xs += [it[1], it[1] + it[3]]
+                ys += [it[2], it[2] + it[4]]
+            elif it[0] == "slot":
+                xs += [it[1], it[3]]
+                ys += [it[2], it[4]]
         e = self.emb / 2
         self.w = float(parsed.width)
         self.x0, self.x1 = float(min(xs)) - e, float(max(xs)) + e
         self.asc, self.desc = float(max(ys)) + e, -float(min(ys)) + e
-        self.cap_h = 0.683 * size
+        self.cap_h = TEX_FONTSETS[tx.get("font", "cm")]["cap"] * size
+
+    def _tidy_slots(self, size: float):
+        """Make empty-slot templates geometric. TeX positions numerator and denominator
+        with different shifts, sets a mixed fraction's whole part on the baseline at text
+        size, and shrinks script boxes; for empty boxes that reads as misaligned. So:
+        - numerator and denominator: same size, same gap to the bar, centred on it;
+        - the whole part of a mixed fraction: the same box, centred on the bar;
+        - a box between bars |□|: centred between them;
+        - no box smaller than tex.min_slot_mm (fractions grow symmetrically)."""
+        slots = [it for it in self.items if it[0] == "slot"]
+        bars = [it for it in self.items if it[0] == "rect"]
+        eps = 0.02 * size
+        smin = mm((self.cfg_tex or {}).get("min_slot_mm", 0.0))
+        done = set()
+        for bar in bars:
+            _, bx, by, bw, bh = bar
+            top, bot, cx = by + bh, by, bx + bw / 2
+            over = [s for s in slots if s[1] < bx + bw and s[3] > bx and s[2] >= top - eps]
+            under = [s for s in slots if s[1] < bx + bw and s[3] > bx and s[4] <= bot + eps]
+            if not over or not under:
+                continue                       # a radical's vinculum, not a fraction bar
+            num = min(over, key=lambda s: s[2])
+            den = max(under, key=lambda s: s[4])
+            side = max(smin, mm((self.cfg_tex or {}).get("min_fraction_slot_mm", 0.0)),
+                       min(num[3] - num[1], den[3] - den[1]))
+            # same gap above and below the bar, kept compact (display style is very airy)
+            gap = min(0.18 * side, max(0.10 * side, ((num[2] - top) + (bot - den[4])) / 2))
+            num[1:] = [cx - side / 2, top + gap, cx + side / 2, top + gap + side]
+            den[1:] = [cx - side / 2, bot - gap - side, cx + side / 2, bot - gap]
+            done.update((id(num), id(den)))
+            # the bar always overhangs the boxes a little
+            need = side + 2 * max(0.18 * side, 0.06 * size)
+            if bw < need:
+                bar[1], bar[3] = cx - need / 2, need
+            axis = (top + bot) / 2
+            for s in slots:
+                if id(s) in done or s[3] > bx + eps:
+                    continue
+                # whole part of a mixed fraction: the same box, centred on the bar
+                right = min(s[3], bar[1] - 0.06 * size)
+                s[1:] = [right - side, axis - side / 2, right, axis + side / 2]
+                done.add(id(s))
+        # |□|: centre the box between the two bars
+        thin = [it for it in self.items if it[0] == "glyph" and it[3] is not None
+                and (it[3][2] - it[3][0]) < 0.25 * (it[3][3] - it[3][1])]
+        for s in slots:
+            if id(s) in done:
+                continue
+            left = [g for g in thin if g[3][2] <= s[1] + eps and s[1] - g[3][2] < 0.5 * size]
+            right = [g for g in thin if g[3][0] >= s[3] - eps and g[3][0] - s[3] < 0.5 * size]
+            if left and right:
+                l = max(left, key=lambda g: g[3][2])
+                r = min(right, key=lambda g: g[3][0])
+                yc = (l[3][1] + l[3][3] + r[3][1] + r[3][3]) / 4
+                side = max(smin, s[3] - s[1])
+                xc = (l[3][2] + r[3][0]) / 2
+                s[1:] = [xc - side / 2, yc - side / 2, xc + side / 2, yc + side / 2]
+                done.add(id(s))
+        # Boxes in scripts (x^□, log_□, a root's index) shrink with the script; keep them
+        # large enough to print as an open square.
+        radicals = [b for b in bars if not any(s[2] >= b[2] + b[4] - eps for s in slots
+                                               if s[1] < b[1] + b[3] and s[3] > b[1])]
+        for s in slots:
+            side = s[3] - s[1]
+            if id(s) in done or side >= smin:
+                continue
+            grow = smin - side
+            if any(s[3] <= b[1] + eps for b in radicals):      # root index: grow left and up
+                s[1] -= grow; s[4] += grow
+            elif (s[2] + s[4]) / 2 < 0:                       # subscript: grow right and down
+                s[3] += grow; s[2] -= grow
+            else:                                             # superscript etc.: right and up
+                s[3] += grow; s[4] += grow
 
     def draw(self, c, x, y):
         c.saveState()
@@ -548,7 +640,7 @@ class TexNode(Node):
         c.setLineJoin(1)
         for it in self.items:
             if it[0] == "glyph":
-                _, v, codes = it
+                _, v, codes, _bb = it
                 p = c.beginPath()
                 i, cur, start = 0, (0.0, 0.0), (0.0, 0.0)
                 while i < len(codes):
@@ -688,15 +780,138 @@ def typeset(src: str, base: Style, size: float, fonts: Fonts, cfg: dict) -> Node
     return parse_until(None, size)
 
 
-TEX_CAP_RATIO = 0.683   # Computer Modern cap height / em
+TEX_FONTSETS = {
+    # Computer Modern (the LaTeX fonts); light, a 10 pt text design.
+    "cm": {"cap": 0.683, "rc": {"mathtext.fontset": "cm"}},
+    # STIX (Times-style; the family NumOS renders math with on screen), regular.
+    "stix": {"cap": 0.662, "rc": {"mathtext.fontset": "stix"}},
+    # STIX bold, including bold math italic: holds up at keycap size on home printers.
+    "stix-bold": {"cap": 0.662, "rc": {"mathtext.fontset": "custom",
+                                       "mathtext.rm": "STIXGeneral:bold",
+                                       "mathtext.it": "STIXGeneral:italic:bold",
+                                       "mathtext.bf": "STIXGeneral:bold",
+                                       "mathtext.sf": "STIXGeneral:bold",
+                                       "mathtext.fallback": "stix"}},
+}
 
 
-def legend(label: str, st: Style, size: float, fonts: Fonts, cfg: dict) -> Node:
+class IconNode(Node):
+    """Line icons drawn as vector strokes, sized in cap heights (u) of the legend size.
+    toolbox: TOOLS · space: the space bar ⎵ · back: curved return arrow · home: house."""
+
+    SHAPES = {          # width, height in u
+        "toolbox": (1.38, 1.04),
+        "space": (1.75, 0.46),
+        "back": (1.30, 0.98),
+        "home": (1.22, 1.12),
+    }
+
+    def __init__(self, name: str, size: float, fonts: "Fonts", cfg: dict):
+        if name not in self.SHAPES:
+            raise ValueError(f"unknown icon {name!r} (known: {', '.join(self.SHAPES)})")
+        ic = (cfg.get("icons") or {})
+        self.name = name
+        self.u = u = size * fonts.cap_ratio * ic.get("scale", {}).get(name, 1.0)
+        self.t = max(mm(ic.get("min_stroke_mm", 0.17)), ic.get("stroke_u", 0.115) * u)
+        wu, hu = self.SHAPES[name]
+        self.W, self.H = wu * u, hu * u
+        h = self.t / 2
+        self.w = self.W + self.t
+        self.x0, self.x1 = 0.0, self.w
+        self.asc, self.desc = self.H + h, h
+        self.cap_h = u
+        self.is_tex = False
+        self.fixed = True
+
+    def draw(self, c, x, y):
+        u, t, W, H = self.u, self.t, self.W, self.H
+        h = t / 2
+        k = 0.5523                               # quarter-circle Bézier constant
+        c.saveState()
+        c.translate(x + h, y)
+        c.setLineWidth(t)
+        c.setLineCap(1)
+        c.setLineJoin(1)
+
+        def rrect(p, x0, y0, x1, y1, r):         # closed rounded rectangle
+            p.moveTo(x0 + r, y0)
+            p.lineTo(x1 - r, y0)
+            p.curveTo(x1 - r + k * r, y0, x1, y0 + r - k * r, x1, y0 + r)
+            p.lineTo(x1, y1 - r)
+            p.curveTo(x1, y1 - r + k * r, x1 - r + k * r, y1, x1 - r, y1)
+            p.lineTo(x0 + r, y1)
+            p.curveTo(x0 + r - k * r, y1, x0, y1 - r + k * r, x0, y1 - r)
+            p.lineTo(x0, y0 + r)
+            p.curveTo(x0, y0 + r - k * r, x0 + r - k * r, y0, x0 + r, y0)
+            p.close()
+
+        p = c.beginPath()
+        if self.name == "toolbox":
+            bt = 0.70 * u                        # body top
+            rrect(p, 0, 0, W, bt, 0.13 * u)
+            hw, ht, hr = 0.26 * u, H, 0.12 * u   # handle half-width, top, corner
+            p.moveTo(W / 2 - hw, bt)
+            p.lineTo(W / 2 - hw, ht - hr)
+            p.curveTo(W / 2 - hw, ht - hr + k * hr, W / 2 - hw + hr - k * hr, ht, W / 2 - hw + hr, ht)
+            p.lineTo(W / 2 + hw - hr, ht)
+            p.curveTo(W / 2 + hw - hr + k * hr, ht, W / 2 + hw, ht - hr + k * hr, W / 2 + hw, ht - hr)
+            p.lineTo(W / 2 + hw, bt)
+            band, lw_, lh = 0.40 * u, 0.15 * u, 0.11 * u   # latch half-width / half-height
+            p.moveTo(0, band)
+            p.lineTo(W / 2 - lw_, band)
+            p.moveTo(W / 2 + lw_, band)
+            p.lineTo(W, band)
+            rrect(p, W / 2 - lw_, band - lh, W / 2 + lw_, band + lh, 0.04 * u)
+        elif self.name == "space":
+            c.setLineCap(0)
+            c.setLineJoin(0)
+            p.moveTo(0, H)
+            p.lineTo(0, 0)
+            p.lineTo(W, 0)
+            p.lineTo(W, H)
+        elif self.name == "back":
+            yt, yb = H - 0.12 * u, 0.10 * u      # upper (arrow) and lower (tail) strokes
+            r = (yt - yb) / 2
+            cx = W - r
+            p.moveTo(0.22 * u, yb)               # tail
+            p.lineTo(cx, yb)
+            p.curveTo(cx + k * r * 1.0, yb, W, yb + r - k * r, W, yb + r)
+            p.curveTo(W, yb + r + k * r, cx + k * r, yt, cx, yt)
+            p.lineTo(0, yt)                      # to the arrow tip
+            a = 0.30 * u
+            p.moveTo(a, yt + a)
+            p.lineTo(0, yt)
+            p.lineTo(a, yt - a)
+        elif self.name == "home":
+            eave = 0.56 * u
+            p.moveTo(-0.02 * u, eave)            # roof
+            p.lineTo(W / 2, H)
+            p.lineTo(W + 0.02 * u, eave)
+            p.moveTo(0.14 * u, eave + 0.07 * u)  # walls
+            p.lineTo(0.14 * u, 0)
+            p.lineTo(W - 0.14 * u, 0)
+            p.lineTo(W - 0.14 * u, eave + 0.07 * u)
+            dw = 0.15 * u                        # door
+            p.moveTo(W / 2 - dw, 0)
+            p.lineTo(W / 2 - dw, 0.40 * u)
+            p.lineTo(W / 2 + dw, 0.40 * u)
+            p.lineTo(W / 2 + dw, 0)
+        c.drawPath(p, stroke=1, fill=0)
+        c.restoreState()
+
+
+def legend(label: str, st: Style, size: float, fonts: Fonts, cfg: dict, secondary: bool = False,
+           allow_tex: bool = True) -> Node:
     """Build a legend: TeX (Computer Modern) for math, Noto Sans for everything else.
     `size` is a Noto Sans size; TeX legends are scaled to the same cap height."""
-    tex = tex_source(label, cfg)
+    if label.startswith("icon:"):
+        return IconNode(label[5:], size, fonts, cfg)
+    tex = tex_source(label, cfg, secondary) if allow_tex else None
     if tex is not None:
-        node = TexNode(tex, size * fonts.cap_ratio / TEX_CAP_RATIO * (cfg.get("tex") or {}).get("scale", 1.0), cfg)
+        tx = cfg.get("tex") or {}
+        cap = TEX_FONTSETS[tx.get("font", "cm")]["cap"]
+        scale = tx.get("secondary_scale", 1.0) if secondary else tx.get("scale", 1.0)
+        node = TexNode(tex, size * fonts.cap_ratio / cap * scale, cfg)
         node.is_tex = True
         return node
     node = typeset(normalise(label, cfg), st, size, fonts, cfg)
@@ -801,6 +1016,8 @@ def role_of(key: Key, cfg: dict) -> str:
     if forced:
         return forced
     lab = key.primary
+    if lab.startswith("icon:"):
+        return "icon"
     if re.fullmatch(r"[0-9]", lab):
         return "digit"
     if not is_plain(lab) or re.search("[" + "".join(SUPERSCRIPTS) + "]", lab) \
@@ -879,26 +1096,74 @@ class StickerLayout:
         self.primary_top = self.band_base + 0.58
         self.sizes = self._role_sizes()
 
-    def _area(self, key: Key):
-        top = self.primary_top if (key.shift or key.alpha) else self.pad
-        return top, self.h - self.pad
+    def _area(self, key: Key, mode: str = "band"):
+        """Vertical room for the main legend. With a tall corner legend hanging into the
+        key (the stacked mixed fraction, a root with its index) there are two choices:
+        "full": the whole height, keeping clear of the corner legends' ink (so a narrow
+        legend such as □/□ stays large); "below": underneath the corner legends."""
+        if not (key.shift or key.alpha):
+            return self.pad, self.h - self.pad
+        if mode == "full":
+            return self.pad, self.h - self.pad
+        if mode == "below":
+            top = max(p.ink()[3] for p in self._secondary_cached(key)) + 0.25
+            return max(top, self.primary_top), self.h - self.pad
+        return self.primary_top, self.h - self.pad
+
+    def _modes(self, key: Key):
+        return ("full", "below") if self._hanging(key) else ("band",)
+
+    def _hanging(self, key: Key) -> bool:
+        return any(p.ink()[3] > self.primary_top - 0.22 + 1e-6 for p in self._secondary_cached(key))
+
+    def _secondary_cached(self, key: Key) -> list:
+        cache = self.__dict__.setdefault("_sec_cache", {})
+        if key.id not in cache:
+            cache[key.id] = self.secondary(key, _luma(background(key, self.cfg)) < 0.4)
+        return cache[key.id]
 
     def _place_xy(self, key: Key, node: Node, role: str, size: float):
         rc = self.cfg["typography"]["roles"][role]
-        top, bot = self._area(key)
+        mode = getattr(node, "_mode", "band")
+        top, bot = self._area(key, mode)
         cy = (top + bot) / 2
+        if mode == "full":
+            # same visual centre as the neighbouring keys' main legends, moved up only as
+            # far as needed to stay on the sticker
+            cy = (self.primary_top + self.h - self.pad) / 2
+            hh = (node.asc + node.desc) / 2 / PT_PER_MM
+            cy = max(top + hh, min(cy, bot - hh))
         if rc["align"] == "cap":
             base = cy + node.cap_h / PT_PER_MM / 2
         else:
             base = cy + (node.asc - node.desc) / 2 / PT_PER_MM
-        return self.w / 2 - (node.x0 + node.x1) / 2 / PT_PER_MM, base
+        xc = self.w / 2
+        if getattr(node, "_mode", "band") == "full":
+            # Shift right just enough to clear the hanging upper-left legend.
+            c = self.cfg["typography"]["secondary"].get("clearance", 0.3)
+            half = (node.x1 - node.x0) / 2 / PT_PER_MM
+            y0, y1 = base - node.asc / PT_PER_MM, base + node.desc / PT_PER_MM
+            for p in self._secondary_cached(key):
+                a0, b0, a1, b1 = p.ink()
+                if a0 < self.w / 2 and b0 < y1 + c and y0 < b1 + c:
+                    xc = max(xc, a1 + c + half)
+            node._shift = xc - self.w / 2
+        return xc - (node.x0 + node.x1) / 2 / PT_PER_MM, base
 
     def _ok(self, key: Key, node: Node, role: str, size: float) -> bool:
-        top, bot = self._area(key)
+        top, bot = self._area(key, getattr(node, "_mode", "band"))
         x, base = self._place_xy(key, node, role, size)
         x0, y0, x1, y1 = Placed(node, x, base, "", 0, 0).ink()
         if y0 < top - 1e-6 or y1 > bot + 1e-6 or x0 < self.pad - 1e-6 or x1 > self.w - self.pad + 1e-6:
             return False
+        if getattr(node, "_mode", "band") == "full":
+            if getattr(node, "_shift", 0.0) > self.cfg["typography"]["secondary"].get("max_shift", 9.9) + 1e-9:
+                return False                      # keep the main legend close to centre
+            c = self.cfg["typography"]["secondary"].get("clearance", 0.3)
+            for p in self._secondary_cached(key):
+                a0, b0, a1, b1 = p.ink()
+                if x0 < a1 + c and a0 < x1 + c and y0 < b1 + c and b0 < y1 + c:
+                    return False
         return all(_inside_rounded(px, py, self.w, self.h, self.r, self.clear)
                    for px, py in ((x0, y0), (x1, y0), (x0, y1), (x1, y1)))
 
@@ -907,9 +1172,11 @@ class StickerLayout:
         for wd in [s for s in self.steps if rc["min_width"] - 1e-9 <= s <= rc["width"] + 1e-9]:
             node = legend(key.primary, Style(rc["weight"], wd, False, role in ("word", "short")),
                           size, self.fonts, self.cfg)
-            if self._ok(key, node, role, size):
-                return node, (0 if node.is_tex else wd)
-            if node.is_tex:
+            for mode in self._modes(key):
+                node._mode = mode
+                if self._ok(key, node, role, size):
+                    return node, (0 if node.is_tex else wd)
+            if node.is_tex or getattr(node, "fixed", False):
                 break
         return None
 
@@ -940,12 +1207,20 @@ class StickerLayout:
         if not any(labels):
             return []
         size = self.sec_size
+        weight = sec["weight"]
+        dark = sec.get("on_dark") or {}
+        if on_dark and dark:
+            # Light ink on a dark key gets eaten by the black around it when printed:
+            # corner legends there are larger, heavier and set in the sans (no hairlines).
+            size *= dark.get("scale", 1.0)
+            weight = dark.get("weight", weight)
+        tex_ok = not (on_dark and dark.get("sans", False))
         avail = self.w - 2 * self.side_pad
         widths_ok = [s for s in self.steps if sec["min_width"] - 1e-9 <= s <= sec["width"] + 1e-9]
         while True:
             for wd in widths_ok:
-                st = Style(sec["weight"], wd, False, False)
-                nodes = [legend(s, st, size, self.fonts, self.cfg) if s else None for s in labels]
+                st = Style(weight, wd, False, False)
+                nodes = [legend(s, st, size, self.fonts, self.cfg, True, tex_ok) if s else None for s in labels]
                 need = sum((n.x1 - n.x0) / PT_PER_MM for n in nodes if n) + (sec["gap"] if all(nodes) else 0)
                 if need <= avail + 1e-9:
                     break
@@ -963,9 +1238,11 @@ class StickerLayout:
 
         for i, (n, s) in enumerate(zip(nodes, labels)):
             f = 1.0
-            while n is not None and bottom(n) > self.primary_top - 0.22 + 1e-9:
+            # tall legends may hang lower than the band by up to sec["max_drop"] mm
+            # before they are reduced, so a stacked fraction keeps a readable size
+            while n is not None and bottom(n) > self.primary_top - 0.22 + sec.get("max_drop", 0.0) + 1e-9:
                 f *= 0.95
-                n = legend(s, st, size * f, self.fonts, self.cfg)
+                n = legend(s, st, size * f, self.fonts, self.cfg, True, tex_ok)
             nodes[i] = n
         sc = col["shift_on_dark"] if on_dark else col["shift"]
         ac = col["alpha_on_dark"] if on_dark else col["alpha"]
@@ -984,7 +1261,7 @@ class StickerLayout:
         col = self.cfg["colors"]
         bg = background(key, self.cfg)
         on_dark = _luma(bg) < 0.4
-        placed = self.secondary(key, on_dark)
+        placed = list(self._secondary_cached(key))
         role = role_of(key, self.cfg)
         size = self.sizes[key.id]
         res = self._try(key, role, size)
@@ -1035,31 +1312,84 @@ def draw_sticker_form(c, name: str, key: Key, lay: StickerLayout, cfg: dict) -> 
 # ═════════════════════════════════════════════════════════════════════════════
 
 def plan_sheet(cfg: dict, sw: float, sh: float, cols: int, rows: int):
+    """Pack as many complete keyboards as possible onto one page.
+
+    Stickers sit on one uniform grid (equal gaps everywhere). Keyboards are placed as
+    cols × rows blocks in keyboard order; rows left below them hold keyboards split into
+    a top half and a bottom half side by side; any remaining slots get spare rows."""
     pg = cfg["page"]
     pw, ph = pg["size"]
-    m, sg = pg["margin"], pg["set_gap"]
-    reserve = 9.0 if pg.get("calibration_mm") else 0.0
+    m = pg["margin"]
+    reserve = pg.get("calibration_reserve", 7.0) if pg.get("calibration_mm") else 0.0
     aw, ah = pw - 2 * m, ph - 2 * m - reserve
-    want = pg.get("sets", "auto")
+    half = rows // 2
     best = None
-    for nc in range(1, 5):
-        for nr in range(1, 5):
-            if want != "auto" and nc * nr != int(want):
-                continue
-            gw = (aw - (nc - 1) * sg - nc * cols * sw) / (nc * (cols - 1))
-            gh = (ah - (nr - 1) * sg - nr * rows * sh) / (nr * (rows - 1))
-            g = min(gw, gh, pg["max_gap"])
-            if g >= pg["min_gap"] - 1e-9:
-                cand = (nc * nr, g, nc, nr)
-                if best is None or cand[:2] > best[:2]:
-                    best = cand
-    if best is None:
-        raise LayoutError("not even one set fits on the page with the configured gaps")
-    n, g, nc, nr = best
-    bw = nc * (cols * sw + (cols - 1) * g) + (nc - 1) * sg
-    bh = nr * (rows * sh + (rows - 1) * g) + (nr - 1) * sg
-    return {"sets": n, "gap": g, "nc": nc, "nr": nr, "bw": bw, "bh": bh,
-            "x0": (pw - bw) / 2, "y0": m + (ph - 2 * m - reserve - bh) / 2}
+    for nc in range(1, 6):
+        ncols = nc * cols
+        g = min(pg["max_gap"], (aw - ncols * sw) / (ncols - 1)) if ncols > 1 else pg["max_gap"]
+        if g < pg["min_gap"] - 1e-9:
+            continue
+        R = int((ah + g) / (sh + g) + 1e-9)
+        full_rows, rest = divmod(R, rows)
+        bands = rest // half
+        sets = full_rows * nc + (bands * nc) // 2
+        cand = (sets, g, nc, R, full_rows, bands)
+        if best is None or cand[:2] > best[:2]:
+            best = cand
+    if best is None or best[0] == 0:
+        raise LayoutError("not even one keyboard fits on the page with the configured gaps")
+    want = pg.get("sets", "auto")
+    sets, g, nc, R, full_rows, bands = best
+    if want != "auto":
+        # A fixed number of whole keyboards, no spares, as roomy as the page allows,
+        # placed in the top-left corner so the rest of a sticker sheet stays usable.
+        sets = min(sets, int(want))
+        nc = min(best[2], sets)
+        full_rows = -(-sets // nc)
+        R, bands = full_rows * rows, 0
+        ncols = nc * cols
+        gw = (aw - ncols * sw) / (ncols - 1) if ncols > 1 else pg["max_gap"]
+        gh = (ah - R * sh) / (R - 1)
+        g = min(pg["max_gap"], gw, gh)
+        bw, bh = ncols * sw + (ncols - 1) * g, R * sh + (R - 1) * g
+        return {"sets": sets, "gap": g, "nc": nc, "R": R, "full_rows": full_rows, "bands": 0,
+                "ncols": ncols, "bw": bw, "bh": bh, "x0": m, "y0": m, "fill_spares": False}
+    ncols = nc * cols
+    bw = ncols * sw + (ncols - 1) * g
+    bh = R * sh + (R - 1) * g
+    return {"sets": sets, "gap": g, "nc": nc, "R": R, "full_rows": full_rows, "bands": bands,
+            "ncols": ncols, "bw": bw, "bh": bh, "x0": (pw - bw) / 2, "y0": m + (ah - bh) / 2,
+            "fill_spares": True}
+
+
+def sheet_slots(plan: dict, cols: int, rows: int, spare_rows: list[int]):
+    """(grid row, grid column, keyboard row, keyboard column, kind) for every slot used."""
+    out = []
+    nc, half = plan["nc"], rows // 2
+    placed = 0
+    for fr in range(plan["full_rows"]):               # whole keyboards
+        for c in range(nc):
+            if placed < plan["sets"]:
+                out += [(fr * rows + r, c * cols + k, r, k, "set") for r in range(rows) for k in range(cols)]
+                placed += 1
+    r0 = plan["full_rows"] * rows
+    halves = []                                        # keyboards split in two halves
+    while placed < plan["sets"]:
+        halves += [(0, "set"), (1, "set")]
+        placed += 1
+    for b in range(plan["bands"]):
+        for c in range(nc):
+            part, kind = halves.pop(0) if halves else (1, "spare")
+            out += [(r0 + b * half + r, c * cols + k, part * half + r, k, kind)
+                    for r in range(half) for k in range(cols)]
+    r1 = r0 + plan["bands"] * half
+    i = 0
+    for gr in range(r1, plan["R"] if plan.get("fill_spares", True) else r1):                    # leftover rows: spare keyboard rows
+        for c in range(nc):
+            kr = spare_rows[i % len(spare_rows)]
+            i += 1
+            out += [(gr, c * cols + k, kr, k, "spare") for k in range(cols)]
+    return out
 
 
 def draw_calibration(c, ph: float, x_center: float, y: float, length: float, fonts: Fonts):
@@ -1091,18 +1421,19 @@ def build_sheet(cfg, keys, fonts, out: Path, date: str):
                  f"(inset {st['inset']} mm) · {plan['sets']} sets")
     c.setCreator("hardware/keyboard/stickers/make_stickers.py")
     report = {k.id: draw_sticker_form(c, f"K{k.id}", k, lay, cfg) for k in keys.values()}
-    g, sg = plan["gap"], cfg["page"]["set_gap"]
-    set_w, set_h = cols * sw + (cols - 1) * g, rows * sh + (rows - 1) * g
-    for si in range(plan["sets"]):
-        bx = plan["x0"] + (si % plan["nc"]) * (set_w + sg)
-        by = plan["y0"] + (si // plan["nc"]) * (set_h + sg)
-        for k in keys.values():
-            c.saveState()
-            c.translate(mm(bx + k.col * (sw + g)), mm(ph - (by + k.row * (sh + g)) - sh))
-            c.doForm(f"K{k.id}")
-            c.restoreState()
+    g = plan["gap"]
+    grid = {(k.row, k.col): k for k in keys.values()}
+    slots = sheet_slots(plan, cols, rows, cfg["page"].get("spare_rows") or list(range(rows)))
+    for gr, gc, kr, kc, _kind in slots:
+        c.saveState()
+        c.translate(mm(plan["x0"] + gc * (sw + g)), mm(ph - (plan["y0"] + gr * (sh + g)) - sh))
+        c.doForm(f"K{grid[(kr, kc)].id}")
+        c.restoreState()
+    plan["count"] = len(slots)
+    plan["spares"] = sum(1 for s in slots if s[4] == "spare")
     if cfg["page"].get("calibration_mm"):
-        draw_calibration(c, ph, pw / 2, plan["y0"] + plan["bh"] + 5.0, cfg["page"]["calibration_mm"], fonts)
+        cx = pw / 2 if plan.get("fill_spares", True) else plan["x0"] + cfg["page"]["calibration_mm"] / 2
+        draw_calibration(c, ph, cx, plan["y0"] + plan["bh"] + 2.6, cfg["page"]["calibration_mm"], fonts)
     c.showPage()
     c.save()
     return plan, lay, report
@@ -1195,7 +1526,7 @@ def measure_key_top(path: Path) -> dict:
 # --verify
 # ═════════════════════════════════════════════════════════════════════════════
 
-def verify(cfg: dict, sheet: Path, fit: Path, plan: dict, fit_sizes: list) -> bool:
+def verify(cfg: dict, sheet: Path, fit: Path | None, plan: dict, fit_sizes: list) -> bool:
     try:
         import pymupdf as fitz
     except ImportError:
@@ -1219,7 +1550,7 @@ def verify(cfg: dict, sheet: Path, fit: Path, plan: dict, fit_sizes: list) -> bo
         return f is not None and any(all(abs(a - b) < 0.003 for a, b in zip(f, bg)) for bg in fills)
 
     tol = 0.01
-    for pdf, kind in ((sheet, "sheet"), (fit, "fit test")):
+    for pdf, kind in [(sheet, "sheet")] + ([(fit, "fit test")] if fit else []):
         doc = fitz.open(str(pdf))
         page = doc[0]
         wmm, hmm = page.rect.width / PT_PER_MM, page.rect.height / PT_PER_MM
@@ -1230,8 +1561,9 @@ def verify(cfg: dict, sheet: Path, fit: Path, plan: dict, fit_sizes: list) -> bo
         stickers = [d["rect"] for d in draws if is_bg(d.get("fill"))]
         others = [d for d in draws if not is_bg(d.get("fill"))]
         if kind == "sheet":
-            exp = plan["sets"] * 50
-            print(f"  stickers: {len(stickers)} (expected {exp} = {plan['sets']} full sets)")
+            exp = plan["count"]
+            print(f"  stickers: {len(stickers)} (expected {exp}: {plan['sets']} complete keyboards "
+                  f"+ {plan['spares']} spares)")
             if len(stickers) != exp:
                 fail("sticker count")
             dw = max(abs(r.width / PT_PER_MM - sw) for r in stickers)
@@ -1284,12 +1616,12 @@ def verify(cfg: dict, sheet: Path, fit: Path, plan: dict, fit_sizes: list) -> bo
     return ok
 
 
-def previews(cfg: dict, sheet: Path, plan: dict):
+def previews(cfg: dict, sheet: Path, plan: dict, o: dict | None = None):
     try:
         import pymupdf as fitz
     except ImportError:
         return
-    o = cfg["output"]
+    o = {**cfg["output"], **(o or {})}
     page = fitz.open(str(sheet))[0]
     page.get_pixmap(dpi=o["preview_dpi"]).save(str(HERE / o["preview"]))
     kt, st = cfg["key_top"], cfg["sticker"]
@@ -1299,6 +1631,51 @@ def previews(cfg: dict, sheet: Path, plan: dict):
     clip = fitz.Rect(mm(x0 - 1.5), mm(y0 - 1.5), mm(x0 + set_w + 1.5), mm(y0 + 52))
     page.get_pixmap(dpi=o["detail_dpi"], clip=clip).save(str(HERE / o["detail"]))
     print(f"previews: {o['preview']}, {o['detail']}")
+
+
+def comparison(cfg: dict, sheets: list[tuple[str, Path]], plan: dict, out: Path):
+    """Side-by-side 600 dpi crops of the first set of each sheet (rows with icons)."""
+    try:
+        import pymupdf as fitz
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return
+    kt, st = cfg["key_top"], cfg["sticker"]
+    sw, sh = kt["width"] - 2 * st["inset"], kt["height"] - 2 * st["inset"]
+    g = plan["gap"]
+    set_w = 5 * sw + 4 * g
+    x0, y0 = plan["x0"], plan["y0"]
+    bands = [(0, 1), (9, 9)]                       # rows 0–1 (HOME, BACK, TOOLS) and row 9 (space)
+    dpi = 500
+    cols = []
+    for title, pdf in sheets:
+        page = fitz.open(str(pdf))[0]
+        parts = []
+        for r0, r1 in bands:
+            clip = fitz.Rect(mm(x0 - 1), mm(y0 + r0 * (sh + g) - 1), mm(x0 + set_w + 1),
+                             mm(y0 + r1 * (sh + g) + sh + 1))
+            pix = page.get_pixmap(dpi=dpi, clip=clip)
+            parts.append(Image.frombytes("RGB", (pix.width, pix.height), pix.samples))
+        cols.append((title, parts))
+    try:
+        import matplotlib
+        font = ImageFont.truetype(str(Path(matplotlib.get_data_path()) / "fonts/ttf/DejaVuSans.ttf"), 44)
+    except Exception:
+        font = ImageFont.load_default()
+    pad, head = 60, 90
+    w = max(sum(p.width for p in parts[:1]) for _, parts in cols)
+    h = head + sum(p.height for p in cols[0][1]) + pad * len(bands)
+    img = Image.new("RGB", (len(cols) * w + (len(cols) + 1) * pad, h), "white")
+    d = ImageDraw.Draw(img)
+    for i, (title, parts) in enumerate(cols):
+        x = pad + i * (w + pad)
+        d.text((x, 20), title, fill=(60, 60, 60), font=font)
+        y = head
+        for part in parts:
+            img.paste(part, (x, y))
+            y += part.height + pad
+    img.save(str(out))
+    print(f"comparison: {out.name}")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1331,12 +1708,20 @@ def main() -> int:
     ap.add_argument("--verify", action="store_true", help="check the PDFs and write PNG previews")
     ap.add_argument("--measure", action="store_true", help="measure the key top from key.stl")
     ap.add_argument("--labels", action="store_true", help="print the legend table (Markdown)")
+    ap.add_argument("--sets", default=None, help="number of keyboards on the sheet (default: config, auto = max)")
+    ap.add_argument("--out", default=None, help="sheet PDF file name (previews are named after it)")
     args = ap.parse_args()
     if args.repo:
         REPO = Path(args.repo)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     cfg = load_config(Path(args.config))
+    if args.sets:
+        cfg["page"]["sets"] = args.sets
+    if args.out:
+        stem = Path(args.out).stem
+        cfg["output"].update({"pdf": args.out, "preview": f"{stem}-preview.png",
+                              "detail": f"{stem}-detail.png"})
 
     if args.measure:
         m = measure_key_top(REPO / cfg["sources"]["key_stl"])
@@ -1377,7 +1762,8 @@ def main() -> int:
     except (LayoutError, MissingGlyph) as e:
         print("ERROR:", e)
         return 2
-    print(f"wrote {o['pdf']} ({plan['sets']} sets, gap {plan['gap']:.2f} mm) and {o['fit_test_pdf']}")
+    print(f"wrote {o['pdf']} ({plan['sets']} complete keyboards + {plan['spares']} spares = "
+          f"{plan['count']} stickers, gap {plan['gap']:.2f} mm) and {o['fit_test_pdf']}")
     by_role: dict[str, set] = {}
     for kid, pl in report.items():
         p = pl[-1]
@@ -1387,11 +1773,34 @@ def main() -> int:
         caps = sorted({v[0] for v in vals})
         widths = sorted({v[1] for v in vals}, key=str, reverse=True)
         print(f"  {role:5s}: cap height {caps[0]:.2f}–{caps[-1]:.2f} mm, widths {widths}")
+    good = True
     if args.verify:
         good = verify(cfg, HERE / o["pdf"], HERE / o["fit_test_pdf"], plan, fit_sizes)
         previews(cfg, HERE / o["pdf"], plan)
-        return 0 if good else 4
-    return 0
+
+    # Comparison variants: the same sheet with extra legend overrides (e.g. icons).
+    import copy
+    built = [(cfg.get("variant_title", "A"), HERE / o["pdf"])]
+    for v in cfg.get("variants") or []:
+        vcfg = copy.deepcopy(cfg)
+        lo = vcfg.setdefault("label_overrides", {}) or {}
+        for kid, planes in (v.get("label_overrides") or {}).items():
+            lo.setdefault(kid, {}).update(planes)
+        vcfg["label_overrides"] = lo
+        vkeys = load_keys(vcfg)
+        try:
+            vplan, _, _ = build_sheet(vcfg, vkeys, fonts, HERE / v["pdf"], date)
+        except (LayoutError, MissingGlyph) as e:
+            print(f"ERROR in variant {v.get('name')}:", e)
+            return 2
+        print(f"wrote {v['pdf']} (variant {v.get('name')})")
+        built.append((v.get("title", v.get("name", "B")), HERE / v["pdf"]))
+        if args.verify:
+            good &= verify(vcfg, HERE / v["pdf"], None, vplan, [])
+            previews(vcfg, HERE / v["pdf"], vplan, {"preview": v["preview"], "detail": v["detail"]})
+    if args.verify and len(built) > 1 and o.get("comparison"):
+        comparison(cfg, built, plan, HERE / o["comparison"])
+    return 0 if good else 4
 
 
 if __name__ == "__main__":

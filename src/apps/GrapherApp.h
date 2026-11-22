@@ -181,8 +181,8 @@ private:
     lv_obj_t*       _addRow;
     lv_obj_t*       _addLabel;
     lv_obj_t*       _exprHint;
-    lv_obj_t*       _plotBtn;           // "Plot graph"
-    lv_obj_t*       _tableBtn;          // "Display values"
+    lv_obj_t*       _plotBtn;           // "Draw graph"
+    lv_obj_t*       _tableBtn;          // "Show table"
     lv_obj_t*       _tplBtns[MAX_FUNCS]; // Per-row "Templates" buttons
 
     // ── Templates modal ──────────────────────────────────────────────

@@ -203,7 +203,7 @@ void NeoLanguageApp::createEditorPanel() {
     _editor = lv_textarea_create(_panelEditor);
     lv_obj_set_pos(_editor, 0, 0);
     lv_obj_set_size(_editor, SCREEN_W, CONTENT_H);
-    lv_textarea_set_placeholder_text(_editor, "# NeoLang code here...\n# F5 = run  MODE = exit");
+    lv_textarea_set_placeholder_text(_editor, "# NeoLang code here...\n# F5 = run  BACK = exit");
     lv_obj_set_style_bg_color(_editor, lv_color_hex(COL_EDITOR_BG), LV_PART_MAIN);
     lv_obj_set_style_text_color(_editor, lv_color_hex(COL_EDITOR_TXT), LV_PART_MAIN);
     lv_obj_set_style_text_font(_editor, &lv_font_unscii_8, LV_PART_MAIN);

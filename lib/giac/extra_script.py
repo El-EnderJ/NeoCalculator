@@ -27,6 +27,14 @@ if env.get("PIOPLATFORM") == "native":
         # non-Windows branch of Giac's access() guard still calls POSIX
         # access(); force the declaration in every Giac TU.
         env.Append(CCFLAGS=["-include", "unistd.h"])
+        if sys.platform.startswith("linux"):
+            # Without HAVE_GETTEXT, giacintl.h defines glibc's include guard
+            # _LIBINTL_H to fake gettext. libstdc++'s <locale>
+            # (messages_members.h) then includes <libintl.h> as a no-op and
+            # fails on undeclared bindtextdomain/textdomain. Including the
+            # real header first lets giacintl.h see the guard and use glibc's
+            # gettext declaration (identity without a bound catalog).
+            env.Append(CCFLAGS=["-include", "libintl.h"])
         if sys.platform == "darwin":
             # Apple libc++ removed the legacy binder declarations that this
             # vendored Giac snapshot still names. Restore declarations only;

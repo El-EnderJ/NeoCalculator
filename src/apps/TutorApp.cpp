@@ -309,7 +309,7 @@ void TutorApp::buildUI() {
     lv_obj_set_style_radius(_solveBtn, 4, LV_PART_MAIN);
 
     lv_obj_t* btnLbl = lv_label_create(_solveBtn);
-    lv_label_set_text(btnLbl, "Solve  (ENTER)");
+    lv_label_set_text(btnLbl, "Solve  (EXE)");
     lv_obj_set_style_text_font(btnLbl, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(btnLbl, lv_color_hex(COL_BTN_TXT), LV_PART_MAIN);
     lv_obj_align(btnLbl, LV_ALIGN_CENTER, 0, 0);

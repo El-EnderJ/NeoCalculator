@@ -448,7 +448,7 @@ void GrapherApp::createExpressionsPanel() {
         lv_obj_add_flag(_exprRows[i], LV_OBJ_FLAG_HIDDEN);
     }
 
-    // "Add an element" row — dashed-border-style look
+    // "Add expression" row — dashed-border-style look
     int addY = PAD;   // will be repositioned in refreshExprList
     _addRow = makeContainer(_panelExpr, PAD, addY, SCREEN_W - 2 * PAD, ROW_H, 0xF7F7F7);
     lv_obj_set_style_radius(_addRow, 10, LV_PART_MAIN);
@@ -459,18 +459,18 @@ void GrapherApp::createExpressionsPanel() {
     // prose renders a tofu box at every space. Real math (VPAM MathCanvas) and the
     // axis/tick labels stay on their STIX/graph path.
     _addLabel = makeLabel(_addRow, (SCREEN_W - 2 * PAD) / 2 - 50, (ROW_H - 14) / 2,
-                           "Add an element", COL_ADD_TXT, &lv_font_montserrat_14);
+                           "Add expression", COL_ADD_TXT, &lv_font_montserrat_14);
 
-    // "Plot graph" button — blue rounded pill
+    // "Draw graph" button — blue rounded pill
     _plotBtn = makeContainer(_panelExpr, PAD, 0, (SCREEN_W - 3 * PAD) / 2, ROW_H, COL_BTN_BG);
     lv_obj_set_style_radius(_plotBtn, 10, LV_PART_MAIN);
-    makeLabel(_plotBtn, 20, (ROW_H - 14) / 2, "Plot graph", COL_BTN_TXT, &lv_font_montserrat_14);
+    makeLabel(_plotBtn, 20, (ROW_H - 14) / 2, "Draw graph", COL_BTN_TXT, &lv_font_montserrat_14);
 
-    // "Display values" button — blue rounded pill
+    // "Show table" button — blue rounded pill
     _tableBtn = makeContainer(_panelExpr, PAD + (SCREEN_W - 3 * PAD) / 2 + PAD, 0,
                               (SCREEN_W - 3 * PAD) / 2, ROW_H, COL_BTN_BG);
     lv_obj_set_style_radius(_tableBtn, 10, LV_PART_MAIN);
-    makeLabel(_tableBtn, 10, (ROW_H - 14) / 2, "Display values", COL_BTN_TXT, &lv_font_montserrat_14);
+    makeLabel(_tableBtn, 10, (ROW_H - 14) / 2, "Show table", COL_BTN_TXT, &lv_font_montserrat_14);
 
     // Bottom hint — fixed footer on the non-scrollable background strip below the
     // (shortened) list, so it never scrolls with the expressions nor overlaps a
@@ -478,7 +478,7 @@ void GrapherApp::createExpressionsPanel() {
     // y derived from HINT_H (not a bare literal) so the reserved strip and the
     // hint position can never drift apart if HINT_H is retuned.
     _exprHint = makeLabel(_bgExpr, PAD, panelH - HINT_H + 2,
-                           "ENTER=edit  AC=back", COL_HINT, &lv_font_montserrat_14);
+                           "EXE=edit  AC=back", COL_HINT, &lv_font_montserrat_14);
 
     refreshExprList();
 }
@@ -859,7 +859,7 @@ void GrapherApp::switchTab(Tab t) {
                 _snapEscapeCount = 0;
                 // Force the LVGL layout pass NOW so _graphArea has real dimensions,
                 // then plot the curve immediately. Without this the first entry to
-                // the Graph tab — including via the "Plot graph" button — shows an
+                // the Graph tab — including via the "Draw graph" button — shows an
                 // empty graph (just axes) until the user presses a key, because
                 // replot() bails while lv_obj_get_height(_graphArea) is still 0.
                 lv_obj_update_layout(_panelGraph);
@@ -1048,7 +1048,7 @@ void GrapherApp::refreshExprFocus() {
             snprintf(hint, sizeof(hint), "Invalid: %s  ENTER=edit", reason);
             lv_label_set_text(_exprHint, hint);
         } else {
-            lv_label_set_text(_exprHint, "ENTER=edit  AC=back");
+            lv_label_set_text(_exprHint, "EXE=edit  AC=back");
         }
     }
 
@@ -1122,7 +1122,7 @@ void GrapherApp::startEditing(int idx) {
     _exprCanvas[idx].startCursorBlink();
     refreshVPAMExpr(idx);
 
-    lv_label_set_text(_exprHint, "Type expression  ENTER=done  DEL=backspace");
+    lv_label_set_text(_exprHint, "Type expression  EXE=done  DEL=backspace");
     refreshExprFocus();
     refreshTemplateButtons();
 }
@@ -1143,7 +1143,7 @@ void GrapherApp::stopEditing() {
         preCacheFuncRPN(idx);
     }
     _plotDirty = true;
-    lv_label_set_text(_exprHint, "ENTER=edit  AC=back");
+    lv_label_set_text(_exprHint, "EXE=edit  AC=back");
     refreshExprList();
 }
 
@@ -3196,11 +3196,11 @@ void GrapherApp::handleExprList(const KeyEvent& ev) {
         } else if (_exprIdx == _numFuncs) {
             addFunction();
         } else if (_exprIdx == _numFuncs + 1) {
-            // Plot graph
+            // Draw graph
             _focus = Focus::CONTENT;
             switchTab(Tab::GRAPH);
         } else if (_exprIdx == _numFuncs + 2) {
-            // Display values
+            // Show table
             _focus = Focus::CONTENT;
             switchTab(Tab::TABLE);
         }

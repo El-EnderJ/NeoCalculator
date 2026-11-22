@@ -42,9 +42,23 @@ function Resolve-BuildDir {
     if (Test-Path $ini) {
         $line = Select-String -Path $ini -Pattern '^\s*build_dir\s*=\s*(.+?)\s*$' |
                 Select-Object -First 1
-        if ($line) { return $line.Matches[0].Groups[1].Value }
+        if ($line) { return (Expand-PioCoreDir $line.Matches[0].Groups[1].Value) }
     }
     return (Join-Path $RepoRoot '.pio\build')
+}
+
+# platformio.ini derives build_dir from ${platformio.core_dir}; mirror
+# PlatformIO's default: PLATFORMIO_CORE_DIR, else <home drive>\.platformio when
+# it exists, else ~\.platformio.
+function Expand-PioCoreDir([string]$Value) {
+    $token = '${platformio.core_dir}'
+    if (-not $Value.StartsWith($token)) { return $Value }
+    $core = $env:PLATFORMIO_CORE_DIR
+    if (-not $core) {
+        $short = (Split-Path -Qualifier $HOME) + '\.platformio'
+        $core = if (Test-Path -LiteralPath $short) { $short } else { Join-Path $HOME '.platformio' }
+    }
+    return [IO.Path]::GetFullPath($core + $Value.Substring($token.Length))
 }
 
 # ── 1. Locate the emulator executable ───────────────────────────────────────

@@ -456,14 +456,14 @@ void SettingsApp::updateHint() {
     if (_focus == LANGUAGE_ITEM) {
         char hint[64];
         snprintf(hint, sizeof(hint), isSpanish(productLocale)
-            ? "</> Idioma %u/4   EXE Cambia   MODE Vuelve"
-            : "</> Language %u/4   EXE Change   MODE Back",
+            ? "</> Idioma %u/4   EXE Cambia   BACK Vuelve"
+            : "</> Language %u/4   EXE Change   BACK Exit",
             unsigned(productLocaleIndex(productLocale)) + 1);
         lv_label_set_text(_hintLabel, hint);
     } else {
         lv_label_set_text(_hintLabel, isSpanish(productLocale)
-            ? "^v Elige  </> Cambia  MODE Vuelve"
-            : "^v Select  </> Adjust  MODE Back");
+            ? "^v Elige  </> Cambia  BACK Vuelve"
+            : "^v Select  </> Adjust  BACK Exit");
     }
 }
 

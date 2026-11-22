@@ -64,7 +64,7 @@
 
 **NumOS** is an open-source scientific and graphing calculator operating system built on the **ESP32-S3 N16R8** microcontroller (16 MB QIO runtime flash, DIO ROM boot header + 8 MB PSRAM OPI). The project aims to provide advanced features comparable to established scientific calculators, including symbolic mathematics, graphing, and natural display formatting.
 
-*Working toward delivering a capable CAS experience for a ~€20 BOM as an open-source alternative in the educational calculator space.*
+*Working toward delivering a capable CAS experience on low-cost hardware (BOM cost not finalized) as an open-source alternative in the educational calculator space.*
 
 **NumOS delivers:**
 
@@ -123,7 +123,7 @@
 ### Probability (Gaussian Distribution):
 ![Image](https://github.com/user-attachments/assets/f6041c0a-8423-43fa-84e7-f53bad07441b)
 
-### Python App:
+### Python App (preview — simulated engine, not MicroPython):
 ![Image](https://github.com/user-attachments/assets/243ce6a3-a6f5-4a73-a87f-6522058f042a)
 ![Image](https://github.com/user-attachments/assets/22360608-7e25-44a7-854b-9e1070cfb15b)
 
@@ -594,7 +594,7 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 | **Phase 6** | Statistics, Regression, Sequences, Probability, Matrices, Bridge Designer (Prototype) | 🟡 **In Development** |
 | **Simulations** | ParticleLab (30+ materials, electronics), CircuitCore (SPICE), Fluid2D (Navier-Stokes) (Experimental) | 🟡 **In Development** |
 | **Phase 7** | Complex numbers, base conversions | 🔲 Planned |
-| **Phase 8** | Physical keyboard (prototype stage), custom PCB, rechargeable battery, 3D enclosure, WiFi OTA | 🔲 Planned |
+| **Phase 8** | Physical keyboard (prototype stage), custom PCB, rechargeable battery, 3D enclosure (Rev A alpha design in `hardware/`), WiFi OTA | 🟡 **In Development** |
 
 ---
 
@@ -619,24 +619,27 @@ Issues discovered and resolved during bring-up. **Essential** for any fork or ne
 |:--------|:---------:|:--------:|:-------------:|:-----------:|
 | Open Source | ✅ GPL-3.0-or-later | ✅ Source-available | ❌ | ❌ |
 | Natural Display | ✅ | ✅ | ✅ | ✅ |
-| Symbolic CAS | 🟡 Giac | ✅ SymPy | ❌ | ✅ |
-| Symbolic derivatives | 🟡 | ✅ | ❌ | ✅ |
-| Symbolic integrals | 🟡 | ✅ | ❌ | ✅ |
-| Solution steps | 🟡 | ❌ | ❌ | ✅ |
+| Symbolic CAS | 🟡 Giac | ❌ | ❌ | ✅ |
+| Symbolic derivatives | 🟡 | ❌ | ❌ | ✅ |
+| Symbolic integrals | 🟡 | ❌ | ❌ | ✅ |
+| Solution steps | 🟡 | ❌ | ❌ | ❔ |
 | Colour graphing | ✅ | ✅ | ✅ | ✅ |
-| Multi-function graphing | 🔲 | ✅ | ✅ | ✅ |
+| Multi-function graphing | ✅ | ✅ | ✅ | ✅ |
 | Statistics & Regression | 🟡 | ✅ | ✅ | ✅ |
-| Matrices | 🔲 | ✅ | ✅ | ✅ |
+| Matrices | 🟡 add, subtract, multiply, determinant, inverse (up to 5×5) | ✅ | ✅ | ✅ |
 | Complex numbers | 🔲 | ✅ | ✅ | ✅ |
-| Scripting / Python | 🟡 NeoLanguage + Python | ✅ | ✅ TI-BASIC | ✅ HP PPL |
-| WiFi / Connectivity | 🔲 | ✅ | ❌ | ❌ |
-| Rechargeable battery | 🔲 | ✅ | ❌ | ✅ |
-| Estimated HW cost | **~€15-25** | €79 | €149 | €179 |
+| Scripting / Python | 🟡 NeoLanguage · Python app is a preview (simulated engine, not MicroPython) | ✅ | ✅ TI-BASIC | ✅ HP PPL |
+| WiFi / Connectivity | ❌ Not used (the module has a radio; the firmware never uses it) | ❌ | ❌ | ❌ |
+| Rechargeable battery | ✅ Rev A board (Li-ion + TP4056 charger) | ✅ | ✅ | ✅ |
+| Exam mode | ❌ Not implemented | ✅ | ✅ | ✅ |
+| Estimated HW cost | Not finalized | — | — | — |
 | Platform | ESP32-S3 | STM32F730 | Zilog eZ80 | ARM Cortex-A7 |
+
+Status audited against the code on 2026-11-16.
 
 > 📐 NumOS is developing CAS capabilities and cost-effectiveness as an open-source alternative, working toward feature parity with established commercial calculators.
 >
-> **Legend:** ✅ = working today · 🟡 = experimental / in progress · 🔲 = planned. See [`YH4F_SUBMISSION.md`](YH4F_SUBMISSION.md) for the honest current status of each feature.
+> **Legend:** ✅ = working today · 🟡 = experimental / in progress · 🔲 = planned · ❌ = not available / not implemented · ❔ = not verified. See [`YH4F_SUBMISSION.md`](YH4F_SUBMISSION.md) for the honest current status of each feature.
 
 ---
 
@@ -687,12 +690,12 @@ NumOS is an open-source project in active development that welcomes community co
 
 | Module | Description |
 |:-------|:------------|
-| **Custom PCB** | KiCad schematic with integrated ESP32-S3 + TP4056 charger |
+| **Custom PCB** | ~~KiCad schematic with integrated ESP32-S3 + TP4056 charger~~ Rev A (alpha) published in `hardware/`, remaining: bring-up and next revision |
 | **Sequences App** | Arithmetic and geometric sequences, Nth term, partial sums |
-| **Settings App** | ~~Angle mode DEG/RAD/GRA, brightness, factory reset~~ ✅ Done, remaining: brightness PWM, factory reset |
+| **Settings App** | ~~Angle mode DEG/RAD~~ ✅ Done, remaining: gradian (GRA) angle mode, brightness PWM, factory reset |
 | **Advanced CAS** | ~~Symbolic derivatives and integrals~~ ✅ Done, remaining: definite integrals, series |
 | **Better UI/UX** | General improvement on UI and UX for real product release |
-| **Matrices** | Matrix editor, determinant, inverse, multiplication |
+| **Matrices** | Experimental app exists (add, subtract, multiply, determinant, inverse up to 5×5), remaining: editor polish and testing |
 | **Physical keyboard** | ✅ GPIO 4/5 conflict resolved — `Keyboard` driver 5×10 implemented (Phase 7) |
 
 ---

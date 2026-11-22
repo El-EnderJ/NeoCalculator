@@ -125,37 +125,25 @@ convenience wrappers:
 
 ### Where the build goes (the `C:/.piobuild` path)
 
-You may notice build output under a path like `C:/.piobuild/numOS-build/...` **even on
-macOS or Linux**, which looks wrong. It isn't a bug or a leaked absolute path baked
-into the binary — it's a configured **build directory**:
+[`platformio.ini`](../platformio.ini) sets
+`build_dir = ${platformio.core_dir}/../.piobuild/numOS-build` in the `[platformio]`
+section, i.e. a `.piobuild` folder next to PlatformIO's own core directory:
 
-- [`platformio.ini`](../platformio.ini) sets `build_dir = C:/.piobuild/numOS-build` in the
-  `[platformio]` section. This is a **Windows-only workaround**: the default
-  `.pio/build/...` tree, nested under a long user path plus Giac/LVGL's deep include
-  folders, can exceed Windows' 260-character `MAX_PATH` limit and break the
-  **firmware** compile. A short absolute root keeps paths under the limit.
-- On Windows, `C:/.piobuild/numOS-build` is an absolute path on the `C:` drive. On
-  **macOS/Linux there is no `C:` drive**, so the same string is treated as a
-  *relative* folder — PlatformIO creates a literal directory named `C:` **inside your
-  repo** (`./C:/.piobuild/numOS-build/...`). Harmless, but confusing, and it means the
-  plain run scripts (which look in `.pio/build`) won't find that binary.
-
-**Is it safe to make portable?** Not by simply changing the line: it exists to keep
-the Windows firmware build working, and PlatformIO has **no per-environment
-`build_dir`**, so it can't be scoped to just the emulator. So it stays — and is
-already neutralized everywhere it matters:
-
-- **CI** overrides it with the `PLATFORMIO_BUILD_DIR=.pio/build` job env (see
+- **Windows:** PlatformIO uses the short `C:\.platformio` core dir when it exists, so
+  the build lands in `C:/.piobuild/numOS-build`. This is a **Windows workaround**: the
+  default `.pio/build/...` tree, nested under a long (or non-ASCII) user path plus
+  Giac/LVGL's deep include folders, can exceed Windows' 260-character `MAX_PATH`
+  limit and break the compile. A short absolute root keeps paths under the limit.
+- **macOS/Linux:** the build lands in `~/.piobuild/numOS-build` (outside the
+  checkout). `-t exec`, `./scripts/run-emulator.sh` and
+  `./scripts/run-emulator-linux.sh` all find the binary there.
+- **Override:** `PLATFORMIO_BUILD_DIR` still wins. CI sets
+  `PLATFORMIO_BUILD_DIR=.pio/build` (see
   [`.github/workflows/emulator-build.yml`](../.github/workflows/emulator-build.yml)),
-  so no `C:` folder is ever created on the Linux runners.
-- **You** have two clean options on macOS/Linux:
-  1. **Use `-t exec`** (or `./scripts/run-emulator.sh`) and ignore the path entirely —
-     PlatformIO runs the binary from wherever it built it.
-  2. **Override the build dir** so everything lands in a normal `.pio/build`:
-     ```bash
-     PLATFORMIO_BUILD_DIR=.pio/build pio run -e emulator_pc -t exec
-     ```
-     With that set, `./scripts/run-emulator-linux.sh` finds the binary too.
+  and you can do the same locally:
+  ```bash
+  PLATFORMIO_BUILD_DIR=.pio/build pio run -e emulator_pc -t exec
+  ```
 
 ---
 
@@ -185,7 +173,7 @@ pio run -e emulator_pc
 
 # Linux
 sudo apt-get install -y libsdl2-dev
-PLATFORMIO_BUILD_DIR=.pio/build pio run -e emulator_pc
+pio run -e emulator_pc            # builds into ~/.piobuild/numOS-build
 ./scripts/run-emulator-linux.sh
 
 # macOS (Homebrew) — install the PlatformIO CLI first if `pio` is "command not found"
@@ -273,11 +261,11 @@ forwarded: `./scripts/run-emulator-windows.ps1 <args>`.
 
 ### Build & run
 ```bash
-PLATFORMIO_BUILD_DIR=.pio/build pio run -e emulator_pc
+pio run -e emulator_pc
 ./scripts/run-emulator-linux.sh
 ```
 
-Why `PLATFORMIO_BUILD_DIR=.pio/build`? See [Build directory](#build-directory).
+The binary lands in `~/.piobuild/numOS-build`; see [Build directory](#build-directory).
 
 The run script locates the binary, sanity-checks the SDL2 runtime (`ldd` /
 `ldconfig`), then runs it.
@@ -345,11 +333,9 @@ version, the CLI is on your PATH and the build will find it. If it *still* says
 > wrapper `./scripts/run-emulator.sh` does the same thing.
 
 Once `pio --version` works, the line above builds the emulator exactly as on
-Windows/Linux and opens the SDL2 window. Prefer `-t exec` (or `./scripts/run-emulator.sh`)
-over `./scripts/run-emulator-linux.sh` on a fresh checkout: the helper script looks in
-`.pio/build`, but the default `build_dir` puts the macOS binary in a literal `./C:/`
-folder (see [Where the build goes](#where-the-build-goes-the-cpiobuild-path)), so the
-helper won't find it unless you also set `PLATFORMIO_BUILD_DIR=.pio/build`.
+Windows/Linux and opens the SDL2 window. The binary lands in `~/.piobuild/numOS-build`
+(see [Where the build goes](#where-the-build-goes-the-cpiobuild-path)), where
+`./scripts/run-emulator-linux.sh` also finds it.
 
 > **Status:** the macOS path uses the same `pkg-config sdl2` discovery as Linux and is
 > *expected to work*, but — like Linux — has not yet been proven by a green CI run on
@@ -1444,19 +1430,19 @@ list): `grapher_aspect_circle_smoke` (`x^2+y^2=1` → true circle),
 
 ## Build directory
 
-This repo sets `build_dir = C:/.piobuild/numOS-build` in `platformio.ini` (top
-`[platformio]` section) to keep Windows build paths short (MinGW + deep
-PlatformIO paths can hit the Windows path-length limit). Consequences:
+This repo sets `build_dir = ${platformio.core_dir}/../.piobuild/numOS-build` in
+`platformio.ini` (top `[platformio]` section) to keep Windows build paths short
+(MinGW + deep PlatformIO paths can hit the Windows path-length limit) while staying
+portable. Consequences:
 
-- On **Windows** candidates build to
+- On **Windows** (PlatformIO core in `C:\.platformio`) candidates build to
   `C:/.piobuild/numOS-build/emulator_pc/program.exe`. Publish them with the script
   above; the run script prefers `C:/.piobuild/numOS/emulator_pc/program.exe`.
-- On **Linux/CI**, that `C:/...` value is not a sensible path. Override it with
-  `PLATFORMIO_BUILD_DIR=.pio/build` (recommended), which is what the commands and
-  CI above do. The firmware CI also strips the line with `sed`.
+- On **Linux/macOS** they build to `~/.piobuild/numOS-build/emulator_pc/program`.
+  CI overrides this with `PLATFORMIO_BUILD_DIR=.pio/build`.
 - After the stable-release check on Windows, fallback build directories resolve as:
-  `PLATFORMIO_BUILD_DIR` → `build_dir` from `platformio.ini` (ignored on
-  non-Windows if it is a `C:\` path) → `.pio/build`.
+  `PLATFORMIO_BUILD_DIR` → `build_dir` from `platformio.ini` (with
+  `${platformio.core_dir}` expanded) → `.pio/build`.
 
 ---
 

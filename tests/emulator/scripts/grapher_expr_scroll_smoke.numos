@@ -5,7 +5,7 @@
 #   * refreshExprFocus() snaps the focused row into view (lv_obj_scroll_to_view,
 #     LV_ANIM_OFF) so the selection never disappears below the fold;
 #   * the _panelExpr lost SCROLL_MOMENTUM/ELASTIC, so there is no overscroll jitter;
-#   * the "ENTER=edit" hint moved to the non-scrollable background as a fixed footer,
+#   * the "EXE=edit" hint moved to the non-scrollable background as a fixed footer,
 #     so it no longer scrolls on top of a row or clips the bottom.
 # Final state: list scrolled to the bottom, slot 5 (y=6x) selected and fully visible,
 # footer hint clean.

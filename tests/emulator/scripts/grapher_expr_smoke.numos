@@ -10,7 +10,7 @@
 #   * open_app Grapher opens the Expressions tab with focus on the TAB BAR and
 #     0 functions (begin(): GrapherApp.cpp:154; _numFuncs=0).
 #   * `down`  : handleTabBar moves focus TAB_BAR -> CONTENT; with _numFuncs=0 the
-#               selected row _exprIdx==0 IS the "Add an element" row
+#               selected row _exprIdx==0 IS the "Add expression" row
 #               (handleTabBar GrapherApp.cpp:2156-2166).
 #   * `enter` : on the Add row (_exprIdx==_numFuncs) -> addFunction() creates slot
 #               0 and startEditing() switches to EDITING mode (handleExprList
@@ -50,7 +50,7 @@ open_app Grapher
 wait 60
 
 # Enter "x" into the first function slot, then commit. Sequence:
-#   down  : TAB_BAR -> CONTENT; lands on the "Add an element" row (_numFuncs=0)
+#   down  : TAB_BAR -> CONTENT; lands on the "Add expression" row (_numFuncs=0)
 #   enter : addFunction() -> startEditing() slot 0 (EDITING mode)
 #   x     : insert variable x into the VPAM expression
 #   enter : commit -> stopEditing(); cursor blink stops; stays on Expressions tab

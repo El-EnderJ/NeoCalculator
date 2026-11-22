@@ -141,7 +141,7 @@ def main():
     run('physical-shifted-root',OPEN+p('EXE','EXE','SHIFT','POW','NUM_3','RIGHT','VAR_X','RIGHT','EQUAL','NUM_2')+'assert_equations draft surd((x),(3))=2\n')
     run('physical-absolute',OPEN+p('EXE','EXE','SHIFT','SQRT','VAR_X','RPAREN')+'assert_equations input abs((x))\n')
     run('physical-exp',OPEN+p('EXE','EXE','SHIFT','LN','VAR_X','RIGHT')+'assert_equations input ((exp(1))^(x))\n')
-    run('physical-pow10',OPEN+p('EXE','EXE','SHIFT','LOG','NUM_2','RIGHT')+'assert_equations input ((10)^(2))\n')
+    run('physical-log-base',OPEN+p('EXE','EXE','SHIFT','LOG','NUM_2','RIGHT','NUM_8','RIGHT')+'assert_equations input logb((8),(2))\n')
     run('physical-unsupported-variable',OPEN+p('EXE','EXE','ALPHA','LN','EQUAL','NUM_0','EXE','DOWN','DOWN','EXE')+'assert_equations_status parse_error\n')
     run('physical-linear',OPEN+p('EXE','EXE','NUM_2','MUL','VAR_X','ADD','NUM_4','EQUAL','NUM_0')+'assert_equations draft 2*x+4=0\n'+p('EXE','DOWN','DOWN','EXE')+oracle('ok',[('x',0,'-2')]))
     run('physical-variables',OPEN+p('EXE','EXE','VAR','RIGHT','RIGHT','EXE','EQUAL','NUM_3')+'assert_equations draft z=3\n')

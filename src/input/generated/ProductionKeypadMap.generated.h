@@ -8,7 +8,7 @@
 
 namespace numos::input {
 
-inline constexpr char kProductionLayoutSha256[] = "7f6638ae7f830ef0741424d621832756268e5fa41292f2d8f8c363cdbc1a2fc3";
+inline constexpr char kProductionLayoutSha256[] = "9e4ada3f20fb9acca85d20d8f7815c85a1f8bbc43c9f12f1e849e8de87806533";
 inline constexpr char kProductionSchematicSha256[] = "6a5855fe3a239c35263f5d75fe9082fc44e228484b4a8f11a86a66a987a37007";
 inline constexpr char kProductionPcbSha256[] = "fed978049fb6eb03325c0ad8050e56aa8a9662d8e5feabcd52a732c1d24cd848";
 
@@ -165,6 +165,7 @@ enum class SemanticId : uint16_t {
     less_than,
     ln,
     log10,
+    log_base,
     mixed_fraction_template,
     multiply,
     not_equal,
@@ -332,7 +333,7 @@ inline constexpr std::array<std::array<KeyPlaneDefinition, 4>, 50> kMathPlaneDef
     {{{SemanticId::shift_once, KeyCode::SHIFT, "", false}, {SemanticId::shift_lock, KeyCode::NONE, "", false}, {SemanticId::shift_once, KeyCode::SHIFT, "", false}, {SemanticId::shift_lock, KeyCode::NONE, "", false}}},
     {{{SemanticId::open_variable_picker, KeyCode::VAR, "", false}, {SemanticId::open_variable_manager, KeyCode::NONE, "", true}, {SemanticId::open_variable_picker, KeyCode::VAR, "", false}, {SemanticId::open_variable_manager, KeyCode::NONE, "", true}}},
     {{{SemanticId::context_independent_variable, KeyCode::VAR_X, "x", true}, {SemanticId::variable_y, KeyCode::VAR_Y, "y", true}, {SemanticId::alpha_A, KeyCode::NONE, "A", true}, {SemanticId::variable_y, KeyCode::VAR_Y, "y", true}}},
-    {{{SemanticId::log10, KeyCode::LOG, "\\log(¶)", true}, {SemanticId::pow10, KeyCode::NONE, "10^{¶}", true}, {SemanticId::alpha_F, KeyCode::NONE, "F", true}, {SemanticId::pow10, KeyCode::NONE, "10^{¶}", true}}},
+    {{{SemanticId::log10, KeyCode::LOG, "\\log(¶)", true}, {SemanticId::log_base, KeyCode::LOG_BASE, "\\log_{¶}()", true}, {SemanticId::alpha_F, KeyCode::NONE, "F", true}, {SemanticId::log_base, KeyCode::LOG_BASE, "\\log_{¶}()", true}}},
     {{{SemanticId::store, KeyCode::STO, "", true}, {SemanticId::recall, KeyCode::NONE, "", true}, {SemanticId::alpha_K, KeyCode::NONE, "K", true}, {SemanticId::recall, KeyCode::NONE, "", true}}},
     {{{SemanticId::format_result, KeyCode::FORMAT, "", false}, {SemanticId::open_table, KeyCode::TABLE, "", true}, {SemanticId::alpha_P, KeyCode::NONE, "P", true}, {SemanticId::open_table, KeyCode::TABLE, "", true}}},
     {{{SemanticId::digit_7, KeyCode::NUM_7, "7", true}, {SemanticId::permutation, KeyCode::NONE, "\\operatorname{nPr}(¶,)", true}, {SemanticId::alpha_U, KeyCode::NONE, "U", true}, {SemanticId::permutation, KeyCode::NONE, "\\operatorname{nPr}(¶,)", true}}},
@@ -385,7 +386,7 @@ inline constexpr std::array<std::array<KeyPlaneDefinition, 4>, 50> kCodePlaneDef
     {{{SemanticId::shift_once, KeyCode::SHIFT, "", false}, {SemanticId::shift_lock, KeyCode::NONE, "", false}, {SemanticId::shift_once, KeyCode::SHIFT, "", false}, {SemanticId::shift_lock, KeyCode::NONE, "", false}}},
     {{{SemanticId::open_variable_picker, KeyCode::VAR, "", false}, {SemanticId::open_variable_manager, KeyCode::NONE, "", true}, {SemanticId::open_variable_picker, KeyCode::VAR, "", false}, {SemanticId::open_variable_manager, KeyCode::NONE, "", true}}},
     {{{SemanticId::context_independent_variable, KeyCode::VAR_X, "x", true}, {SemanticId::variable_y, KeyCode::VAR_Y, "y", true}, {SemanticId::code_a, KeyCode::NONE, "a", true}, {SemanticId::code_A, KeyCode::NONE, "A", true}}},
-    {{{SemanticId::log10, KeyCode::LOG, "\\log(¶)", true}, {SemanticId::pow10, KeyCode::NONE, "10^{¶}", true}, {SemanticId::code_f, KeyCode::NONE, "f", true}, {SemanticId::code_F, KeyCode::NONE, "F", true}}},
+    {{{SemanticId::log10, KeyCode::LOG, "\\log(¶)", true}, {SemanticId::log_base, KeyCode::LOG_BASE, "\\log_{¶}()", true}, {SemanticId::code_f, KeyCode::NONE, "f", true}, {SemanticId::code_F, KeyCode::NONE, "F", true}}},
     {{{SemanticId::store, KeyCode::STO, "", true}, {SemanticId::recall, KeyCode::NONE, "", true}, {SemanticId::code_k, KeyCode::NONE, "k", true}, {SemanticId::code_K, KeyCode::NONE, "K", true}}},
     {{{SemanticId::format_result, KeyCode::FORMAT, "", false}, {SemanticId::open_table, KeyCode::TABLE, "", true}, {SemanticId::code_p, KeyCode::NONE, "p", true}, {SemanticId::code_P, KeyCode::NONE, "P", true}}},
     {{{SemanticId::digit_7, KeyCode::NUM_7, "7", true}, {SemanticId::permutation, KeyCode::NONE, "\\operatorname{nPr}(¶,)", true}, {SemanticId::code_u, KeyCode::NONE, "u", true}, {SemanticId::code_U, KeyCode::NONE, "U", true}}},
@@ -438,7 +439,7 @@ inline constexpr std::array<std::array<KeyPlaneDefinition, 4>, 50> kTextPlaneDef
     {{{SemanticId::shift_once, KeyCode::SHIFT, "", false}, {SemanticId::shift_lock, KeyCode::NONE, "", false}, {SemanticId::shift_once, KeyCode::SHIFT, "", false}, {SemanticId::shift_lock, KeyCode::NONE, "", false}}},
     {{{SemanticId::open_variable_picker, KeyCode::VAR, "", false}, {SemanticId::open_variable_manager, KeyCode::NONE, "", true}, {SemanticId::open_variable_picker, KeyCode::VAR, "", false}, {SemanticId::open_variable_manager, KeyCode::NONE, "", true}}},
     {{{SemanticId::context_independent_variable, KeyCode::VAR_X, "x", true}, {SemanticId::variable_y, KeyCode::VAR_Y, "y", true}, {SemanticId::code_a, KeyCode::NONE, "a", true}, {SemanticId::variable_y, KeyCode::VAR_Y, "y", true}}},
-    {{{SemanticId::log10, KeyCode::LOG, "\\log(¶)", true}, {SemanticId::pow10, KeyCode::NONE, "10^{¶}", true}, {SemanticId::code_f, KeyCode::NONE, "f", true}, {SemanticId::pow10, KeyCode::NONE, "10^{¶}", true}}},
+    {{{SemanticId::log10, KeyCode::LOG, "\\log(¶)", true}, {SemanticId::log_base, KeyCode::LOG_BASE, "\\log_{¶}()", true}, {SemanticId::code_f, KeyCode::NONE, "f", true}, {SemanticId::log_base, KeyCode::LOG_BASE, "\\log_{¶}()", true}}},
     {{{SemanticId::store, KeyCode::STO, "", true}, {SemanticId::recall, KeyCode::NONE, "", true}, {SemanticId::code_k, KeyCode::NONE, "k", true}, {SemanticId::recall, KeyCode::NONE, "", true}}},
     {{{SemanticId::format_result, KeyCode::FORMAT, "", false}, {SemanticId::open_table, KeyCode::TABLE, "", true}, {SemanticId::code_p, KeyCode::NONE, "p", true}, {SemanticId::open_table, KeyCode::TABLE, "", true}}},
     {{{SemanticId::digit_7, KeyCode::NUM_7, "7", true}, {SemanticId::permutation, KeyCode::NONE, "\\operatorname{nPr}(¶,)", true}, {SemanticId::code_u, KeyCode::NONE, "u", true}, {SemanticId::permutation, KeyCode::NONE, "\\operatorname{nPr}(¶,)", true}}},

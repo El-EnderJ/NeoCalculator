@@ -135,9 +135,9 @@
     "expected": "1002"
   },
   {
-    "id": "shift-power10",
-    "keys": "SHIFT log neg 3",
-    "expected": "0.001"
+    "id": "shift-log-base",
+    "keys": "SHIFT log 2 RIGHT 8",
+    "expected": "3"
   },
   {
     "id": "leading-dot",

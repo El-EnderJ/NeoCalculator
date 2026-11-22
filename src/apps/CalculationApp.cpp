@@ -578,11 +578,13 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             _cursor.insertFunction(vpam::FuncKind::Ln);
             break;
         case KeyCode::LOG:
+            // SHIFT+LOG is log with an arbitrary base (production layout
+            // r3c0 shift = log_base); 10^x lives on the EXP key only.
+            startEntryAfterResult(EntryStart::Fresh);
             if (km.isShift()) {
-                if (_cursor.insertPowerOfTen()) clearResult();
+                _cursor.insertLogBase();
                 km.consumeModifier();
             } else {
-                startEntryAfterResult(EntryStart::Fresh);
                 _cursor.insertFunction(vpam::FuncKind::Log);
             }
             break;

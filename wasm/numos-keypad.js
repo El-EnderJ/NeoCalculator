@@ -101,7 +101,7 @@ export const NUMOS_WEB_KEYPAD_LAYOUT = Object.freeze([
       ["r2c3", "POW", "x²", "x³", "D", "function"],
       ["r2c4", "POW", "x^□", "ⁿ√", "E", "function"],
 
-      ["r3c0", "LOG", "log", "10ˣ", "F", "function"],
+      ["r3c0", "LOG", "log", "log_□", "F", "function"],
       ["r3c1", "LN", "ln", "eˣ", "G", "function"],
       ["r3c2", "SIN", "sin", "sin⁻¹", "H", "function"],
       ["r3c3", "COS", "cos", "cos⁻¹", "I", "function"],

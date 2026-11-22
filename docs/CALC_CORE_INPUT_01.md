@@ -47,7 +47,7 @@ screenshots preserve that observation; no claim that a stale cache caused it.
 | Calculation physical `(-)` / logical NEGATE | Key was unhandled: `10^3` remained positive | Handle NEG and NEGATE through the existing context-sensitive sign operator |
 | Web `×10ˣ` button | `r9c2` dispatched POW, making a generic empty-base power | Dispatch EXP, as the canonical production keypad does |
 | EXP from empty input | Old Mul/1/0/Power sequence inserted an orphan leading multiplication | Shared transactional `insertPowerOfTen()` creates visible `10^□` |
-| SHIFT LOG (`10ˣ`) | Semantic `pow10` had no Calculation insertion path | Use the same structural helper |
+| SHIFT LOG (`10ˣ`) | Semantic `pow10` had no Calculation insertion path | Use the same structural helper (superseded in INTEGRATION-01: SHIFT LOG now inserts `log_□`; `10^□` is entered with EXP) |
 
 For `66.63 [fraction] 2 × 1 0 [power] [SUB] 3`, the baseline tree was:
 

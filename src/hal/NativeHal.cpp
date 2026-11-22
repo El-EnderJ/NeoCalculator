@@ -4303,6 +4303,9 @@ static int emulatorInitialize(int argc, char** argv)
     if (g_opts.deterministic) {
         std::printf("[LVGL] modo determinista: %ld ms virtuales por frame\n",
                     g_opts.stepMs);
+        // INTEGRATION-01: the status-bar clock read the wall clock, so no two
+        // runs (and no golden) could match byte-for-byte. Freeze it at 12:00.
+        ui::StatusBar::setFixedClock(12 * 60);
     }
 
     // Crear el display LVGL con flush a SDL

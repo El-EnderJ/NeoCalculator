@@ -47,6 +47,14 @@ void StatusBar::showActiveNotice(const char* text) {
 
 StatusBar* StatusBar::s_active = nullptr;
 
+namespace {
+int s_fixedClockMinutes = -1;   // < 0: live wall clock
+}
+
+void StatusBar::setFixedClock(int minutesOfDay) {
+    s_fixedClockMinutes = minutesOfDay < 0 ? -1 : minutesOfDay % (24 * 60);
+}
+
 #ifdef NATIVE_SIM
 const char* StatusBar::debugActiveAngleText() {
     if (s_active && s_active->_angleLabel)
@@ -236,6 +244,14 @@ void StatusBar::update() {
 
 void StatusBar::updateClock() {
     if (!_clockLabel) return;
+
+    if (s_fixedClockMinutes >= 0) {
+        char fixed[6];
+        snprintf(fixed, sizeof(fixed), "%02d:%02d",
+                 s_fixedClockMinutes / 60, s_fixedClockMinutes % 60);
+        lv_label_set_text(_clockLabel, fixed);
+        return;
+    }
 
     time_t now = time(nullptr);
     struct tm tmBuf;

@@ -87,6 +87,13 @@ public:
     static void refreshActiveModifier();
     // Allocation-free emergency notice; caller supplies static-lifetime text.
     static void showActiveNotice(const char* text);
+    /**
+     * Freeze the clock at minutesOfDay (0..1439) instead of reading the wall
+     * clock; a negative value restores the live clock (the default). Only the
+     * emulator's --deterministic mode calls it, so screenshots are reproducible;
+     * the firmware never does.
+     */
+    static void setFixedClock(int minutesOfDay);
 
     /** Devuelve el objeto LVGL raíz (para set pos, etc.). */
     lv_obj_t* obj() const { return _bar; }

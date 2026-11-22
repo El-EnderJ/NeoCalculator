@@ -10,7 +10,10 @@ p=argparse.ArgumentParser();p.add_argument('--bin',required=True);p.add_argument
 a.out.mkdir(parents=True,exist_ok=True)
 env=dict(os.environ,PATH='C:/mingw64/bin;C:/SDL2/x86_64-w64-mingw32/bin;'+os.environ['PATH'])
 rows=json.loads((ROOT/'src/math/toolbox-catalog.json').read_text(encoding='utf-8'))
-def keys(*codes):return ''.join('key '+str(c)+'\n' for c in codes)
+# `key` injects through the production keypad path. An `L:` code is the legacy
+# direct-to-app logical key (`lkey`), only for chords with no production
+# equivalent (DEVICE-INPUT-PATH-01).
+def keys(*codes):return ''.join(('lkey '+str(c)[2:] if str(c).startswith('L:') else 'key '+str(c))+'\n' for c in codes)
 def tab(n):return keys('TOOLBOX','UP',*(['RIGHT']*n),'ENTER')
 def search(query):return keys('TOOLBOX')+'sdl_text '+query+'\nwait 2\n'+keys('DOWN')
 def pick(e):return search(e['en'])+'assert_calc_input toolbox geometry\n'+f'assert_calc_input toolbox selected {e["id"]} {e["variant"]}\n'+keys('ENTER')+'assert_calc_input toolbox closed\n'
@@ -78,7 +81,9 @@ fs=a.out/'roundtrip-data'
 run('persist-write',search('Indexed root')+keys('FORMAT','ENTER','BACK','BACK'),fs)
 run('persist-read',tab(1)+'assert_calc_input toolbox selected 111 0\n'+shot('persisted')+keys('ENTER','3','RIGHT','8','ENTER')+'assert_calc_input near 2 1e-10\n',fs)
 run('rapid-close-repeat',keys('TOOLBOX')+'sdl_text Logarithm\n'+keys('DOWN')+'keydown ENTER\n'+'keyrepeat ENTER\n'*5+'keyup ENTER\n'+keys('2','RIGHT','8','ENTER')+'assert_calc_input near 3 0\n'+keys('TOOLBOX','BACK','ADD','1','ENTER')+'assert_calc_status ok\n')
-run('modifier-restore',keys('SHIFT','TOOLBOX')+'assert_modifier none\n'+keys('BACK')+'assert_modifier shift\n'+keys('SHIFT','SHIFT','ALPHA','TOOLBOX')+'assert_modifier none\n'+keys('BACK')+'assert_modifier alpha\n'+keys('TOOLBOX','HOME')+'wait 30\nassert_app Menu\nassert_modifier none\n')
+# On the keypad SHIFT+TOOLBOX is the (unimplemented) catalog, so a Toolbox
+# opened over a latched SHIFT is only reachable on the logical path.
+run('modifier-restore',keys('L:SHIFT','L:TOOLBOX')+'assert_modifier none\n'+keys('BACK')+'assert_modifier shift\n'+keys('SHIFT','SHIFT','ALPHA','TOOLBOX')+'assert_modifier none\n'+keys('BACK')+'assert_modifier alpha\n'+keys('TOOLBOX','HOME')+'wait 30\nassert_app Menu\nassert_modifier none\n')
 run('history-full',keys(*(['AC','2','ADD','3','ENTER']*60))+search('Absolute value')+shot('history-full-toolbox')+keys('BACK','BACK')+'assert_calc_input near 5 0\n'+keys('UP')+'assert_calc_input structure\n')
 body=tab(3)+'calc_physical 3 0\ncalc_physical 3 0\n'
 mapping=json.loads((ROOT/'hardware/keyboard/neocalculator-v1-final-5x10-revision-c-canonical.json').read_text(encoding='utf-8'))

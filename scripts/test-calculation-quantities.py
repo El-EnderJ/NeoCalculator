@@ -9,6 +9,12 @@ env=dict(os.environ,PATH='C:/mingw64/bin;C:/SDL2/x86_64-w64-mingw32/bin;'+os.env
 records={}
 def keys(s):
  physical={'SHIFT':(4,0),'ALPHA':(3,0),'FORMAT':(4,5)}
+ # DEVICE-INPUT-PATH-01: `key` uses the production keypad path. Memories A-F
+ # are stored with STO 1-6, but on the keypad the letters are ALPHA + x,t,θ,n
+ # / frac / sqrt / x^□ / x² / log (ALPHA 1-6 is { } # X Y Z), so recall
+ # through the real letter keys.
+ letters=('x','physical_frac','sqrt','pow','square','log')
+ s=' '.join(letters[int(t)-1] if i and s.split()[i-1]=='ALPHA' and t in '123456' and len(t)==1 else t for i,t in enumerate(s.split()))
  return ''.join('calc_physical %d %d\n'%physical[k] if k in physical else 'key '+k+'\n' for k in s.split())
 def selected(item,prefix=0):return f'assert_calc_input toolbox selected {32768|item} {prefix}\n'
 def search(q):return 'sdl_text '+q+'\n'+keys('DOWN')

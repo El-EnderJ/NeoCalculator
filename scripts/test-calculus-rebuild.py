@@ -18,12 +18,14 @@ CASES = {
     'derivative-syntax-error': (['x', '^', 'EXE'], None),
     'mode-focus': (['UP'], None),
     'editor-focus': (['UP', 'RIGHT', 'DOWN'], None),
-    'integral-empty': (['GRAPH'], None),
-    'integral-x2-result': (['GRAPH', 'x', '^', '2', 'EXE'], 'x^3/3'),
-    'integral-sqrt-result': (['GRAPH', 'sqrt', 'x', 'RIGHT', 'EXE'], '2*x*sqrt(x)/3'),
-    'integral-tall-result': (['GRAPH', 'sqrt', 'x', '^', '2', 'RIGHT', '+', '1', 'RIGHT', 'EXE'], 'x*sqrt(x^2+1)/2-ln(sqrt(x^2+1)-x)/2'),
-    'integral-unevaluated': (['GRAPH', 'sin', 'sin', 'x', 'RIGHT', 'RIGHT', 'EXE'], None),
-    'integral-domain-error': (['GRAPH', '0', 'physical_frac', '0', 'EXE'], None),
+    # Integral mode is SHIFT+2 (F2) on the production keypad; `key` injects
+    # through the physical path, where GRAPH has no key (DEVICE-INPUT-PATH-01).
+    'integral-empty': (['F2'], None),
+    'integral-x2-result': (['F2', 'x', '^', '2', 'EXE'], 'x^3/3'),
+    'integral-sqrt-result': (['F2', 'sqrt', 'x', 'RIGHT', 'EXE'], '2*x*sqrt(x)/3'),
+    'integral-tall-result': (['F2', 'sqrt', 'x', '^', '2', 'RIGHT', '+', '1', 'RIGHT', 'EXE'], 'x*sqrt(x^2+1)/2-ln(sqrt(x^2+1)-x)/2'),
+    'integral-unevaluated': (['F2', 'sin', 'sin', 'x', 'RIGHT', 'RIGHT', 'EXE'], None),
+    'integral-domain-error': (['F2', '0', 'physical_frac', '0', 'EXE'], None),
     'long-input': (['x', '+']*28+['x'], None),
     'verified-steps': (['x', 'square', 'EXE', 'tools'], None),
 }
@@ -67,7 +69,7 @@ key x
 key )
 key EXE
 assert_calculus_equivalent cos(x)
-key GRAPH
+key F2
 assert_calculus_state editing
 assert_calculus_operation integrate_indefinite
 assert_calculus_result_kind none
@@ -85,7 +87,7 @@ assert_calculus_focus mode
 keydown RIGHT
 keyrepeat RIGHT
 keyrepeat RIGHT
-keyrepeat GRAPH
+keyrepeat F2
 wait 80
 keyup RIGHT
 assert_calculus_operation integrate_indefinite
@@ -216,7 +218,7 @@ def main():
         script='wait 200\nopen_app Calculus\nwait 60\n'+keys(sequence)+'wait 2\n'+assertions+'wait 1\n'
         run(binary,args.out,name,script,269+len(sequence)+assertions.count('\n'),True)
     run(binary,args.out,'keyboard',LOGIC,800)
-    script='wait 200\nopen_app Calculus\nwait 30\nkey GRAPH\n'
+    script='wait 200\nopen_app Calculus\nwait 30\nkey F2\n'
     for sequence,expected in F7:
         script+='key AC\n'+keys(sequence)+'key EXE\nassert_calculus_status ok\nassert_calculus_result_kind structured\nassert_calculus_equivalent '+expected+'\nassert_calculus_layout\n'
     run(binary,args.out,'f7-keypad',script,600)
@@ -229,7 +231,7 @@ key EXE
 assert_calculus_equivalent 2*x
 key tools
 key EXE
-key GRAPH
+key F2
 key AC
 key sqrt
 key x

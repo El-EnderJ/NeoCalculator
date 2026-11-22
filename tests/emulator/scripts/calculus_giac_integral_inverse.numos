@@ -2,7 +2,8 @@
 wait 200
 open_app Calculus
 wait 60
-lkey GRAPH
+# DEVICE-INPUT-PATH-01: integral mode is SHIFT+2 (F2) on the production keypad.
+key F2
 key 1
 key FRAC
 key x

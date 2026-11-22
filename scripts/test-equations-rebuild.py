@@ -8,7 +8,10 @@ ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('candidates',ROOT/'scripts/generate-emulator-candidates.py')
 helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
 OPEN='wait 200\nset_equations_complex_policy real\nopen_app Equations\nwait 40\n'
-def keys(sequence):return ''.join('key '+k+'\n' for k in sequence.split())
+# `key` injects through the production keypad path. An `L:` token is the
+# legacy direct-to-app logical key (`lkey`): only for chords with no
+# production equivalent (DEVICE-INPUT-PATH-01).
+def keys(sequence):return ''.join(('lkey '+k[2:] if k.startswith('L:') else 'key '+k)+'\n' for k in sequence.split())
 def add(expr):return keys('ENTER ENTER '+expr+' ENTER')
 def single(expr):return OPEN+add(expr)+keys('DOWN DOWN ENTER')+'wait 20\n'
 def system(exprs):
@@ -35,11 +38,13 @@ MATH={
  'incomplete-fraction':('1 / RIGHT = 1','parse_error',[]),
  'incomplete-root':('sqrt RIGHT = 1','parse_error',[]),
  'incomplete-power':('x ^ RIGHT = 1','parse_error',[]),
- 'unsupported-variable':('ALPHA sin = 0','parse_error',[]),
+ # Logical-only chord: on the keypad ALPHA sin is the letter H (no_solution).
+ 'unsupported-variable':('L:ALPHA L:sin = 0','parse_error',[]),
 }
 SYSTEMS={
  'system-2x2':(['x + y = 3','x - y = 1'],'ok',[('x',0,'2'),('y',0,'1')]),
- 'system-3x3':(['x + y + ALPHA y = 6','x - y + ALPHA y = 2','x + y - ALPHA y = 0'],'ok',[('x',0,'1'),('y',0,'2'),('z',0,'3')]),
+ # Logical-only chord: lowercase z is ALPHA y on the direct path only.
+ 'system-3x3':(['x + y + L:ALPHA L:y = 6','x - y + L:ALPHA L:y = 2','x + y - L:ALPHA L:y = 0'],'ok',[('x',0,'1'),('y',0,'2'),('z',0,'3')]),
  'inconsistent':(['x + y = 2','2 * x + 2 * y = 5'],'no_solution',[]),
  'dependent':(['x + y = 2','2 * x + 2 * y = 4'],'all_values',[]),
  'conditional-family':(['x / x RIGHT = 1','y = y'],'all_values',[]),

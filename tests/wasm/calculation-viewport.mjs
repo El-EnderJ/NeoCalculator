@@ -40,13 +40,14 @@ try {for(const [name,type] of Object.entries({chromium,firefox,webkit})) {
    });
    await writeFile(resolve(folder,id+'.png'),Buffer.from(data.png,'base64'));delete data.png;return data;
   };
+  // DEVICE-INPUT-PATH-01: a result scrolls with SHIFT + arrow; a plain arrow re-edits.
   await keys('ENTER');
   await keys('AC '+'SQRT '.repeat(14)+'2');const deep=await shot('deep-root');assert.equal(deep.reds,0);
   for(const [id,input] of [['exact','2 ^ 2 0 0 ENTER'],['periodic','1 / 9 7 ENTER SHIFT ALPHA FORMAT DOWN DOWN ENTER'],['extended','1 / 7 ENTER SHIFT ALPHA FORMAT DOWN DOWN DOWN ENTER']]) {
    await keys('AC '+input);const semantic=await el.evaluate(e=>e.diagnosticState().calculation),start=await shot(id+'-start');
-   await keys('RIGHT '.repeat(120));const end=await shot(id+'-end');assert.notEqual(end.hash,start.hash);assert.ok(end.ink>15);
-   await keys('RIGHT '.repeat(10));const edge=await shot(id+'-edge');assert.equal(edge.hash,end.hash);
-   await keys('LEFT '.repeat(130));const back=await shot(id+'-back');assert.equal(back.hash,start.hash);
+   await keys('SHIFT RIGHT '.repeat(120));const end=await shot(id+'-end');assert.notEqual(end.hash,start.hash);assert.ok(end.ink>15);
+   await keys('SHIFT RIGHT '.repeat(10));const edge=await shot(id+'-edge');assert.equal(edge.hash,end.hash);
+   await keys('SHIFT LEFT '.repeat(130));const back=await shot(id+'-back');assert.equal(back.hash,start.hash);
    assert.deepEqual(await el.evaluate(e=>e.diagnosticState().calculation),semantic);
    records.push({browser:name,version:browser.version(),surface,id,start,end,edge,back,semantic});
   }

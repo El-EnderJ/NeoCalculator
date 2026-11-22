@@ -156,3 +156,4 @@ Previews use the same AST structure with display-only parameter letters. Inserti
 | 410:1 | Positive infinity / Infinito positivo | Infinity(PositiveInfinity) | C | Toolbox |  |  | +infinity | Explicit positive infinity. Same value as infinity without a sign. |
 | 410:2 | Negative infinity / Infinito negativo | Infinity(NegativeInfinity) | C | Toolbox |  |  | -infinity | Negative infinity. Its sign belongs to the inserted atom. |
 | 410:3 | Both infinities / Ambos infinitos | Infinity(BothInfinities) | C | Toolbox |  |  | [-infinity, +infinity] | Both values, negative and positive infinity. The compact sign is not a single real number. |
+| 750:0 | Value ± standard uncertainty / Valor ± incertidumbre estándar | Measurement(0) | C | Toolbox | vu | 12, 1 | 12 | Standard uncertainty u, k=1; not a guaranteed interval. Separate new measurements are independent. Reuse Ans or memory to keep the same source. Apply a unit to both slots together. |

@@ -220,6 +220,7 @@ void pointer(lv_event_t* ev) {
     if(!s)return;
     auto* target=static_cast<lv_obj_t*>(lv_event_get_target(ev));
     if(target==s->shield){requestClose();return;}
+    if(s->help){back();return;}
     for(unsigned i=0;i<s->tabs.size();++i)if(target==s->tabs[i]){selectTab(i);return;}
     if(target==s->path && s->level().group==Search){s->queryFocus=true;refresh();return;}
     if(target==s->title){back();return;}
@@ -238,6 +239,9 @@ void pointer(lv_event_t* ev) {
 void refresh() {
     TOOLBOX_MEASURE(1);
     if(!s)return;
+    // WHY: even lv_label_set_text_static schedules an allocating LVGL layout
+    // event. Help uses immutable text drawn over the existing panel instead.
+    if(s->help){lv_obj_invalidate(s->panel);return;}
     // WHY: titles, tabs and reused preview canvases share a compact surface.
     // Repaint their common parent when changing level, so partial invalidation
     // cannot leave a neighbouring tab with only the tail of its old label.
@@ -319,7 +323,7 @@ void refresh() {
                     static_cast<vpam::NodeRow*>(root.get())->appendChild(std::move(node));
                     s->canvases[i].setExpression(nullptr,nullptr);s->previews[i]=std::move(root);s->previewIds[i]=item.entry->identity;
                 }
-                auto* root=static_cast<vpam::NodeRow*>(s->previews[i].get());root->calculateLayout(s->canvases[i].normalMetrics());
+                auto* root=static_cast<vpam::NodeRow*>(s->previews[i].get());vpam::calculateLayoutChecked(*root, s->canvases[i].normalMetrics());
                 height=std::max(27,int(root->layout().height())+4);
                 // MathCanvas includes 8 px on both sides. Reserve its complete
                 // viewport, not just the glyph box, so rules cannot be clipped.
@@ -370,6 +374,34 @@ void refresh() {
         (selected.children?tr("EXE Apply   RIGHT More   FORMAT","EXE Aplicar   DER Más   FORMAT"):tr("EXE Apply   FORMAT Options","EXE Aplicar   FORMAT Opciones")):
         (selected.children?tr("EXE Insert   RIGHT More   FORMAT","EXE Insertar   DER Más   FORMAT"):tr("EXE Insert   FORMAT Options","EXE Insertar   FORMAT Opciones")));
     else lv_label_set_text(s->hint,tr("EXE Open   BACK Return","EXE Abrir   BACK Volver"));
+}
+
+
+void drawHelp(lv_event_t* event) {
+    if(!s || !s->help || !s->optionEntry)return;
+    auto* layer=lv_event_get_layer(event);
+    lv_area_t panel;lv_obj_get_coords(s->panel,&panel);
+    lv_draw_rect_dsc_t background;lv_draw_rect_dsc_init(&background);
+    background.bg_color=lv_color_white();background.bg_opa=LV_OPA_COVER;
+    background.border_color=lv_color_hex(0x9FA9B7);background.border_width=1;background.radius=4;
+    lv_draw_rect(layer,&background,&panel);
+    lv_area_t heading{panel.x1+1,panel.y1+1,panel.x2-1,panel.y1+22};
+    background.bg_color=lv_color_hex(Ink);background.border_width=0;background.radius=0;
+    lv_draw_rect(layer,&background,&heading);
+    auto text=[&](const char* value,int x,int y,int width,int height,uint32_t color,const lv_font_t* font=nullptr) {
+        lv_draw_label_dsc_t label;lv_draw_label_dsc_init(&label);
+        label.font=font?font:ui::tutorFont12();label.color=lv_color_hex(color);
+        // WHY: registry and i18n literals outlive every draw task. No copied
+        // label buffer, UI object, string or label-layout callback is created here.
+        label.text=value;
+        lv_area_t bounds{panel.x1+x,panel.y1+y,panel.x1+x+width-1,panel.y1+y+height-1};
+        lv_draw_label(layer,&label,&bounds);
+    };
+    text(tr("<  Help","<  Ayuda"),10,4,PopupWidth-20,18,0xFFFFFF);
+    text(displayName(*s->optionEntry),10,27,PopupWidth-20,18,Ink,queryFont());
+    text(tr(s->optionEntry->helpEn,s->optionEntry->helpEs),12,RowTop+4,
+         PopupWidth-24,s->height-RowTop-FooterHeight-8,Ink);
+    text(tr("BACK Return","BACK Volver"),10,s->height-FooterHeight+2,PopupWidth-20,16,Muted);
 }
 
 void drawChevron(lv_event_t* ev) {
@@ -434,6 +466,7 @@ bool open(lv_obj_t* parent,Receiver receiver) {
         lv_obj_set_style_border_width(s->panel,1,0);lv_obj_set_style_border_color(s->panel,lv_color_hex(0x9FA9B7),0);
         lv_obj_set_style_border_post(s->panel,true,0);
         lv_obj_set_style_radius(s->panel,4,0);
+        lv_obj_add_event_cb(s->panel,drawHelp,LV_EVENT_DRAW_POST,nullptr);
         s->title=label(s->panel,0,0,PopupWidth,ui::tutorFont12());lv_obj_set_height(s->title,23);
         lv_obj_set_style_pad_left(s->title,10,0);lv_obj_set_style_pad_top(s->title,4,0);
         lv_obj_set_style_bg_color(s->title,lv_color_hex(Ink),0);lv_obj_set_style_bg_opa(s->title,LV_OPA_COVER,0);

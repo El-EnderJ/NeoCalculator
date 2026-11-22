@@ -62,6 +62,10 @@ namespace vpam {
 struct Cursor {
     NodeRow* row   = nullptr;   ///< Fila donde está el cursor
     int      index = 0;         ///< Posición entre nodos [0..row->childCount()]
+    /// Characters of the NodeNumber at nodeRight() that lie LEFT of the caret
+    /// (0 = node boundary). Rows never hold two adjacent numbers, so a caret
+    /// between digits is expressed here instead of by splitting the number.
+    int      digit = 0;
 
     bool isValid() const { return row != nullptr; }
 
@@ -109,7 +113,7 @@ public:
     bool focusSlot(NodeRow* slot) {
         const MathNode* node = slot;
         for (int depth = 0; node && depth <= 28; ++depth, node = node->parent()) {
-            if (node == _root) { _cur.row = slot; _cur.index = 0; return true; }
+            if (node == _root) { _cur = {slot, 0}; return true; }
         }
         return false;
     }
@@ -119,7 +123,8 @@ public:
     /**
      * Inserta un dígito o punto decimal.
      * Si el nodo a la izquierda es un NodeNumber, EXTIENDE ese número.
-     * Si no, crea un nuevo NodeNumber.
+     * Si no, crea un nuevo NodeNumber; if a number follows the caret, the
+     * two are merged and the caret stays after the typed digit (digit > 0).
      */
     void insertDigit(char c);
 
@@ -166,6 +171,10 @@ public:
     /// Close the nearest authored square group, including from a nested slot.
     /// Pending placeholders remain in the tree and still reject evaluation.
     void closeBracket();
+    /// Close the nearest round group/function that contains the cursor, even
+    /// from a nested script/fraction. Existing pending slots remain untouched.
+    /// Without a round context, retain the editor's ordinary right navigation.
+    void closeParen();
 
     /**
      * Inserta una función matemática (sin, cos, tan, ln, log, etc.).
@@ -231,9 +240,21 @@ public:
     void backspace();
 
 private:
+    enum class CloseResult : uint8_t { Closed, NoContext, Invalid };
+    CloseResult closeDelimiter(DelimKind kind);
+
     Cursor   _cur;
     NodeRow* _root;
     uint32_t _epoch = 0;
+    int      _editDepth = 0;
+
+    // F01: adjacent NodeNumber nodes draw as one numeral but serialize as an
+    // implicit product. Every public operation runs inside an EditScope:
+    // split the number at a mid-number caret, run the unchanged body, then
+    // merge adjacent numbers in every row so the tree is canonical again.
+    struct EditScope;
+    void splitCaret();
+    void normalizeNumbers(MathNode* node, int depth);
 
     // ── Helpers de navegación ───────────────────────────────────────────
 

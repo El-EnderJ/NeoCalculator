@@ -1161,7 +1161,7 @@ void GrapherApp::initSlotAST(int idx) {
 
 void GrapherApp::refreshVPAMExpr(int idx) {
     if (idx < 0 || idx >= MAX_FUNCS || !_exprASTRow[idx]) return;
-    _exprASTRow[idx]->calculateLayout(_exprCanvas[idx].normalMetrics());
+    vpam::calculateLayoutChecked(*_exprASTRow[idx], _exprCanvas[idx].normalMetrics());
     // Resize canvas to fit AST content so the pill stretches
     const auto& rootL = _exprASTRow[idx]->layout();
     int16_t astH = vpam::mathObjectHeightPx(rootL, _exprCanvas[idx].normalMetrics(), 2 * PILL_PAD);
@@ -1648,7 +1648,7 @@ void GrapherApp::loadNextTemplate() {
     auto* root = static_cast<NodeRow*>(_tplAST[i].get());
     _tplCanvas[i].create(_tplRows[i]);
     _tplCanvas[i].setAutoHeightEnabled(false);
-    root->calculateLayout(_tplCanvas[i].normalMetrics());
+    vpam::calculateLayoutChecked(*root, _tplCanvas[i].normalMetrics());
     const int height = std::max<int>(_tplRowH,
         root->layout().height() + vpam::MathCanvas::VPAM_VERT_PAD + 2);
     lv_obj_set_height(_tplRows[i], height);
@@ -3332,6 +3332,7 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
             break;
         case KeyCode::SQRT:   if (cursorDepth() < MAX_NEST) cur.insertRoot();     else changed = false; break;
         case KeyCode::LPAREN: if (cursorDepth() < MAX_NEST) cur.insertParen();    else changed = false; break;
+        case KeyCode::RPAREN: cur.closeParen(); break;
 
         // ── Functions (depth-limited) ──
         case KeyCode::SIN: if (cursorDepth() < MAX_NEST) cur.insertFunction(FuncKind::Sin); else changed = false; break;

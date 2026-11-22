@@ -80,7 +80,7 @@ try {for(const [name,type] of Object.entries({chromium,firefox,webkit})) {
    }
    await expect({queryBytes:new TextEncoder().encode(query).length});await keys('DOWN');await expect({id,variant});
   };
-  await keys('AC 2 TOOLBOX DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN ENTER');
+  await keys('AC 2 TOOLBOX DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN ENTER');
   await expect({group:200});await shot('units');await keys('ENTER RIGHT');
   await expect({group:32769,id:32769,variant:0,selection:12,count:25});await shot('metre-centred');
   const beforeUnits=(await driver.state()).giac;

@@ -1,0 +1,1095 @@
+{
+  "schema": 1,
+  "dataset": "CODATA 2022",
+  "dataset_version_id": 1,
+  "nist_web_version": "9.0",
+  "web_release_date": "2024-05-09",
+  "publication_date": "2025-04-30",
+  "consulted": "2026-10-07",
+  "source_capture_sha256": "6665410b80d6a57e09718ea6a5a511e5ab3a9d5a560235186142fadc7185f631",
+  "unknown_correlation_policy": "unavailable; never infer zero",
+  "constants": [
+    {
+      "constant_id": 1,
+      "enum": "SpeedOfLight",
+      "reference_id": 1,
+      "key": "speed_of_light",
+      "name_en": "Speed of light in vacuum",
+      "name_es": "Velocidad de la luz en el vacío",
+      "symbol": "c",
+      "dimension": [
+        1,
+        0,
+        -1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "c",
+      "dependency_formula": "299792458 m/s",
+      "baseline": {
+        "nominal_decimal": "299792458",
+        "uncertainty_decimal": "0",
+        "exactness": "exact",
+        "source": "codata2022",
+        "location": "speed of light in vacuum"
+      },
+      "nominal_decimal": "299792458",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "unit": "m s^-1",
+      "nominal_expression": "299792458",
+      "status": "exact_definition",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "speed of light in vacuum",
+      "note": "Exact modern SI defining constant.",
+      "relative_standard_uncertainty": "0",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 2,
+      "enum": "BohrRadius",
+      "reference_id": 2,
+      "key": "bohr_radius",
+      "name_en": "Bohr radius",
+      "name_es": "Radio de Bohr",
+      "symbol": "a₀",
+      "dimension": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "bohrrada0",
+      "dependency_formula": "hbar/(electron_mass*c*alpha)",
+      "baseline": {
+        "nominal_decimal": "5.29177210544e-11",
+        "uncertainty_decimal": "8.2e-21",
+        "exactness": "measured",
+        "source": "codata2022",
+        "location": "Bohr radius"
+      },
+      "nominal_decimal": "5.29177210544e-11",
+      "standard_uncertainty": "8.2e-21",
+      "exact": false,
+      "unit": "m",
+      "nominal_expression": "(529177210544/10^22)",
+      "status": "measured_recommended",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "Bohr radius",
+      "note": "Rounded CODATA recommended central value; decimal storage does not imply physical exactness.",
+      "relative_standard_uncertainty": "1.54957542324438153667852862379859561346862232837477912808097e-10",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 3,
+      "enum": "ElectronMass",
+      "reference_id": 3,
+      "key": "electron_mass",
+      "name_en": "Electron mass",
+      "name_es": "Masa del electrón",
+      "symbol": "mₑ",
+      "dimension": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "me",
+      "dependency_formula": "electron_mass",
+      "baseline": {
+        "nominal_decimal": "9.1093837139e-31",
+        "uncertainty_decimal": "2.8e-40",
+        "exactness": "measured",
+        "source": "codata2022",
+        "location": "electron mass"
+      },
+      "nominal_decimal": "9.1093837139e-31",
+      "standard_uncertainty": "2.8e-40",
+      "exact": false,
+      "unit": "kg",
+      "nominal_expression": "(91093837139/10^41)",
+      "status": "measured_recommended",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "electron mass",
+      "note": "Rounded CODATA recommended central value; decimal storage does not imply physical exactness.",
+      "relative_standard_uncertainty": "3.07375349193764079364302032511398301082823376399081209857564e-10",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 4,
+      "enum": "HartreeEnergy",
+      "reference_id": 4,
+      "key": "hartree_energy",
+      "name_en": "Hartree energy",
+      "name_es": "Energía de Hartree",
+      "symbol": "Eₕ",
+      "dimension": [
+        2,
+        1,
+        -2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "hr",
+      "dependency_formula": "2*R_infinity*h*c",
+      "baseline": {
+        "nominal_decimal": "4.3597447222060e-18",
+        "uncertainty_decimal": "4.8e-30",
+        "exactness": "measured",
+        "source": "codata2022",
+        "location": "Hartree energy / atomic unit of energy"
+      },
+      "nominal_decimal": "4.3597447222060e-18",
+      "standard_uncertainty": "4.8e-30",
+      "exact": false,
+      "unit": "J",
+      "nominal_expression": "(43597447222060/10^31)",
+      "status": "measured_recommended",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "Hartree energy",
+      "note": "Rounded CODATA recommended central value; decimal storage does not imply physical exactness.",
+      "relative_standard_uncertainty": "1.10098189363051374775243415455254688743727214521711208073923e-12",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 5,
+      "enum": "AtomicTime",
+      "reference_id": 5,
+      "key": "atomic_time",
+      "name_en": "Atomic unit of time",
+      "name_es": "Unidad atómica de tiempo",
+      "symbol": "ℏ/Eₕ",
+      "dimension": [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "aut",
+      "dependency_formula": "hbar/hartree_energy",
+      "baseline": {
+        "nominal_decimal": "2.4188843265864e-17",
+        "uncertainty_decimal": "2.6e-29",
+        "exactness": "measured",
+        "source": "codata2022",
+        "location": "atomic unit of time"
+      },
+      "nominal_decimal": "2.4188843265864e-17",
+      "standard_uncertainty": "2.6e-29",
+      "exact": false,
+      "unit": "s",
+      "nominal_expression": "(24188843265864/10^30)",
+      "status": "measured_recommended",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "atomic unit of time",
+      "note": "Rounded CODATA recommended central value; decimal storage does not imply physical exactness.",
+      "relative_standard_uncertainty": "1.07487570671442388170762897231930154341409444270464672844302e-12",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 6,
+      "enum": "ReducedPlanck",
+      "reference_id": 6,
+      "key": "reduced_planck",
+      "name_en": "Reduced Planck constant",
+      "name_es": "Constante de Planck reducida",
+      "symbol": "ℏ",
+      "dimension": [
+        2,
+        1,
+        -1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "hbar",
+      "dependency_formula": "6.62607015e-34/(2*pi) J*s",
+      "baseline": {
+        "nominal_decimal": "1.054571817e-34",
+        "uncertainty_decimal": "0",
+        "exactness": "exact",
+        "source": "codata2022",
+        "location": "reduced Planck constant"
+      },
+      "nominal_decimal": "1.054571817e-34",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "unit": "J s",
+      "nominal_expression": "((662607015/10^42)/(2*pi))",
+      "status": "exact_definition",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "reduced Planck constant",
+      "note": "Exact h/(2*pi); source decimal is truncated and never the nominal authority.",
+      "relative_standard_uncertainty": "0",
+      "action": "Integrate with stable typed identity and captured correlations. Preserve formula as central mathematical authority."
+    },
+    {
+      "constant_id": 7,
+      "enum": "PlanckLength",
+      "reference_id": 7,
+      "key": "planck_length",
+      "name_en": "Planck length",
+      "name_es": "Longitud de Planck",
+      "symbol": "ℓₚ",
+      "dimension": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "plkl",
+      "dependency_formula": "sqrt(hbar*G/c^3)",
+      "baseline": {
+        "nominal_decimal": "1.616255e-35",
+        "uncertainty_decimal": "1.8e-40",
+        "exactness": "measured",
+        "source": "codata2022",
+        "location": "Planck length"
+      },
+      "nominal_decimal": "1.616255e-35",
+      "standard_uncertainty": "1.8e-40",
+      "exact": false,
+      "unit": "m",
+      "nominal_expression": "(1616255/10^41)",
+      "status": "measured_recommended",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "Planck length",
+      "note": "Rounded CODATA recommended central value; decimal storage does not imply physical exactness.",
+      "relative_standard_uncertainty": "0.0000111368564985104454433242279219553845154384673210601049958082",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 8,
+      "enum": "PlanckTime",
+      "reference_id": 8,
+      "key": "planck_time",
+      "name_en": "Planck time",
+      "name_es": "Tiempo de Planck",
+      "symbol": "tₚ",
+      "dimension": [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "plkt",
+      "dependency_formula": "sqrt(hbar*G/c^5)",
+      "baseline": {
+        "nominal_decimal": "5.391247e-44",
+        "uncertainty_decimal": "6.0e-49",
+        "exactness": "measured",
+        "source": "codata2022",
+        "location": "Planck time"
+      },
+      "nominal_decimal": "5.391247e-44",
+      "standard_uncertainty": "6e-49",
+      "exact": false,
+      "unit": "s",
+      "nominal_expression": "(5391247/10^50)",
+      "status": "measured_recommended",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "Planck time",
+      "note": "Rounded CODATA recommended central value; decimal storage does not imply physical exactness.",
+      "relative_standard_uncertainty": "0.0000111291506399168875030211006841274384200909362898787608877872",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 9,
+      "enum": "PlanckMass",
+      "reference_id": 9,
+      "key": "planck_mass",
+      "name_en": "Planck mass",
+      "name_es": "Masa de Planck",
+      "symbol": "mₚ",
+      "dimension": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "plkm",
+      "dependency_formula": "sqrt(hbar*c/G)",
+      "baseline": {
+        "nominal_decimal": "2.176434e-8",
+        "uncertainty_decimal": "2.4e-13",
+        "exactness": "measured",
+        "source": "codata2022",
+        "location": "Planck mass"
+      },
+      "nominal_decimal": "2.176434e-8",
+      "standard_uncertainty": "2.4e-13",
+      "exact": false,
+      "unit": "kg",
+      "nominal_expression": "(2176434/10^14)",
+      "status": "measured_recommended",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "Planck mass",
+      "note": "Rounded CODATA recommended central value; decimal storage does not imply physical exactness.",
+      "relative_standard_uncertainty": "0.0000110272124034085113538935708594885027526678962008496467156826",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 10,
+      "enum": "PlanckForce",
+      "reference_id": 10,
+      "key": "planck_force",
+      "name_en": "Planck force",
+      "name_es": "Fuerza de Planck",
+      "symbol": "Fₚ",
+      "dimension": [
+        1,
+        1,
+        -2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": null,
+      "dependency_formula": "c^4/G",
+      "baseline": {
+        "nominal_decimal": "1.210256e44",
+        "uncertainty_decimal": "2.7e39",
+        "exactness": "derived",
+        "source": "codata2022",
+        "location": "Derived from CODATA 2022 G; not a separately listed table entry"
+      },
+      "nominal_decimal": "121025556433820628818959302790580225641640321.831502929146128",
+      "standard_uncertainty": "2719960664799768413593020304539357512584.99741916387327089271",
+      "exact": false,
+      "unit": "N",
+      "nominal_expression": "(299792458^4/(667430/10^16))",
+      "status": "derived_uncertain",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "Derived from CODATA G, exact h and c",
+      "note": "Not a separately tabulated CODATA entry. Canonical formula and full first-order uncertainty replace the old display-rounded payload.",
+      "relative_standard_uncertainty": "0.0000224742669643258469052934390123308811410934480020376668714322",
+      "action": "Integrate with stable typed identity and captured correlations. Preserve formula as central mathematical authority."
+    },
+    {
+      "constant_id": 11,
+      "enum": "PlanckEnergy",
+      "reference_id": 11,
+      "key": "planck_energy",
+      "name_en": "Planck energy",
+      "name_es": "Energía de Planck",
+      "symbol": "Eₚ",
+      "dimension": [
+        2,
+        1,
+        -2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": null,
+      "dependency_formula": "sqrt(hbar*c^5/G)",
+      "baseline": {
+        "nominal_decimal": "1.956082e9",
+        "uncertainty_decimal": "2.2e4",
+        "exactness": "derived",
+        "source": "codata2022",
+        "location": "Derived in joules from CODATA 2022 h,c,G; table also lists mass energy equivalent in GeV"
+      },
+      "nominal_decimal": "1956081636.69837282906101819996298426099379752990785615976978",
+      "standard_uncertainty": "21980.7504535873368262703751700139070126507371174638856483427",
+      "exact": false,
+      "unit": "J",
+      "nominal_expression": "sqrt(((662607015/10^42)/(2*pi))*299792458^5/(667430/10^16))",
+      "status": "derived_uncertain",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "Derived from CODATA G, exact h and c",
+      "note": "Not a separately tabulated CODATA entry. Canonical formula and full first-order uncertainty replace the old display-rounded payload.",
+      "relative_standard_uncertainty": "0.0000112371334821629234526467195061654405705467240010188334357161",
+      "action": "Integrate with stable typed identity and captured correlations. Preserve formula as central mathematical authority."
+    },
+    {
+      "constant_id": 12,
+      "enum": "PlanckTemperature",
+      "reference_id": 12,
+      "key": "planck_temperature",
+      "name_en": "Planck temperature",
+      "name_es": "Temperatura de Planck",
+      "symbol": "Tₚ",
+      "dimension": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "nist_code": "plktmp",
+      "dependency_formula": "sqrt(hbar*c^5/G)/k_B",
+      "baseline": {
+        "nominal_decimal": "1.416784e32",
+        "uncertainty_decimal": "1.6e27",
+        "exactness": "measured",
+        "source": "codata2022",
+        "location": "Planck temperature"
+      },
+      "nominal_decimal": "1.416784e32",
+      "standard_uncertainty": "1.6e+27",
+      "exact": false,
+      "unit": "K",
+      "nominal_expression": "(1416784*10^26)",
+      "status": "measured_recommended",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "Planck temperature",
+      "note": "Rounded CODATA recommended central value; decimal storage does not imply physical exactness.",
+      "relative_standard_uncertainty": "0.0000112931823058419632068120475668838722063490270923443517148697",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 13,
+      "enum": "StandardGravity",
+      "reference_id": 13,
+      "key": "standard_gravity",
+      "name_en": "Standard gravity",
+      "name_es": "Gravedad estándar",
+      "symbol": "g₀",
+      "dimension": [
+        1,
+        0,
+        -2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "gn",
+      "dependency_formula": "9.80665 m/s^2",
+      "baseline": {
+        "nominal_decimal": "9.80665",
+        "uncertainty_decimal": "0",
+        "exactness": "exact",
+        "source": "codata2022",
+        "location": "standard acceleration of gravity"
+      },
+      "nominal_decimal": "9.80665",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "unit": "m s^-2",
+      "nominal_expression": "(980665/10^5)",
+      "status": "exact_definition",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "standard acceleration of gravity",
+      "note": "Exact conventional standard gravity; not measured local gravitational acceleration.",
+      "relative_standard_uncertainty": "0",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 14,
+      "enum": "ElementaryCharge",
+      "reference_id": 14,
+      "key": "elementary_charge",
+      "name_en": "Elementary charge",
+      "name_es": "Carga elemental",
+      "symbol": "e",
+      "dimension": [
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "e",
+      "dependency_formula": "1.602176634e-19 C",
+      "baseline": {
+        "nominal_decimal": "1.602176634e-19",
+        "uncertainty_decimal": "0",
+        "exactness": "exact",
+        "source": "codata2022",
+        "location": "elementary charge"
+      },
+      "nominal_decimal": "1.602176634e-19",
+      "standard_uncertainty": "0",
+      "exact": true,
+      "unit": "C",
+      "nominal_expression": "(1602176634/10^28)",
+      "status": "exact_definition",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "elementary charge",
+      "note": "Exact modern SI defining constant.",
+      "relative_standard_uncertainty": "0",
+      "action": "Integrate with stable typed identity and captured correlations."
+    },
+    {
+      "constant_id": 15,
+      "enum": "Gravitational",
+      "reference_id": 59,
+      "key": "gravitational_constant",
+      "name_en": "Newtonian constant of gravitation",
+      "name_es": "Constante de gravitación universal",
+      "symbol": "G",
+      "dimension": [
+        3,
+        -1,
+        -2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nist_code": "bg",
+      "dependency_formula": "G",
+      "baseline": null,
+      "nominal_decimal": "6.67430e-11",
+      "standard_uncertainty": "1.5e-15",
+      "exact": false,
+      "unit": "m^3 kg^-1 s^-2",
+      "nominal_expression": "(667430/10^16)",
+      "status": "measured_recommended",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "source_location": "Newtonian constant of gravitation",
+      "note": "Rounded CODATA recommended central value; decimal storage does not imply physical exactness.",
+      "relative_standard_uncertainty": "0.0000224742669643258469052934390123308811410934480020376668714322",
+      "action": "Add only this basic constant; existing six Planck references already depend on G."
+    }
+  ],
+  "correlations": [
+    {
+      "a": 2,
+      "b": 3,
+      "rho": "-0.99999",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?me|ShowSecond=Browse&First=bohrrada0",
+      "basis": "published",
+      "response_sha256": "646d65923ac4b016a7494527dd365cf6f4835ce8317cd27a7418985b2132dcd8"
+    },
+    {
+      "a": 2,
+      "b": 4,
+      "rho": "-0.00575",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?hr|ShowSecond=Browse&First=bohrrada0",
+      "basis": "published",
+      "response_sha256": "7ea9e4b719caeceb4b34748d4c33b0d0ed3d13faaec85d6d6acdc76619367b4b"
+    },
+    {
+      "a": 2,
+      "b": 5,
+      "rho": "0.00575",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?aut|ShowSecond=Browse&First=bohrrada0",
+      "basis": "published",
+      "response_sha256": "bf1e9466ee6103dd920767da8e3b921da0d71a8a66c9b5e5ce58ce9c7701217c"
+    },
+    {
+      "a": 2,
+      "b": 7,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkl|ShowSecond=Browse&First=bohrrada0",
+      "basis": "published",
+      "response_sha256": "7c213b474d9b53de12073e6861f1745a95a2a10dce8c9d8b29f9d684b0248265"
+    },
+    {
+      "a": 2,
+      "b": 8,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=bohrrada0",
+      "basis": "published",
+      "response_sha256": "798a635fd8b667f7583d7e91a27d12afd528533e8fe277148b0352bb1b8438e0"
+    },
+    {
+      "a": 2,
+      "b": 9,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=bohrrada0",
+      "basis": "published",
+      "response_sha256": "f0c84e380799e5bf5383dd1dcb8c3eb9dcb6ba173e7f04d353c0b58d3d27c408"
+    },
+    {
+      "a": 2,
+      "b": 10,
+      "rho": "-0.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        2,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 2,
+      "b": 11,
+      "rho": "-0.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        2,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 2,
+      "b": 12,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=bohrrada0",
+      "basis": "published",
+      "response_sha256": "6b3ca21d731de2415fb71087c516f8473cd2016cd3c785df27dd6d7ee3fd0579"
+    },
+    {
+      "a": 2,
+      "b": 15,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=bohrrada0",
+      "basis": "published",
+      "response_sha256": "1a7f4a676b810653da8f0fc9168514fad8323847b7e1340c403e6cbce6e0bc4d"
+    },
+    {
+      "a": 3,
+      "b": 4,
+      "rho": "0.00225",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?hr|ShowSecond=Browse&First=me",
+      "basis": "published",
+      "response_sha256": "fb4446a65e3bf0833adda7eaca3eb96be9d6d8897d99ae9c487bbdba3d7e98bf"
+    },
+    {
+      "a": 3,
+      "b": 5,
+      "rho": "-0.00225",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?aut|ShowSecond=Browse&First=me",
+      "basis": "published",
+      "response_sha256": "00fdb4cd3f8c01504e0aea1262bd724dc1a82dd10bec2b8ee81c10cb797db216"
+    },
+    {
+      "a": 3,
+      "b": 7,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkl|ShowSecond=Browse&First=me",
+      "basis": "published",
+      "response_sha256": "9099b7c367c90e1b13bf31c29646dcfca9c6772cf4fe5ff7ae99e01eba4ebd9e"
+    },
+    {
+      "a": 3,
+      "b": 8,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=me",
+      "basis": "published",
+      "response_sha256": "80a634929db6c885f352f58709b628723824fc1313cfad396b6fad3ae3e90eb0"
+    },
+    {
+      "a": 3,
+      "b": 9,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=me",
+      "basis": "published",
+      "response_sha256": "434276c371574e8bb92704e89a71d82585cc3279321c1af8c588ab9dfe3970be"
+    },
+    {
+      "a": 3,
+      "b": 10,
+      "rho": "-0.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        3,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 3,
+      "b": 11,
+      "rho": "-0.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        3,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 3,
+      "b": 12,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=me",
+      "basis": "published",
+      "response_sha256": "c3eebcc0c7d6cb518fb65179f956954021c7267f4c485d0ca84c88df29e37b6e"
+    },
+    {
+      "a": 3,
+      "b": 15,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=me",
+      "basis": "published",
+      "response_sha256": "6fc85629d48192a90040f6a6d2887b77a0f376def91635d724f69822fbe477de"
+    },
+    {
+      "a": 4,
+      "b": 5,
+      "rho": "-1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?aut|ShowSecond=Browse&First=hr",
+      "basis": "published",
+      "response_sha256": "aa63fde8e7741763a010cc03b42890cab5a8fad61011013a9c2f564da1561be9"
+    },
+    {
+      "a": 4,
+      "b": 7,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkl|ShowSecond=Browse&First=hr",
+      "basis": "published",
+      "response_sha256": "f5c57e26b41fafd8f435332b9d498bc7967abd90b14ab6f8109dee9c6fc20c47"
+    },
+    {
+      "a": 4,
+      "b": 8,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=hr",
+      "basis": "published",
+      "response_sha256": "409f6703b61734f952c59aa1e36801612e8f8abfe7b2112a1b42b33d048cb54e"
+    },
+    {
+      "a": 4,
+      "b": 9,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=hr",
+      "basis": "published",
+      "response_sha256": "d5eb3e3bc55db73a624fdf11dcc53f7e5dc4fabe1040164347143fd3ead2a3cb"
+    },
+    {
+      "a": 4,
+      "b": 10,
+      "rho": "-0.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        4,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 4,
+      "b": 11,
+      "rho": "-0.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        4,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 4,
+      "b": 12,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=hr",
+      "basis": "published",
+      "response_sha256": "b9939d9f39f4d4bb9466537b6a782404b842157e534aaa5f53b860fee9e6dd25"
+    },
+    {
+      "a": 4,
+      "b": 15,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=hr",
+      "basis": "published",
+      "response_sha256": "a09378426ad6da27a32a8116e84a1d4faf7b948ebb835b67ac45716472df684e"
+    },
+    {
+      "a": 5,
+      "b": 7,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkl|ShowSecond=Browse&First=aut",
+      "basis": "published",
+      "response_sha256": "8d547e89a39029f1639d505714e495b6dc114b2cc59f0a45b9f512b5c90d37c3"
+    },
+    {
+      "a": 5,
+      "b": 8,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=aut",
+      "basis": "published",
+      "response_sha256": "35a533fe03863f51115ac84e02bea6ac3cd1fa129d959ac9337787fa14d1cc34"
+    },
+    {
+      "a": 5,
+      "b": 9,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=aut",
+      "basis": "published",
+      "response_sha256": "c882c9f0bb3149cad5a7e69b75c8b125f7e08d197c25fffd520ab1f3802715b9"
+    },
+    {
+      "a": 5,
+      "b": 10,
+      "rho": "-0.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        5,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 5,
+      "b": 11,
+      "rho": "-0.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        5,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 5,
+      "b": 12,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=aut",
+      "basis": "published",
+      "response_sha256": "cf9a8456e76ec57c19f4f27a49bc61afe0407a466adddb182327a76706e9de26"
+    },
+    {
+      "a": 5,
+      "b": 15,
+      "rho": "0.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=aut",
+      "basis": "published",
+      "response_sha256": "a96a7616caa110ee724f7ace27b111fce7c4545e621498cefdcb5c7d975752f8"
+    },
+    {
+      "a": 7,
+      "b": 8,
+      "rho": "1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkt|ShowSecond=Browse&First=plkl",
+      "basis": "published",
+      "response_sha256": "a82bef514accfcd377b52582773de4c9a0f522281252aabcd227b1babc34b050"
+    },
+    {
+      "a": 7,
+      "b": 9,
+      "rho": "-1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=plkl",
+      "basis": "published",
+      "response_sha256": "f7cbeb869034e938757c5ef5774d92feae2dbb1fb94479678f4ea2a0881dd510"
+    },
+    {
+      "a": 7,
+      "b": 10,
+      "rho": "-1.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        7,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 7,
+      "b": 11,
+      "rho": "-1.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        7,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 7,
+      "b": 12,
+      "rho": "-1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=plkl",
+      "basis": "published",
+      "response_sha256": "6e8cbdcdbe63c5ef47d9d901e97e7ceae6fde89f11d835769467177f20982c2c"
+    },
+    {
+      "a": 7,
+      "b": 15,
+      "rho": "1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=plkl",
+      "basis": "published",
+      "response_sha256": "02eabf085137825dd7ae4cd6b5f79542b3aa748253386a08f3111010dd32d4b5"
+    },
+    {
+      "a": 8,
+      "b": 9,
+      "rho": "-1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plkm|ShowSecond=Browse&First=plkt",
+      "basis": "published",
+      "response_sha256": "e228b2512d5d779123438a1aaa56738671975e08be8ae441a34cf90ced37678c"
+    },
+    {
+      "a": 8,
+      "b": 10,
+      "rho": "-1.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        8,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 8,
+      "b": 11,
+      "rho": "-1.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        8,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 8,
+      "b": 12,
+      "rho": "-1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=plkt",
+      "basis": "published",
+      "response_sha256": "383610e966748d24ce4dd209e3dc0c3091514407fdc5df654c2c43778e7325dd"
+    },
+    {
+      "a": 8,
+      "b": 15,
+      "rho": "1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=plkt",
+      "basis": "published",
+      "response_sha256": "290f17525db4ee7d96bc0fcc6c281b2235435b90d3d7941218e934c9ce42dc7d"
+    },
+    {
+      "a": 9,
+      "b": 10,
+      "rho": "1.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        9,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 9,
+      "b": 11,
+      "rho": "1.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        9,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 9,
+      "b": 12,
+      "rho": "1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?plktmp|ShowSecond=Browse&First=plkm",
+      "basis": "published",
+      "response_sha256": "e444f0e4d21f9ca80ed5dedee0d766962e544a3904813cbecdc8fb3926707007"
+    },
+    {
+      "a": 9,
+      "b": 15,
+      "rho": "-1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=plkm",
+      "basis": "published",
+      "response_sha256": "04e856305ddba000d86ce826c189d338a1344221a1ec86e37291f12573ed1d8e"
+    },
+    {
+      "a": 10,
+      "b": 11,
+      "rho": "1",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        15,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 10,
+      "b": 12,
+      "rho": "1.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        15,
+        12
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 10,
+      "b": 15,
+      "rho": "-1",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        15,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 11,
+      "b": 12,
+      "rho": "1.00000",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        15,
+        12
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 11,
+      "b": 15,
+      "rho": "-1",
+      "basis": "derived_from_G",
+      "source_url": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+      "dependency_pair": [
+        15,
+        15
+      ],
+      "derivation": "sign(dA/dG)*sign(dB/dG)*rho(G-equivalent sources)"
+    },
+    {
+      "a": 12,
+      "b": 15,
+      "rho": "-1.00000",
+      "source_url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bg|ShowSecond=Browse&First=plktmp",
+      "basis": "published",
+      "response_sha256": "052267f1a1c9cf46435a1b96e7a55000df1c2ce11946c11edcac4b2f442944f5"
+    }
+  ]
+}

@@ -16996,7 +16996,7 @@
       "source": "codata2022",
       "location": "Bohr radius",
       "help_en": "CODATA 2022: 5.29177210544e-11 m; standard uncertainty 8.2e-21 m. Atomic reference, not an exact SI factor.",
-      "help_es": "CODATA 2022: 5.29177210544e-11 m; incertidumbre típica 8.2e-21 m. Referencia atómica, no un factor exacto.",
+      "help_es": "CODATA 2022: 5.29177210544e-11 m; incertidumbre estándar 8.2e-21 m. Referencia atómica, no un factor exacto.",
       "aliases": [
         "a0"
       ],
@@ -17039,7 +17039,7 @@
       "source": "codata2022",
       "location": "electron mass",
       "help_en": "CODATA 2022: 9.1093837139e-31 kg; standard uncertainty 2.8e-40 kg. Separate from a variable named m.",
-      "help_es": "CODATA 2022: 9.1093837139e-31 kg; incertidumbre típica 2.8e-40 kg. Conserva su identidad de constante física.",
+      "help_es": "CODATA 2022: 9.1093837139e-31 kg; incertidumbre estándar 2.8e-40 kg. Conserva su identidad de constante física.",
       "aliases": [
         "me",
         "atomic unit of mass"
@@ -17083,7 +17083,7 @@
       "source": "codata2022",
       "location": "Hartree energy / atomic unit of energy",
       "help_en": "CODATA 2022: 4.3597447222060e-18 J; standard uncertainty 4.8e-30 J. Atomic energy reference.",
-      "help_es": "CODATA 2022: 4.3597447222060e-18 J; incertidumbre típica 4.8e-30 J. Referencia de energía atómica.",
+      "help_es": "CODATA 2022: 4.3597447222060e-18 J; incertidumbre estándar 4.8e-30 J. Referencia de energía atómica.",
       "aliases": [
         "Hartree",
         "Eh",
@@ -17128,7 +17128,7 @@
       "source": "codata2022",
       "location": "atomic unit of time",
       "help_en": "hbar divided by the Hartree energy. CODATA 2022: 2.4188843265864e-17 s, with standard uncertainty 2.6e-29 s.",
-      "help_es": "hbar dividida por la energía de Hartree. CODATA 2022: 2.4188843265864e-17 s, con incertidumbre típica 2.6e-29 s.",
+      "help_es": "hbar dividida por la energía de Hartree. CODATA 2022: 2.4188843265864e-17 s, con incertidumbre estándar 2.6e-29 s.",
       "aliases": [
         "atomic time",
         "tiempo atómico"
@@ -17271,7 +17271,7 @@
       "source": "codata2022",
       "location": "Planck time",
       "help_en": "sqrt(hbar*G/c^5). CODATA 2022: 5.391247e-44 s with standard uncertainty 6.0e-49 s. Not an asserted minimum duration.",
-      "help_es": "sqrt(hbar*G/c^5). CODATA 2022: 5.391247e-44 s e incertidumbre típica 6.0e-49 s. No se afirma una duración mínima.",
+      "help_es": "sqrt(hbar*G/c^5). CODATA 2022: 5.391247e-44 s e incertidumbre estándar 6.0e-49 s. No se afirma una duración mínima.",
       "aliases": [
         "Planck t"
       ],
@@ -17401,7 +17401,7 @@
       "source": "codata2022",
       "location": "Derived in joules from CODATA 2022 h,c,G; table also lists mass energy equivalent in GeV",
       "help_en": "sqrt(hbar*c^5/G), approximately 1.956082e9 J with propagated standard uncertainty 2.2e4 J. Retains G uncertainty.",
-      "help_es": "sqrt(hbar*c^5/G), aproximadamente 1.956082e9 J, con incertidumbre típica propagada 2.2e4 J. Conserva la incertidumbre de G.",
+      "help_es": "sqrt(hbar*c^5/G), aproximadamente 1.956082e9 J, con incertidumbre estándar propagada 2.2e4 J. Conserva la incertidumbre de G.",
       "aliases": [
         "Planck E"
       ],
@@ -17445,7 +17445,7 @@
       "source": "codata2022",
       "location": "Planck temperature",
       "help_en": "Planck energy divided by k_B. CODATA 2022: 1.416784e32 K, standard uncertainty 1.6e27 K. No claim of a maximum temperature.",
-      "help_es": "Energía de Planck dividida por k_B. CODATA 2022: 1.416784e32 K e incertidumbre típica 1.6e27 K. No implica temperatura máxima.",
+      "help_es": "Energía de Planck dividida por k_B. CODATA 2022: 1.416784e32 K e incertidumbre estándar 1.6e27 K. No implica temperatura máxima.",
       "aliases": [
         "Planck T"
       ],
@@ -17597,6 +17597,51 @@
         "base": "e"
       },
       "standard_prefixes": "none"
+    },
+    {
+      "id": 59,
+      "key": "gravitational_constant",
+      "en": "Newtonian constant of gravitation",
+      "es": "Constante de gravitación universal",
+      "symbol": "G",
+      "category": 410,
+      "kind": "physical_constant",
+      "quantity": "gravitational_constant",
+      "dimension": [
+        3,
+        -1,
+        -2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nominal_decimal": "6.67430e-11",
+      "uncertainty_decimal": "1.5e-15",
+      "exactness": "measured",
+      "formula": "G",
+      "source": "codata2022",
+      "location": "Newtonian constant of gravitation",
+      "help_en": "CODATA 2022: recommended value 6.67430e-11 m³/(kg s²), standard uncertainty 1.5e-15 m³/(kg s²), k=1. Measured; not exact by definition.",
+      "help_es": "CODATA 2022: valor recomendado 6.67430e-11 m³/(kg s²), incertidumbre estándar 1.5e-15 m³/(kg s²), k=1. Medida; no exacta por definición.",
+      "aliases": [
+        "gravitational constant",
+        "Newton G",
+        "constante gravitacional",
+        "gravitación"
+      ],
+      "symbol_aliases": [],
+      "prefixes": [
+        0
+      ],
+      "standard_prefixes": "none",
+      "notation": {
+        "base": "G"
+      },
+      "en_us": "Newtonian constant of gravitation",
+      "en_gb": "Newtonian constant of gravitation",
+      "es_es": "Constante de gravitación universal",
+      "es_419": "Constante de gravitación universal"
     },
     {
       "id": 100,

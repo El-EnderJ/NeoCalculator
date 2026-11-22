@@ -2,6 +2,7 @@
 // Owned, bounded quantity values; no Giac, Toolbox, LVGL or context in the model.
 #include "MathAST.h"
 #include "units/UnitRegistry.h"
+#include "ScientificUncertainty.h"
 #include <array>
 #include <memory>
 #include <string>
@@ -19,7 +20,8 @@ struct Dimension {
 enum class Error:uint8_t {None,Incomplete,DimensionMismatch,DivisionByZero,AffinePending,
     ContextPending,UncertaintyPending,ApproximatePending,SymbolicPending,ComplexPending,
     FunctionUnsupported,ExponentLimit,ExpressionLimit,InvalidIdentity,Allocation,ScalarDomain,ReferencePending,
-    AffineOperation};
+    AffineOperation,UncertaintyInvalid,UncertaintyLimit,UncertaintyNumeric,
+    CorrelationUnavailable,UncertaintyNonlinear,SourceExhausted};
 const char* errorName(Error);
 const char* errorMessage(Error,bool spanish);
 struct Value {
@@ -29,6 +31,14 @@ struct Value {
     enum class Role:uint8_t { Linear, TemperaturePoint, TemperatureDifference };
     Role role=Role::Linear;
     units::UnitId meaning{}; // provenance only; zero means unspecified magnitude
+    enum class Provenance:uint8_t { Exact, Measured, DerivedUncertain };
+    Provenance provenance=Provenance::Exact;
+    // Canonical trigonometric functions are radians, independent of input mode.
+    // Retain even a dimensionless exact Quantity while such functions remain.
+    bool radianFunctions=false;
+    // Shared immutable sensitivities retain identity through Ans/history/A-F.
+    // nullptr costs no payload allocation, including exact source cancellation.
+    scientific::Owned uncertainty;
 };
 using Owned=std::shared_ptr<const Value>;
 struct Descriptor {
@@ -39,6 +49,8 @@ struct Descriptor {
 struct Display {
     std::string exact,approximate;
     vpam::NodePtr exactCoefficient,approximateCoefficient;
+    double nominal=0,standardUncertainty=0,relativeUncertainty=0;
+    bool hasUncertainty=false,relativeDefined=false;
 };
 using Resolve=bool(*)(const void*,char,Value&);
 struct Analysis {Value value;Error error=Error::None;unsigned calls=0;};
@@ -51,6 +63,8 @@ bool descriptorDimension(const Descriptor&,Dimension&);
 bool compatible(const Value&,const Descriptor&);
 Descriptor coherent(const Value&);
 Error convert(const Value&,const Descriptor&,Display&);
+Error standardUncertainty(const Value&,double&);
+Error measurement(Value nominal,const Value& uncertainty,uint32_t sourceId,Value&);
 vpam::NodePtr compose(vpam::NodePtr coefficient,const Descriptor&);
 bool symbol(const Descriptor&,char*,size_t);
 }

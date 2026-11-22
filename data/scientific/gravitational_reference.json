@@ -1,0 +1,45 @@
+{
+  "id": 59,
+  "key": "gravitational_constant",
+  "en": "Newtonian constant of gravitation",
+  "es": "Constante de gravitación universal",
+  "symbol": "G",
+  "category": 410,
+  "kind": "physical_constant",
+  "quantity": "gravitational_constant",
+  "dimension": [
+    3,
+    -1,
+    -2,
+    0,
+    0,
+    0,
+    0
+  ],
+  "nominal_decimal": "6.67430e-11",
+  "uncertainty_decimal": "1.5e-15",
+  "exactness": "measured",
+  "formula": "G",
+  "source": "codata2022",
+  "location": "Newtonian constant of gravitation",
+  "help_en": "CODATA 2022: recommended value 6.67430e-11 m³/(kg s²), standard uncertainty 1.5e-15 m³/(kg s²), k=1. Measured; not exact by definition.",
+  "help_es": "CODATA 2022: valor recomendado 6.67430e-11 m³/(kg s²), incertidumbre estándar 1.5e-15 m³/(kg s²), k=1. Medida; no exacta por definición.",
+  "aliases": [
+    "gravitational constant",
+    "Newton G",
+    "constante gravitacional",
+    "gravitación"
+  ],
+  "symbol_aliases": [],
+  "prefixes": [
+    0
+  ],
+  "standard_prefixes": "none",
+  "notation": {
+    "base": "G"
+  },
+  "en_us": "Newtonian constant of gravitation",
+  "en_gb": "Newtonian constant of gravitation",
+  "es_es": "Constante de gravitación universal",
+  "es_419": "Constante de gravitación universal"
+}

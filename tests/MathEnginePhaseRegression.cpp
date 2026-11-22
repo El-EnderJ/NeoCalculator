@@ -5,6 +5,9 @@
 #include <string>
 
 #include "src/math/MathAST.h"
+#include "src/math/CalculationEngine.h"
+#include "src/math/CursorController.h"
+#include "src/math/MathOperatorGeometry.h"
 #include "src/math/MathRenderVisualCases.h"
 #include "src/math/MathStressExpressions.h"
 #include "src/math/font/MathGlyphAssembly.h"
@@ -20,6 +23,10 @@ static void check(bool condition, const char* name) {
         std::cerr << "FAIL: " << name << "\n";
         ++failures;
     }
+}
+
+static void check(bool condition, const std::string& name) {
+    check(condition, name.c_str());
 }
 
 static std::string readTextFile(const char* path) {
@@ -285,8 +292,13 @@ static void testSpaceAfterScriptAffectsPowerAndSubscriptWidth() {
     auto subscript = makeSubscript(rowWithNumber("x"), rowWithNumber("1"));
     subscript->calculateLayout(fm);
     auto* subNode = static_cast<NodeSubscript*>(subscript.get());
+    // TXP PD-7 (MathKernInfo BottomRight cut-in, adopted by MATH-TEX-PARITY-02):
+    // an upright nucleus has no italic reserve, so the subscript starts at the
+    // base width plus the source MathKern; SpaceAfterScript follows the script.
+    check(subNode->scriptX() == subNode->base()->layout().width + subNode->mathKernPx(),
+          "NodeSubscript script starts at base width plus MathKern cut-in");
     const int16_t expectedSubWidth = static_cast<int16_t>(
-        subNode->base()->layout().width + subNode->subscript()->layout().width
+        subNode->scriptX() + subNode->subscript()->layout().width
         + scriptSpace);
     check(subscript->layout().width == expectedSubWidth,
           "NodeSubscript width includes SpaceAfterScript");
@@ -537,31 +549,100 @@ static void testBigOpDisplayLayoutMatchesRendererGeometry() {
     big->calculateLayout(fm);
     auto* node = static_cast<NodeBigOp*>(big.get());
 
-    check(node->useDisplayLimits(), "product uses display limits in display style");
+    // TXP §H.9.4 / GAP-37: the product obeys the same height gate as Σ and ∫.
+    // At em 18 its ladder glyph is below DisplayOperatorMinHeight, so the node
+    // takes side limits even in display style (no per-family bypass).
+    check(!node->useDisplayLimits(),
+          "product below DisplayOperatorMinHeight uses side limits in display style");
 
     const auto& lowerL = node->lower()->layout();
     const auto& upperL = node->upper()->layout();
     const auto& bodyL = node->body()->layout();
-    const auto opMetrics = DelimiterAssembler::glyphMetricsForHeightPx(
-        node->operatorCodepoint(), largeOperatorTargetHeightPx(fm), fm.emSize);
-    const int16_t opH = opMetrics.valid ? opMetrics.heightPx : fm.height();
-    const int16_t symbolAscent = largeOperatorGlyphAscentPx(fm, opH);
-    const int16_t symbolDescent = largeOperatorGlyphDescentPx(fm, opH);
-    const int16_t symbolPadPx = largeOperatorSymbolPadPx(fm);
-    const int16_t limitGapPx = MathConstantsProvider(fm.emSize).upperLimitGapMin();
-    const int16_t expectedAscent = static_cast<int16_t>(
-        std::max<int16_t>(bodyL.ascent,
-            static_cast<int16_t>(symbolAscent + symbolPadPx
-                                 + limitGapPx + upperL.height())));
-    const int16_t expectedDescent = static_cast<int16_t>(
-        std::max<int16_t>(bodyL.descent,
-            static_cast<int16_t>(symbolDescent + symbolPadPx
-                                 + limitGapPx + lowerL.height())));
+    // TXP §H.9.2 (Appendix G rule 13a, OpenType form) with PD-11 (no 4 mu
+    // symbol pad), as implemented by MATH-TEX-PARITY-02: the selected display
+    // glyph is centred on the axis; the upper baseline sits above the glyph
+    // top by max(UpperLimitBaselineRiseMin, UpperLimitGapMin + inkDescent(U)),
+    // the lower baseline below the glyph bottom by
+    // max(LowerLimitBaselineDropMin, LowerLimitGapMin + inkAscent(L)).
+    const auto* opInk = stixOperatorInk(node->operatorCodepoint(), fm.emSize, true);
+    check(opInk != nullptr, "BigOp display glyph has source ink metrics");
+    if (!opInk) return;
+    const MathConstantsProvider mc(fm.emSize);
+    const int16_t symbolAscent = largeOperatorGlyphAscentPx(fm, opInk->height);
+    const int16_t symbolDescent = static_cast<int16_t>(opInk->height - symbolAscent);
+    const int16_t upperBaseline = static_cast<int16_t>(-symbolAscent - std::max<int16_t>(
+        mc.upperLimitBaselineRiseMin(),
+        static_cast<int16_t>(mc.upperLimitGapMin() + layoutInkDescentPx(upperL))));
+    const int16_t lowerBaseline = static_cast<int16_t>(symbolDescent + std::max<int16_t>(
+        mc.lowerLimitBaselineDropMin(),
+        static_cast<int16_t>(mc.lowerLimitGapMin() + layoutInkAscentPx(lowerL))));
+    const int16_t expectedAscent = std::max<int16_t>({symbolAscent, bodyL.ascent,
+        static_cast<int16_t>(upperL.ascent - upperBaseline),
+        static_cast<int16_t>(lowerL.ascent - lowerBaseline)});
+    const int16_t expectedDescent = std::max<int16_t>({int16_t(0), symbolDescent, bodyL.descent,
+        static_cast<int16_t>(upperL.descent + upperBaseline),
+        static_cast<int16_t>(lowerL.descent + lowerBaseline)});
 
-    check(big->layout().ascent == expectedAscent,
+    // Gate open (an operator at least DisplayOperatorMinHeight tall, e.g. once
+    // TXP-1 size variants reach the ladder): the stacked branch is rule 13a.
+    const auto stacked = largeOperatorGeometryWithGate(node->operatorCodepoint(), fm,
+        lowerL, upperL, bodyL, mc.displayOperatorMinHeight());
+    check(stacked.displayLimits, "BigOp stacked geometry is selected once the gate is open");
+    check(stacked.box.ascent == expectedAscent,
           "BigOp display ascent matches renderer displayLimitGeometry");
-    check(big->layout().descent == expectedDescent,
+    check(stacked.box.descent == expectedDescent,
           "BigOp display descent matches renderer displayLimitGeometry");
+    check(stacked.upperBaseline == upperBaseline && stacked.lowerBaseline == lowerBaseline,
+          "BigOp renderer limit baselines follow rule 13a");
+    // Gate closed (production em 18): the renderer paints from
+    // largeOperatorGeometry(); layout must be exactly that box, with side scripts.
+    const auto drawn = largeOperatorGeometry(node->operatorCodepoint(), fm, lowerL, upperL, bodyL);
+    check(!drawn.displayLimits && drawn.displayLimits == node->useDisplayLimits(),
+          "BigOp node and renderer agree on the gate result");
+    check(drawn.box.ascent == big->layout().ascent && drawn.box.descent == big->layout().descent
+              && drawn.box.width == big->layout().width,
+          "BigOp layout box equals the geometry the renderer paints");
+    check(drawn.upperBaseline < 0 && drawn.lowerBaseline > 0 && drawn.upperX > drawn.symbolX,
+          "BigOp side limits are scripts placed right of the operator");
+}
+
+// TXP §H.9.4 / GAP-37: Summation, DefIntegral and BigOp share one gate.
+static void testLargeOperatorFamiliesShareDisplayLimitGate() {
+    FontMetrics fm = defaultFontMetrics();
+    auto sum = makeSummation(rowWithNumber("n=1"), rowWithNumber("9"), rowWithNumber("n"));
+    auto integral = makeDefIntegral(rowWithNumber("0"), rowWithNumber("1"),
+                                    rowWithNumber("x"), rowWithNumber("x"));
+    auto prod = makeBigOp(BigOpKind::Product, rowWithNumber("i=1"), rowWithNumber("n"),
+                          rowWithNumber("x"));
+    sum->calculateLayout(fm);
+    integral->calculateLayout(fm);
+    prod->calculateLayout(fm);
+    struct Row { const char* name; uint32_t cp; const MathNode* node; };
+    const Row rows[] = {{"sum", 0x2211, sum.get()}, {"integral", 0x222B, integral.get()},
+                        {"product", 0x220F, prod.get()}};
+    for (const auto& r : rows) {
+        const auto& lowerL = r.node->child(0)->layout();
+        const auto& upperL = r.node->child(1)->layout();
+        const auto& bodyL = r.node->child(2)->layout();
+        const int16_t gateH = largeOperatorGateHeightPx(r.cp, fm);
+        const bool gate = shouldUseDisplayLimits(fm, gateH);
+        const auto g = largeOperatorGeometry(r.cp, fm, lowerL, upperL, bodyL);
+        check(g.displayLimits == gate,
+              std::string(r.name) + " geometry follows shouldUseDisplayLimits()");
+        check(!gate, std::string(r.name) + " ladder glyph is below DisplayOperatorMinHeight at em 18");
+        // Same inputs, gate opened by a tall-enough operator: stacked for all three.
+        const auto open = largeOperatorGeometryWithGate(r.cp, fm, lowerL, upperL, bodyL,
+            MathConstantsProvider(fm.emSize).displayOperatorMinHeight());
+        check(open.displayLimits && open.upperBaseline < open.lowerBaseline
+                  && open.upperX + upperL.width <= open.bodyX,
+              std::string(r.name) + " stacks limits once the gate is open");
+        // TEXT style never stacks, whatever the glyph height.
+        FontMetrics text = fm; text.style = MathStyle::TEXT;
+        check(!largeOperatorGeometryWithGate(r.cp, text, lowerL, upperL, bodyL, 999).displayLimits,
+              std::string(r.name) + " text style never stacks limits");
+    }
+    check(!static_cast<NodeBigOp*>(prod.get())->useDisplayLimits(),
+          "BigOp has no display-limit bypass");
 }
 
 static void testMakeRelationProducesRelationAtom() {
@@ -628,6 +709,49 @@ static void testDisplayLimitsHonorsOperatorMinHeightThreshold() {
     bool megaOp = shouldUseDisplayLimits(fm, 50);
     check(megaOp,
           "operator taller than DisplayOperatorMinHeight uses display limits");
+}
+
+// MATH-READABILITY-REGRESSION-01C: a mixed interval such as [0,+inf) has a
+// bracket on one side and a parenthesis on the other. The two native bitmap
+// families quantise to different heights/widths, so each side must be selected
+// against the same request and the box must be the union; selecting the right
+// side from the left side's already-quantised height can exceed the box.
+static void testMixedIntervalDelimitersFitLayoutBox() {
+    const FontMetrics base = defaultFontMetrics();
+    const FontMetrics profiles[] = {base, base.superscript(), base.superscript().superscript()};
+    const bool closed[4][2] = {{true, false}, {false, true}, {true, true}, {false, false}};
+    int cases = 0;
+    for (const auto& fm : profiles) {
+        for (int depth = 0; depth < 4; ++depth) {
+            for (const auto& sides : closed) {
+                NodePtr upper = rowWithNumber("1");
+                for (int i = 0; i < depth; ++i) upper = makeFraction(std::move(upper), rowWithNumber("2"));
+                auto interval = makeInterval(rowWithNumber("0"), std::move(upper), sides[0], sides[1]);
+                interval->calculateLayout(fm);
+                const auto* node = static_cast<const NodeInterval*>(interval.get());
+                const int16_t height = node->layout().height();
+                // The renderer draws each side from its own stored extent.
+                const auto left = stixParenthesisPlan(
+                    node->leftDelimiterAscent() + node->leftDelimiterDescent(), fm.emSize, sides[0]);
+                const auto right = stixParenthesisPlan(
+                    node->rightDelimiterAscent() + node->rightDelimiterDescent(), fm.emSize, sides[1]);
+                ++cases;
+                if (left.height > height || right.height > height ||
+                    left.width > node->delimiterWidth() || right.width > node->delimiterWidth()) {
+                    std::cerr << "  interval em=" << fm.emSize << " depth=" << depth
+                              << " sides=" << sides[0] << sides[1] << " box=" << height
+                              << " left=" << left.height << "x" << left.width
+                              << " right=" << right.height << "x" << right.width
+                              << " slot=" << node->delimiterWidth() << "\n";
+                }
+                check(left.height <= height && right.height <= height,
+                      "mixed interval delimiters fit the layout box height");
+                check(left.width <= node->delimiterWidth() && right.width <= node->delimiterWidth(),
+                      "mixed interval delimiters fit the reserved delimiter slot");
+            }
+        }
+    }
+    check(cases == 48, "mixed interval sweep covers 3 sizes x 4 depths x 4 closures");
 }
 
 static void testDelimKindCodepointMapping() {
@@ -992,10 +1116,15 @@ static void testFractionDenominatorUsesInkMetricsNotLineBox() {
     auto* f = static_cast<NodeFraction*>(frac.get());
 
     const auto& denL = f->denominator()->layout();
+    // TXP PD-4 / rule 15d (MATH-TEX-PARITY-02): DenominatorShiftDown is a
+    // baseline-to-baseline OpenType constant; denominatorShiftPx() is measured
+    // from the bar bottom, so the constant is converted by +axis - barHalfDown.
+    // The gap minimum is applied to the denominator's ink ascent.
+    const MathConstantsProvider denMc(fm.emSize);
+    const int16_t barHalfDown = static_cast<int16_t>(denMc.fractionRuleThickness() / 2);
     const int16_t expectedInkShift = std::max<int16_t>(
-        MathConstantsProvider(fm.emSize).fractionDenominatorShiftDown(true),
-        static_cast<int16_t>(
-            MathConstantsProvider(fm.emSize).fractionDenominatorGapMin(true) + denL.ascent));
+        static_cast<int16_t>(denMc.fractionDenominatorShiftDown(true) + fm.axisHeight() - barHalfDown),
+        static_cast<int16_t>(denMc.fractionDenominatorGapMin(true) + denL.ascent));
     const int16_t badLineBoxShift = static_cast<int16_t>(
         MathConstantsProvider(fm.emSize).fractionDenominatorGapMin(true) + fm.lineAscent);
 
@@ -2095,6 +2224,299 @@ static void testFractionDenominatorBaselineFollowsGap() {
     check(gaps.gapPx > 0, "fractionBarGaps gapPx is positive");
 }
 
+// ── CORRECTNESS-E2E-01 F01 ──────────────────────────────────────────────
+// Two adjacent NodeNumber nodes render as one numeral but serialize as an
+// implicit product. Every editor operation must leave every row canonical.
+static std::string editorShape(const MathNode* n) {
+    if (!n) return "!";
+    std::string s;
+    switch (n->type()) {
+        case NodeType::Row:
+            for (int i = 0; i < n->childCount(); ++i) s += editorShape(n->child(i));
+            return s;
+        case NodeType::Number: return "[" + static_cast<const NodeNumber*>(n)->value() + "]";
+        case NodeType::Empty: return "_";
+        case NodeType::Operator: {
+            const OpKind op = static_cast<const NodeOperator*>(n)->op();
+            return op == OpKind::Add ? "+" : op == OpKind::Sub ? "-" : op == OpKind::Mul ? "*" : "op";
+        }
+        case NodeType::Variable: return static_cast<const NodeVariable*>(n)->label();
+        case NodeType::Constant: return "pi";
+        case NodeType::Paren: return "(" + editorShape(n->child(0)) + ")";
+        default:
+            s = "<";
+            for (int i = 0; i < n->childCount(); ++i) s += (i ? "|" : "") + editorShape(n->child(i));
+            return s + ">";
+    }
+}
+
+static bool editorRowsCanonical(const MathNode* n, int depth = 0) {
+    if (!n || depth > 96) return n == nullptr;
+    const bool row = n->type() == NodeType::Row;
+    for (int i = 0; i < n->childCount(); ++i) {
+        const MathNode* c = n->child(i);
+        if (row && i > 0 && c && c->type() == NodeType::Number &&
+            n->child(i - 1)->type() == NodeType::Number) return false;
+        if (!editorRowsCanonical(c, depth + 1)) return false;
+    }
+    return true;
+}
+
+static bool editorCursorOwned(const CursorController& cc) {
+    const Cursor& cur = cc.cursor();
+    if (!cur.row || cur.index < 0 || cur.index > cur.row->childCount()) return false;
+    const MathNode* n = cur.row;
+    for (int depth = 0; n && depth <= 96; ++depth, n = n->parent())
+        if (n == cc.rootRow()) return true;
+    return false;
+}
+
+// One char per key: digits and '.', L R U D = arrows, '<' = DEL, + - * ops,
+// '(' paren, ')' = RIGHT (Calculation's RPAREN), 'c' = closeParen, 'r' = sqrt,
+// 'f' = fraction, '^' = power, 'x' variable, 'a' = Ans, 'p' = pi, 's' = sin.
+static void editorApply(CursorController& cc, char k) {
+    switch (k) {
+        case 'L': cc.moveLeft(); break;
+        case 'R': case ')': cc.moveRight(); break;
+        case 'U': cc.moveUp(); break;
+        case 'D': cc.moveDown(); break;
+        case '<': cc.backspace(); break;
+        case '+': cc.insertOperator(OpKind::Add); break;
+        case '-': cc.insertOperator(OpKind::Sub); break;
+        case '*': cc.insertOperator(OpKind::Mul); break;
+        case '(': cc.insertParen(); break;
+        case 'c': cc.closeParen(); break;
+        case 'r': cc.insertRoot(); break;
+        case 'f': cc.insertFraction(); break;
+        case '^': cc.insertPower(); break;
+        case 'x': cc.insertVariable('x'); break;
+        case 'a': cc.insertVariable('#'); break;
+        case 'p': cc.insertConstant(ConstKind::Pi); break;
+        case 's': cc.insertFunction(FuncKind::Sin); break;
+        default: cc.insertDigit(k); break;
+    }
+}
+
+static void checkEditorKeys(const char* keys, const char* expected) {
+    auto root = makeRow();
+    auto* row = static_cast<NodeRow*>(root.get());
+    row->appendChild(makeEmpty());
+    CursorController cc;
+    cc.init(row);
+    bool canonical = true;
+    for (const char* k = keys; *k; ++k) {
+        editorApply(cc, *k);
+        canonical = canonical && editorRowsCanonical(row) && editorCursorOwned(cc);
+    }
+    const std::string shape = editorShape(row);
+    check(canonical, std::string("F01 no adjacent numbers after every key of '") + keys + "' (final " + shape + ")");
+    check(shape == expected, std::string("F01 keys '") + keys + "' -> " + expected + " (got " + shape + ")");
+}
+
+static void testEditorKeepsAdjacentNumbersMerged() {
+    checkEditorKeys("3L5", "[53]");
+    checkEditorKeys("3L57", "[573]");            // digits keep typing order at one caret
+    checkEditorKeys("35L1", "[135]");
+    checkEditorKeys("2^3L5", "<[2]|[53]>");
+    checkEditorKeys("2+3L<", "[23]");
+    checkEditorKeys("2+3)5", "[52]+[3]");        // RIGHT wraps; shown 52+3
+    checkEditorKeys("5L.", "[.5]");
+    checkEditorKeys("2x3L<", "[23]");
+    checkEditorKeys("2a3L<", "[23]");
+    checkEditorKeys("2p3L<", "[23]");
+    checkEditorKeys("2(RR3L<", "[23]");
+    checkEditorKeys("2rRR3L<", "[23]");
+    checkEditorKeys("3L57<", "[53]");            // DEL inside a split number
+    checkEditorKeys("3L5Rx", "[53]x");
+    checkEditorKeys("3L5L7", "[753]");
+    checkEditorKeys("3L5+", "[5]+[3]");          // caret between 5 and 3 stays there
+    checkEditorKeys("2.3L1.5", "[1.52.3]");      // invalid literal stays ONE node
+    checkEditorKeys("12+3L9", "[12]+[93]");      // caret before 3
+    checkEditorKeys("2+3f4", "[2]+<[3]|[4]>");    // legit structures untouched
+    checkEditorKeys("2x", "[2]x");
+
+    // A recalled or externally built tree is normalised when the editor loads it.
+    auto root = makeRow();
+    auto* row = static_cast<NodeRow*>(root.get());
+    row->appendChild(makeNumber("12"));
+    row->appendChild(std::make_unique<NodeOperator>(OpKind::Add));
+    row->appendChild(makeNumber("9"));
+    row->appendChild(makeNumber("3"));
+    CursorController cc;
+    cc.init(row);
+    check(editorShape(row) == "[12]+[93]", "F01 init() merges adjacent numbers of a loaded tree (got " + editorShape(row) + ")");
+
+    // Toolbox-style insertion (insertPrepared) at a caret between digits.
+    auto root2 = makeRow();
+    auto* row2 = static_cast<NodeRow*>(root2.get());
+    row2->appendChild(makeEmpty());
+    CursorController cc2;
+    cc2.init(row2);
+    for (const char* k = "3L5"; *k; ++k) editorApply(cc2, *k);
+    auto bar = makeParen(nullptr, DelimKind::Bar);
+    NodeRow* barSlot = static_cast<NodeRow*>(bar->child(0));
+    const bool inserted = cc2.insertPrepared(std::move(bar), barSlot);
+    editorApply(cc2, '7');
+    check(inserted && editorRowsCanonical(row2) && editorCursorOwned(cc2) &&
+          editorShape(row2) == "[5]*([7])[3]",
+          "F01 insertPrepared at a mid-number caret splits there (got " + editorShape(row2) + ")");
+}
+
+static void testEditorRandomEditsKeepNumbersCanonical() {
+    static const char keys[] = "0123456789.....LLLLRRRRUD<<<<+-*(c)rf^xaps";
+    uint32_t state = 501u;
+    int bad = 0, steps = 0;
+    std::string firstBad;
+    for (int session = 0; session < 300; ++session) {
+        auto root = makeRow();
+        auto* row = static_cast<NodeRow*>(root.get());
+        row->appendChild(makeEmpty());
+        CursorController cc;
+        cc.init(row);
+        std::string trail;
+        for (int i = 0; i < 60; ++i, ++steps) {
+            state = state * 1664525u + 1013904223u;
+            const char k = keys[(state >> 8) % (sizeof(keys) - 1)];
+            trail += k;
+            editorApply(cc, k);
+            if (!editorRowsCanonical(row) || !editorCursorOwned(cc)) {
+                if (!bad++) firstBad = trail + " -> " + editorShape(row);
+                break;
+            }
+        }
+    }
+    check(bad == 0, "F01 randomized edits (seed 501, " + std::to_string(steps) + " ops) keep rows canonical; " +
+          std::to_string(bad) + " sessions broke it, first: " + firstBad);
+}
+
+// ── CORRECTNESS-E2E-01 GROUPING: engine result tree -> displayed MathAST ──
+// Linear shape of a converted result: (..) = paren, {a}/{b} fraction,
+// {b}^{e} power, sqrt{r}, F<kind>{arg}, call name{args}.
+static std::string resultShape(const MathNode* n) {
+    if (!n) return "<null>";
+    std::string out;
+    auto kids = [&](const MathNode* p) {
+        std::string s;
+        for (int i = 0; i < p->childCount(); ++i) s += resultShape(p->child(i));
+        return s;
+    };
+    switch (n->type()) {
+        case NodeType::Row: return kids(n);
+        case NodeType::Number: return static_cast<const NodeNumber*>(n)->value();
+        case NodeType::Operator:
+            switch (static_cast<const NodeOperator*>(n)->op()) {
+                case OpKind::Add: return "+";
+                case OpKind::Sub: return "-";
+                case OpKind::Mul: return "*";
+                default: return "?op";
+            }
+        case NodeType::Constant: {
+            const auto k = static_cast<const NodeConstant*>(n)->constKind();
+            return k == ConstKind::Pi ? "pi" : k == ConstKind::E ? "e" : "i";
+        }
+        case NodeType::Variable: return std::string(1, static_cast<const NodeVariable*>(n)->name());
+        case NodeType::Paren: return "(" + resultShape(static_cast<const NodeParen*>(n)->content()) + ")";
+        case NodeType::Fraction: {
+            const auto* f = static_cast<const NodeFraction*>(n);
+            return "{" + resultShape(f->numerator()) + "}/{" + resultShape(f->denominator()) + "}";
+        }
+        case NodeType::Power: {
+            const auto* p = static_cast<const NodePower*>(n);
+            return "{" + resultShape(p->base()) + "}^{" + resultShape(p->exponent()) + "}";
+        }
+        case NodeType::Root: {
+            const auto* r = static_cast<const NodeRoot*>(n);
+            if (r->hasDegree()) return "root{" + resultShape(r->degree()) + "}{" + resultShape(r->radicand()) + "}";
+            return "sqrt{" + resultShape(r->radicand()) + "}";
+        }
+        case NodeType::Function: {
+            const auto* f = static_cast<const NodeFunction*>(n);
+            return "F" + std::to_string(static_cast<int>(f->funcKind())) + "{" + resultShape(f->argument()) + "}";
+        }
+        case NodeType::Call: return static_cast<const NodeCall*>(n)->name() + "{" + kids(n) + "}";
+        default: return "?node" + std::to_string(static_cast<int>(n->type()));
+    }
+}
+
+namespace grouping {
+using numos::EngineNodeKind;
+using numos::EngineResultNode;
+static EngineResultNode leaf(EngineNodeKind kind, const char* text = "") {
+    EngineResultNode n; n.kind = kind; n.text = text; return n;
+}
+static EngineResultNode node(EngineNodeKind kind, std::vector<EngineResultNode> children, const char* text = "") {
+    EngineResultNode n; n.kind = kind; n.text = text; n.children = std::move(children); return n;
+}
+static EngineResultNode I(const char* v) { return leaf(EngineNodeKind::Integer, v); }
+static EngineResultNode D(const char* v) { return leaf(EngineNodeKind::Decimal, v); }
+static EngineResultNode X() { return leaf(EngineNodeKind::Symbol, "x"); }
+static EngineResultNode Pi() { return leaf(EngineNodeKind::Pi); }
+static EngineResultNode ImagUnit() { return leaf(EngineNodeKind::ImagUnit); }
+static EngineResultNode C(EngineResultNode re, EngineResultNode im) { return node(EngineNodeKind::Complex, {re, im}); }
+static EngineResultNode Mul(std::vector<EngineResultNode> f) { return node(EngineNodeKind::Mul, std::move(f)); }
+static EngineResultNode Add(std::vector<EngineResultNode> t) { return node(EngineNodeKind::Add, std::move(t)); }
+static EngineResultNode Neg(EngineResultNode a) { return node(EngineNodeKind::Neg, {a}); }
+static EngineResultNode Inv(EngineResultNode a) { return node(EngineNodeKind::Inv, {a}); }
+static EngineResultNode Pow(EngineResultNode b, EngineResultNode e) { return node(EngineNodeKind::Pow, {b, e}); }
+static EngineResultNode Sqrt(EngineResultNode a) { return node(EngineNodeKind::Sqrt, {a}); }
+static EngineResultNode Fn(const char* name, EngineResultNode a) { return node(EngineNodeKind::Function, {a}, name); }
+static EngineResultNode Q(const char* p, const char* q) { return node(EngineNodeKind::Rational, {I(p), I(q)}); }
+
+static void checkShape(const char* id, const EngineResultNode& tree, const std::string& expected) {
+    auto ast = numos::CalculationEngine::resultTreeToAST(tree);
+    const std::string got = ast ? resultShape(ast.get()) : std::string("<conversion failed>");
+    check(got == expected, std::string("GROUPING ") + id + " -> " + expected + " (got " + got + ")");
+}
+} // namespace grouping
+
+static void testComplexFactorsKeepGroupingInDisplayedResult() {
+    using namespace grouping;
+    // A numeric complex a+b*i (a != 0) used as a factor, fraction factor,
+    // negation operand or power base must be parenthesised, like a sum.
+    checkShape("(1+i)sqrt2", Mul({C(I("1"), I("1")), Sqrt(I("2"))}), "(1+i)*sqrt{2}");
+    checkShape("(1+i)sqrt2/2", Mul({C(I("1"), I("1")), Sqrt(I("2")), Inv(I("2"))}), "{(1+i)*sqrt{2}}/{2}");
+    checkShape("(-1+i)sqrt2/2", Mul({C(I("-1"), I("1")), Sqrt(I("2")), Inv(I("2"))}), "{(-1+i)*sqrt{2}}/{2}");
+    checkShape("(1+i)pi", Mul({C(I("1"), I("1")), Pi()}), "(1+i)*pi");
+    checkShape("(1+i)x", Mul({C(I("1"), I("1")), X()}), "(1+i)*x");
+    checkShape("(-1-i)x", Mul({C(I("-1"), I("-1")), X()}), "(-1-i)*x");
+    checkShape("(1.0+i)sin x", Mul({C(D("1.0"), D("1.0")), Fn("sin", X())}), "(1.0+1.0*i)*F0{x}");
+    checkShape("x(90.0-141.97i)", Mul({X(), C(D("90.0"), D("-141.97"))}), "x*(90.0-141.97*i)");
+    checkShape("(2+3i)x/(1+i)", Mul({C(I("2"), I("3")), X(), Inv(C(I("1"), I("1")))}), "{(2+3*i)*x}/{(1+i)}");
+    checkShape("x/(1+i)", Mul({X(), Inv(C(I("1"), I("1")))}), "{x}/{(1+i)}");
+    checkShape("-(1+2i)", Neg(C(I("1"), I("2"))), "-(1+2*i)");
+    checkShape("x-(1+i)sqrt2", Add({X(), Neg(Mul({C(I("1"), I("1")), Sqrt(I("2"))}))}), "x-(1+i)*sqrt{2}");
+    checkShape("(1+i)^x", Pow(C(I("1"), I("1")), X()), "{(1+i)}^{x}");
+    checkShape("e^(x(0.35+0.79i))", Fn("exp", Mul({X(), C(D("0.35"), D("0.79"))})), "{e}^{x*(0.35+0.79*i)}");
+    // A signed or scaled imaginary as a power base: (2i)^x is not 2*i^x.
+    checkShape("(2i)^x", Pow(C(I("0"), I("2")), X()), "{(2*i)}^{x}");
+    checkShape("(-i)^x", Pow(C(I("0"), I("-1")), X()), "{(-i)}^{x}");
+    checkShape("(-2i)^x", Pow(C(I("0"), I("-2")), X()), "{(-2*i)}^{x}");
+    // Decimal zero real part renders as a sum, so it is grouped too
+    // (the 0.0 itself is a separate cosmetic item and stays).
+    checkShape("(0.0-2.0i)x", Mul({C(D("0.0"), D("-2.0")), X()}), "(0.0-2.0*i)*x");
+
+    // Unchanged shapes: complex at top level / as a term of a sum, pure
+    // imaginary factors, plain i as a base, and every real result.
+    checkShape("1+i", C(I("1"), I("1")), "1+i");
+    checkShape("1/3+i/3", C(Q("1", "3"), Q("1", "3")), "{1}/{3}+{1}/{3}*i");
+    checkShape("x-1-2i", Add({X(), C(I("-1"), I("-2"))}), "x+-1-2*i");
+    checkShape("(-2i)x", Mul({C(I("0"), I("-2")), X()}), "-2*i*x");
+    checkShape("2i x", Mul({C(I("0"), I("2")), X()}), "2*i*x");
+    checkShape("2i", C(I("0"), I("2")), "2*i");
+    checkShape("i^x", Pow(ImagUnit(), X()), "{i}^{x}");
+    checkShape("i x", Mul({ImagUnit(), X()}), "i*x");
+    checkShape("(i sqrt3-1)/2", Mul({Add({Mul({ImagUnit(), Sqrt(I("3"))}), I("-1")}), Inv(I("2"))}),
+               "{(i*sqrt{3}-1)}/{2}");
+    checkShape("(sqrt2+1)/3", Mul({Add({Sqrt(I("2")), I("1")}), Inv(I("3"))}), "{(sqrt{2}+1)}/{3}");
+    checkShape("(x+1)^2", Pow(Add({X(), I("1")}), I("2")), "{(x+1)}^{2}");
+    checkShape("(x+1)sin x", Mul({Add({X(), I("1")}), Fn("sin", X())}), "(x+1)*F0{x}");
+    checkShape("-x-1", Add({Neg(X()), I("-1")}), "-x-1");
+    checkShape("-(x+1)", Neg(Add({X(), I("1")})), "-(x+1)");
+    checkShape("x^2-(x+1)sqrt2", Add({Pow(X(), I("2")), Neg(Mul({Add({X(), I("1")}), Sqrt(I("2"))}))}),
+               "{x}^{2}-(x+1)*sqrt{2}");
+    checkShape("(-3)x", Mul({I("-3"), X()}), "(-3)*x");
+}
+
 int main() {
     testPlatformioValidationFlagMatrix();
     testAssemblyOverlapDistributionIsEqual();
@@ -2111,9 +2533,11 @@ int main() {
     testAcceptedPowerClearanceMatrix();
     testParenthesesEncloseInkWithoutAxisInflation();
     testBigOpDisplayLayoutMatchesRendererGeometry();
+    testLargeOperatorFamiliesShareDisplayLimitGate();
     testMakeRelationProducesRelationAtom();
     testDisplayLimitsHonorsOperatorMinHeightThreshold();
     testDelimKindCodepointMapping();
+    testMixedIntervalDelimitersFitLayoutBox();
     testBracketDelimiterLayout();
     testBigOpUtf8MatchesCodepoint();
     testAxisHeightUsesMathConstant();
@@ -2170,6 +2594,13 @@ int main() {
     testPowerExponentStyleDoesNotRegress();
     testDisplayFractionBehaviorPreserved();
     testInlineMixedRowBaselineMatch();
+
+    // ── CORRECTNESS-E2E-01 F01: editor never leaves adjacent numbers ──
+    testEditorKeepsAdjacentNumbersMerged();
+    testEditorRandomEditsKeepNumbersCanonical();
+
+    // ── CORRECTNESS-E2E-01 GROUPING: complex factors keep their grouping ──
+    testComplexFactorsKeepGroupingInDisplayedResult();
 
     if (failures != 0) {
         std::cerr << failures << " regression checks failed\n";

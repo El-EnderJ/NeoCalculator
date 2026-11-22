@@ -48,11 +48,84 @@ CursorController::CursorController()
 void CursorController::init(NodeRow* rootRow) {
     ++_epoch;
     _root      = rootRow;
-    _cur.row   = rootRow;
-    _cur.index = 0;
+    _cur       = {rootRow, 0};
+    // A recalled or externally built tree obeys the same invariant as edits.
+    normalizeNumbers(_root, 0);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// F01 — canonical numbers. Two adjacent NodeNumber nodes render as one numeral
+// but serialize as an implicit product, so between operations no row holds
+// them. A caret between digits is Cursor::digit instead. Each operation splits
+// that number at the caret (the representation the bodies below were written
+// for), runs unchanged, and the outermost scope merges adjacent numbers again.
+// ════════════════════════════════════════════════════════════════════════════
+struct CursorController::EditScope {
+    CursorController& c;
+    explicit EditScope(CursorController& owner) : c(owner) {
+        if (c._editDepth++ == 0) c.splitCaret();
+    }
+    ~EditScope() {
+        if (--c._editDepth == 0) c.normalizeNumbers(c._root, 0);
+    }
+    EditScope(const EditScope&) = delete;
+    EditScope& operator=(const EditScope&) = delete;
+};
+
+void CursorController::splitCaret() {
+    const int digit = _cur.digit;
+    _cur.digit = 0;
+    MathNode* right = _cur.nodeRight();
+    if (digit <= 0 || !right || right->type() != NodeType::Number) return;
+    auto* number = static_cast<NodeNumber*>(right);
+    if (digit >= number->length()) { ++_cur.index; return; }
+#if defined(__cpp_exceptions)
+    try {
+#endif
+        // Allocate and reserve first; publication only moves ownership.
+        auto tail = std::make_unique<NodeNumber>(number->value().substr(digit));
+        std::string head = number->value().substr(0, digit);
+        _cur.row->reserveChildren(_cur.row->childCount() + 1);
+        number->setValue(head);
+        _cur.row->insertChild(++_cur.index, std::move(tail));
+#if defined(__cpp_exceptions)
+    } catch (const std::bad_alloc&) {
+        // Unchanged tree; the caret falls back to the number's left edge.
+    }
+#endif
+}
+
+void CursorController::normalizeNumbers(MathNode* node, int depth) {
+    if (!node || depth > kLayoutMaxDepth) return;
+    if (node->type() == NodeType::Row) {
+        auto* row = static_cast<NodeRow*>(node);
+        for (int i = 0; i + 1 < row->childCount();) {
+            MathNode* a = row->child(i);
+            MathNode* b = row->child(i + 1);
+            if (!a || !b || a->type() != NodeType::Number || b->type() != NodeType::Number) { ++i; continue; }
+            auto* left = static_cast<NodeNumber*>(a);
+            const int leftLength = left->length();
+#if defined(__cpp_exceptions)
+            try {
+#endif
+                // WHY: concatenate verbatim. A literal with two points stays one
+                // node and fails evaluation visibly, never a silent product.
+                left->setValue(left->value() + static_cast<NodeNumber*>(b)->value());
+#if defined(__cpp_exceptions)
+            } catch (const std::bad_alloc&) { ++i; continue; }
+#endif
+            row->removeChild(i + 1);
+            if (_cur.row == row) {
+                if (_cur.index == i + 1) { _cur.index = i; _cur.digit += leftLength; }
+                else if (_cur.index > i + 1) --_cur.index;
+            }
+        }
+    }
+    for (int i = 0; i < node->childCount(); ++i) normalizeNumbers(node->child(i), depth + 1);
 }
 
 bool CursorController::insertPrepared(NodePtr node, NodeRow* slot, int index) {
+    EditScope scope(*this);
     if (!node || !_cur.row || _cur.index < 0 || _cur.index > _cur.row->childCount()) return false;
     if (slot) {
         const MathNode* ancestor=slot;
@@ -137,6 +210,7 @@ bool CursorController::isCapturable(const MathNode* node) {
         case NodeType::Constant:
         case NodeType::Variable:
         case NodeType::Unit:
+        case NodeType::Measurement:
         case NodeType::QuantityReference:
         case NodeType::Symbol:
         case NodeType::SpecialValue:
@@ -194,6 +268,7 @@ NodeRow* CursorController::firstSlot(MathNode* node) {
                        ? static_cast<NodeRow*>(base)
                        : nullptr;
         }
+        case NodeType::Measurement:
         case NodeType::Call:
         case NodeType::DefIntegral: {
             auto* child=node->child(0);
@@ -252,6 +327,7 @@ NodeRow* CursorController::lastSlot(MathNode* node) {
                        ? static_cast<NodeRow*>(arg)
                        : nullptr;
         }
+        case NodeType::Measurement:
         case NodeType::Call:
         case NodeType::DefIntegral: {
             auto* child=node->child(node->childCount()-1);
@@ -374,6 +450,7 @@ void CursorController::ensureNotEmpty(NodeRow* row) {
 // INSERCIÓN — Dígitos
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::insertDigit(char c) {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
     // Aceptar dígitos '0'..'9' y el punto decimal '.'. OJO con el orden: '.' es
     // ASCII 46, MENOR que '0' (48), así que un guard `c < '0' || ...` rechazaría
@@ -402,6 +479,7 @@ void CursorController::insertDigit(char c) {
 // INSERCIÓN — Operador
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::insertOperator(OpKind op) {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     // Si sobre un Empty solitario, lo dejamos (el operador se pone aparte)
@@ -424,6 +502,7 @@ void CursorController::insertOperator(OpKind op) {
 // INSERCIÓN — Fracción (VPAM Capture)
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::insertFraction() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     MathNode* left = _cur.nodeLeft();
@@ -477,6 +556,7 @@ void CursorController::insertFraction() {
 // INSERCIÓN — Potencia (VPAM Capture + Jump)
 // ════════════════════════════════════════════════════════════════════════════
 bool CursorController::insertPowerOfTen() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return false;
 #if defined(__cpp_exceptions)
     try {
@@ -506,6 +586,7 @@ bool CursorController::insertPowerOfTen() {
 }
 
 bool CursorController::insertFactorial() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return false;
 #if defined(__cpp_exceptions)
     try {
@@ -529,6 +610,7 @@ bool CursorController::insertFactorial() {
 }
 
 void CursorController::insertPower() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 #if defined(__cpp_exceptions)
     try {
@@ -571,6 +653,7 @@ void CursorController::insertPower() {
 // INSERCIÓN — Raíz cuadrada
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::insertRoot() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     replaceEmptyIfNeeded();
@@ -592,6 +675,7 @@ void CursorController::insertRoot() {
 // INSERCIÓN — Paréntesis
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::insertParen(DelimKind kind) {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     replaceEmptyIfNeeded();
@@ -611,18 +695,77 @@ void CursorController::insertParen(DelimKind kind) {
 
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::closeBracket() {
-    if (!_cur.isValid()) return;
-    for (MathNode* node = _cur.row; node; node = node->parent()) {
-        if (node->type() != NodeType::Paren ||
-            static_cast<NodeParen*>(node)->delimKind() != DelimKind::Bracket) continue;
-        auto* parent = node->parent();
-        if (!parent || parent->type() != NodeType::Row) return;
-        auto* row = static_cast<NodeRow*>(parent);
-        for (int i = 0; i < row->childCount(); ++i) {
-            if (row->child(i) == node) { _cur = {row, i + 1}; return; }
+    EditScope scope(*this);
+    (void)closeDelimiter(DelimKind::Bracket);
+}
+
+void CursorController::closeParen() {
+    EditScope scope(*this);
+    if (closeDelimiter(DelimKind::Paren) == CloseResult::NoContext) moveRight();
+}
+
+CursorController::CloseResult CursorController::closeDelimiter(DelimKind kind) {
+    if (!_cur.isValid() || !_root) return CloseResult::Invalid;
+    if (_cur.index < 0 || _cur.index > _cur.row->childCount() ||
+        _cur.row->childCount() > kLayoutMaxNodes) return CloseResult::Invalid;
+    // WHY: parent pointers alone do not prove ownership. Validate the complete
+    // path before any movement, including the no-context RIGHT fallback. A
+    // cycle, stale link or foreign tree must leave the cursor unchanged.
+    MathNode* owned = _cur.row;
+    int remainingChildren = kLayoutMaxNodes;
+    for (int depth = 0; owned != _root; ++depth) {
+        if (depth >= kLayoutMaxDepth) return CloseResult::Invalid;
+        MathNode* parent = owned->parent();
+        if (!parent) return CloseResult::Invalid;
+        const int count = parent->childCount();
+        if (count < 0 || count > remainingChildren) return CloseResult::Invalid;
+        remainingChildren -= count;
+        bool found = false;
+        for (int i = 0; i < count; ++i) {
+            if (parent->child(i) == owned) { found = true; break; }
         }
-        return;
+        if (!found) return CloseResult::Invalid;
+        owned = parent;
     }
+    // WHY: a closing delimiter exits its nearest enclosing pair, rather than
+    // merely leaving a fraction/script slot and silently regrouping later input.
+    // Parent links and a bounded sibling search need no temporary AST or heap.
+    MathNode* branch = nullptr;
+    MathNode* node = _cur.row;
+    for (int depth = 0; node && depth <= kLayoutMaxDepth;
+         ++depth, branch = node, node = node->parent()) {
+        if (node == _root) return CloseResult::NoContext;
+        bool matches = node->type() == NodeType::Paren &&
+            static_cast<NodeParen*>(node)->delimKind() == kind;
+        if (kind == DelimKind::Paren) {
+            if (node->type() == NodeType::LogBase) {
+                const auto* log = static_cast<const NodeLogBase*>(node);
+                // WHY: the base lies outside log's round pair. Do not jump an
+                // enclosing group; ordinary RIGHT advances to the argument.
+                if (branch == log->base()) return CloseResult::NoContext;
+                if (branch != log->argument()) return CloseResult::Invalid;
+                matches = true;
+            } else if (node->type() == NodeType::Function ||
+                       node->type() == NodeType::Call ||
+                       node->type() == NodeType::Measurement) {
+                matches = true;
+            }
+        }
+        if (!matches) continue;
+        auto* parent = node->parent();
+        if (!parent || parent->type() != NodeType::Row) return CloseResult::Invalid;
+        auto* row = static_cast<NodeRow*>(parent);
+        if (row->childCount() > kLayoutMaxNodes) return CloseResult::Invalid;
+        for (int i = 0; i < row->childCount(); ++i) {
+            if (row->child(i) == node) {
+                _cur = {row, i + 1};
+                return CloseResult::Closed;
+            }
+        }
+        return CloseResult::Invalid;
+    }
+    // A broken parent chain or exceeded bound must not move the cursor.
+    return CloseResult::Invalid;
 }
 
 // NAVEGACIÓN — moveRight
@@ -635,6 +778,7 @@ void CursorController::closeBracket() {
 //      b. Si es la fila raíz → wrap al inicio
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::moveRight() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     // ── Caso 1: Hay un nodo a la derecha ──
@@ -648,7 +792,7 @@ void CursorController::moveRight() {
             right->type() == NodeType::Root     ||
             right->type() == NodeType::Paren    ||
             right->type() == NodeType::Function ||
-            right->type() == NodeType::LogBase || right->type() == NodeType::Call || right->type() == NodeType::DefIntegral) {
+            right->type() == NodeType::Measurement || right->type() == NodeType::LogBase || right->type() == NodeType::Call || right->type() == NodeType::DefIntegral) {
             if (enterNodeFromLeft(right)) return;
         }
 
@@ -707,7 +851,7 @@ void CursorController::moveRight() {
         }
     }
 
-    if (structParent && (structParent->type()==NodeType::Call || structParent->type()==NodeType::DefIntegral)) {
+    if (structParent && (structParent->type()==NodeType::Measurement || structParent->type()==NodeType::Call || structParent->type()==NodeType::DefIntegral)) {
         for(int i=0;i<structParent->childCount();++i) {
             if(structParent->child(i)!=_cur.row) continue;
             auto* sibling=structParent->child(i+1);
@@ -742,6 +886,7 @@ void CursorController::moveRight() {
 //      b. Si es la fila raíz → wrap al final
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::moveLeft() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     // ── Caso 1: Hay un nodo a la izquierda ──
@@ -755,7 +900,7 @@ void CursorController::moveLeft() {
             left->type() == NodeType::Root     ||
             left->type() == NodeType::Paren    ||
             left->type() == NodeType::Function ||
-            left->type() == NodeType::LogBase || left->type() == NodeType::Call || left->type() == NodeType::DefIntegral) {
+            left->type() == NodeType::Measurement || left->type() == NodeType::LogBase || left->type() == NodeType::Call || left->type() == NodeType::DefIntegral) {
             _cur.index--;   // "Saltar por encima" para posicionarnos
             if (enterNodeFromRight(left)) return;
             // Si falló, quedamos a la izquierda del nodo (index ya decrementado)
@@ -816,7 +961,7 @@ void CursorController::moveLeft() {
         }
     }
 
-    if (structParent && (structParent->type()==NodeType::Call || structParent->type()==NodeType::DefIntegral)) {
+    if (structParent && (structParent->type()==NodeType::Measurement || structParent->type()==NodeType::Call || structParent->type()==NodeType::DefIntegral)) {
         for(int i=0;i<structParent->childCount();++i) {
             if(structParent->child(i)!=_cur.row) continue;
             auto* sibling=structParent->child(i-1);
@@ -844,6 +989,7 @@ void CursorController::moveLeft() {
 // NAVEGACIÓN — moveUp / moveDown
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::moveUp() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     NodeRow* sibling = verticalSibling(_cur.row, true);
@@ -856,6 +1002,7 @@ void CursorController::moveUp() {
 }
 
 void CursorController::moveDown() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     NodeRow* sibling = verticalSibling(_cur.row, false);
@@ -910,6 +1057,7 @@ bool CursorController::unwrapStructure(NodeRow* row, int index, NodeRow* retaine
 }
 
 void CursorController::backspace() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     // WHY: DEL in an empty trailing slot must undo the template, not leave an
@@ -950,6 +1098,7 @@ void CursorController::backspace() {
     NodeRow* retained = nullptr;
     switch (left->type()) {
         case NodeType::Power: retained = static_cast<NodeRow*>(static_cast<NodePower*>(left)->base()); break;
+        case NodeType::Measurement: retained = static_cast<NodeRow*>(static_cast<NodeMeasurement*>(left)->nominal()); break;
         case NodeType::Fraction: retained = static_cast<NodeRow*>(static_cast<NodeFraction*>(left)->numerator()); break;
         case NodeType::Root: retained = static_cast<NodeRow*>(static_cast<NodeRoot*>(left)->radicand()); break;
         case NodeType::Paren: retained = static_cast<NodeRow*>(static_cast<NodeParen*>(left)->content()); break;
@@ -987,6 +1136,7 @@ void CursorController::backspace() {
 // dentro del argumento para que el usuario escriba.
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::insertFunction(FuncKind kind) {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     replaceEmptyIfNeeded();
@@ -1011,6 +1161,7 @@ void CursorController::insertFunction(FuncKind kind) {
 // Cursor → dentro de la base (subíndice) para que el usuario escriba n.
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::insertLogBase() {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     replaceEmptyIfNeeded();
@@ -1034,6 +1185,7 @@ void CursorController::insertLogBase() {
 // Inserta un NodeConstant (sin estructura interna, como un Number atómico).
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::insertConstant(ConstKind kind) {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     replaceEmptyIfNeeded();
@@ -1049,6 +1201,7 @@ void CursorController::insertConstant(ConstKind kind) {
 // Inserta un NodeVariable (sin estructura interna, como un Number atómico).
 // ════════════════════════════════════════════════════════════════════════════
 void CursorController::insertVariable(char name) {
+    EditScope scope(*this);
     if (!_cur.isValid()) return;
 
     replaceEmptyIfNeeded();

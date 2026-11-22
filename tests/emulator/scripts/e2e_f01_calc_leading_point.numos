@@ -1,0 +1,18 @@
+# CORRECTNESS-E2E-01 F01: 5 LEFT . shows .5
+# Two adjacent number nodes render as one numeral; the value computed must be
+# the value displayed. Assert-only (no screenshot, no golden, no CI wiring).
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key 5
+key left
+key .
+wait 3
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status ok
+assert_calc_input rational 1 2

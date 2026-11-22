@@ -128,6 +128,10 @@ public:
     bool debugFormatMenuOpen() const { return _formatMenu != nullptr; }
     unsigned debugFormatMode() const { return static_cast<unsigned>(_resultMode); }
     unsigned debugFormatChoice() const { return _formatChoice; }
+    bool debugMeasured() const { return _quantityView && _quantityView->hasUncertainty; }
+    double debugStandardUncertainty() const { double u=0;if(_quantity)numos::quantity::standardUncertainty(*_quantity,u);return u; }
+    double debugDisplayUncertainty() const { return _quantityView?_quantityView->standardUncertainty:0; }
+    unsigned debugSourceCount() const { return _quantity && _quantity->uncertainty?_quantity->uncertainty->count:0; }
 #endif
 #endif // NATIVE_SIM
 
@@ -160,6 +164,7 @@ private:
     bool _formatPickingDigits = false;
     bool _formatPickingUnit = false;
     bool _formatPickingComponents = false;
+    bool _formatPickingUncertainty = false;
     std::unique_ptr<UnitOutputMenu> _unitMenu;
     KeyCode _formatSuppressed=KeyCode::NONE;
     uint8_t _fixedPlaces = 2;
@@ -251,7 +256,7 @@ private:
     void showTextResult(const std::string& text);
     void hideTextResult();
     void toggleSD();
-    void openFormatMenu(bool pickDigits = false,bool pickUnits = false,bool pickComponents = false);
+    void openFormatMenu(bool pickDigits = false,bool pickUnits = false,bool pickComponents = false,bool pickUncertainty = false);
     void closeFormatMenu();
     void updateFormatMenu();
     bool formatAvailable(numos::CalculationFormat format) const;

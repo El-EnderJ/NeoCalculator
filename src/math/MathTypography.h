@@ -47,16 +47,51 @@ enum class MathStyle : uint8_t {
     TEXT          = 1,  // Inline math (same em-size as display, tighter spacing)
     SCRIPT        = 2,  // First-level sub/superscripts (~70% of display)
     SCRIPTSCRIPT  = 3,  // Second-level sub/superscripts (~55% of display)
+    DISPLAY_CRAMPED = 4,
+    TEXT_CRAMPED = 5,
+    SCRIPT_CRAMPED = 6,
+    SCRIPTSCRIPT_CRAMPED = 7,
 };
+
+// WHY: the low bits retain the existing four size styles. Cramped changes
+// vertical rules, never the font. TeX's eight-style lattice is shared by
+// layout, paint placement, and the caret; it is not inferred from em size.
+constexpr MathStyle uncrampedStyle(MathStyle s) {
+    return static_cast<MathStyle>(static_cast<uint8_t>(s) & 3);
+}
+constexpr bool isCrampedStyle(MathStyle s) {
+    return (static_cast<uint8_t>(s) & 4) != 0;
+}
+constexpr MathStyle crampedStyle(MathStyle s) {
+    return static_cast<MathStyle>(static_cast<uint8_t>(s) | 4);
+}
+constexpr MathStyle superscriptStyle(MathStyle s) {
+    const auto size = uncrampedStyle(s) < MathStyle::SCRIPT
+        ? MathStyle::SCRIPT : MathStyle::SCRIPTSCRIPT;
+    return isCrampedStyle(s) ? crampedStyle(size) : size;
+}
+constexpr MathStyle subscriptStyle(MathStyle s) { return crampedStyle(superscriptStyle(s)); }
+constexpr MathStyle numeratorStyle(MathStyle s) {
+    const auto size = uncrampedStyle(s);
+    const auto next = size == MathStyle::SCRIPTSCRIPT ? size
+        : static_cast<MathStyle>(static_cast<uint8_t>(size) + 1);
+    return isCrampedStyle(s) ? crampedStyle(next) : next;
+}
+constexpr MathStyle denominatorStyle(MathStyle s) { return crampedStyle(numeratorStyle(s)); }
+constexpr MathStyle rootStyle(MathStyle s) { return crampedStyle(s); }
+constexpr uint8_t scriptLevelForStyle(MathStyle s) {
+    const auto size = static_cast<uint8_t>(uncrampedStyle(s));
+    return size > 1 ? size - 1 : 0;
+}
 
 /// Returns true if style is a script level (SCRIPT or SCRIPTSCRIPT).
 constexpr bool isScriptStyle(MathStyle s) {
-    return s == MathStyle::SCRIPT || s == MathStyle::SCRIPTSCRIPT;
+    return uncrampedStyle(s) >= MathStyle::SCRIPT;
 }
 
 /// Returns true for display or text (non-script) styles.
 constexpr bool isDisplayOrText(MathStyle s) {
-    return s == MathStyle::DISPLAY_STYLE || s == MathStyle::TEXT;
+    return uncrampedStyle(s) <= MathStyle::TEXT;
 }
 
 // ════════════════════════════════════════════════════════════════════════════

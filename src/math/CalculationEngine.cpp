@@ -21,6 +21,7 @@
 // types (everything Giac-shaped arrives as EngineResultNode).
 
 #include "CalculationEngine.h"
+#include "ScientificReporting.h"
 #include "CalculationFormat.h"
 #include "giac/EngineContracts.h"
 
@@ -298,6 +299,7 @@ struct Serializer {
                 return fail("unsupported variable");
             }
             case NodeType::Unit: return fail("typed units require the quantity engine");
+            case NodeType::Measurement: return fail("typed measurements require the quantity engine");
             case NodeType::QuantityReference: return fail("typed quantity references require the quantity engine");
             case NodeType::Symbol: {
                 const auto& text=static_cast<const vpam::NodeSymbol*>(n)->name();
@@ -906,6 +908,15 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
             }
             const bool reIsZero =
                 re.kind == EngineNodeKind::Integer && re.text == "0";
+            const bool imIsOne =
+                im->kind == EngineNodeKind::Integer && im->text == "1";
+            // Rendered "re ± im·i" is a sum: group it wherever a sum would be
+            // grouped (product/fraction factor, negation operand, power
+            // base). As a power base anything but a plain i is grouped too,
+            // so (2i)^x does not read as 2·i^x.
+            if ((!reIsZero && ctxPrec >= PREC_MUL) ||
+                (ctxPrec >= PREC_POW && (imNeg || !imIsOne)))
+                return appendParenthesized(n, row, depth);
             if (!reIsZero) {
                 if (!appendConverted(re, row, PREC_ADD, depth + 1)) return false;
                 row->appendChild(vpam::makeOperator(
@@ -913,8 +924,6 @@ bool appendConverted(const EngineResultNode& n, vpam::NodeRow* row,
             } else if (imNeg) {
                 row->appendChild(vpam::makeOperator(vpam::OpKind::Sub));
             }
-            const bool imIsOne =
-                im->kind == EngineNodeKind::Integer && im->text == "1";
             if (!imIsOne) {
                 if (!appendConverted(*im, row, PREC_MUL, depth + 1)) return false;
                 row->appendChild(vpam::makeOperator(vpam::OpKind::Mul));
@@ -1352,16 +1361,23 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
                 if(error==quantity::Error::None) {
                     ev.serialized=analyzed.value.coefficient;
                     ev.exactText=display.exact;ev.approximateText=display.approximate;
-                    ev.exactAST=quantity::compose(std::move(display.exactCoefficient),descriptor);
-                    ev.approximateAST=quantity::compose(std::move(display.approximateCoefficient),descriptor);
+                    if(display.hasUncertainty) {
+                        ev.exactAST=scientific::uncertaintyReport(display,descriptor,CalculationFormat::Standard);
+                        ev.approximateAST=scientific::uncertaintyReport(display,descriptor,CalculationFormat::Decimal);
+                    } else {
+                        ev.exactAST=quantity::compose(std::move(display.exactCoefficient),descriptor);
+                        ev.approximateAST=quantity::compose(std::move(display.approximateCoefficient),descriptor);
+                    }
                     if(!ev.exactAST)error=quantity::Error::Allocation;
                     else {
-                        ev.exactAST->calculateLayout(vpam::defaultFontMetrics());
+                        const auto layoutStatus = vpam::calculateLayoutChecked(*ev.exactAST, vpam::defaultFontMetrics());
                         const auto box=ev.exactAST->layout();
-                        if(box.width>enginecontract::kMaxRenderedWidth || box.ascent+box.descent>enginecontract::kMaxRenderedHeight)
+                        if(layoutStatus != vpam::LayoutStatus::Ok || box.width>enginecontract::kMaxRenderedWidth || box.ascent+box.descent>enginecontract::kMaxRenderedHeight)
                             error=quantity::Error::ExpressionLimit;
                         else {
-                            if(!analyzed.value.dimension.scalar())ev.quantity=std::make_shared<const quantity::Value>(std::move(analyzed.value));
+                            // WHY: an exact dimensionless sin(1 rad) must keep
+                            // canonical radian semantics when reused in DEG.
+                            if(!analyzed.value.dimension.scalar() || analyzed.value.provenance!=quantity::Value::Provenance::Exact || analyzed.value.radianFunctions)ev.quantity=std::make_shared<const quantity::Value>(std::move(analyzed.value));
                             else {
                                 auto scalar=GiacEngine::instance().evaluateStructured(ev.exactText.c_str(),true);
                                 if(scalar.hasTree)ev.exactValValid=resultTreeToExactVal(scalar.tree,ev.exactVal);
@@ -1431,7 +1447,7 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
             static_cast<vpam::NodeRow*>(ev.exactAST.get())->appendChild(vpam::makeSpecialValue(vpam::SpecialValueKind::BothInfinities));
         } else ev.exactAST = resultTreeToAST(sr.tree, ProductNotation::ScalarNatural);
         if (ev.exactAST) {
-            ev.exactAST->calculateLayout(vpam::defaultFontMetrics());
+            const auto layoutStatus = vpam::calculateLayoutChecked(*ev.exactAST, vpam::defaultFontMetrics());
             const auto& layout = ev.exactAST->layout();
             const int32_t height = static_cast<int32_t>(layout.ascent) +
                                    layout.descent;
@@ -1440,7 +1456,7 @@ CalculationEvaluation CalculationEngine::evaluate(const vpam::MathNode* root) {
                 static_cast<uint16_t>(std::max<int32_t>(0, layout.width)),
                 static_cast<uint16_t>(std::max<int32_t>(0, height)));
 #endif
-            if (layout.width > enginecontract::kMaxRenderedWidth ||
+            if (layoutStatus != vpam::LayoutStatus::Ok || layout.width > enginecontract::kMaxRenderedWidth ||
                 height > enginecontract::kMaxRenderedHeight) {
                 ev.exactAST.reset();
                 ev.fallbackReason = EngineFallbackReason::RenderedSizeLimit;

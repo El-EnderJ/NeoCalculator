@@ -91,7 +91,7 @@ void runMathRenderStressDiagnostics(uint16_t dwellMs) {
 
         const size_t heapBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
         const int64_t layoutStartUs = esp_timer_get_time();
-        row->calculateLayout(canvas.normalMetrics());
+        vpam::calculateLayoutChecked(*row, canvas.normalMetrics());
         const int64_t layoutUs = esp_timer_get_time() - layoutStartUs;
 
         canvas.invalidate();

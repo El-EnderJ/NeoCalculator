@@ -101,6 +101,7 @@ enum class NodeType : uint8_t {
     Unevaluated,      // Valid expression explicitly marked unevaluated
     Unit,             // Validated unit identity, never a free variable
     QuantityReference, // Physical constant/contextual scale, distinct from units
+    Measurement,      // Standard uncertainty, two editable slots, stable source
 };
 
 enum class CollectionKind : uint8_t { List, Set };
@@ -237,7 +238,13 @@ enum class ConstKind : uint8_t {
 // No depende de tipos LVGL, pero transporta tanto la caja visual de tinta
 // como la line-box necesaria para convertir baseline -> top al dibujar.
 // ════════════════════════════════════════════════════════════════════════════
-struct TextAtomMetrics {int16_t width=0,ascent=0,descent=0,leftPad=0;};
+struct TextAtomMetrics {int16_t width=0,ascent=0,descent=0,leftPad=0,advance=0;};
+
+enum class LayoutStatus : uint8_t { Ok, DepthLimit, NodeLimit, InvalidTree, CoordinateLimit };
+inline constexpr int kLayoutMaxDepth = 192; // Parent-child edges, not semantic nesting.
+inline constexpr int kLayoutMaxNodes = 4096;
+// Reserve signed-coordinate headroom for canvas origin, padding and cursor.
+inline constexpr int kLayoutMaxExtent = 30000;
 
 struct FontMetrics {
     int16_t charWidth;   ///< Ancho promedio de un dígito (monoespaciado)
@@ -262,9 +269,18 @@ struct FontMetrics {
     const void* textFont = nullptr;
     int16_t (*measureText)(const void*, const char*) = nullptr;
     TextAtomMetrics (*measureAtom)(const void*, const char*) = nullptr;
+    bool* coordinateOverflow = nullptr; // Per invocation; never global scratch.
+
+    int16_t coordinate(int32_t value) const {
+        if (value < -kLayoutMaxExtent || value > kLayoutMaxExtent) {
+            if (coordinateOverflow) *coordinateOverflow = true;
+            return value < 0 ? -kLayoutMaxExtent : kLayoutMaxExtent;
+        }
+        return static_cast<int16_t>(value);
+    }
 
     int16_t textAdvance(const char* text) const {
-        if (measureText && textFont) return measureText(textFont, text);
+        if (measureText && textFont) return coordinate(measureText(textFont, text));
         int32_t width = 0;
         auto* p = reinterpret_cast<const uint8_t*>(text);
         while (p && *p) {
@@ -272,11 +288,21 @@ struct FontMetrics {
             p += utf8Decode(p, cp);
             width += charWidth;
         }
-        return static_cast<int16_t>(std::min<int32_t>(32767, width));
+        return coordinate(width);
     }
 
     /// Altura total de la caja visual usada por layout.
     int16_t height() const { return ascent + descent; }
+
+    TextAtomMetrics textInk(const char* text) const {
+        if (measureAtom && textFont) {
+            auto ink = measureAtom(textFont, text);
+            ink.width = coordinate(ink.width); ink.advance = coordinate(ink.advance);
+            return ink;
+        }
+        const int16_t advance = textAdvance(text);
+        return {advance, ascent, descent, 0, advance};
+    }
 
     /// Altura total de la caja de línea LVGL, solo para render de texto.
     int16_t lineHeight() const { return lineAscent + lineDescent; }
@@ -291,7 +317,7 @@ struct FontMetrics {
 
     /// True if this is a display or text (non-script) style.
     bool isDisplayStyle() const {
-        return style == MathStyle::DISPLAY_STYLE;
+        return uncrampedStyle(style) == MathStyle::DISPLAY_STYLE;
     }
 
     /// Métricas reducidas para superíndices/subíndices.
@@ -303,19 +329,19 @@ struct FontMetrics {
     /// metricsFromFont for the 12pt font), it is returned directly for level 1;
     /// level 2 falls through to the MathConstantsProvider-based scaling.
     FontMetrics superscript() const {
-        if (scriptLevel >= 2 && textFont) {
+        if (scriptLevel >= 2) {
             // WHY: drawing already clamps to the minimum physical font. A
             // third script must not measure a fictitious smaller font/em.
             FontMetrics out = *this;
-            out.style = MathStyle::SCRIPTSCRIPT;
+            out.style = superscriptStyle(style);
             return out;
         }
         if (scriptLevel < 2 && script) {
             // Level 0→1: use the pre-computed script font metrics
             FontMetrics out = *script;
+            out.coordinateOverflow = coordinateOverflow;
             out.scriptLevel = static_cast<uint8_t>(scriptLevel + 1);
-            out.style = (out.scriptLevel >= 2) ? MathStyle::SCRIPTSCRIPT
-                                               : MathStyle::SCRIPT;
+            out.style = superscriptStyle(style);
             return out;
         }
 
@@ -335,6 +361,7 @@ struct FontMetrics {
         };
 
         FontMetrics out;
+        out.coordinateOverflow = coordinateOverflow;
         out.charWidth  = scale(charWidth, 6);
         out.ascent     = scale(ascent, 8);
         out.descent    = scale(descent, 1);
@@ -343,7 +370,7 @@ struct FontMetrics {
         out.capHeight  = scale(capHeight, 8);
         out.scriptLevel = (scriptLevel >= 2) ? 2 : static_cast<uint8_t>(scriptLevel + 1);
         out.emSize     = scale(emSize, 6);
-        out.style      = (out.scriptLevel >= 2) ? MathStyle::SCRIPTSCRIPT : MathStyle::SCRIPT;
+        out.style      = superscriptStyle(style);
         out.script     = nullptr;
         // The renderer clamps deeper nesting to the same scriptscript font.
         out.plusMinusWidth = scriptLevel >= 2 ? plusMinusWidth
@@ -359,38 +386,65 @@ struct FontMetrics {
     }
 };
 
-/// NumOS ReadableInlineFractionPolicy — fraction numerator/denominator metrics.
+// Canonical child contexts. Physical sizes remain the calibrated 18/12/8
+// font profiles; cramped is a rule state and scriptscript is the size floor.
+inline FontMetrics subscriptMetrics(const FontMetrics& fm) {
+    auto out = fm.superscript();
+    out.style = subscriptStyle(fm.style);
+    return out;
+}
+inline FontMetrics crampedMetrics(const FontMetrics& fm) {
+    auto out = fm;
+    out.style = crampedStyle(fm.style);
+    return out;
+}
+/// Root degree (radical index): one script step, never two at level 0.
 ///
-/// Returns the FontMetrics the children of a fraction must use.
+/// TeX's \root sets the index in ScriptScript, which on the 18/12/8 profile
+/// means 8 px glyphs below a level-0 radical — the illegible size PD-4
+/// rejects. The degree therefore takes the ordinary script step (12 px at
+/// level 0, 8 px from level 1) and stays uncramped, as in \root.
+inline FontMetrics rootDegreeMetrics(const FontMetrics& fm) {
+    auto out = fm.superscript();
+    out.style = superscriptStyle(uncrampedStyle(fm.style));
+    return out;
+}
+
+/// NumOS ReadableInlineFractionPolicy — fraction numerator metrics (TXP PD-4).
 ///
-/// Policy (device-specific):
-///   Top-level inline fractions on the 320x240 TFT must keep readable glyph
-///   sizes for numerator/denominator.  Compactness comes from the tighter
-///   TEXT-style fraction shift/gap MATH constants, NOT from tiny script glyphs.
-///   Reduction only kicks in once the fraction is already inside a script
-///   context (exponent, subscript, limit), i.e. scriptLevel >= 1.
+/// Size: at scriptLevel 0 numerator and denominator keep the base font and
+/// size; only the style switches to TEXT so the compact text-style fraction
+/// shift/gap MATH constants apply. Reduction starts at scriptLevel >= 1 and
+/// steps down through superscript() (L1 -> L2, clamped at L2).
 ///
-/// Style lattice:
-///   DISPLAY L0  ->  TEXT  L0  (same glyph size, text-style fraction shifts)
-///   TEXT    L0  ->  TEXT  L0  (same glyph size, text-style fraction shifts)
-///   SCRIPT  L1  ->  SCRIPTSCRIPT L2  (~55%, via superscript() clamp)
-///   SCRIPTSCRIPT L2  ->  SCRIPTSCRIPT L2  (clamped)
+/// Style lattice (size, style):
+///   DISPLAY L0      -> TEXT  L0          (same glyph size)
+///   TEXT    L0      -> TEXT  L0          (same glyph size; NOT TeX's SCRIPT)
+///   SCRIPT  L1      -> SCRIPTSCRIPT L2   (~44 %, via superscript())
+///   SCRIPTSCRIPT L2 -> SCRIPTSCRIPT L2   (clamped)
 ///
-/// This deliberately departs from strict TeX, which would step TEXT->SCRIPT.
-/// That step produces 8 px glyphs that are illegible on this hardware.
+/// This deliberately departs from strict TeX, which steps TEXT -> SCRIPT:
+/// that produces 12 px numerators and 8 px scripts inside them, illegible on
+/// the 320x240 TFT. Cramping is unaffected by the size override (TXP §H.2):
+/// the numerator inherits the parent's cramped bit, the denominator is
+/// always cramped (fractionDenominatorMetrics).
 ///
 /// Allocation-free, no UI dependency, host-testable.
 inline FontMetrics fractionPartMetrics(const FontMetrics& fm) {
     if (fm.scriptLevel >= 1) {
-        // Already inside a reduced context (exponent, subscript, etc.):
-        // continue stepping down via canonical superscript() path.
-        return fm.superscript();               // L1->L2, L2->L2 (clamped)
+        // Already inside a reduced context (exponent, subscript, limit).
+        auto out = fm.superscript();
+        out.style = numeratorStyle(fm.style);
+        return out;
     }
-    // scriptLevel == 0: top-level display or inline expression.
-    // Keep readable glyph size; switch to TEXT style so the tighter
-    // non-display fraction gap/shift MATH constants are applied.
-    FontMetrics out = fm;                      // same font + same size
-    out.style = MathStyle::TEXT;               // compact text-style shifts
+    auto out = fm;                             // same font + same size
+    out.style = isCrampedStyle(fm.style) ? crampedStyle(MathStyle::TEXT)
+                                         : MathStyle::TEXT;
+    return out;
+}
+inline FontMetrics fractionDenominatorMetrics(const FontMetrics& fm) {
+    auto out = fractionPartMetrics(fm);
+    out.style = crampedStyle(out.style);
     return out;
 }
 
@@ -401,6 +455,10 @@ inline const char* mathStyleName(MathStyle style) {
         case MathStyle::TEXT:          return "text";
         case MathStyle::SCRIPT:        return "script";
         case MathStyle::SCRIPTSCRIPT:  return "scriptscript";
+        case MathStyle::DISPLAY_CRAMPED: return "display-cramped";
+        case MathStyle::TEXT_CRAMPED: return "text-cramped";
+        case MathStyle::SCRIPT_CRAMPED: return "script-cramped";
+        case MathStyle::SCRIPTSCRIPT_CRAMPED: return "scriptscript-cramped";
     }
     return "display";
 }
@@ -467,15 +525,11 @@ inline int16_t spaceAfterScriptPx(const FontMetrics& fm) {
 inline constexpr int16_t kSuperscriptVpamAdjustPx =
     static_cast<int16_t>(NUMOS_SUPERSCRIPT_VPAM_ADJUST_PX);
 
-/// Determine if a large operator (∫, ∑, ∏, etc.) should use display-style
-/// limits (above/below) rather than inline limits (to the right).
-///
-/// Per OpenType Spec §4.5: limits are placed above/below only when the
-/// style is DISPLAY and the actual selected/assembled operator glyph
-/// height meets or exceeds the DisplayOperatorMinHeight MATH constant.
-///
-/// Callers must compute the operator height first via
-/// DelimiterAssembler::glyphMetricsForHeightPx() and pass it here.
+/// Display-style limits (above/below) are used iff the style is DISPLAY and the
+/// operator glyph reaches OpenType MATH DisplayOperatorMinHeight (TXP §H.9.4).
+/// One rule for Summation, DefIntegral and BigOp (GAP-37): no family bypasses it.
+/// Glyph-size selection stays independent of this decision; only the limit
+/// placement branch follows the gate.
 inline bool shouldUseDisplayLimits(const FontMetrics& fm,
                                    int16_t operatorGlyphHeightPx) {
     if (!fm.isDisplayStyle()) return false;
@@ -529,7 +583,7 @@ struct LayoutResult {
     MathClass effectiveRight = MathClass::ORD;
 
     /// Altura total = ascent + descent
-    int16_t height() const { return ascent + descent; }
+    int16_t height() const { return static_cast<int16_t>(std::min<int32_t>(32767, int32_t(ascent) + descent)); }
 
     /// Distancia del tope de la bounding box al baseline
     int16_t baseline() const { return ascent; }
@@ -563,14 +617,15 @@ inline SuperscriptShiftMetrics superscriptShiftMetrics(
     MathConstantsProvider mc(fm.emSize);
 
     SuperscriptShiftMetrics out{};
-    out.shiftUpPx = mc.superscriptShiftUp();
+    out.shiftUpPx = isCrampedStyle(fm.style)
+        ? mc.superscriptShiftUpCramped() : mc.superscriptShiftUp();
     out.bottomMinPx = mc.superscriptBottomMin();
-    out.layoutBottomMinShiftPx = static_cast<int16_t>(
+    out.layoutBottomMinShiftPx = fm.coordinate(
         out.bottomMinPx + expL.descent);
-    out.visibleBottomMinShiftPx = static_cast<int16_t>(
+    out.visibleBottomMinShiftPx = fm.coordinate(
         out.bottomMinPx + layoutInkDescentPx(expL));
-    out.texShiftPx = std::max<int16_t>(
-        out.shiftUpPx, out.layoutBottomMinShiftPx);
+    out.texShiftPx = fm.coordinate(std::max<int32_t>(
+        out.shiftUpPx, out.visibleBottomMinShiftPx));
     if (out.texShiftPx < 1) out.texShiftPx = 1;
 
     // WHY: the OpenType-derived shift is the baseline. NumOS can optionally
@@ -578,13 +633,13 @@ inline SuperscriptShiftMetrics superscriptShiftMetrics(
     // the default is zero until hardware proves a non-zero adjustment better.
     // The clamp preserves the existing bottom-min rule for nested powers and
     // fraction exponents.
-    const int16_t minShift = std::max<int16_t>(1, out.layoutBottomMinShiftPx);
+    const int16_t minShift = fm.coordinate(std::max<int32_t>(1, out.visibleBottomMinShiftPx));
     out.configuredAdjustPx = kSuperscriptVpamAdjustPx;
-    int16_t shifted = static_cast<int16_t>(
+    int16_t shifted = fm.coordinate(
         out.texShiftPx - out.configuredAdjustPx);
     if (shifted < minShift) shifted = minShift;
     out.shiftPx = shifted;
-    out.appliedAdjustPx = static_cast<int16_t>(
+    out.appliedAdjustPx = fm.coordinate(
         out.texShiftPx - out.shiftPx);
     return out;
 }
@@ -619,56 +674,48 @@ inline int16_t mathObjectHeightPx(const LayoutResult& layout,
                                   int16_t verticalPadPx) {
     const int16_t lineH = fm.lineHeight();
     const int16_t minTextH = lineH > 0 ? lineH : fm.height();
-    const int16_t contentH = std::max<int16_t>(layout.height(), minTextH);
+    const int16_t contentH = static_cast<int16_t>(std::max<int32_t>(layout.height(), minTextH));
     return static_cast<int16_t>(contentH + verticalPadPx);
 }
 
-/// Gap-based fraction bar geometry — NumOS readable fraction policy.
-///
-/// Instead of trusting baseline-to-axis shift constants (which produce
-/// asymmetric visible gaps because ink ascent/descent differs between
-/// numerator and denominator), this helper derives the two shifts from a
-/// single symmetric gap G so that:
-///
-///   numeratorBottom   = barTop  - G   (gapAboveBar == G)
-///   denominatorTop    = barBottom + G  (gapBelowBar == G)
-///
-/// Gap source (no arbitrary offset):
-///   G = max(FractionNumDisplayStyleGapMin, FractionDenomDisplayStyleGapMin)
-///
-/// STIX Two Math provides these as 150 DU ≈ 3 px @ em18.  The inline
-/// FractionGapMin (68 DU ≈ 1 px) is too tight to read on the 320x240 TFT,
-/// so the NumOS readable-fraction policy intentionally adopts the
-/// display-style gap-min.  It scales with em (≈ 2 px at the 12 px script
-/// font) and is derived from real OpenType MATH data.
-///
-/// Allocation-free, no UI dependency, host-testable.
+// OpenType fraction placement, relative to the two rule edges. Each child
+// keeps its nominal baseline shift unless its actual ink violates a gap.
+// The integer rule occupies [axis-ceil(t/2), axis+floor(t/2)); painting uses
+// that very rectangle, including the single-pixel rule at small sizes.
 struct FractionBarGaps {
-    int16_t numeratorShiftPx;    ///< gap + numerator visible ink descent.
-    int16_t denominatorShiftPx;  ///< gap + denominator visible ink ascent.
-    int16_t gapPx;               ///< symmetric gap G used for both sides
+    int16_t numeratorShiftPx;
+    int16_t denominatorShiftPx;
+    int16_t gapPx; // Diagnostic minimum; numerator/denominator need not equal it.
 };
 
 inline FractionBarGaps fractionBarGaps(const FontMetrics& fm,
                                        const LayoutResult& numL,
                                        const LayoutResult& denL) {
-    MathConstantsProvider mc(fm.emSize);
-    const int16_t gapA = mc.fractionNumeratorGapMin(true);
-    const int16_t gapB = mc.fractionDenominatorGapMin(true);
-    int16_t gap = gapA > gapB ? gapA : gapB;
-    if (gap < 1) gap = 1;
-    return {
-        static_cast<int16_t>(gap + layoutInkDescentPx(numL)),
-        static_cast<int16_t>(gap + layoutInkAscentPx(denL)),
-        gap
-    };
+    const MathConstantsProvider mc(fm.emSize);
+    const bool display = fm.isDisplayStyle();
+    const int16_t axis = fm.axisHeight();
+    const int16_t up = (mc.fractionRuleThickness() + 1) / 2;
+    const int16_t down = mc.fractionRuleThickness() / 2;
+    const int16_t numGap = mc.fractionNumeratorGapMin(display);
+    const int16_t denGap = mc.fractionDenominatorGapMin(display);
+    // WHY: minimum gaps are inequalities, not replacements for the font's
+    // nominal shifts. This also handles unequal child metrics and nesting.
+    const int16_t numShift = fm.coordinate(std::max<int32_t>(mc.fractionNumeratorShiftUp(display),
+        axis + up + numGap + layoutInkDescentPx(numL)));
+    const int16_t denShift = fm.coordinate(std::max<int32_t>(mc.fractionDenominatorShiftDown(display),
+        -axis + down + denGap + layoutInkAscentPx(denL)));
+    return {fm.coordinate(numShift - axis - up),
+            fm.coordinate(denShift + axis - down),
+            std::min(numGap, denGap)};
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 // MathNode — Clase base abstracta de todos los nodos del AST
 // ════════════════════════════════════════════════════════════════════════════
 class MathNode {
+    friend LayoutStatus calculateLayoutChecked(MathNode&, const FontMetrics&);
     friend struct RowLayout;
+    friend struct ScriptLayout;
     friend class MathCanvas;
 public:
     virtual ~MathNode() = default;
@@ -738,6 +785,10 @@ private:
     };
     mutable PaintPlacement _paint;
 };
+
+// Public layout entry: validates the tree before recursive node internals.
+// Refusal preserves semantic ownership and clears only the root's cached box.
+LayoutStatus calculateLayoutChecked(MathNode& root, const FontMetrics& fm);
 
 // ════════════════════════════════════════════════════════════════════════════
 // NodeRow — Secuencia horizontal de nodos hijos
@@ -937,11 +988,17 @@ public:
     /// Italics correction in px added between base and exponent (Spec §2.5).
     /// Non-zero for italic single-letter bases like f, V, W.
     int16_t italicCorrectionPx() const { return _italicCorrectionPx; }
+    int16_t scriptShiftPx() const { return _scriptShiftPx; }
+    int16_t scriptX() const { return _scriptX; }
+    int16_t mathKernPx() const { return _mathKernPx; }
 
 private:
     NodePtr _base;
     NodePtr _exponent;
     int16_t _italicCorrectionPx = 0;
+    int16_t _scriptShiftPx = 0;
+    int16_t _scriptX = 0;
+    int16_t _mathKernPx = 0;
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -981,9 +1038,6 @@ public:
     void setDegree(NodePtr node);
 
     // ── Rendering geometry (drawn manually — not in MATH table) ──
-    static constexpr int16_t RADICAL_HOOK_W    = 3;   ///< Width of the small √ hook
-    static constexpr int16_t RADICAL_SLOPE_W   = 6;   ///< Width of the ascending line
-    static constexpr int16_t RADICAL_RIGHT_PAD = 2;   ///< Right padding after content
 
     // ── MATH table-driven values (computed in calculateLayout) ──
     int16_t radicalRuleThickness()  const { return _radicalRuleThickness; }
@@ -992,7 +1046,11 @@ public:
     int16_t radicalKernBefore()     const { return _radicalKernBefore; }
     int16_t radicalKernAfter()      const { return _radicalKernAfter; }
     int16_t radicalX() const { return _radicalX; }
-    int16_t radicandX() const { return _radicalX + RADICAL_HOOK_W + RADICAL_SLOPE_W; }
+    int16_t hookWidthPx() const { return _hookWidthPx; }
+    int16_t slopeWidthPx() const { return _slopeWidthPx; }
+    int16_t rightPadPx() const { return _rightPadPx; }
+    int16_t ruleTopOffset() const { return -_radicalAscent + _radicalExtraAscender; }
+    int16_t radicandX() const { return _radicalX + _hookWidthPx + _slopeWidthPx; }
     int16_t radicalAscent() const { return _radicalAscent; }
     int16_t degreeX() const { return _degreeX; }
     int16_t degreeBaseline() const { return _degreeBaseline; }
@@ -1006,6 +1064,7 @@ private:
     int16_t _radicalExtraAscender = 1;
     int16_t _radicalKernBefore    = 0;
     int16_t _radicalKernAfter     = 0;
+    int16_t _hookWidthPx = 0, _slopeWidthPx = 0, _rightPadPx = 0;
     int16_t _radicalX = 0;
     int16_t _radicalAscent = 0;
     int16_t _degreeX = 0;
@@ -1047,6 +1106,9 @@ public:
 
     /// Dynamic delimiter width computed during layout (px).
     int16_t parenWidth() const { return _parenWidth; }
+
+    // WHY: layout and paint/cursor placement share this optical margin.
+    int16_t innerPad() const { return std::max<int16_t>(1, _parenWidth / 3); }
 
 private:
     NodePtr   _content;
@@ -1146,6 +1208,7 @@ public:
     void setBase(NodePtr node);
     void setArgument(NodePtr node);
 
+    int16_t scriptShiftPx() const { return _scriptShiftPx; }
     int16_t labelWidth() const { return _labelWidth; }
     int16_t parenWidth() const { return _parenWidth; }
     int16_t innerPad() const { return _innerPad; }
@@ -1159,6 +1222,7 @@ private:
     NodePtr _argument;   ///< Argumento entre paréntesis
 
     int16_t _labelWidth; ///< Ancho de "log" (calculado)
+    int16_t _scriptShiftPx = 0;
     int16_t _parenWidth = 0;
     int16_t _innerPad = 0;
     int16_t _parenAscent = 0;
@@ -1243,19 +1307,19 @@ public:
     bool               isNegative() const { return _negative; }
 
     int16_t prefixAdvance(const FontMetrics& fm) const {
-        return static_cast<int16_t>((_negative ? fm.textAdvance("-") : 0)
+        return fm.coordinate((_negative ? fm.textAdvance("-") : 0)
             + fm.textAdvance(_intPart.c_str())
             + ((!_nonRepeat.empty() || !_repeat.empty()) ? fm.textAdvance(".") : 0)
             + fm.textAdvance(_nonRepeat.c_str()));
     }
 
-    /// Grosor de la overline sobre los dígitos periódicos
-    static constexpr int16_t OVERLINE_T   = 1;
-    /// Espacio entre tope de dígitos y la overline
-    static constexpr int16_t OVERLINE_GAP = 1;
+    int16_t overbarTop() const { return _overbarTop; }
+    int16_t overbarThickness() const { return _overbarThickness; }
+    int16_t overbarWidth() const { return _overbarWidth; }
 
 private:
     std::string _intPart;     ///< Parte entera: "0", "1", "123"
+    int16_t _overbarTop = 0, _overbarThickness = 0, _overbarWidth = 0;
     std::string _nonRepeat;   ///< Dígitos no periódicos tras el punto
     std::string _repeat;      ///< Patrón que se repite (con overline)
     bool        _negative;    ///< ¿Valor negativo?
@@ -1396,9 +1460,17 @@ public:
     void setBase(NodePtr node);
     void setSubscript(NodePtr node);
 
+    int16_t scriptShiftPx() const { return _scriptShiftPx; }
+    int16_t scriptX() const { return _scriptX; }
+    int16_t mathKernPx() const { return _mathKernPx; }
 private:
+    friend class NodePower;
+    void placeScriptAt(int16_t shift, const FontMetrics& fm);
     NodePtr _base;
     NodePtr _subscript;
+    int16_t _scriptShiftPx = 0;
+    int16_t _scriptX = 0;
+    int16_t _mathKernPx = 0;
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1499,15 +1571,45 @@ private:
 };
 NodePtr makeQuantityReference(numos::units::ReferenceAtom atom);
 
+class NodeMeasurement final : public MathNode {
+public:
+    NodeMeasurement(NodePtr nominal, NodePtr uncertainty, uint32_t sourceId);
+    void calculateLayout(const FontMetrics& fm) override;
+    int childCount() const override { return 2; }
+    MathNode* child(int index) const override { return index==0?_nominal.get():index==1?_uncertainty.get():nullptr; }
+    MathNode* nominal() const { return _nominal.get(); }
+    MathNode* uncertainty() const { return _uncertainty.get(); }
+    uint32_t sourceId() const { return _sourceId; }
+    MathClass mathClass() const override { return MathClass::INNER; }
+    int16_t signX() const { return _signX; }
+    int16_t uncertaintyX() const { return _uncertaintyX; }
+    int16_t nominalX() const { return _nominalX; }
+    int16_t delimiterWidth() const { return _delimiterWidth; }
+private:
+    NodePtr _nominal, _uncertainty;
+    uint32_t _sourceId;
+    int16_t _signX=0, _uncertaintyX=0;
+    int16_t _nominalX=0, _delimiterWidth=0;
+};
+// WHY: zero requests a new session source; cloning supplies the existing ID.
+// UINT32_MAX is display-only and must never enter the quantity evaluator.
+NodePtr makeMeasurement(NodePtr nominal={}, NodePtr uncertainty={}, uint32_t sourceId=0);
+
 class NodeSymbol : public MathNode {
 public:
     explicit NodeSymbol(std::string name);
+    NodeSymbol(std::string name, bool upright);
+    NodeSymbol(std::string name, bool upright, MathClass atomClass);
     void calculateLayout(const FontMetrics& fm) override;
+    MathClass mathClass() const override { return _atomClass; }
     const std::string& name() const { return _name; }
+    bool upright() const { return _upright; }
     int16_t textOffset() const { return _textOffset; }
 private:
     std::string _name;
     int16_t _textOffset=0;
+    bool _upright=false; // Presentation role, never part of variable identity.
+    MathClass _atomClass = MathClass::ORD;
 };
 
 class NodeSpecialValue : public MathNode {
@@ -1610,6 +1712,10 @@ public:
     uint32_t leftCp() const { return _leftClosed ? 0x005B : 0x0028; }
     uint32_t rightCp() const { return _rightClosed ? 0x005D : 0x0029; }
     int16_t delimiterWidth() const { return _delimiterWidth; }
+    int16_t leftDelimiterAscent() const { return _leftDelimiterAscent; }
+    int16_t leftDelimiterDescent() const { return _leftDelimiterDescent; }
+    int16_t rightDelimiterAscent() const { return _rightDelimiterAscent; }
+    int16_t rightDelimiterDescent() const { return _rightDelimiterDescent; }
     int16_t innerPad() const { return _innerPad; }
     int16_t separatorWidth() const { return _separatorWidth; }
 private:
@@ -1620,6 +1726,8 @@ private:
     int16_t _delimiterWidth = 0;
     int16_t _innerPad = 0;
     int16_t _separatorWidth = 0;
+    int16_t _leftDelimiterAscent = 0, _leftDelimiterDescent = 0;
+    int16_t _rightDelimiterAscent = 0, _rightDelimiterDescent = 0;
 };
 
 class NodePiecewise : public MathNode {
@@ -1662,6 +1770,7 @@ public:
     MathNode* child(int index) const override;
     const std::string& name() const { return _name; }
     int16_t labelWidth() const { return _labelWidth; }
+    int16_t textOffset() const { return _textOffset; }
     int16_t delimiterWidth() const { return _delimiterWidth; }
     int16_t innerPad() const { return _innerPad; }
     int16_t separatorWidth() const { return _separatorWidth; }
@@ -1670,6 +1779,7 @@ private:
     std::string _name;
     std::vector<NodePtr> _arguments;
     int16_t _labelWidth = 0;
+    int16_t _textOffset = 0;
     int16_t _delimiterWidth = 0;
     int16_t _innerPad = 0;
     int16_t _separatorWidth = 0;

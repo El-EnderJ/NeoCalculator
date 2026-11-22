@@ -1,0 +1,23 @@
+# CORRECTNESS-E2E-01 GROUPING (W4-F03): the antiderivative of sin(x^2) has complex factors
+# sqrt(2)/2*(1-i); the screen dropped their grouping (sqrt(2)*1 - i*x ...).
+# assert_calculus_result_exact pins Giac's text; dump_calculus emits the displayed tree that
+# out/correctness-e2e-01/phase4/GROUPING/check_display.sh evaluates. Structure is asserted by
+# the host regression. No golden, no CI wiring.
+wait 200
+open_app Calculus
+wait 60
+key ac
+key ac
+key f2
+set_angle_mode rad
+key sin
+key x
+key ^
+key 2
+key right
+key right
+key enter
+wait 5
+assert_calculus_status ok
+assert_calculus_result_exact sqrt(pi)/(sqrt(2)/2*(1-i))/2*erf(sqrt(2)/2*(1-i)*x)/(2*i)+i*sqrt(pi)/(sqrt(2)/2*(1+i))/2*erf(sqrt(2)/2*(1+i)*x)/2
+dump_calculus G|int_sinx2_rad

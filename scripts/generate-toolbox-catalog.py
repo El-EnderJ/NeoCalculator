@@ -13,7 +13,7 @@ for e in rows:
     for key in ('en','es','helpEn','helpEs','aliases','expected'):
         assert e[key] and len(e[key].encode('utf-8'))<192, (identity,key)
         assert '?' not in e[key] and '\ufffd' not in e[key], (identity,key,'damaged encoding')
-    assert 0<e['capabilities']<=15 and (e['category']==0 or 10<=e['category']<=21)
+    assert 0<e['capabilities']<=15 and (e['category']==0 or 10<=e['category']<=22)
     assert isinstance(e['keyboardShortcut'],bool)
     assert isinstance(e.get('caseSensitiveAliases',False),bool)
     if e['recipe']=='Symbol':

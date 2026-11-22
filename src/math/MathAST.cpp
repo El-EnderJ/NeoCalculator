@@ -33,7 +33,11 @@
 
 #include "MathAST.h"
 #include "MathRowLayout.h"
+#include "MathScriptGeometry.h"
+#include "MathOperatorGeometry.h"
+#include "MathVectorDelimiterGeometry.h"
 #include "InputSymbols.h"
+#include "ScientificUncertainty.h"
 #include <algorithm>
 
 #include "../ui/MathSymbols.h"
@@ -94,6 +98,61 @@ static inline void applyScriptLevel(MathNode* node, const FontMetrics& fm) {
     if (node) node->setScriptLevel(fm.scriptLevel);
 }
 
+LayoutStatus calculateLayoutChecked(MathNode& root, const FontMetrics& fm) {
+    // WHY: existing transient traversal state avoids a depth-sized stack and
+    // global scratch. Semantic fields and AST ownership remain unchanged.
+    auto walk = [&](bool inspectBoxes) {
+        MathNode* node = &root;
+        node->_paint.nextChild = 0;
+        int depth = 0, nodes = 1, steps = 0;
+        for (;;) {
+            if (++steps > kLayoutMaxNodes * 40) return LayoutStatus::InvalidTree;
+            const int count = node->childCount();
+            if (count < 0 || count > kLayoutMaxNodes) return LayoutStatus::NodeLimit;
+            if (inspectBoxes && node->_paint.nextChild == 0) {
+                const auto& box = node->_layout;
+                if (box.width < 0 || box.ascent < 0 || box.descent < 0 ||
+                    box.width > kLayoutMaxExtent ||
+                    int32_t(box.ascent) + box.descent > kLayoutMaxExtent)
+                    return LayoutStatus::CoordinateLimit;
+            }
+            if (node->_paint.nextChild == count) {
+                if (node == &root) break;
+                node = node->parent();
+                --depth;
+                continue;
+            }
+            auto* child = node->child(node->_paint.nextChild++);
+            // A matrix under construction may have vacant cells. Other node
+            // kinds expose only owned, non-null slots through childCount.
+            if (!child) {
+                if (node->type() == NodeType::Matrix) continue;
+                return LayoutStatus::InvalidTree;
+            }
+            if (child == &root || child->parent() != node) return LayoutStatus::InvalidTree;
+            if (++depth > kLayoutMaxDepth) return LayoutStatus::DepthLimit;
+            if (++nodes > kLayoutMaxNodes) return LayoutStatus::NodeLimit;
+            node = child;
+            node->_paint.nextChild = 0;
+        }
+        return LayoutStatus::Ok;
+    };
+    auto status = walk(false);
+    if (status == LayoutStatus::Ok) {
+        bool overflow = false;
+        auto checked = fm;
+        checked.coordinateOverflow = &overflow;
+        root.calculateLayout(checked);
+        status = overflow ? LayoutStatus::CoordinateLimit : walk(true);
+    }
+    if (status != LayoutStatus::Ok) {
+        root._layout = {};
+        root._layout.ascent = fm.ascent;
+        root._layout.descent = fm.descent;
+    }
+    return status;
+}
+
 /// Decode the first Unicode codepoint from a UTF-8 string and return the
 /// number of bytes consumed (1–4). Returns 0 for empty/null with outCp=0.
 /// Thin wrapper around the canonical vpam::utf8Decode().
@@ -111,49 +170,49 @@ static inline AxisDelimiterGeometry symmetricAxisDelimiterGeometry(
         const LayoutResult& content, const FontMetrics& fm, int16_t padPx) {
     const int16_t axis = fm.axisHeight();
     const int16_t aboveAxis = (content.ascent > axis)
-        ? static_cast<int16_t>(content.ascent - axis)
-        : static_cast<int16_t>(axis - content.ascent);
-    const int16_t belowAxis = static_cast<int16_t>(content.descent + axis);
-    const int16_t maxHalf = static_cast<int16_t>(std::max(aboveAxis, belowAxis) + padPx);
+        ? fm.coordinate(content.ascent - axis)
+        : fm.coordinate(axis - content.ascent);
+    const int16_t belowAxis = fm.coordinate(content.descent + axis);
+    const int16_t maxHalf = fm.coordinate(std::max(aboveAxis, belowAxis) + padPx);
 
     AxisDelimiterGeometry out;
-    out.ascent = static_cast<int16_t>(axis + maxHalf);
-    out.descent = static_cast<int16_t>(maxHalf - axis);
+    out.ascent = fm.coordinate(axis + maxHalf);
+    out.descent = fm.coordinate(maxHalf - axis);
     if (out.descent < 0) {
-        out.ascent = static_cast<int16_t>(out.ascent - out.descent);
+        out.ascent = fm.coordinate(out.ascent - out.descent);
         out.descent = 0;
     }
-    out.height = static_cast<int16_t>(out.ascent + out.descent);
+    out.height = fm.coordinate(out.ascent + out.descent);
     return out;
 }
 
 // Parentheses enclose the child ink box, not an axis-reflected line box.
 // DelimitedSubFormulaMinHeight is not a minimum for every ordinary (x).
 static inline AxisDelimiterGeometry parenthesisGeometry(
-        const LayoutResult& content) {
+        const LayoutResult& content, const FontMetrics& fm) {
     AxisDelimiterGeometry out;
-    out.ascent = static_cast<int16_t>(layoutInkAscentPx(content) + 1);
-    out.descent = static_cast<int16_t>(layoutInkDescentPx(content) + 1);
-    out.height = static_cast<int16_t>(out.ascent + out.descent);
+    out.ascent = fm.coordinate(layoutInkAscentPx(content) + 1);
+    out.descent = fm.coordinate(layoutInkDescentPx(content) + 1);
+    out.height = fm.coordinate(out.ascent + out.descent);
     return out;
 }
 
 static inline int16_t delimiterVerticalPadPx(
         const LayoutResult& content, const FontMetrics& fm) {
     const int16_t contentMinH = MathConstantsProvider(fm.emSize).delimitedSubFormulaMinHeight();
-    return std::max<int16_t>(
-        1, static_cast<int16_t>((contentMinH - content.height() + 1) / 2));
+    return fm.coordinate(std::max<int32_t>(
+        1, fm.coordinate((contentMinH - content.height() + 1) / 2)));
 }
 
 static inline void expandDelimiterGeometryToAssembly(
         AxisDelimiterGeometry& geom,
-        const DelimiterAssembler::AssemblyResult& assembly) {
+        const DelimiterAssembler::AssemblyResult& assembly, const FontMetrics& fm) {
     if (!assembly.valid || assembly.totalHeightPx <= geom.height) return;
 
-    const int16_t extra = static_cast<int16_t>(assembly.totalHeightPx - geom.height);
-    geom.ascent = static_cast<int16_t>(geom.ascent + (extra + 1) / 2);
-    geom.descent = static_cast<int16_t>(geom.descent + extra / 2);
-    geom.height = static_cast<int16_t>(geom.ascent + geom.descent);
+    const int16_t extra = fm.coordinate(assembly.totalHeightPx - geom.height);
+    geom.ascent = fm.coordinate(geom.ascent + (extra + 1) / 2);
+    geom.descent = fm.coordinate(geom.descent + extra / 2);
+    geom.height = fm.coordinate(geom.ascent + geom.descent);
 }
 
 static inline int16_t assembledDelimiterWidthPx(
@@ -161,17 +220,18 @@ static inline int16_t assembledDelimiterWidthPx(
     if (baseCp == '(' || baseCp == ')' || baseCp == '[' || baseCp == ']') {
         const auto plan = stixParenthesisPlan(geom.height, fm.emSize, baseCp == '[' || baseCp == ']');
         const int16_t extra = plan.height - geom.height;
-        geom.ascent = static_cast<int16_t>(geom.ascent + (extra + 1) / 2);
-        geom.descent = static_cast<int16_t>(geom.descent + extra / 2);
+        geom.ascent = fm.coordinate(geom.ascent + (extra + 1) / 2);
+        geom.descent = fm.coordinate(geom.descent + extra / 2);
         geom.height = plan.height;
         return plan.width;
     }
-    const int16_t glyphFallbackPx = std::max<int16_t>(
-        2, std::max<int16_t>(
+    const int16_t glyphFallbackPx = fm.coordinate(std::max<int32_t>(
+        2, fm.coordinate(std::max<int32_t>(
                DelimiterAssembler::glyphWidthPx(baseCp, fm.emSize),
-               static_cast<int16_t>(fm.charWidth / 2)));
+               fm.coordinate(fm.charWidth / 2)))));
     const MathVariantTable* table = lookupVariantTable(baseCp);
-    if (!table) return glyphFallbackPx;
+    if (!table) return std::max(glyphFallbackPx,
+        vectorDelimiterGeometry(geom.height, fm.emSize, baseCp).width);
 
     auto assembly = DelimiterAssembler::assemble(geom.height, *table, fm.emSize);
     // Only grow the delimiter to the assembly's minimum renderable height when the
@@ -179,11 +239,14 @@ static inline int16_t assembledDelimiterWidthPx(
     // them) the renderer draws a vector delimiter that scales to any height, so the
     // delimiter should hug its content instead of ballooning to the assembly floor.
     if (g_delimiterAssemblyRenderable) {
-        expandDelimiterGeometryToAssembly(geom, assembly);
+        expandDelimiterGeometryToAssembly(geom, assembly, fm);
     }
 
     int16_t width = assembly.valid ? assembly.widthPx : glyphFallbackPx;
-    return width < 2 ? 2 : width;
+    // WHY: a subset can omit a selected variant/assembly even when its table
+    // exists. Every fallback must fit the same reserved slot as layout/cursor.
+    return std::max<int16_t>(std::max<int16_t>(2, width),
+        vectorDelimiterGeometry(geom.height, fm.emSize, baseCp).width);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -258,13 +321,13 @@ NodeNumber::NodeNumber(const std::string& value)
 
 void NodeNumber::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
-    _layout.width = _value.empty() ? fm.charWidth : fm.textAdvance(_value.c_str());
+    _layout.width = fm.coordinate(_value.empty() ? fm.charWidth : fm.textAdvance(_value.c_str()));
     _layout.ascent  = fm.ascent;
     _layout.descent = fm.descent;
-    _layout.inkAscent = (fm.numberAscent > 0) ? fm.numberAscent : fm.ascent;
-    _layout.inkDescent = (fm.numberAscent > 0 || fm.numberDescent > 0)
+    _layout.inkAscent = fm.coordinate((fm.numberAscent > 0) ? fm.numberAscent : fm.ascent);
+    _layout.inkDescent = fm.coordinate((fm.numberAscent > 0 || fm.numberDescent > 0)
         ? fm.numberDescent
-        : fm.descent;
+        : fm.descent);
 }
 
 void NodeNumber::appendChar(char c) {
@@ -296,17 +359,20 @@ void NodeOperator::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
     if(_op==OpKind::UnitAttach || _op==OpKind::UnitAttachTight) {
         // WHY: semantic spacing is geometry, not invisible string characters.
-        _layout.width=_op==OpKind::UnitAttach ? MathConstantsProvider(fm.emSize).muToPx(3):0;
+        _layout.width=fm.coordinate(_op==OpKind::UnitAttach ? MathConstantsProvider(fm.emSize).muToPx(3):0);
         _layout.ascent=fm.ascent;_layout.descent=fm.descent;return;
     }
     // Width is purely the character width. All inter-atom padding is handled
     // exclusively by the TeX spacing logic in NodeRow::calculateLayout.
     // WHY: STIX plus-minus is wider than a digit. Use the captured glyph extent
     // so row layout, cursor advances and the shared glyph draw agree.
-    _layout.width = fm.measureText ? fm.textAdvance(symbol())
-        : (_op == OpKind::PlusMinus && fm.plusMinusWidth > 0) ? fm.plusMinusWidth : fm.charWidth;
-    _layout.ascent  = fm.ascent;
-    _layout.descent = fm.descent;
+    _layout.width = fm.coordinate(fm.measureText ? fm.textAdvance(symbol())
+        : (_op == OpKind::PlusMinus && fm.plusMinusWidth > 0) ? fm.plusMinusWidth : fm.charWidth);
+    const auto ink = fm.textInk(symbol());
+    _layout.ascent = fm.coordinate(std::max(fm.ascent, ink.ascent));
+    _layout.descent = fm.coordinate(std::max(fm.descent, ink.descent));
+    _layout.inkAscent = ink.ascent;
+    _layout.inkDescent = ink.descent;
 }
 
 const char* NodeOperator::symbol() const {
@@ -337,8 +403,8 @@ void NodeEmpty::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
     // El placeholder se alinea con el texto normal por baseline.
     // Su ancho/alto es al menos el mínimo visual, pero no menor que la fuente.
-    _layout.width   = std::max(MIN_WIDTH,  fm.charWidth);
-    _layout.ascent  = std::max(MIN_HEIGHT, fm.ascent);
+    _layout.width   = fm.coordinate(std::max(MIN_WIDTH,  fm.charWidth));
+    _layout.ascent  = fm.coordinate(std::max(MIN_HEIGHT, fm.ascent));
     _layout.descent = fm.descent;
 }
 
@@ -369,7 +435,7 @@ void NodeFraction::calculateLayout(const FontMetrics& fm) {
     //    nivel de estilo). El bar/eje/shift siguen usando el estilo padre `fm`.
     const FontMetrics childFm = fractionPartMetrics(fm);
     _numerator->calculateLayout(childFm);
-    _denominator->calculateLayout(childFm);
+    _denominator->calculateLayout(fractionDenominatorMetrics(fm));
 
     const auto& numL = _numerator->layout();
     const auto& denL = _denominator->layout();
@@ -378,42 +444,32 @@ void NodeFraction::calculateLayout(const FontMetrics& fm) {
     const FractionLayoutMetrics metrics = fractionLayoutMetrics(fm);
     _ruleThicknessPx = metrics.ruleThicknessPx;
 
-    // 3. Gap-based shifts (NumOS readable-fraction policy).
-    //    fractionBarGaps() uses the display-style gap-min (150 DU ≈ 3 px)
-    //    as the symmetric bar gap G so that:
-    //      gapAboveBar = barTop  - numBottom  == G
-    //      gapBelowBar = denTop  - barBottom  == G
-    //    The previous baseline-shift constants (585 DU) produced
-    //    gapAboveBar=9 px and gapBelowBar=1 px because ink ascent/descent
-    //    differs; the gap-based formula is symmetric by construction.
+    // Shared OpenType baseline-shift and ink-gap constraints.
     const FractionBarGaps gaps = fractionBarGaps(fm, numL, denL);
-    _numeratorShiftPx   = gaps.numeratorShiftPx;   // = gapPx + numDescent
-    _denominatorShiftPx = gaps.denominatorShiftPx; // = gapPx + denAscent
+    _numeratorShiftPx = gaps.numeratorShiftPx;
+    _denominatorShiftPx = gaps.denominatorShiftPx;
 
     // 4. Width: widest child + rule overhang (1 mu each side)
     _ruleOverhangPx = metrics.ruleOverhangPx;
     int16_t contentW = std::max(numL.width, denL.width);
-    _layout.width = contentW + 2 * _ruleOverhangPx;
+    _layout.width = fm.coordinate(contentW + 2 * _ruleOverhangPx);
 
     // 5. Vertical layout (baseline-relative)
-    //    Fraction baseline = math axis.
+    //    The rule is centered on the math axis above the fraction baseline.
     //    Ascent  = distance from axis to numerator TOP.
     //    Descent = distance from axis to denominator BOTTOM.
-    _barHalfUpPx = static_cast<int16_t>((_ruleThicknessPx + 1) / 2);
-    _barHalfDownPx = static_cast<int16_t>(_ruleThicknessPx / 2);
+    _barHalfUpPx = fm.coordinate((_ruleThicknessPx + 1) / 2);
+    _barHalfDownPx = fm.coordinate(_ruleThicknessPx / 2);
 
     int16_t axis = fm.axisHeight();
-    int16_t aboveAxis = static_cast<int16_t>(_barHalfUpPx + _numeratorShiftPx + numL.ascent);
-    int16_t belowAxis = static_cast<int16_t>(_barHalfDownPx + _denominatorShiftPx + denL.descent);
+    int16_t aboveAxis = fm.coordinate(_barHalfUpPx + _numeratorShiftPx + numL.ascent);
+    int16_t belowAxis = fm.coordinate(_barHalfDownPx + _denominatorShiftPx + denL.descent);
 
-    _layout.ascent  = axis + aboveAxis;
-    _layout.descent = belowAxis - axis;
+    _layout.ascent  = fm.coordinate(axis + aboveAxis);
+    _layout.descent = fm.coordinate(belowAxis - axis);
 
     // Safety: descent must be non-negative
-    if (_layout.descent < 0) {
-        _layout.ascent += -_layout.descent;
-        _layout.descent = 0;
-    }
+    if (_layout.descent < 0) _layout.descent = fm.coordinate(0);
     _layout.inkAscent = _layout.ascent;
     _layout.inkDescent = _layout.descent;
 }
@@ -462,55 +518,51 @@ void NodePower::calculateLayout(const FontMetrics& fm) {
     _exponent->calculateLayout(fmSup);
     const auto& expL = _exponent->layout();
 
-    // 3. MATH table-driven superscript shift plus a bounded NumOS VPAM
-    //    readability correction. The helper is shared with draw/diagnostics
-    //    so layout and pixels cannot drift.
-    MathConstantsProvider mc(fm.emSize);
-    const SuperscriptShiftMetrics sup = superscriptShiftMetrics(fm, expL);
-    const int16_t expShift = sup.shiftPx;
-
-    // 4. Italics correction (Spec §2.5): add extra space before superscript
-    //    when the base is an italic letter with overhang (e.g., f, V, W, π).
-    //    Uses the canonical vpam::utf8Decode() — the previously hand-rolled
-    //    UTF-8 byte-length scan is replaced by the returned advance count.
-    _italicCorrectionPx = 0;
-    const MathNode* atom=_base.get();
-    // WHY: editor slots wrap their base in rows. Inspect without recursion or
-    // allocation so typed Greek and Latin bases get the same MATH correction.
-    for(unsigned depth=0;depth<64 &&
-        (atom->type()==NodeType::Row || atom->type()==NodeType::QuantityReference) &&
-        atom->childCount()==1;++depth)
-        atom=atom->child(0);
-    const char* text=atom->type()==NodeType::Variable?static_cast<const NodeVariable*>(atom)->label():
-        atom->type()==NodeType::Constant?static_cast<const NodeConstant*>(atom)->symbol():
-        atom->type()==NodeType::Symbol?static_cast<const NodeSymbol*>(atom)->name().c_str():nullptr;
-    if(text) {
-        uint32_t cp=0;const uint8_t len=decodeFirstUtf8(text,cp);
-        if(cp && len && text[len]=='\0')
-            _italicCorrectionPx=std::max<int16_t>(0,mc.duToPx(lookupItalicsCorrection(numos::inputsymbol::glyphCodepoint(cp))));
+    // WHY: glyph nuclei use the shift/bottom minima; boxed nuclei additionally
+    // constrain baseline drop from the top of their actual measured box.
+    const MathConstantsProvider mc(fm.emSize);
+    auto* nested = const_cast<MathNode*>(scriptNucleus(_base.get()));
+    auto* combined = nested && nested->type() == NodeType::Subscript
+        ? static_cast<NodeSubscript*>(nested) : nullptr;
+    const MathNode* nucleus = combined ? combined->base() : _base.get();
+    const auto& nucleusBox = nucleus->layout();
+    const uint32_t baseCp = scriptGlyph(nucleus);
+    _scriptShiftPx = superscriptShiftPx(fm, expL);
+    if (!isTextScriptNucleus(nucleus)) _scriptShiftPx = fm.coordinate(std::max<int32_t>(_scriptShiftPx,
+        nucleusBox.ascent - mc.superscriptBaselineDropMax()));
+    if (combined) {
+        int16_t down = combined->scriptShiftPx();
+        separateScriptPair(fm, expL, combined->subscript()->layout(), _scriptShiftPx, down);
+        combined->placeScriptAt(down, fm);
+        ScriptLayout::refreshWrappers(combined, _base.get());
     }
-
-    // 5. Ancho: base + italics correction + exponente
-    _layout.width = static_cast<int16_t>(
-        baseL.width + _italicCorrectionPx + expL.width + spaceAfterScriptPx(fm));
+    const int16_t expShift = _scriptShiftPx;
+    _italicCorrectionPx = baseCp ? fm.coordinate(std::max<int32_t>(0,
+        mc.scalePx(lookupItalicsCorrection(baseCp)))) : 0;
+    _mathKernPx = scriptMathKernPx(baseCp, scriptGlyph(_exponent.get()),
+        fm, fmSup, nucleusBox, expL, expShift, true);
+    _scriptX = fm.coordinate(nucleusBox.width - nucleusItalicReserve(nucleus, fm)
+        + _italicCorrectionPx + _mathKernPx);
+    _layout.width = fm.coordinate(std::max<int32_t>(baseL.width,
+        _scriptX + expL.width + spaceAfterScriptPx(fm)));
 
     // 6. Ascent: the exponent top might extend above the base top
-    _layout.ascent  = std::max(baseL.ascent,
-                               static_cast<int16_t>(expShift + expL.ascent));
+    _layout.ascent  = fm.coordinate(std::max(baseL.ascent,
+                               fm.coordinate(expShift + expL.ascent)));
     // Descent: keep the conservative layout box valid even for unusual
     // complex exponents. Simple digit exponents remain fully above baseline.
-    _layout.descent = std::max<int16_t>(
+    _layout.descent = fm.coordinate(std::max<int32_t>(
         baseL.descent,
-        static_cast<int16_t>(std::max<int16_t>(
-            0, static_cast<int16_t>(expL.descent - expShift))));
+        fm.coordinate(std::max<int32_t>(
+            0, fm.coordinate(expL.descent - expShift)))));
 
-    _layout.inkAscent = std::max<int16_t>(
+    _layout.inkAscent = fm.coordinate(std::max<int32_t>(
         layoutInkAscentPx(baseL),
-        static_cast<int16_t>(expShift + layoutInkAscentPx(expL)));
-    _layout.inkDescent = std::max<int16_t>(
+        fm.coordinate(expShift + layoutInkAscentPx(expL))));
+    _layout.inkDescent = fm.coordinate(std::max<int32_t>(
         layoutInkDescentPx(baseL),
-        static_cast<int16_t>(std::max<int16_t>(
-            0, static_cast<int16_t>(layoutInkDescentPx(expL) - expShift))));
+        fm.coordinate(std::max<int32_t>(
+            0, fm.coordinate(layoutInkDescentPx(expL) - expShift)))));
 }
 
 MathNode* NodePower::child(int index) const {
@@ -551,7 +603,7 @@ void NodeRoot::calculateLayout(const FontMetrics& fm) {
     const bool display = fm.isDisplayStyle();
 
     // 1. Radicand
-    _radicand->calculateLayout(fm);
+    _radicand->calculateLayout(crampedMetrics(fm));
     const auto& radL = _radicand->layout();
 
     // 2. MATH table-driven layout constants (Spec §2.3, constants 49–55)
@@ -563,32 +615,40 @@ void NodeRoot::calculateLayout(const FontMetrics& fm) {
     // WHY: the degree can enlarge the node, but must not move the radical
     // bar or the radicand baseline. Cache the one placement used by painting
     // and the cursor; a reserved width alone does not move either consumer.
-    _radicalAscent = radL.ascent + _radicalVerticalGap +
-        _radicalRuleThickness + _radicalExtraAscender;
-    _layout.ascent = _radicalAscent;
+    // WHY: preserve the existing vector shape at em18, scaled in mu at
+    // script sizes. The vector policy is explicit: hook3mu, slope6mu, pad2mu.
+    _hookWidthPx = fm.coordinate(std::max<int32_t>(1, mc.muToPx(3)));
+    _slopeWidthPx = fm.coordinate(std::max<int32_t>(1, mc.muToPx(6)));
+    _rightPadPx = fm.coordinate(std::max<int32_t>(1, mc.muToPx(2)));
+    _radicalAscent = fm.coordinate(layoutInkAscentPx(radL) + _radicalVerticalGap +
+        _radicalRuleThickness + _radicalExtraAscender);
+    _layout.ascent = fm.coordinate(std::max(radL.ascent, _radicalAscent));
     _layout.descent = radL.descent;
-    _radicalX = _degreeX = _degreeBaseline = 0;
+    _radicalX = fm.coordinate(_degreeX = _degreeBaseline = 0);
     _radicalKernBefore = _radicalKernAfter = 0;
     if (_degree) {
-        _degree->calculateLayout(fm.superscript());
+        _degree->calculateLayout(rootDegreeMetrics(fm));
         const auto& degree = _degree->layout();
         _radicalKernBefore = mc.radicalKernBeforeDegree();
         _radicalKernAfter = mc.radicalKernAfterDegree();
-        _degreeX = std::max<int16_t>(0, _radicalKernBefore);
+        _degreeX = fm.coordinate(std::max<int32_t>(0, _radicalKernBefore));
         // The existing vector radical has no glyph's empty left bearing.
         // Limit negative MATH kern to its hook, leaving 1mu ink clearance.
         const int after = std::max<int>(
-            _radicalKernAfter, mc.muToPx(1) - RADICAL_HOOK_W);
-        _radicalX = std::max<int>(0, _degreeX + degree.width + after);
-        const int radicalHeight = _radicalAscent + radL.descent;
+            _radicalKernAfter, fm.coordinate(std::max<int32_t>(1, mc.muToPx(1))) - _hookWidthPx);
+        _radicalX = fm.coordinate(std::max<int>(0, _degreeX + degree.width + after));
+        const int radicalHeight = _radicalAscent - _radicalExtraAscender + radL.descent;
         const int raise = radicalHeight * mc.radicalDegreeBottomRaisePercent() / 100;
-        _degreeBaseline = radL.descent - raise - degree.descent;
-        _layout.ascent = std::max<int>(_radicalAscent,
-                                      degree.ascent - _degreeBaseline);
-        _layout.descent = std::max<int>(radL.descent,
-                                        _degreeBaseline + degree.descent);
+        _degreeBaseline = fm.coordinate(radL.descent - raise - layoutInkDescentPx(degree));
+        _layout.ascent = fm.coordinate(std::max<int>(_layout.ascent,
+                                      degree.ascent - _degreeBaseline));
+        _layout.descent = fm.coordinate(std::max<int>(radL.descent,
+                                        _degreeBaseline + degree.descent));
     }
-    _layout.width = radicandX() + radL.width + RADICAL_RIGHT_PAD;
+    _layout.width = fm.coordinate(radicandX() + radL.width + _rightPadPx);
+    _layout.inkAscent = fm.coordinate(std::max<int32_t>(_radicalAscent - _radicalExtraAscender,
+        _degree ? layoutInkAscentPx(_degree->layout()) - _degreeBaseline : 0));
+    _layout.inkDescent = _layout.descent;
 
 }
 
@@ -639,15 +699,19 @@ void NodeParen::calculateLayout(const FontMetrics& fm) {
 
     const int16_t padPx = delimiterVerticalPadPx(cl, fm);
     AxisDelimiterGeometry geom = (_delimKind == DelimKind::Paren || _delimKind == DelimKind::Bracket)
-        ? parenthesisGeometry(cl)
+        ? parenthesisGeometry(cl, fm)
         : symmetricAxisDelimiterGeometry(cl, fm, padPx);
     _parenWidth = assembledDelimiterWidthPx(geom, fm, leftCp());
 
     // ── Layout: [leftParen] + pad + content + pad + [rightParen] ──
-    const int16_t innerPad = std::max<int16_t>(1, _parenWidth / 3);
-    _layout.width = static_cast<int16_t>(_parenWidth * 2 + innerPad * 2 + cl.width);
-    _layout.ascent  = geom.ascent;
-    _layout.descent = geom.descent;
+    const int16_t innerPadPx = innerPad();
+    _layout.width = fm.coordinate(_parenWidth * 2 + innerPadPx * 2 + cl.width);
+    // WHY: delimiters follow ink, while the group still owns the complete
+    // child's logical slot (including cursor/placeholder padding).
+    _layout.ascent  = fm.coordinate(std::max(geom.ascent, cl.ascent));
+    _layout.descent = fm.coordinate(std::max(geom.descent, cl.descent));
+    _layout.inkAscent = fm.coordinate(std::max(geom.ascent, layoutInkAscentPx(cl)));
+    _layout.inkDescent = fm.coordinate(std::max(geom.descent, layoutInkDescentPx(cl)));
 }
 
 MathNode* NodeParen::child(int index) const {
@@ -694,15 +758,16 @@ const char* NodeFunction::label() const {
 void NodeFunction::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
     // WHY: proportional label advance must end where the drawn run ends.
-    _labelWidth = fm.textAdvance(label());
+    const auto labelInk = fm.textInk(label());
+    _labelWidth = labelInk.width;
 
     // 2. Argumento entre paréntesis
     _argument->calculateLayout(fm);
     const auto& argL = _argument->layout();
 
-    AxisDelimiterGeometry geom = parenthesisGeometry(argL);
+    AxisDelimiterGeometry geom = parenthesisGeometry(argL, fm);
     _parenWidth = assembledDelimiterWidthPx(geom, fm, 0x0028);
-    _innerPad = std::max<int16_t>(1, _parenWidth / 3);
+    _innerPad = fm.coordinate(std::max<int32_t>(1, _parenWidth / 3));
     _parenAscent = geom.ascent;
     _parenDescent = geom.descent;
 
@@ -714,12 +779,14 @@ void NodeFunction::calculateLayout(const FontMetrics& fm) {
     }
 
     // 3. Ancho total: etiqueta + gap + ( + pad + argumento + pad + )
-    _layout.width = static_cast<int16_t>(_labelWidth + LABEL_GAP
+    _layout.width = fm.coordinate(_labelWidth + LABEL_GAP
                   + _parenWidth + _innerPad + argL.width + _innerPad + _parenWidth);
 
     // 4. The full node must cover both label text and the argument delimiter.
-    _layout.ascent  = std::max(fm.ascent, _parenAscent);
-    _layout.descent = std::max(fm.descent, _parenDescent);
+    _layout.ascent  = fm.coordinate(std::max({fm.ascent, labelInk.ascent, _parenAscent, argL.ascent}));
+    _layout.descent = fm.coordinate(std::max({fm.descent, labelInk.descent, _parenDescent, argL.descent}));
+    _layout.inkAscent = fm.coordinate(std::max(labelInk.ascent, _parenAscent));
+    _layout.inkDescent = fm.coordinate(std::max(labelInk.descent, _parenDescent));
 }
 
 MathNode* NodeFunction::child(int index) const {
@@ -753,10 +820,11 @@ NodeLogBase::NodeLogBase(NodePtr base, NodePtr argument)
 
 void NodeLogBase::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
-    _labelWidth = fm.textAdvance("log");
+    const auto labelInk = fm.textInk("log");
+    _labelWidth = labelInk.width;
 
     // 2. Subíndice (base) en fuente reducida
-    FontMetrics fmSub = fm.superscript();   // misma escala que superscript
+    FontMetrics fmSub = subscriptMetrics(fm);   // misma escala que superscript
     _base->calculateLayout(fmSub);
     const auto& baseL = _base->layout();
 
@@ -764,29 +832,27 @@ void NodeLogBase::calculateLayout(const FontMetrics& fm) {
     _argument->calculateLayout(fm);
     const auto& argL = _argument->layout();
 
-    AxisDelimiterGeometry geom = parenthesisGeometry(argL);
+    AxisDelimiterGeometry geom = parenthesisGeometry(argL, fm);
     _parenWidth = assembledDelimiterWidthPx(geom, fm, 0x0028);
-    _innerPad = std::max<int16_t>(1, _parenWidth / 3);
+    _innerPad = fm.coordinate(std::max<int32_t>(1, _parenWidth / 3));
     _parenAscent = geom.ascent;
     _parenDescent = geom.descent;
 
     // 4. Ancho total: "log" + base_subscript + SpaceAfterScript + gap + ( + pad + arg + pad + )
     //    SpaceAfterScript is added after the subscript base to match NodePower
     //    and NodeSubscript behavior (OpenType constant 17).
-    _layout.width = static_cast<int16_t>(_labelWidth + baseL.width
+    _layout.width = fm.coordinate(_labelWidth + baseL.width
                   + spaceAfterScriptPx(fm) + LABEL_GAP
                   + _parenWidth + _innerPad + argL.width + _innerPad + _parenWidth);
 
-    // 5. Descenso del subíndice: use MATH table subscriptShiftDown.
-    int16_t subDrop = MathConstantsProvider(fm.emSize).subscriptShiftDown();
-    if (subDrop < 2) subDrop = 2;
-
-    // El fondo del subíndice está a subDrop + baseL.descent bajo el baseline
-    int16_t subBottom = subDrop + baseL.descent;
-
-    // 6. Ascent/descent cover label, subscript, and argument delimiter.
-    _layout.ascent = std::max(fm.ascent, _parenAscent);
-    _layout.descent = std::max({fm.descent, subBottom, _parenDescent});
+    LayoutResult label{};
+    label.ascent = std::max(fm.ascent, labelInk.ascent);
+    label.descent = std::max(fm.descent, labelInk.descent);
+    _scriptShiftPx = subscriptShiftPx(fm, label, baseL, true);
+    _layout.ascent = fm.coordinate(std::max({label.ascent, _parenAscent, argL.ascent,
+        fm.coordinate(baseL.ascent - _scriptShiftPx)}));
+    _layout.descent = fm.coordinate(std::max({label.descent, _parenDescent, argL.descent,
+        fm.coordinate(_scriptShiftPx + baseL.descent)}));
 }
 
 MathNode* NodeLogBase::child(int index) const {
@@ -826,11 +892,37 @@ const char* NodeConstant::symbol() const {
 // The font adapter measures actual ink once; rendering uses this cached offset.
 static int16_t layoutTextAtom(MathNode* node,LayoutResult& layout,const char* text,const FontMetrics& fm) {
     applyScriptLevel(node,fm);
-    const auto ink=fm.measureAtom && fm.textFont?fm.measureAtom(fm.textFont,text):TextAtomMetrics{fm.textAdvance(text),fm.ascent,fm.descent,0};
+    const auto ink=fm.textInk(text);
     layout.width=ink.width;
-    layout.ascent=layout.inkAscent=std::max(fm.ascent,ink.ascent);
-    layout.descent=layout.inkDescent=std::max(fm.descent,ink.descent);
+    layout.ascent=std::max(fm.ascent,ink.ascent);
+    layout.descent=std::max(fm.descent,ink.descent);
+    layout.inkAscent=ink.ascent;
+    layout.inkDescent=ink.descent;
     return ink.leftPad;
+}
+// Single-letter identifiers use a real mathematical italic glyph. Their
+// advance stays distinct from ink overhang; script attachment consumes the
+// advance plus MATH italic correction/cut-in, never a second ink-width pad.
+static int16_t layoutIdentifierAtom(MathNode* node, LayoutResult& layout,
+                                    const char* text, const FontMetrics& fm) {
+    char buffer[5];
+    const char* display = identifierDisplayText(text, buffer);
+    uint32_t cp = 0;
+    const auto count = utf8Decode(reinterpret_cast<const uint8_t*>(display), cp);
+    if (count && !display[count] && isMathItalicGlyph(cp) && fm.measureAtom && fm.textFont) {
+        applyScriptLevel(node, fm);
+        const auto ink = fm.textInk(display);
+        // TeX appends italic correction to an ordinary math glyph's advance.
+        // Script attachment removes this reserve before applying its own rule.
+        layout.width = ink.advance + fm.coordinate(std::max<int32_t>(0,
+            MathConstantsProvider(fm.emSize).scalePx(lookupItalicsCorrection(cp))));
+        layout.ascent = std::max(fm.ascent, ink.ascent);
+        layout.descent = std::max(fm.descent, ink.descent);
+        layout.inkAscent = ink.ascent;
+        layout.inkDescent = ink.descent;
+        return 0;
+    }
+    return layoutTextAtom(node, layout, display, fm);
 }
 void NodeConstant::calculateLayout(const FontMetrics& fm) {
     _textOffset=layoutTextAtom(this,_layout,symbol(),fm);
@@ -912,7 +1004,7 @@ const char* NodeVariable::label() const {
 }
 
 void NodeVariable::calculateLayout(const FontMetrics& fm) {
-    _textOffset=layoutTextAtom(this,_layout,label(),fm);
+    _textOffset=layoutIdentifierAtom(this,_layout,label(),fm);
     _labelWidth=_layout.width;
 }
 
@@ -932,16 +1024,28 @@ NodePeriodicDecimal::NodePeriodicDecimal(const std::string& intPart,
 void NodePeriodicDecimal::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
     // Each component is a separate drawn run (no kerning across components).
-    _layout.width = static_cast<int16_t>(prefixAdvance(fm) + fm.textAdvance(_repeat.c_str()));
+    _overbarWidth = fm.textAdvance(_repeat.c_str());
+    _layout.width = fm.coordinate(prefixAdvance(fm) + _overbarWidth);
     if (_layout.width == 0) _layout.width = fm.charWidth;
 
-    // Si hay dígitos periódicos, necesitamos espacio extra encima para la overline
+    const auto integerInk = fm.textInk(_intPart.c_str());
+    const auto nonRepeatInk = fm.textInk(_nonRepeat.c_str());
+    const auto repeatInk = fm.textInk(_repeat.c_str());
+    _layout.inkAscent = std::max({integerInk.ascent, nonRepeatInk.ascent, repeatInk.ascent});
+    _layout.inkDescent = std::max({integerInk.descent, nonRepeatInk.descent, repeatInk.descent});
+    _layout.ascent = std::max(fm.ascent, _layout.inkAscent);
+    _layout.descent = std::max(fm.descent, _layout.inkDescent);
+    _overbarTop = _overbarThickness = 0;
     if (!_repeat.empty()) {
-        _layout.ascent = static_cast<int16_t>(fm.ascent + OVERLINE_GAP + OVERLINE_T);
-    } else {
-        _layout.ascent = fm.ascent;
+        const MathConstantsProvider mc(fm.emSize);
+        _overbarThickness = mc.overbarRuleThickness();
+        _overbarTop = fm.coordinate(-repeatInk.ascent - mc.overbarVerticalGap() - _overbarThickness);
+        // WHY: ExtraAscender is logical padding above the rule; the gap is
+        // measured below the rule against the repeated digits' actual ink.
+        _layout.inkAscent = std::max<int16_t>(_layout.inkAscent, -_overbarTop);
+        _layout.ascent = fm.coordinate(std::max<int32_t>(_layout.ascent,
+            -_overbarTop + mc.overbarExtraAscender()));
     }
-    _layout.descent = fm.descent;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1010,82 +1114,13 @@ void NodeDefIntegral::setVariable(NodePtr node) {
 
 void NodeDefIntegral::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
-
     _body->calculateLayout(fm);
+    _lower->calculateLayout(subscriptMetrics(fm));
+    _upper->calculateLayout(fm.superscript());
+    _layout = largeOperatorGeometry(0x222B, fm, _lower->layout(),
+        _upper->layout(), _body->layout()).box;
     _variable->calculateLayout(fm);
-
-    const auto& bodyL  = _body->layout();
-    const auto& varL   = _variable->layout();
-
-    const auto symMetrics = DelimiterAssembler::glyphMetricsForHeightPx(
-        0x222B, largeOperatorTargetHeightPx(fm), fm.emSize);
-    int16_t symW = symMetrics.valid ? symMetrics.widthPx : 0;
-    int16_t symH = symMetrics.valid ? symMetrics.heightPx : fm.height();
-    if (symW < 6) symW = std::max<int16_t>(6, fm.charWidth);
-
-    const int16_t limitGapPx = MathConstantsProvider(fm.emSize).upperLimitGapMin();
-    const int16_t bodyGapPx  = largeOperatorBodyGapPx(fm);
-    const int16_t dGapPx = integralDifferentialGapPx(fm);
-    const int16_t symbolPadPx = largeOperatorSymbolPadPx(fm);
-
-    // Display limits governed by operator height threshold (Spec §4.5)
-    if (shouldUseDisplayLimits(fm, symH)) {
-        // ── DISPLAY style: limits above/below the integral sign ──
-        FontMetrics fmLimit = fm.superscript();
-
-        _lower->calculateLayout(fmLimit);
-        _upper->calculateLayout(fmLimit);
-
-        const auto& lowerL = _lower->layout();
-        const auto& upperL = _upper->layout();
-
-        // Symbol column width = max(symW, lowerL.width, upperL.width)
-        int16_t symColW = std::max({symW, lowerL.width, upperL.width});
-
-        // "d" + variable
-        int16_t dVarW = static_cast<int16_t>(fm.charWidth + dGapPx + varL.width);
-
-        _layout.width = static_cast<int16_t>(symColW + bodyGapPx + bodyL.width
-                      + dGapPx + dVarW);
-
-        const int16_t symbolAscent = largeOperatorGlyphAscentPx(fm, symH);
-        const int16_t symbolDescent = largeOperatorGlyphDescentPx(fm, symH);
-
-        _layout.ascent = std::max<int16_t>(
-            bodyL.ascent,
-            static_cast<int16_t>(symbolAscent + symbolPadPx
-                                 + limitGapPx + upperL.height()));
-        _layout.descent = std::max<int16_t>(
-            bodyL.descent,
-            static_cast<int16_t>(symbolDescent + symbolPadPx
-                                 + limitGapPx + lowerL.height()));
-    } else {
-        // ── TEXT / SCRIPT style: limits as sub/superscript to the right ──
-        FontMetrics fmLimit = fm.superscript();
-
-        _lower->calculateLayout(fmLimit);
-        _upper->calculateLayout(fmLimit);
-
-        const auto& lowerL = _lower->layout();
-        const auto& upperL = _upper->layout();
-
-        // Symbol + superscript + subscript to the right
-        int16_t limitsW = std::max(upperL.width, lowerL.width);
-        int16_t limitsH = upperL.height() + lowerL.height();
-
-        int16_t dVarW = static_cast<int16_t>(fm.charWidth + dGapPx + varL.width);
-
-        _layout.width = static_cast<int16_t>(symW + limitsW + bodyGapPx
-                      + bodyL.width + dGapPx + dVarW);
-
-        int16_t bodyAscent  = std::max({bodyL.ascent, fm.ascent,
-                                        static_cast<int16_t>(upperL.height())});
-        int16_t bodyDescent = std::max({bodyL.descent, fm.descent,
-                                        static_cast<int16_t>(lowerL.height())});
-
-        _layout.ascent  = bodyAscent;
-        _layout.descent = bodyDescent;
-    }
+    _layout = integralDifferentialGeometry(fm, _layout, _variable->layout()).box;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1143,67 +1178,11 @@ void NodeSummation::setBody(NodePtr node) {
 
 void NodeSummation::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
-
     _body->calculateLayout(fm);
-
-    const auto& bodyL  = _body->layout();
-
-    const auto symMetrics = DelimiterAssembler::glyphMetricsForHeightPx(
-        0x2211, largeOperatorTargetHeightPx(fm), fm.emSize);
-    int16_t symW = symMetrics.valid ? symMetrics.widthPx : 0;
-    int16_t symH = symMetrics.valid ? symMetrics.heightPx : fm.height();
-    if (symW < 6) symW = std::max<int16_t>(6, fm.charWidth);
-
-    const int16_t limitGapPx = MathConstantsProvider(fm.emSize).upperLimitGapMin();
-    const int16_t bodyGapPx  = largeOperatorBodyGapPx(fm);
-    const int16_t symbolPadPx = largeOperatorSymbolPadPx(fm);
-
-    FontMetrics fmLimit = fm.superscript();
-
-    // Display limits governed by operator height threshold (Spec §4.5)
-    if (shouldUseDisplayLimits(fm, symH)) {
-        // ── DISPLAY style: limits centered above/below the operator ──
-        _lower->calculateLayout(fmLimit);
-        _upper->calculateLayout(fmLimit);
-
-        const auto& lowerL = _lower->layout();
-        const auto& upperL = _upper->layout();
-
-        // Symbol column width = max(symW, lowerL.width, upperL.width)
-        int16_t symColW = std::max({symW, lowerL.width, upperL.width});
-
-        _layout.width = symColW + bodyGapPx + bodyL.width;
-
-        const int16_t symbolAscent = largeOperatorGlyphAscentPx(fm, symH);
-        const int16_t symbolDescent = largeOperatorGlyphDescentPx(fm, symH);
-
-        _layout.ascent = std::max<int16_t>(
-            bodyL.ascent,
-            static_cast<int16_t>(symbolAscent + symbolPadPx
-                                 + limitGapPx + upperL.height()));
-        _layout.descent = std::max<int16_t>(
-            bodyL.descent,
-            static_cast<int16_t>(symbolDescent + symbolPadPx
-                                 + limitGapPx + lowerL.height()));
-    } else {
-        // ── TEXT / SCRIPT style: limits as sub/superscript to the right ──
-        _lower->calculateLayout(fmLimit);
-        _upper->calculateLayout(fmLimit);
-
-        const auto& lowerL = _lower->layout();
-        const auto& upperL = _upper->layout();
-
-        int16_t limitsW = std::max(upperL.width, lowerL.width);
-
-        _layout.width = symW + limitsW + bodyGapPx + bodyL.width;
-
-        // Vertical: body height + max of superscript/subscript
-        int16_t supTop = upperL.height();   // superscript above baseline
-        int16_t subBot = lowerL.height();   // subscript below baseline
-
-        _layout.ascent  = std::max({bodyL.ascent, fm.ascent, supTop});
-        _layout.descent = std::max({bodyL.descent, fm.descent, subBot});
-    }
+    _lower->calculateLayout(subscriptMetrics(fm));
+    _upper->calculateLayout(fm.superscript());
+    _layout = largeOperatorGeometry(0x2211, fm, _lower->layout(),
+        _upper->layout(), _body->layout()).box;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1271,70 +1250,14 @@ void NodeBigOp::setBody(NodePtr node) {
 
 void NodeBigOp::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
-
-    const auto opMetrics = DelimiterAssembler::glyphMetricsForHeightPx(
-        _operatorCp, largeOperatorTargetHeightPx(fm), fm.emSize);
-    int16_t opW = opMetrics.valid ? opMetrics.widthPx : 0;
-    int16_t opH = opMetrics.valid ? opMetrics.heightPx : fm.height();
-    if (opW < 6) opW = std::max<int16_t>(6, fm.charWidth);
-
-    // WHY: Generic operators such as products/unions/intersections follow
-    // TeX display-style limit placement directly. The OpenType minimum-height
-    // gate remains for integral/summation glyph selection, but a display BigOp
-    // must keep layout and renderer geometry in the above/below branch even
-    // when a subset font has no taller variant available.
-    _useDisplayLimits = fm.isDisplayStyle();
-
-    FontMetrics fmLimit = fm.superscript();
     _body->calculateLayout(fm);
-    const auto& bodyL = _body->layout();
-
-    const int16_t limitGapPx = MathConstantsProvider(fm.emSize).upperLimitGapMin();
-    const int16_t bodyGapPx  = largeOperatorBodyGapPx(fm);
-
-    if (_useDisplayLimits) {
-        // ── DISPLAY: limits above/below operator ──
-        _lower->calculateLayout(fmLimit);
-        _upper->calculateLayout(fmLimit);
-
-        const auto& lowerL = _lower->layout();
-        const auto& upperL = _upper->layout();
-
-        // Symbol column width
-        int16_t symColW = std::max({opW, lowerL.width, upperL.width});
-
-        _layout.width = symColW + bodyGapPx + bodyL.width;
-
-        const int16_t symbolAscent = largeOperatorGlyphAscentPx(fm, opH);
-        const int16_t symbolDescent = largeOperatorGlyphDescentPx(fm, opH);
-        const int16_t symbolPadPx = largeOperatorSymbolPadPx(fm);
-
-        _layout.ascent = std::max<int16_t>(
-            bodyL.ascent,
-            static_cast<int16_t>(symbolAscent + symbolPadPx
-                                 + limitGapPx + upperL.height()));
-        _layout.descent = std::max<int16_t>(
-            bodyL.descent,
-            static_cast<int16_t>(symbolDescent + symbolPadPx
-                                 + limitGapPx + lowerL.height()));
-    } else {
-        // ── TEXT / SCRIPT: limits as sub/superscript to the right ──
-        _lower->calculateLayout(fmLimit);
-        _upper->calculateLayout(fmLimit);
-
-        const auto& lowerL = _lower->layout();
-        const auto& upperL = _upper->layout();
-
-        int16_t limitsW = std::max(upperL.width, lowerL.width);
-
-        _layout.width = opW + limitsW + bodyGapPx + bodyL.width;
-
-        // Vertical: max of operator body, superscript top, subscript bottom
-        _layout.ascent  = std::max({bodyL.ascent, fm.ascent,
-                                    static_cast<int16_t>(upperL.height())});
-        _layout.descent = std::max({bodyL.descent, fm.descent,
-                                    static_cast<int16_t>(lowerL.height())});
-    }
+    _lower->calculateLayout(subscriptMetrics(fm));
+    _upper->calculateLayout(fm.superscript());
+    const auto geometry = largeOperatorGeometry(_operatorCp, fm, _lower->layout(),
+        _upper->layout(), _body->layout());
+    _layout = geometry.box;
+    // TXP §H.9.4 / GAP-37: BigOp obeys the same gate as Summation and DefIntegral.
+    _useDisplayLimits = geometry.displayLimits;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1361,28 +1284,31 @@ void NodeSubscript::calculateLayout(const FontMetrics& fm) {
     const auto& baseL = _base->layout();
 
     // 2. Subíndice en fuente reducida (same scale as superscript, ~70%)
-    FontMetrics fmSub = fm.superscript();
+    FontMetrics fmSub = subscriptMetrics(fm);
     _subscript->calculateLayout(fmSub);
     const auto& subL = _subscript->layout();
 
-    // 3. Ancho: base + subíndice + SpaceAfterScript
-    //    (OpenType constant 17 — matches NodePower and NodeLogBase behavior)
-    _layout.width = static_cast<int16_t>(
-        baseL.width + subL.width + spaceAfterScriptPx(fm));
+    placeScriptAt(subscriptShiftPx(fm, baseL, subL, isTextScriptNucleus(_base.get())), fm);
+}
 
-    // 4. Descenso del subíndice: use MATH table subscriptShiftDown.
-    int16_t subDrop = MathConstantsProvider(fm.emSize).subscriptShiftDown();
-    if (subDrop < 2) subDrop = 2;  // mínimo sensato
-
-    // Reservar todo el alto del subíndice una vez bajado, no solo su descent.
-    // Esto evita clipping y colisión con el siguiente carácter.
-    int16_t subBottom = subDrop + subL.ascent + subL.descent;
-
-    // 5. Ascent: de la base (el subíndice no sube)
-    _layout.ascent = baseL.ascent;
-
-    // 6. Descent: mayor entre base y subíndice
-    _layout.descent = std::max(baseL.descent, subBottom);
+void NodeSubscript::placeScriptAt(int16_t shift, const FontMetrics& fm) {
+    const auto& baseL = _base->layout();
+    const auto& subL = _subscript->layout();
+    const auto fmSub = subscriptMetrics(fm);
+    const uint32_t baseCp = scriptGlyph(_base.get());
+    _scriptShiftPx = shift;
+    _mathKernPx = scriptMathKernPx(baseCp, scriptGlyph(_subscript.get()),
+        fm, fmSub, baseL, subL, _scriptShiftPx, false);
+    _scriptX = fm.coordinate(baseL.width - nucleusItalicReserve(_base.get(), fm) + _mathKernPx);
+    _layout.width = fm.coordinate(std::max<int32_t>(baseL.width,
+        _scriptX + subL.width + spaceAfterScriptPx(fm)));
+    // WHY: a shift is a baseline displacement, not a top coordinate.
+    _layout.ascent = fm.coordinate(std::max<int32_t>(baseL.ascent, subL.ascent - _scriptShiftPx));
+    _layout.descent = fm.coordinate(std::max<int32_t>(baseL.descent, _scriptShiftPx + subL.descent));
+    _layout.inkAscent = fm.coordinate(std::max<int32_t>(layoutInkAscentPx(baseL),
+        layoutInkAscentPx(subL) - _scriptShiftPx));
+    _layout.inkDescent = fm.coordinate(std::max<int32_t>(layoutInkDescentPx(baseL),
+        _scriptShiftPx + layoutInkDescentPx(subL)));
 }
 
 MathNode* NodeSubscript::child(int index) const {
@@ -1404,23 +1330,21 @@ void NodeSubscript::setSubscript(NodePtr node) {
 // MATH-RESULTS-01 semantic result nodes. Ownership is established before
 // layout; the routines below use fixed-capacity geometry and allocate nothing.
 
-constexpr int32_t kResultWidthOverflowSentinel = 4097;
-constexpr int32_t kResultHeightOverflowSentinel = 1025;
 
-static int16_t boundedTextWidth(const std::string& text,
+static int16_t boundedTextWidth(const char* text,
                                 const FontMetrics& fm) {
-    return static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        text.empty() ? fm.charWidth : fm.textAdvance(text.c_str())));
+    return fm.coordinate(!*text ? fm.charWidth : fm.textAdvance(text));
 }
 
 static void setTextLayout(MathNode* node, LayoutResult& layout,
-                          const std::string& text, const FontMetrics& fm) {
+                          const char* text, const FontMetrics& fm) {
     applyScriptLevel(node, fm);
-    layout.width = boundedTextWidth(text, fm);
-    layout.ascent = fm.ascent;
-    layout.descent = fm.descent;
-    layout.inkAscent = fm.ascent;
-    layout.inkDescent = fm.descent;
+    const auto ink = fm.textInk(text);
+    layout.width = ink.width;
+    layout.ascent = std::max(fm.ascent, ink.ascent);
+    layout.descent = std::max(fm.descent, ink.descent);
+    layout.inkAscent = ink.ascent;
+    layout.inkDescent = ink.descent;
 }
 
 NodePtr makeUnit(numos::units::Atom atom) {
@@ -1471,7 +1395,7 @@ NodePtr makeQuantityReference(numos::units::ReferenceAtom atom) {
             text += glyph;
         } else text += base;
         auto glyphs = makeSymbol(text);
-        if (subscript && *subscript) return makeSubscript(std::move(glyphs), makeSymbol(subscript));
+        if (subscript && *subscript) return makeSubscript(std::move(glyphs), std::make_unique<NodeSymbol>(subscript, true));
         return glyphs;
     };
     auto notation = notationPart(definition.base, definition.subscript,
@@ -1493,6 +1417,44 @@ void NodeQuantityReference::calculateLayout(const FontMetrics& fm) {
     _layout = _notation->layout();
 }
 
+NodeMeasurement::NodeMeasurement(NodePtr nominal, NodePtr uncertainty, uint32_t sourceId)
+    : MathNode(NodeType::Measurement),
+      _nominal(nominal ? std::move(nominal) : makeEmptyRow()),
+      _uncertainty(uncertainty ? std::move(uncertainty) : makeEmptyRow()), _sourceId(sourceId) {
+    _nominal->setParent(this); _uncertainty->setParent(this);
+}
+NodePtr makeMeasurement(NodePtr nominal, NodePtr uncertainty, uint32_t sourceId) {
+    if(!sourceId) sourceId=numos::scientific::allocateUserSource();
+    return NodePtr(new NodeMeasurement(std::move(nominal),std::move(uncertainty),sourceId));
+}
+void NodeMeasurement::calculateLayout(const FontMetrics& fm) {
+    // WHY: measured glyph ink and MATH spacing are cached here. Paint and
+    // cursor consume these placements; neither allocates nor propagates u.
+    LayoutResult sign{};
+    const auto pad=layoutTextAtom(this,sign,"±",fm);
+    _nominal->calculateLayout(fm); _uncertainty->calculateLayout(fm);
+    const auto& a=_nominal->layout(); const auto& b=_uncertainty->layout();
+    const int gap=std::max<int>(1,MathConstantsProvider(fm.emSize).muToPx(4));
+    _signX=fm.coordinate(a.width+gap+pad);
+    _uncertaintyX=fm.coordinate(a.width+2*gap+sign.width);
+    _layout.width=fm.coordinate(_uncertaintyX+b.width);
+    _layout.ascent=fm.coordinate(_layout.inkAscent=std::max({a.ascent,b.ascent,sign.ascent}));
+    _layout.descent=fm.coordinate(_layout.inkDescent=std::max({a.descent,b.descent,sign.descent}));
+    // WHY: the measured pair is one operand, including in products and before
+    // an attached unit. Reuse the established delimiter geometry and cache all
+    // child origins for the painter/cursor instead of exposing an ambiguous ±.
+    auto geometry=parenthesisGeometry(_layout, fm);
+    _delimiterWidth=assembledDelimiterWidthPx(geometry,fm,0x0028);
+    _nominalX=_delimiterWidth+std::max<int>(1,MathConstantsProvider(fm.emSize).muToPx(1));
+    _signX=fm.coordinate(_signX+_nominalX);
+    _uncertaintyX=fm.coordinate(_uncertaintyX+_nominalX);
+    _layout.width=fm.coordinate(_layout.width+2*_nominalX);
+    // WHY: parent fraction/root gaps must clear the final physical fences.
+    // Their full painted span also encloses the child logical editing slots.
+    _layout.ascent=_layout.inkAscent=geometry.ascent;
+    _layout.descent=_layout.inkDescent=geometry.descent;
+}
+
 UnitScan scanUnits(const MathNode* root) {
     if(!root)return UnitScan::None;
     // WHY: inspect the authored tree before any zero-product/cancellation pass.
@@ -1511,6 +1473,7 @@ UnitScan scanUnits(const MathNode* root) {
                 if(!numos::units::valid(static_cast<const NodeQuantityReference*>(n)->atom()))return UnitScan::Invalid;
                 found=true;
             }
+            if(n->type()==NodeType::Measurement) found=true;
         }
         if(frame.next>=n->childCount()){--depth;continue;}
         const auto* child=n->child(frame.next++);if(!child)continue;
@@ -1522,8 +1485,13 @@ UnitScan scanUnits(const MathNode* root) {
     return found?UnitScan::Present:UnitScan::None;
 }
 
-NodeSymbol::NodeSymbol(std::string name)
-    : MathNode(NodeType::Symbol), _name(std::move(name)) {}
+NodeSymbol::NodeSymbol(std::string name) : NodeSymbol(std::move(name), false) {}
+
+NodeSymbol::NodeSymbol(std::string name, bool upright)
+    : NodeSymbol(std::move(name), upright, MathClass::ORD) {}
+
+NodeSymbol::NodeSymbol(std::string name, bool upright, MathClass atomClass)
+    : MathNode(NodeType::Symbol), _name(std::move(name)), _upright(upright), _atomClass(atomClass) {}
 
 void NodeSymbol::calculateLayout(const FontMetrics& fm) {
     _textOffset=0;
@@ -1532,11 +1500,12 @@ void NodeSymbol::calculateLayout(const FontMetrics& fm) {
         // canvas captures its real font box before allocation-free layout.
         applyScriptLevel(this, fm);
         _layout.width = fm.deltaWidth;
-        _layout.ascent = _layout.inkAscent = fm.deltaAscent;
-        _layout.descent = _layout.inkDescent = fm.deltaDescent;
+        _layout.ascent = fm.coordinate(_layout.inkAscent = fm.deltaAscent);
+        _layout.descent = fm.coordinate(_layout.inkDescent = fm.deltaDescent);
         return;
     }
-    _textOffset=layoutTextAtom(this,_layout,_name.c_str(),fm);
+    _textOffset = _upright ? layoutTextAtom(this,_layout,_name.c_str(),fm)
+        : layoutIdentifierAtom(this,_layout,_name.c_str(),fm);
 }
 
 NodeSpecialValue::NodeSpecialValue(SpecialValueKind kind)
@@ -1580,25 +1549,23 @@ void NodeCollection::calculateLayout(const FontMetrics& fm) {
     LayoutResult content{};
     content.ascent = fm.ascent;
     content.descent = fm.descent;
-    _separatorWidth = static_cast<int16_t>(fm.charWidth +
+    _separatorWidth = fm.coordinate(fm.textAdvance(",") +
         MathConstantsProvider(fm.emSize).muToPx(3));
     for (size_t i = 0; i < _elements.size(); ++i) {
         _elements[i]->calculateLayout(fm);
         const auto& childLayout = _elements[i]->layout();
-        content.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-            static_cast<int32_t>(content.width) + childLayout.width +
-            (i + 1 < _elements.size() ? _separatorWidth : 0)));
+        content.width = fm.coordinate(static_cast<int32_t>(content.width) + childLayout.width +
+            (i + 1 < _elements.size() ? _separatorWidth : 0));
         content.ascent = std::max(content.ascent, childLayout.ascent);
         content.descent = std::max(content.descent, childLayout.descent);
     }
     AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
         content, fm, delimiterVerticalPadPx(content, fm));
     _delimiterWidth = assembledDelimiterWidthPx(geom, fm, leftCp());
-    _innerPad = std::max<int16_t>(1,
-        MathConstantsProvider(fm.emSize).muToPx(1));
-    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        static_cast<int32_t>(content.width) + 2 * _delimiterWidth +
-        2 * _innerPad));
+    _innerPad = fm.coordinate(std::max<int32_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(1)));
+    _layout.width = fm.coordinate(static_cast<int32_t>(content.width) + 2 * _delimiterWidth +
+        2 * _innerPad);
     _layout.ascent = geom.ascent;
     _layout.descent = geom.descent;
 }
@@ -1621,16 +1588,16 @@ void NodeEquation::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
     _lhs->calculateLayout(fm);
     _rhs->calculateLayout(fm);
-    _relationWidth = fm.charWidth;
-    _relationGap = std::max<int16_t>(1,
-        MathConstantsProvider(fm.emSize).muToPx(5));
-    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        static_cast<int32_t>(_lhs->layout().width) + _rhs->layout().width +
-        _relationWidth + 2 * _relationGap));
-    _layout.ascent = std::max({_lhs->layout().ascent,
-                               _rhs->layout().ascent, fm.ascent});
-    _layout.descent = std::max({_lhs->layout().descent,
-                                _rhs->layout().descent, fm.descent});
+    const auto relationInk = fm.textInk("=");
+    _relationWidth = relationInk.width;
+    _relationGap = fm.coordinate(std::max<int32_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(5)));
+    _layout.width = fm.coordinate(static_cast<int32_t>(_lhs->layout().width) + _rhs->layout().width +
+        _relationWidth + 2 * _relationGap);
+    _layout.ascent = fm.coordinate(std::max({_lhs->layout().ascent,
+                               _rhs->layout().ascent, fm.ascent, relationInk.ascent}));
+    _layout.descent = fm.coordinate(std::max({_lhs->layout().descent,
+                                _rhs->layout().descent, fm.descent, relationInk.descent}));
 }
 
 NodeMatrix::NodeMatrix(uint8_t rows, uint8_t columns)
@@ -1672,8 +1639,8 @@ void NodeMatrix::calculateLayout(const FontMetrics& fm) {
     _rowAscents.fill(0);
     _rowDescents.fill(0);
     const auto mc = MathConstantsProvider(fm.emSize);
-    _horizontalPad = std::max<int16_t>(1, mc.muToPx(2));
-    _verticalPad = std::max<int16_t>(1, mc.muToPx(2));
+    _horizontalPad = fm.coordinate(std::max<int32_t>(1, mc.muToPx(2)));
+    _verticalPad = fm.coordinate(std::max<int32_t>(1, mc.muToPx(2)));
     for (uint8_t row = 0; row < _rows; ++row) {
         for (uint8_t column = 0; column < _columns; ++column) {
             MathNode* value = cell(row, column);
@@ -1694,24 +1661,22 @@ void NodeMatrix::calculateLayout(const FontMetrics& fm) {
     for (uint8_t row = 0; row < _rows; ++row)
         contentHeight += _rowAscents[row] + _rowDescents[row] +
             (row + 1 < _rows ? _verticalPad : 0);
-    contentHeight = std::min<int32_t>(kResultHeightOverflowSentinel, contentHeight);
+    contentHeight = fm.coordinate(contentHeight);
     const int16_t axis = fm.axisHeight();
     LayoutResult content{};
-    content.width = static_cast<int16_t>(std::min<int32_t>(
-        kResultWidthOverflowSentinel, contentWidth));
-    content.ascent = static_cast<int16_t>(axis + (contentHeight + 1) / 2);
-    content.descent = static_cast<int16_t>(contentHeight - (content.ascent - axis));
-    int16_t top = static_cast<int16_t>(-content.ascent);
+    content.width = fm.coordinate(contentWidth);
+    content.ascent = fm.coordinate(axis + (contentHeight + 1) / 2);
+    content.descent = fm.coordinate(std::max<int32_t>(0, contentHeight - content.ascent));
+    int16_t top = fm.coordinate(-content.ascent);
     for (uint8_t row = 0; row < _rows; ++row) {
-        _rowBaselines[row] = static_cast<int16_t>(top + _rowAscents[row]);
-        top = static_cast<int16_t>(top + _rowAscents[row] +
+        _rowBaselines[row] = fm.coordinate(top + _rowAscents[row]);
+        top = fm.coordinate(top + _rowAscents[row] +
             _rowDescents[row] + (row + 1 < _rows ? _verticalPad : 0));
     }
     AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
         content, fm, delimiterVerticalPadPx(content, fm));
     _delimiterWidth = assembledDelimiterWidthPx(geom, fm, 0x005B);
-    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        contentWidth + 2 * _delimiterWidth));
+    _layout.width = fm.coordinate(contentWidth + 2 * _delimiterWidth);
     _layout.ascent = geom.ascent;
     _layout.descent = geom.descent;
 }
@@ -1736,23 +1701,31 @@ void NodeInterval::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
     _lower->calculateLayout(fm);
     _upper->calculateLayout(fm);
-    _separatorWidth = static_cast<int16_t>(fm.charWidth +
+    _separatorWidth = fm.coordinate(fm.textAdvance(",") +
         MathConstantsProvider(fm.emSize).muToPx(3));
-    _innerPad = std::max<int16_t>(1,
-        MathConstantsProvider(fm.emSize).muToPx(1));
+    _innerPad = fm.coordinate(std::max<int32_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(1)));
     LayoutResult content{};
-    content.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        static_cast<int32_t>(_lower->layout().width) + _upper->layout().width +
-        _separatorWidth));
+    content.width = fm.coordinate(static_cast<int32_t>(_lower->layout().width) + _upper->layout().width +
+        _separatorWidth);
     content.ascent = std::max(_lower->layout().ascent, _upper->layout().ascent);
     content.descent = std::max(_lower->layout().descent, _upper->layout().descent);
     AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
         content, fm, delimiterVerticalPadPx(content, fm));
-    _delimiterWidth = assembledDelimiterWidthPx(geom, fm, leftCp());
-    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        static_cast<int32_t>(content.width) + 2 * _delimiterWidth + 2 * _innerPad));
-    _layout.ascent = geom.ascent;
-    _layout.descent = geom.descent;
+    auto leftGeometry = geom;
+    auto rightGeometry = geom;
+    // WHY: both sides can have different native bitmap heights and widths.
+    // Select against the same request and union, without repeated enlargement.
+    const int16_t leftWidth = assembledDelimiterWidthPx(leftGeometry, fm, leftCp());
+    const int16_t rightWidth = assembledDelimiterWidthPx(rightGeometry, fm, rightCp());
+    _delimiterWidth = std::max(leftWidth, rightWidth);
+    _leftDelimiterAscent = leftGeometry.ascent;
+    _leftDelimiterDescent = leftGeometry.descent;
+    _rightDelimiterAscent = rightGeometry.ascent;
+    _rightDelimiterDescent = rightGeometry.descent;
+    _layout.width = fm.coordinate(static_cast<int32_t>(content.width) + 2 * _delimiterWidth + 2 * _innerPad);
+    _layout.ascent = std::max(leftGeometry.ascent, rightGeometry.ascent);
+    _layout.descent = std::max(leftGeometry.descent, rightGeometry.descent);
 }
 
 NodePiecewise::NodePiecewise() : MathNode(NodeType::Piecewise) {}
@@ -1786,10 +1759,10 @@ void NodePiecewise::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
     _expressionColumnWidth = 0;
     _conditionColumnWidth = 0;
-    _columnGap = std::max<int16_t>(1,
-        MathConstantsProvider(fm.emSize).muToPx(4));
-    const int16_t rowGap = std::max<int16_t>(1,
-        MathConstantsProvider(fm.emSize).muToPx(2));
+    _columnGap = fm.coordinate(std::max<int32_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(4)));
+    const int16_t rowGap = fm.coordinate(std::max<int32_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(2)));
     std::array<int16_t, kCapacity> rowAscents{};
     std::array<int16_t, kCapacity> rowDescents{};
     int32_t totalHeight = 0;
@@ -1801,11 +1774,14 @@ void NodePiecewise::calculateLayout(const FontMetrics& fm) {
                                           expressionLayout.width);
         rowAscents[i] = expressionLayout.ascent;
         rowDescents[i] = expressionLayout.descent;
+        const auto labelInk = fm.textInk(branch.condition ? "if " : "otherwise");
+        rowAscents[i] = std::max(rowAscents[i], labelInk.ascent);
+        rowDescents[i] = std::max(rowDescents[i], labelInk.descent);
         if (branch.condition) {
             branch.condition->calculateLayout(fm);
             const auto& conditionLayout = branch.condition->layout();
             _conditionColumnWidth = std::max(_conditionColumnWidth,
-                static_cast<int16_t>(conditionLayout.width +
+                fm.coordinate(conditionLayout.width +
                     boundedTextWidth("if ", fm)));
             rowAscents[i] = std::max(rowAscents[i], conditionLayout.ascent);
             rowDescents[i] = std::max(rowDescents[i], conditionLayout.descent);
@@ -1816,27 +1792,25 @@ void NodePiecewise::calculateLayout(const FontMetrics& fm) {
         totalHeight += rowAscents[i] + rowDescents[i] +
             (i + 1 < _branches.size() ? rowGap : 0);
     }
-    totalHeight = std::min<int32_t>(kResultHeightOverflowSentinel, totalHeight);
+    totalHeight = fm.coordinate(totalHeight);
     const int16_t axis = fm.axisHeight();
     LayoutResult content{};
-    content.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        static_cast<int32_t>(_expressionColumnWidth) + _columnGap +
-        _conditionColumnWidth));
-    content.ascent = static_cast<int16_t>(axis + (totalHeight + 1) / 2);
-    content.descent = static_cast<int16_t>(totalHeight - (content.ascent - axis));
-    int16_t top = static_cast<int16_t>(-content.ascent);
+    content.width = fm.coordinate(static_cast<int32_t>(_expressionColumnWidth) + _columnGap +
+        _conditionColumnWidth);
+    content.ascent = fm.coordinate(axis + (totalHeight + 1) / 2);
+    content.descent = fm.coordinate(std::max<int32_t>(0, totalHeight - content.ascent));
+    int16_t top = fm.coordinate(-content.ascent);
     for (size_t i = 0; i < _branches.size(); ++i) {
-        _rowBaselines[i] = static_cast<int16_t>(top + rowAscents[i]);
-        top = static_cast<int16_t>(top + rowAscents[i] + rowDescents[i] +
+        _rowBaselines[i] = fm.coordinate(top + rowAscents[i]);
+        top = fm.coordinate(top + rowAscents[i] + rowDescents[i] +
             (i + 1 < _branches.size() ? rowGap : 0));
     }
     AxisDelimiterGeometry geom = symmetricAxisDelimiterGeometry(
         content, fm, delimiterVerticalPadPx(content, fm));
     _braceWidth = assembledDelimiterWidthPx(geom, fm, 0x007B);
     _bracePad = MathConstantsProvider(fm.emSize).muToPx(2);
-    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        static_cast<int32_t>(content.width) + _braceWidth +
-        _bracePad));
+    _layout.width = fm.coordinate(static_cast<int32_t>(content.width) + _braceWidth +
+        _bracePad);
     _layout.ascent = geom.ascent;
     _layout.descent = geom.descent;
 }
@@ -1858,8 +1832,10 @@ MathNode* NodeCall::child(int index) const {
 
 void NodeCall::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
-    _labelWidth = boundedTextWidth(_name, fm);
-    _separatorWidth = static_cast<int16_t>(fm.charWidth +
+    const auto labelInk = fm.textInk(_name.c_str());
+    _labelWidth = labelInk.width;
+    _textOffset = labelInk.leftPad;
+    _separatorWidth = fm.coordinate(fm.textAdvance(",") +
         MathConstantsProvider(fm.emSize).muToPx(3));
     LayoutResult content{};
     content.ascent = fm.ascent;
@@ -1867,22 +1843,20 @@ void NodeCall::calculateLayout(const FontMetrics& fm) {
     for (size_t i = 0; i < _arguments.size(); ++i) {
         _arguments[i]->calculateLayout(fm);
         const auto& argumentLayout = _arguments[i]->layout();
-        content.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-            static_cast<int32_t>(content.width) + argumentLayout.width +
-            (i + 1 < _arguments.size() ? _separatorWidth : 0)));
+        content.width = fm.coordinate(static_cast<int32_t>(content.width) + argumentLayout.width +
+            (i + 1 < _arguments.size() ? _separatorWidth : 0));
         content.ascent = std::max(content.ascent, argumentLayout.ascent);
         content.descent = std::max(content.descent, argumentLayout.descent);
     }
-    AxisDelimiterGeometry geom = parenthesisGeometry(content);
+    AxisDelimiterGeometry geom = parenthesisGeometry(content, fm);
     _delimiterWidth = assembledDelimiterWidthPx(geom, fm, 0x0028);
-    _innerPad = std::max<int16_t>(1,
-        MathConstantsProvider(fm.emSize).muToPx(1));
+    _innerPad = fm.coordinate(std::max<int32_t>(1,
+        MathConstantsProvider(fm.emSize).muToPx(1)));
     _labelGap = MathConstantsProvider(fm.emSize).muToPx(2);
-    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        static_cast<int32_t>(_labelWidth) + content.width + 2 * _delimiterWidth +
-        2 * _innerPad + _labelGap));
-    _layout.ascent = std::max<int16_t>(geom.ascent, fm.ascent);
-    _layout.descent = std::max<int16_t>(geom.descent, fm.descent);
+    _layout.width = fm.coordinate(static_cast<int32_t>(_labelWidth) + content.width + 2 * _delimiterWidth +
+        2 * _innerPad + _labelGap);
+    _layout.ascent = fm.coordinate(std::max({geom.ascent, fm.ascent, labelInk.ascent}));
+    _layout.descent = fm.coordinate(std::max({geom.descent, fm.descent, labelInk.descent}));
 }
 
 NodeUnevaluated::NodeUnevaluated(NodePtr expression)
@@ -1899,11 +1873,10 @@ void NodeUnevaluated::calculateLayout(const FontMetrics& fm) {
     applyScriptLevel(this, fm);
     _expression->calculateLayout(fm);
     _labelWidth = boundedTextWidth("unevaluated", fm);
-    _gap = std::max<int16_t>(1, MathConstantsProvider(fm.emSize).muToPx(4));
-    _layout.width = static_cast<int16_t>(std::min<int32_t>(kResultWidthOverflowSentinel,
-        static_cast<int32_t>(_labelWidth) + _gap + _expression->layout().width));
-    _layout.ascent = std::max<int16_t>(fm.ascent, _expression->layout().ascent);
-    _layout.descent = std::max<int16_t>(fm.descent, _expression->layout().descent);
+    _gap = fm.coordinate(std::max<int32_t>(1, MathConstantsProvider(fm.emSize).muToPx(4)));
+    _layout.width = fm.coordinate(static_cast<int32_t>(_labelWidth) + _gap + _expression->layout().width);
+    _layout.ascent = fm.coordinate(std::max<int32_t>(fm.ascent, _expression->layout().ascent));
+    _layout.descent = fm.coordinate(std::max<int32_t>(fm.descent, _expression->layout().descent));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2238,6 +2211,10 @@ std::string dumpTree(const MathNode* node, int indent) {
             numos::units::symbol(a,text,sizeof(text));
             out += "Unit["+std::to_string(uint16_t(a.unit))+":"+std::to_string(uint8_t(a.prefix))+"] "+text+metrics()+"\n";break;
         }
+        case NodeType::Measurement: {
+            out += "Measurement["+std::to_string(static_cast<const NodeMeasurement*>(node)->sourceId())+"]"+metrics()+"\n";
+            out += dumpTree(node->child(0),indent+1); out += dumpTree(node->child(1),indent+1); break;
+        }
         case NodeType::QuantityReference: {
             const auto a=static_cast<const NodeQuantityReference*>(node)->atom();
             out += "QuantityReference["+std::to_string(uint16_t(a.reference))+":"+
@@ -2376,10 +2353,15 @@ NodePtr cloneNode(const MathNode* node) {
         }
         case NodeType::Unit:
             return makeUnit(static_cast<const NodeUnit*>(node)->atom());
+        case NodeType::Measurement:
+            return makeMeasurement(cloneNode(node->child(0)),cloneNode(node->child(1)),
+                static_cast<const NodeMeasurement*>(node)->sourceId());
         case NodeType::QuantityReference:
             return makeQuantityReference(static_cast<const NodeQuantityReference*>(node)->atom());
         case NodeType::Symbol:
-            return makeSymbol(static_cast<const NodeSymbol*>(node)->name());
+            // WHY: Tutor's explicit membership REL role survives slicing.
+            return std::make_unique<NodeSymbol>(static_cast<const NodeSymbol*>(node)->name(),
+                static_cast<const NodeSymbol*>(node)->upright(), node->mathClass());
         case NodeType::SpecialValue:
             return makeSpecialValue(
                 static_cast<const NodeSpecialValue*>(node)->specialKind());
@@ -2546,6 +2528,7 @@ CursorTargetRole searchRoleInNode(const MathNode* node,
             return searchRoleInSlot(
                 bo->body(), target, CursorTargetRole::BigOpBody, depth);
         }
+        case NodeType::Measurement:
         case NodeType::DefIntegral:
         case NodeType::Summation: {
             for (int i = 0; i < node->childCount(); ++i) {

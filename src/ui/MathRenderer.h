@@ -27,7 +27,7 @@
  *   · lv_draw_rect()   → placeholders (NodeEmpty), cursor
  *
  * Cursor:
- *   Línea vertical de 2 px que parpadea (lv_anim_t, 500 ms on/off).
+ *   Línea vertical azul de 1 px que parpadea (500 ms on/off).
  *   Su altura se ajusta al ascent+descent del NodeRow donde se encuentra.
  *
  * Integración:
@@ -81,6 +81,7 @@ public:
     void setMathStyle(MathStyle style);
     void setAutoHeightEnabled(bool enabled);
     void setTraceLabel(const char* label);
+    LayoutStatus layoutStatus() const { return _layoutStatus; }
 
     // Only the lone Empty in the canvas root can be hidden. Pending slots in
     // fractions, powers and other templates remain visible in every canvas.
@@ -134,6 +135,7 @@ public:
     // WHY: callers follow the renderer's actual position without duplicating
     // fraction/script/root layout formulas. No rendering behavior changes.
     bool cursorBounds(lv_area_t& bounds) const {
+        if (_layoutStatus != LayoutStatus::Ok) return false;
         if (!_obj || !_cursorEditable || !_cursorCtrl) return false;
         bounds = {_cursorX, _cursorY, _cursorX + CURSOR_WIDTH - 1,
                   _cursorY + _cursorH - 1};
@@ -172,6 +174,7 @@ public:
     static constexpr int16_t  VPAM_VERT_PAD   = 6;    ///< Vertical padding (3px top + 3px bottom) — tight
 
 private:
+    LayoutStatus _layoutStatus = LayoutStatus::Ok;
     // ── Datos internos ───────────────────────────────────────────────────
     lv_obj_t*               _obj;
     NodeRow*                _root;
@@ -255,11 +258,11 @@ private:
     // ── Constantes de estilo ─────────────────────────────────────────────
     static constexpr int16_t PADDING_LEFT   = 8;    ///< Margen izquierdo
     static constexpr int16_t PADDING_RIGHT  = 8;    ///< Margen derecho
-    static constexpr int16_t CURSOR_WIDTH   = 3;    ///< Grosor del cursor (px)
+    static constexpr int16_t CURSOR_WIDTH   = 1;    ///< Grosor del cursor (px)
     static constexpr int16_t CURSOR_PAD     = 1;    ///< Extensión vertical del cursor
     static constexpr uint32_t BLINK_PERIOD  = 500;  ///< Half-period for cursor blink (ms)
     static constexpr uint32_t EMPTY_COLOR   = 0xD1D1D1;  ///< Color del placeholder
-    static constexpr uint32_t CURSOR_COLOR  = 0x000000;  ///< Color del cursor (negro puro, máximo contraste)
+    static constexpr uint32_t CURSOR_COLOR  = 0x1565C0;  ///< Blue caret stays distinct from black mathematical ink
     static constexpr int16_t  EMPTY_SIZE    = 8;    ///< Tamaño del cuadrado placeholder
     // Painting walks parent links and per-node child indices. Its stack is
     // independent of tree depth; accepted nodes need no truncation indicator.
@@ -395,6 +398,11 @@ private:
                            int16_t x, int16_t yBaseline,
                            const FontMetrics& fm, const lv_font_t* font,
                            int depth = 0);
+
+    void drawLargeOperatorBaseline(lv_layer_t* layer, uint32_t codepoint,
+                                   const MathNode* lower, const MathNode* upper,
+                                   const MathNode* body, int16_t x, int16_t baseline,
+                                   const FontMetrics& fm, const lv_font_t* font, int depth);
 
     void drawSymbolBaseline(lv_layer_t* layer, const NodeSymbol* node,
                             int16_t x, int16_t yBaseline);

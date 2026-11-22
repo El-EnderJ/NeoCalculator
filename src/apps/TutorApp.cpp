@@ -464,7 +464,7 @@ void TutorApp::onSolveClicked() {
 
         auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
         srd->canvas.setExpression(row, nullptr);
-        row->calculateLayout(srd->canvas.normalMetrics());
+        vpam::calculateLayoutChecked(*row, srd->canvas.normalMetrics());
 
         int16_t w = static_cast<int16_t>(row->layout().width + 24);
         int16_t h = vpam::mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 8);

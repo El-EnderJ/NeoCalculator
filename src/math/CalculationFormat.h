@@ -12,7 +12,8 @@ namespace numos {
 enum class CalculationFormat : uint8_t {
     Standard, Decimal, Periodic, Extended, Scientific, Engineering,
     MixedFraction, PrimeFactors, Polar, Exponential, Fixed,
-    Radians, Degrees, Gradians, OutputUnit, Count
+    Radians, Degrees, Gradians, OutputUnit, Uncertainty, UncertaintyStandard,
+    UncertaintyRelative, UncertaintyExpanded, UncertaintyParenthetical, Count
 };
 
 inline const char* calculationFormatLabel(CalculationFormat format, bool spanish) {
@@ -26,7 +27,9 @@ inline const char* calculationFormatLabel(CalculationFormat format, bool spanish
         {"Fixed decimals (FIX)", "Decimales fijos (FIX)"},
         {"Radians (RAD)", "Radianes (RAD)"}, {"Degrees (DEG)", "Grados (DEG)"},
         {"Gradians (GRA)", "Centesimales (GRA)"},
-        {"Output unit", "Unidad de salida"}
+        {"Output unit", "Unidad de salida"}, {"Uncertainty", "Incertidumbre"},
+        {"Standard u (k=1)", "Estándar u (k=1)"}, {"Relative u_r", "Relativa u_r"},
+        {"Expanded U (k=2)", "Expandida U (k=2)"}, {"Parenthetic digits", "Notación parentética"}
     };
     const unsigned i = static_cast<unsigned>(format);
     return i < static_cast<unsigned>(CalculationFormat::Count) ? labels[i][spanish ? 1 : 0] : "";

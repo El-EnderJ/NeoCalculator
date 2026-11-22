@@ -2929,5 +2929,27 @@
     "keyboardShortcut": false,
     "previewArgs": "",
     "caseSensitiveAliases": true
+  },
+  {
+    "id": 750,
+    "variant": 0,
+    "category": 22,
+    "recipe": "Measurement",
+    "argument": 0,
+    "capabilities": 1,
+    "en": "Value ± standard uncertainty",
+    "es": "Valor ± incertidumbre estándar",
+    "helpEn": "Standard uncertainty u, k=1; not a guaranteed interval. Separate new measurements are independent. Reuse Ans or memory to keep the same source. Apply a unit to both slots together.",
+    "helpEs": "Incertidumbre estándar u, k=1; no es un intervalo garantizado. Medidas nuevas separadas: independientes. Reutiliza Ans o memoria para conservar la fuente. Aplica una unidad a ambas casillas.",
+    "aliases": "measurement|uncertainty|medida|incertidumbre|±",
+    "options": 0,
+    "keyboardShortcut": false,
+    "caseSensitiveAliases": false,
+    "previewArgs": "vu",
+    "fixture": [
+      "12",
+      "1"
+    ],
+    "expected": "12"
   }
 ]

@@ -2,10 +2,14 @@
 #include "CalculationEngine.h"
 #include "InputRowSyntax.h"
 #include "AngleModeRuntime.h"
+#include "scientific/PhysicalConstants.h"
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
+#include <cmath>
+#include <cerrno>
+#include <limits>
 
 namespace numos::quantity {
 namespace {
@@ -70,7 +74,7 @@ bool imaginaryTree(const EngineResultNode& n) {
     for(const auto& c:n.children)if(imaginaryTree(c))return true;
     return false;
 }
-Error scalar(const std::string& source,StructuredEngineResult& result,bool radians=false) {
+Error scalar(const std::string& source,StructuredEngineResult& result,bool radians=true) {
     if(source.size()>kText)return Error::ExpressionLimit;
     result=GiacEngine::instance().evaluateStructured(source.c_str(),true,
         radians?GiacEngine::EvaluationAngle::Radians:GiacEngine::EvaluationAngle::Current);
@@ -79,6 +83,119 @@ Error scalar(const std::string& source,StructuredEngineResult& result,bool radia
     unsigned budget=400;
     if(!scalarTree(result.tree,budget))return imaginaryTree(result.tree)?Error::ComplexPending:Error::SymbolicPending;
     return Error::None;
+}
+bool directTrig(const std::string& name) {return name=="sin" || name=="cos" || name=="tan";}
+bool inverseTrig(const std::string& name) {return name=="asin" || name=="acos" || name=="atan" || name=="atan2";}
+bool radianFunctions(const EngineResultNode& n) {
+    // Called only after scalarTree has enforced 400 nodes / depth 40.
+    if(n.kind==EngineNodeKind::Function && (directTrig(n.text) || inverseTrig(n.text)))return true;
+    for(const auto& c:n.children)if(radianFunctions(c))return true;
+    return false;
+}
+EngineResultNode literal(const char* digits) {
+    EngineResultNode n;n.kind=EngineNodeKind::Integer;n.text=digits;return n;
+}
+void normalizeDegreeTree(EngineResultNode& n) {
+    // The input is prevalidated by scalarTree; inserted wrappers are validated
+    // again before AST conversion, so transformation never expands unchecked.
+    for(auto& c:n.children)normalizeDegreeTree(c);
+    if(n.kind!=EngineNodeKind::Function)return;
+    const bool direct=directTrig(n.text),inverse=inverseTrig(n.text);
+    if(!direct && !inverse)return;
+    EngineResultNode pi;pi.kind=EngineNodeKind::Pi;
+    EngineResultNode factor;factor.kind=EngineNodeKind::Inv;
+    factor.children.push_back(direct?literal("180"):std::move(pi));
+    EngineResultNode product;product.kind=EngineNodeKind::Mul;
+    if(direct && n.children.size()==1) {
+        product.children.push_back(std::move(n.children[0]));
+        product.children.push_back(std::move(pi));
+        product.children.push_back(std::move(factor));
+        n.children[0]=std::move(product);
+    } else if(inverse) {
+        product.children.push_back(std::move(n));
+        product.children.push_back(literal("180"));
+        product.children.push_back(std::move(factor));n=std::move(product);
+    }
+}
+Error uncertaintyError(scientific::UncertaintyError e) {
+    using U=scientific::UncertaintyError;
+    switch(e) {
+        case U::None:return Error::None;case U::Invalid:return Error::UncertaintyInvalid;
+        case U::Limit:return Error::UncertaintyLimit;case U::Numeric:return Error::UncertaintyNumeric;
+        case U::CorrelationUnavailable:return Error::CorrelationUnavailable;
+        case U::Nonlinear:return Error::UncertaintyNonlinear;case U::SourceExhausted:return Error::SourceExhausted;
+        case U::Allocation:return Error::Allocation;
+    }
+    return Error::UncertaintyInvalid;
+}
+// The existing exact nominal tree remains the mathematical authority. This
+// bounded numeric companion is consumed only by local sensitivities/reporting.
+bool numericTree(const EngineResultNode& n,double& out,unsigned depth=0) {
+    if(depth>40)return false;
+    auto child=[&](unsigned i,double& v){return i<n.children.size() && numericTree(n.children[i],v,depth+1);};
+    double a=0,b=0;
+    switch(n.kind) {
+        case EngineNodeKind::Integer:case EngineNodeKind::Decimal: {
+            if(n.text.empty())return false;
+            char* end=nullptr;errno=0;
+            out=std::strtod(n.text.c_str(),&end);
+            if(errno || end!=n.text.c_str()+n.text.size())return false;
+            break;
+        }
+        case EngineNodeKind::Pi:out=3.141592653589793238462643383279502884;break;
+        case EngineNodeKind::EulerE:out=2.718281828459045235360287471352662498;break;
+        case EngineNodeKind::Rational:
+            if(!child(0,a) || !child(1,b) || b==0)return false;
+            out=a/b;break;
+        case EngineNodeKind::Neg:if(!child(0,a))return false;out=-a;break;
+        case EngineNodeKind::Inv:if(!child(0,a) || a==0)return false;out=1/a;break;
+        case EngineNodeKind::Add:case EngineNodeKind::Mul:
+            out=n.kind==EngineNodeKind::Add?0:1;
+            for(const auto& c:n.children){if(!numericTree(c,a,depth+1))return false;out=n.kind==EngineNodeKind::Add?out+a:out*a;}break;
+        case EngineNodeKind::Pow:
+            if(!child(0,a) || !child(1,b))return false;
+            out=std::pow(a,b);break;
+        case EngineNodeKind::Sqrt:if(!child(0,a))return false;out=std::sqrt(a);break;
+        case EngineNodeKind::Root:
+            if(!child(0,a) || !child(1,b) || b==0)return false;
+            out=a<0 && std::fmod(b,2)==1?-std::pow(-a,1/b):std::pow(a,1/b);break;
+        case EngineNodeKind::Function:
+            // Canonical quantity functions always use radians. Preserve the
+            // binary64 companion precision instead of reading Giac's rounded
+            // (display-oriented) evalf text for local derivatives and u_r.
+            if(n.text=="atan2") {
+                if(n.children.size()!=2 || !child(0,a) || !child(1,b))return false;
+                out=std::atan2(a,b);break;
+            }
+            if(n.children.size()!=1 || !child(0,a))return false;
+            if(n.text=="sin")out=std::sin(a);
+            else if(n.text=="cos")out=std::cos(a);
+            else if(n.text=="tan")out=std::tan(a);
+            else if(n.text=="asin")out=std::asin(a);
+            else if(n.text=="acos")out=std::acos(a);
+            else if(n.text=="atan")out=std::atan(a);
+            else if(n.text=="exp")out=std::exp(a);
+            else if(n.text=="ln" || n.text=="log")out=std::log(a);
+            else if(n.text=="log10")out=std::log10(a);
+            else if(n.text=="abs")out=std::abs(a);
+            else return false;
+            break;
+        default:return false;
+    }
+    return std::isfinite(out) && (out==0 || std::fpclassify(out)!=FP_SUBNORMAL);
+}
+Error numeric(const std::string& source,double& out,bool radians=true) {
+    StructuredEngineResult result;const auto e=scalar(source,result,radians);if(e!=Error::None)return e;
+    // Prefer the exact arithmetic/function tree where supported; evalf is a
+    // fallback only for other closed functions, never nominal comparison.
+    if(!numericTree(result.tree,out) &&
+       (!result.hasApproximateTree || !numericTree(result.approximateTree,out)))return Error::UncertaintyNumeric;
+    if(out==0 && result.base.exactText!="0")return Error::UncertaintyNumeric;
+    return Error::None;
+}
+Value::Provenance derived(const Value& a,const Value& b) {
+    return a.provenance==Value::Provenance::Exact && b.provenance==Value::Provenance::Exact?
+        Value::Provenance::Exact:Value::Provenance::DerivedUncertain;
 }
 UnitId propagated(const Value& a,const Value& b,bool divide) {
     if(b.dimension.scalar())return a.meaning;
@@ -96,18 +213,36 @@ struct Walker {
     const void* owner;Resolve resolve;
     Error error=Error::None;unsigned nodes=0,calls=0;
     bool fail(Error e){if(error==Error::None)error=e;return false;}
-    bool checked(Value& value,bool radians=false) {
+    bool number(const Value& value,double& out,bool radians=true) {
+        if(++calls>kCalls)return fail(Error::ExpressionLimit);
+        const auto e=numeric(value.coefficient,out,radians);return e==Error::None || fail(e);
+    }
+    bool propagate(scientific::UncertaintyError e){return e==scientific::UncertaintyError::None || fail(uncertaintyError(e));}
+    bool unary(Value& value,scientific::Unary function,double argumentScale=1) {
+        if(!value.uncertainty)return true;
+        double x=0;if(!number(value,x))return false;
+        scientific::Owned input,next;
+        if(!propagate(scientific::scale(value.uncertainty,argumentScale,input)) ||
+           !propagate(scientific::unary(input,x*argumentScale,function,next)))return false;
+        value.uncertainty=std::move(next);value.provenance=Value::Provenance::DerivedUncertain;return true;
+    }
+    bool checked(Value& value,bool radians=true) {
         if(++calls>kCalls)return fail(Error::ExpressionLimit);
         StructuredEngineResult r;const auto e=scalar(value.coefficient,r,radians);
         if(e!=Error::None)return fail(e);
+        value.radianFunctions=radianFunctions(r.tree);
         value.coefficient=std::move(r.base.exactText);return true;
     }
     bool apply(Value& a,Value b,OpKind op) {
+        scientific::Owned payload;
+        const auto provenance=derived(a,b);
         if(op==OpKind::Add || op==OpKind::Sub) {
             if(a.dimension!=b.dimension)return fail(Error::DimensionMismatch);
             if(unsigned(a.role)>2 || unsigned(b.role)>2)return fail(Error::InvalidIdentity);
             const auto role=(op==OpKind::Add?kAddRole:kSubtractRole)[unsigned(a.role)][unsigned(b.role)];
             if(role==3)return fail(Error::AffineOperation);
+            if((a.uncertainty || b.uncertainty) && !propagate(scientific::combine(a.uncertainty,1,b.uncertainty,
+                op==OpKind::Add?1:-1,payload)))return false;
             a.role=Role(role);
             if(!same(meaning(a.meaning),meaning(b.meaning)))a.meaning=UnitId{};
         } else {
@@ -116,17 +251,23 @@ struct Walker {
                 if(!checked(b))return false;
                 if(b.coefficient=="0")return fail(Error::DivisionByZero);
             }
+            if(a.uncertainty || b.uncertainty) {
+                double x=0,y=0;if(!number(a,x) || !number(b,y))return false;
+                if(!propagate(scientific::product(a.uncertainty,x,b.uncertainty,y,op==OpKind::Div,payload)))return false;
+            }
             a.meaning=propagated(a,b,op==OpKind::Div);
             if(!combine(a.dimension,b.dimension,op==OpKind::Div?-1:1))return fail(Error::ExponentLimit);
             a.role=linearRole(a.dimension);
         }
         const char symbol=op==OpKind::Add?'+':op==OpKind::Sub?'-':op==OpKind::Mul?'*':'/';
         a.coefficient=group(a.coefficient)+symbol+group(b.coefficient);
+        a.uncertainty=std::move(payload);a.provenance=provenance;
         return a.coefficient.size()<=kText || fail(Error::ExpressionLimit);
     }
     bool exponent(Value& a,Value b,bool root=false) {
         if(a.role==Role::TemperaturePoint || b.role==Role::TemperaturePoint)return fail(Error::AffineOperation);
         if(!b.dimension.scalar())return fail(Error::DimensionMismatch);
+        if(b.uncertainty)return fail(Error::FunctionUnsupported);
         if(!checked(b))return false;
         // The closed scalar was evaluated by Giac. Read its typed rational;
         // never approximate an exponent or parse a user's formula as text.
@@ -138,6 +279,11 @@ struct Walker {
            rational.num < -64 || rational.num>64 || rational.den>16 || rational.den<=0)return fail(Error::ExponentLimit);
         int p=int(rational.num),q=int(rational.den);
         if(root){if(p<=0 || q!=1 || p>16)return fail(Error::ExponentLimit);q=p;p=1;}
+        if(a.uncertainty) {
+            double x=0;if(!number(a,x))return false;scientific::Owned next;
+            if(!propagate(scientific::power(a.uncertainty,x,p,q,next)))return false;
+            a.uncertainty=std::move(next);a.provenance=Value::Provenance::DerivedUncertain;
+        }
         if(!power(a.dimension,p,q))return fail(Error::ExponentLimit);
         a.role=linearRole(a.dimension);
         if(!(p==1 && q==1))a.meaning=UnitId{};
@@ -176,7 +322,9 @@ struct Walker {
                             return w.attach(static_cast<const NodeUnit*>(n)->atom(),term);
                         }
                         Value v;if(!w.node(n,v,depth+1))return false;
-                        if(negative){if(v.role==Role::TemperaturePoint)return w.fail(Error::AffineOperation);v.coefficient="-("+v.coefficient+")";}
+                        if(negative){if(v.role==Role::TemperaturePoint)return w.fail(Error::AffineOperation);
+                            if(v.uncertainty && !w.propagate(scientific::scale(v.uncertainty,-1,v.uncertainty)))return false;
+                            v.coefficient="-("+v.coefficient+")";}
                         negative=false;
                         if(!hasTerm){term=std::move(v);hasTerm=true;}else if(!w.apply(term,std::move(v),pending))return false;return true;
                     }
@@ -190,8 +338,44 @@ struct Walker {
             case NodeType::QuantityReference: {
                 const auto a=static_cast<const NodeQuantityReference*>(n)->atom();const auto* r=units::reference(a.reference);
                 if(!units::valid(a))return fail(Error::InvalidIdentity);
+                if(r->kind==units::ReferenceKind::PhysicalConstant) {
+                    const auto* constant=scientific::byReference(uint16_t(a.reference));
+                    if(!constant)return fail(Error::ReferencePending);
+                    out.coefficient=constant->nominal;
+                    std::copy(std::begin(constant->dimension),std::end(constant->dimension),out.dimension.powers.begin());
+                    out.role=constant->id==scientific::ConstantId::PlanckTemperature?Role::TemperaturePoint:linearRole(out.dimension);
+                    if(!constant->exact) {
+                        out.provenance=constant->id==scientific::ConstantId::PlanckForce || constant->id==scientific::ConstantId::PlanckEnergy?
+                            Value::Provenance::DerivedUncertain:Value::Provenance::Measured;
+                        if(!propagate(scientific::makeSource(scientific::datasetSource(constant->id),constant->standardUncertainty,out.uncertainty)))return false;
+                    }
+                    if(uint8_t(a.prefix)) {
+                        // Reference prefixes were already an AST contract in the
+                        // registry (e.g. milli-g). Preserve the same source while
+                        // scaling nominal exactly and sensitivities linearly.
+                        const auto factor=exact(units::Exact{1,1,units::prefix(a.prefix)->exponent,0});
+                        out.coefficient=group(out.coefficient)+"*"+factor;
+                        if(out.uncertainty) {
+                            if(++calls>kCalls)return fail(Error::ExpressionLimit);
+                            double slope=0;const auto e=numeric(factor,slope);if(e!=Error::None)return fail(e);
+                            if(!propagate(scientific::scale(out.uncertainty,slope,out.uncertainty)))return false;
+                        }
+                    }
+                    return true;
+                }
                 return fail(r->exactness==units::Exactness::Measured?Error::UncertaintyPending:
                     r->kind==units::ReferenceKind::PhysicalConstant?Error::ReferencePending:Error::ContextPending);
+            }
+            case NodeType::Measurement: {
+                const auto* m=static_cast<const NodeMeasurement*>(n);Value u;
+                if(!child(m->nominal(),out) || !child(m->uncertainty(),u))return false;
+                // measurement() validates both closed exact nominal trees while
+                // obtaining their numeric companions. Do not evaluate twice:
+                // sixteen simple sources must fit the existing CAS call cap.
+                if((calls+=2)>kCalls)return fail(Error::ExpressionLimit);
+                Value candidate;const auto e=measurement(std::move(out),u,m->sourceId(),candidate);
+                if(e!=Error::None)return fail(e);
+                out=std::move(candidate);return true;
             }
             case NodeType::Fraction: {
                 const auto* f=static_cast<const NodeFraction*>(n);Value b;
@@ -207,12 +391,34 @@ struct Walker {
             }
             case NodeType::Paren: {
                 const auto* p=static_cast<const NodeParen*>(n);if(!child(p->content(),out))return false;
-                if(p->delimKind()==DelimKind::Bar){if(out.role==Role::TemperaturePoint)return fail(Error::AffineOperation);out.coefficient="abs("+out.coefficient+")";return checked(out);}return true;
+                if(p->delimKind()==DelimKind::Bar){if(out.role==Role::TemperaturePoint)return fail(Error::AffineOperation);
+                    if(!unary(out,scientific::Unary::Abs))return false;
+                    out.coefficient="abs("+out.coefficient+")";return checked(out);}return true;
             }
             case NodeType::Variable: {
                 if(resolve && resolve(owner,static_cast<const NodeVariable*>(n)->name(),out))return true;
                 std::string error;
                 if(!CalculationEngine::serializeForGiac(n,out.coefficient,error,true))return fail(Error::SymbolicPending);
+                if(angleModeIsDeg()) {
+                    // Legacy scalar memories belong to the normal input-mode
+                    // evaluator. Import their exact typed result once, and
+                    // normalize forward/inverse trig structurally. Canonical
+                    // Quantity values never depend on a future DEG/RAD change.
+                    if(++calls>kCalls)return fail(Error::ExpressionLimit);
+                    StructuredEngineResult imported;
+                    const auto e=scalar(out.coefficient,imported,false);if(e!=Error::None)return fail(e);
+                    if(radianFunctions(imported.tree)) {
+                        normalizeDegreeTree(imported.tree);
+                        unsigned budget=400;
+                        if(!scalarTree(imported.tree,budget))return fail(Error::ExpressionLimit);
+                        auto ast=CalculationEngine::resultTreeToAST(imported.tree);
+                        if(!ast)return fail(Error::Allocation);
+                        if(!CalculationEngine::serializeForGiac(ast.get(),out.coefficient,error,true))return fail(Error::FunctionUnsupported);
+                    } else {
+                        out.coefficient=std::move(imported.base.exactText);
+                        out.radianFunctions=false;return true;
+                    }
+                }
                 return checked(out);
             }
             case NodeType::Number:case NodeType::Constant: {
@@ -235,6 +441,7 @@ struct Walker {
                 } else {const auto* l=static_cast<const NodeLogBase*>(n);Value base;
                     if(!child(l->argument(),out) || !child(l->base(),base))return false;
                     if(!out.dimension.scalar() || !base.dimension.scalar())return fail(Error::DimensionMismatch);
+                    if(out.uncertainty || base.uncertainty)return fail(Error::FunctionUnsupported);
                     if(!checked(base))return false;if(base.coefficient=="0" || base.coefficient=="1")return fail(Error::ScalarDomain);
                     out.coefficient="logb("+out.coefficient+","+base.coefficient+")";return checked(out);
                 }
@@ -245,7 +452,7 @@ struct Walker {
                 if(out.role==Role::TemperaturePoint)return fail(Error::AffineOperation);
                 const bool trig=same(function,"sin") || same(function,"cos") || same(function,"tan");
                 bool radians=false;
-                if(same(function,"abs")){out.coefficient="abs("+out.coefficient+")";return checked(out);}
+                if(same(function,"abs")){if(!unary(out,scientific::Unary::Abs))return false;out.coefficient="abs("+out.coefficient+")";return checked(out);}
                 if(same(function,"sqrt")){Value degree;degree.coefficient="2";return exponent(out,std::move(degree),true);}
                 if(trig) {
                     Dimension angle;angle.powers[7]=1;
@@ -254,8 +461,20 @@ struct Walker {
                 } else if(same(function,"ln") || same(function,"exp") || same(function,"log10")) {
                     if(!out.dimension.scalar())return fail(Error::DimensionMismatch);
                 } else return fail(Error::FunctionUnsupported);
+                scientific::Unary kind=scientific::Unary::Exp;
+                if(same(function,"sin"))kind=scientific::Unary::Sin;
+                else if(same(function,"cos"))kind=scientific::Unary::Cos;
+                else if(same(function,"tan"))kind=scientific::Unary::Tan;
+                else if(same(function,"ln"))kind=scientific::Unary::Ln;
+                else if(same(function,"log10"))kind=scientific::Unary::Log10;
+                const double angleScale=trig && !radians && angleModeIsDeg()?3.141592653589793238462643383279502884/180:1;
+                if(!unary(out,kind,angleScale))return false;
+                // WHY: input-mode conversion occurs exactly once at the typed
+                // function boundary. Stored expressions, later arithmetic,
+                // FORMAT, and numeric sensitivity companions are all radians.
+                if(trig && !radians && angleModeIsDeg())out.coefficient=group(out.coefficient)+"*pi/180";
                 out.dimension={};out.meaning=UnitId{};out.coefficient=std::string(function)+"("+out.coefficient+")";
-                return checked(out,radians);
+                return checked(out,true);
             }
             default:return fail(Error::FunctionUnsupported);
         }
@@ -266,6 +485,12 @@ struct Walker {
         out.dimension=dimension(a);out.meaning=a.unit;
         out.role=a.role==TemperatureRole::Absolute?Role::TemperaturePoint:linearRole(out.dimension);
         const auto factor=exact(d->scale,units::prefix(a.prefix)->exponent);
+        if(out.uncertainty) {
+            // An affine offset moves the point only; its uncertainty always
+            // transforms with the exact linear slope (delta temperature).
+            double slope=0;const auto e=numeric(factor,slope);if(e!=Error::None)return fail(e);
+            if(!propagate(scientific::scale(out.uncertainty,slope,out.uncertainty)))return false;
+        }
         out.coefficient=out.coefficient=="1"?factor:group(out.coefficient)+"*"+factor;
         if(out.role==Role::TemperaturePoint && d->offset.numerator)out.coefficient+="+"+exact(d->offset);
         return true;
@@ -327,7 +552,7 @@ bool contains(const MathNode* root,const void* owner,Resolve resolve) {
     const MathNode* pending[400]{};unsigned size=0,visited=0;if(root)pending[size++]=root;
     while(size && visited++<400) {
         const auto* n=pending[--size];if(!n)continue;
-        if(n->type()==NodeType::Unit || n->type()==NodeType::QuantityReference)return true;
+        if(n->type()==NodeType::Unit || n->type()==NodeType::QuantityReference || n->type()==NodeType::Measurement)return true;
         if(n->type()==NodeType::Variable && resolve){Value v;if(resolve(owner,static_cast<const NodeVariable*>(n)->name(),v))return true;}
         for(int i=0;i<n->childCount();++i){if(size>=400)return true;pending[size++]=n->child(i);}
     }
@@ -389,6 +614,25 @@ Error convert(const Value& value,const Descriptor& descriptor,Display& destinati
     StructuredEngineResult result;const auto e=scalar(group(canonical)+"/"+group(scale(descriptor)),result);
     if(e!=Error::None)return e;
     Display next;next.exact=result.base.exactText;next.approximate=result.base.approximateText;
+    next.hasUncertainty=value.provenance!=Value::Provenance::Exact;
+    if(next.hasUncertainty) {
+        double coherentU=0,slope=0,coherentNominal=0;
+        auto uncertainty=standardUncertainty(value,coherentU);if(uncertainty!=Error::None)return uncertainty;
+        uncertainty=numeric(scale(descriptor),slope);if(uncertainty!=Error::None)return uncertainty;
+        if(slope<=0)return Error::UncertaintyNumeric;
+        next.standardUncertainty=coherentU/slope;
+        if(!std::isfinite(next.standardUncertainty) || (coherentU>0 &&
+            (next.standardUncertainty==0 || std::fpclassify(next.standardUncertainty)==FP_SUBNORMAL)))return Error::UncertaintyNumeric;
+        uncertainty=numeric(group(canonical)+"/"+group(scale(descriptor)),next.nominal);if(uncertainty!=Error::None)return uncertainty;
+        uncertainty=numeric(value.coefficient,coherentNominal);if(uncertainty!=Error::None)return uncertainty;
+        // Point-relative reporting uses the coherent thermodynamic origin;
+        // changing Celsius/Fahrenheit cannot change relative uncertainty.
+        next.relativeDefined=value.coefficient!="0" && coherentNominal!=0;
+        if(next.relativeDefined) {
+            next.relativeUncertainty=coherentU/std::abs(coherentNominal);
+            if(!std::isfinite(next.relativeUncertainty) || (coherentU>0 && next.relativeUncertainty==0))return Error::UncertaintyNumeric;
+        }
+    }
     next.exactCoefficient=CalculationEngine::resultTreeToAST(result.tree,ProductNotation::ScalarNatural);
     if(!next.exactCoefficient)return Error::Allocation;
     if(result.hasApproximateTree) {
@@ -399,6 +643,28 @@ Error convert(const Value& value,const Descriptor& descriptor,Display& destinati
     }
     if(!next.approximateCoefficient)next.approximate.clear();
     destination=std::move(next);return Error::None;
+}
+Error standardUncertainty(const Value& value,double& out) {
+    return uncertaintyError(scientific::standardDeviation(value.uncertainty,out));
+}
+Error measurement(Value nominal,const Value& u,uint32_t sourceId,Value& destination) {
+    if(!sourceId)return Error::SourceExhausted;
+    if(!scientific::isUserSource(sourceId))return Error::UncertaintyInvalid;
+    // An uncertainty magnitude cannot itself be another measurement. Explicit
+    // new entries create new independent sources; nested uncertain input is not
+    // silently collapsed to its nominal or combined standard uncertainty.
+    if(nominal.provenance!=Value::Provenance::Exact || u.provenance!=Value::Provenance::Exact ||
+       nominal.uncertainty || u.uncertainty)return Error::UncertaintyInvalid;
+    if(nominal.dimension!=u.dimension)return Error::DimensionMismatch;
+    if(u.role==Role::TemperaturePoint || (nominal.role==Role::TemperaturePoint && u.role!=Role::TemperatureDifference))
+        return Error::UncertaintyInvalid;
+    double standard=0,center=0;
+    auto e=numeric(u.coefficient,standard);if(e!=Error::None)return e==Error::ComplexPending || e==Error::SymbolicPending?Error::UncertaintyInvalid:e;
+    if(standard<0)return Error::UncertaintyInvalid;
+    e=numeric(nominal.coefficient,center);if(e!=Error::None)return e;
+    scientific::Owned next;e=uncertaintyError(scientific::makeSource(sourceId,standard,next));if(e!=Error::None)return e;
+    nominal.uncertainty=std::move(next);nominal.provenance=Value::Provenance::Measured;
+    destination=std::move(nominal);return Error::None;
 }
 NodePtr compose(NodePtr coefficient,const Descriptor& descriptor) {
     if(!coefficient)return {};
@@ -434,7 +700,7 @@ bool symbol(const Descriptor& d,char* out,size_t capacity) {
     return true;
 }
 const char* errorName(Error e) {
-    static constexpr const char* names[]={"none","incomplete","dimension_mismatch","division_by_zero","affine_pending","context_pending","uncertainty_pending","approximate_pending","symbolic_pending","complex_pending","function_unsupported","exponent_limit","expression_limit","invalid_identity","allocation","scalar_domain","reference_pending","affine_operation"};
+    static constexpr const char* names[]={"none","incomplete","dimension_mismatch","division_by_zero","affine_pending","context_pending","uncertainty_pending","approximate_pending","symbolic_pending","complex_pending","function_unsupported","exponent_limit","expression_limit","invalid_identity","allocation","scalar_domain","reference_pending","affine_operation","uncertainty_invalid","uncertainty_limit","uncertainty_numeric","correlation_unavailable","uncertainty_nonlinear","source_exhausted"};
     return unsigned(e)<std::size(names)?names[unsigned(e)]:"invalid_identity";
 }
 const char* errorMessage(Error e,bool spanish) {
@@ -453,7 +719,13 @@ const char* errorMessage(Error e,bool spanish) {
         {"Invalid unit identity","Identidad de unidad inválida"},
         {"Not enough memory","Memoria insuficiente"},{"Quantity outside function domain","Cantidad fuera del dominio"},
         {"Physical references not supported yet","Referencias físicas aún no disponibles"},
-        {"Operation undefined for temperature points","Operación no definida para puntos de temperatura"}};
+        {"Operation undefined for temperature points","Operación no definida para puntos de temperatura"},
+        {"Invalid standard uncertainty","Incertidumbre estándar no válida"},
+        {"Uncertainty source limit (16)","Límite de fuentes de incertidumbre (16)"},
+        {"Uncertainty outside numeric range","Incertidumbre fuera del rango numérico"},
+        {"Correlation data unavailable","Datos de correlación no disponibles"},
+        {"Linear propagation is unreliable","Propagación lineal no fiable"},
+        {"Measurement source IDs exhausted","Identidades de medida agotadas"}};
     return messages[unsigned(e)<std::size(messages)?unsigned(e):unsigned(Error::InvalidIdentity)][spanish?1:0];
 }
 }

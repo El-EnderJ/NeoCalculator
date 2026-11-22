@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "consulted": "2026-10-07",
+  "implemented_scope": "Bounded local first-order sensitivity and covariance; known source identities; explicit rejection of unsupported nonlinear propagation. No claim of complete GUM conformity.",
+  "sources": [
+    {
+      "id": "jcgm100_2008",
+      "title": "JCGM 100:2008 — Guide to the expression of uncertainty in measurement",
+      "url": "https://www.bipm.org/documents/20126/2071204/JCGM_100_2008_E.pdf/cb0ef43f-baa5-11cf-3f85-4dcd86f77bd6",
+      "doi": "10.59161/JCGM100-2008E",
+      "sections": [
+        "5.1",
+        "5.2",
+        "7.2.6"
+      ],
+      "short_excerpt": "should not be given with an excessive number of digits",
+      "implementation_note": "Covariance with signed local sensitivities; reporting generally at most two significant uncertainty digits, nominal at matching place, unrounded internal values retained. Two digits are the chosen display default, not a universal laboratory requirement.",
+      "response_sha256": "41bbf068fbc0d7986c98691b2d1af6680cb3044f6a1a89b3560933ed9ef9626c",
+      "response_bytes": 1888806
+    },
+    {
+      "id": "jcgm100_amd1_2026",
+      "title": "JCGM 100:2008/Amd.1:2026 — Nonlinearity in measurement models",
+      "url": "https://www.bipm.org/documents/20126/2071204/JCGM_100_Amd1_2026.pdf/18b8a72a-6caf-69e8-8bbd-dd13056a4a84",
+      "doi": "10.59161/PPDI3267",
+      "sections": [
+        "Amended 4.1.4",
+        "Amended H.1.7"
+      ],
+      "short_excerpt": "When the nonlinearity of f is significant",
+      "implementation_note": "Significant nonlinear terms can affect both central estimate and uncertainty. Higher-order propagation or Monte Carlo is outside NumOS production scope; unreliable first-order cases return an explicit status. The original mathematical nominal is not asserted to be the corrected output expectation.",
+      "response_sha256": "ce50a6ba8b5a338d81082494e81988f137c89d951c8dcb647a1fc856b7b5f809",
+      "response_bytes": 620150
+    },
+    {
+      "id": "jcgm_gum6_2020",
+      "title": "JCGM GUM-6:2020 — Developing and using measurement models",
+      "url": "https://www.bipm.org/documents/20126/2071204/JCGM_GUM_6_2020.pdf/d4e77d99-3870-0908-ff37-c1b6a230a337",
+      "doi": "10.59161/JCGMGUM-6-2020",
+      "sections": [
+        "12",
+        "13.1.4",
+        "Annex F.2"
+      ],
+      "short_excerpt": "A simpler but less rigorous way",
+      "implementation_note": "Annex F compares local model and linearization at each input plus/minus its standard uncertainty. This is not a proof for arbitrary functions. NumOS curvature thresholds and a three-u domain neighbourhood are conservative product choices, not JCGM numerical mandates.",
+      "response_sha256": "5abfd9c6791c41857c46d84807ec51b189e4b4068f4688936cd6f495c27f8e93",
+      "response_bytes": 2302463
+    },
+    {
+      "id": "jcgm101_2008",
+      "title": "JCGM 101:2008 — Propagation of distributions using a Monte Carlo method",
+      "url": "https://www.bipm.org/documents/20126/2071204/JCGM_101_2008_E.pdf/325dcaad-c15a-407c-1105-8b7f322d651c",
+      "doi": "10.59161/JCGM101-2008",
+      "sections": [
+        "Introduction",
+        "7"
+      ],
+      "short_excerpt": "linearization of the model provides an inadequate representation",
+      "implementation_note": "Monte Carlo is a consulted alternative for nonlinear distribution propagation, not implemented in production. NumOS user measurement input does not assign a distribution.",
+      "response_sha256": "6d8548af875df112dfc5cf14eb974f5544341f4a31cbbdfc19fc5ed155d8fa20",
+      "response_bytes": 1489478
+    },
+    {
+      "id": "nist_tn1297",
+      "title": "NIST Technical Note 1297 — Reporting uncertainty",
+      "url": "https://www.nist.gov/pml/nist-technical-note-1297/nist-tn-1297-7-reporting-uncertainty",
+      "version": "1994 edition; web page last updated 2026-06-03",
+      "sections": [
+        "7.1",
+        "7.3",
+        "7.4"
+      ],
+      "short_excerpt": "Report U together with the coverage factor k used to obtain it",
+      "implementation_note": "Report standard u or expanded U with k. NumOS chooses k=2 for the expanded display; no automatic 95 percent confidence statement is justified without distribution and degrees-of-freedom information.",
+      "response_sha256": "ce11cd584b3d681bf293de7d8223a8f12fedd9d44b1c57292a3953bd7c658efd",
+      "response_bytes": 94503
+    }
+  ],
+  "distribution_notice": "Only selected short excerpts, factual bibliographic metadata and original implementation notes are vendored. Full publications, their layout and logos are not redistributed. Runtime does not load web pages."
+}

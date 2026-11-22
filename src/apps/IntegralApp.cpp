@@ -563,7 +563,7 @@ void IntegralApp::refreshInput() {
 void IntegralApp::adjustInputHeight() {
     if (!_inputRow) return;
 
-    _inputRow->calculateLayout(_inputCanvas.normalMetrics());
+    vpam::calculateLayoutChecked(*_inputRow, _inputCanvas.normalMetrics());
     int contentH = mathObjectHeightPx(_inputRow->layout(), _inputCanvas.normalMetrics(), 0);
 
     int newH = contentH + 16;
@@ -734,7 +734,7 @@ void IntegralApp::buildResultDisplay() {
 
         lv_obj_remove_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
         _originalCanvas.setExpression(_originalRow, nullptr);
-        _originalRow->calculateLayout(_originalCanvas.normalMetrics());
+        vpam::calculateLayoutChecked(*_originalRow, _originalCanvas.normalMetrics());
         _originalCanvas.invalidate();
     }
 
@@ -761,7 +761,7 @@ void IntegralApp::buildResultDisplay() {
 
             lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
             _resultCanvas.setExpression(_resultRow, nullptr);
-            _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+            vpam::calculateLayoutChecked(*_resultRow, _resultCanvas.normalMetrics());
             _resultCanvas.invalidate();
         }
     } else {
@@ -787,7 +787,7 @@ void IntegralApp::buildResultDisplay() {
 
             lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
             _resultCanvas.setExpression(_resultRow, nullptr);
-            _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+            vpam::calculateLayoutChecked(*_resultRow, _resultCanvas.normalMetrics());
             _resultCanvas.invalidate();
         }
     }
@@ -840,7 +840,7 @@ void IntegralApp::buildStepsDisplay() {
 
                 auto* row = static_cast<vpam::NodeRow*>(srd->nodeData.get());
                 srd->canvas.setExpression(row, nullptr);
-                row->calculateLayout(srd->canvas.normalMetrics());
+                vpam::calculateLayoutChecked(*row, srd->canvas.normalMetrics());
 
                 int contentH = mathObjectHeightPx(row->layout(), srd->canvas.normalMetrics(), 0);
                 int canvasH = contentH + 8;

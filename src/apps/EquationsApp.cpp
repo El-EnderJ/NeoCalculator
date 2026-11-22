@@ -194,7 +194,7 @@ int EquationsApp::formula(int slot, NodeRow* row, int y, const char* label) {
     const int top=label?22:4;
     if (label) text(surface,label,8,4,284);
     canvas.create(surface); canvas.setAutoHeightEnabled(false); canvas.setExpression(row,nullptr);
-    row->calculateLayout(canvas.normalMetrics());
+    vpam::calculateLayoutChecked(*row, canvas.normalMetrics());
     const int height=std::max(30,int(mathObjectHeightPx(row->layout(),canvas.normalMetrics(),8)));
     lv_obj_set_size(surface,300,height+top+4);
     lv_obj_set_pos(canvas.obj(),4,top); lv_obj_set_size(canvas.obj(),292,height);
@@ -267,7 +267,7 @@ void EquationsApp::showEditing(int index, int templateIndex) {
 }
 void EquationsApp::refreshEditor() {
     _canvas[0].setExpression(_editRow,&_editCursor);
-    _editRow->calculateLayout(_canvas[0].normalMetrics());
+    vpam::calculateLayoutChecked(*_editRow, _canvas[0].normalMetrics());
     int h=std::max(CONTENT_H-4,int(mathObjectHeightPx(_editRow->layout(),_canvas[0].normalMetrics(),16)));
     lv_obj_set_pos(_canvas[0].obj(),2,0); lv_obj_set_size(_canvas[0].obj(),300,h);
     // LVGL may draw after this tick. Four bounded checks allow the cached

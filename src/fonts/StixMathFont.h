@@ -32,6 +32,11 @@ LV_FONT_DECLARE(stix_parens_18);
 LV_FONT_DECLARE(stix_parens_12);
 LV_FONT_DECLARE(stix_parens_8);
 
+// Authentic base/display n-ary operator glyphs at each physical math size.
+LV_FONT_DECLARE(stix_operators_18);
+LV_FONT_DECLARE(stix_operators_12);
+LV_FONT_DECLARE(stix_operators_8);
+
 #ifdef __cplusplus
 }
 #endif

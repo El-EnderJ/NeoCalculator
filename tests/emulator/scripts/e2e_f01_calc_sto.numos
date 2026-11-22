@@ -1,0 +1,21 @@
+# CORRECTNESS-E2E-01 F01: 3 LEFT 5 shows 53; STO x must store 53
+# Two adjacent number nodes render as one numeral; the value computed must be
+# the value displayed. Assert-only (no screenshot, no golden, no CI wiring).
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key 3
+key left
+key 5
+wait 3
+key enter
+wait 120
+key sto
+key x
+wait 30
+assert_app Calculation
+assert_no_error
+assert_variable x 53

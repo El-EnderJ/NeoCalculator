@@ -1,0 +1,25 @@
+{
+  "dataset": "CODATA 2022",
+  "consulted": "2026-10-07",
+  "independently_queried_reversed_pair": {
+    "a": "electron_mass",
+    "b": "bohr_radius",
+    "rho": "-0.99999",
+    "url": "https://physics.nist.gov/cgi-bin/cuu/CCValue?bohrrada0|ShowSecond=Browse&First=me",
+    "response_sha256": "845b228e2561e8876d6494a268c7b258338bb83ec598049cca5c66a85dd344fc"
+  },
+  "G": {
+    "nominal": "6.67430e-11",
+    "standard_uncertainty": "1.5e-15"
+  },
+  "product_a0_me": {
+    "nominal": "4.8204782634965449593616E-41",
+    "standard_uncertainty": "7.347417886856706300435607832631308024850314842422358156488927901212658E-51",
+    "variance_formula": "(me*u_a0)^2+(a0*u_me)^2+2*(-0.99999)*a0*me*u_a0*u_me",
+    "rho_zero_standard_uncertainty": "1.659333293525579249554926133949775657646755840187505223738920054926023E-50"
+  },
+  "normalized_a0_me_sum_standard_uncertainty": "0.004472135954999579392818347337462552470881236719223051448541794490821042",
+  "planck_length_time_correlation": "1",
+  "planck_length_mass_correlation": "-1",
+  "independent_analytic_reason": "l_P and t_P are proportional sqrt(G); m_P is proportional inverse sqrt(G). All other dependencies h and c are exact."
+}

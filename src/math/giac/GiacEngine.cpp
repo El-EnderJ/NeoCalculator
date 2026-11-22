@@ -23,6 +23,7 @@
 #include <cstring>
 #include <exception>
 #include <new>
+#include <stdexcept>
 #include <sstream>
 #include <iostream>
 #include <chrono>
@@ -804,6 +805,64 @@ static bool symbolicDenominator(const giac::gen& g, giac::context* ctx, int dept
     return false;
 }
 
+struct OptionalSimplifyScan {
+    bool closed;
+    bool containsPi;
+    bool skip;
+};
+
+static OptionalSimplifyScan inspectOptionalSimplify(const giac::gen& g,
+                                                     unsigned& budget,
+                                                     unsigned depth = 0) {
+    // WHY: this Giac snapshot's algebraic-angle simplifier can fail before a
+    // C++ exception is recoverable in WASM. Keep eval's valid exact expression
+    // for closed forward trig containing pi; symbolic identities still use
+    // the existing simplifier. The read-only scan itself never allocates.
+    if (!budget || depth > enginecontract::kMaxTreeDepth)
+        return {false, false, true};
+    --budget;
+    switch (g.type) {
+        case giac::_INT_: case giac::_ZINT: case giac::_DOUBLE_:
+        case giac::_REAL: case giac::_FLOAT_:
+            return {true, false, false};
+        case giac::_IDNT: {
+            const bool pi = g == giac::cst_pi;
+            return {pi, pi, false};
+        }
+        case giac::_SYMB: {
+            auto result = inspectOptionalSimplify(g._SYMBptr->feuille, budget, depth + 1);
+            const auto function = g._SYMBptr->sommet;
+            if (result.closed && result.containsPi &&
+                (function == giac::at_sin || function == giac::at_cos ||
+                 function == giac::at_tan)) result.skip = true;
+            return result;
+        }
+        case giac::_VECT: {
+            OptionalSimplifyScan result{true, false, false};
+            for (const auto& child : *g._VECTptr) {
+                const auto part = inspectOptionalSimplify(child, budget, depth + 1);
+                if (part.skip) return part;
+                result.closed &= part.closed;
+                result.containsPi |= part.containsPi;
+            }
+            return result;
+        }
+        case giac::_FRAC: {
+            const auto numerator = inspectOptionalSimplify(g._FRACptr->num, budget, depth + 1);
+            if (numerator.skip) return numerator;
+            const auto denominator = inspectOptionalSimplify(g._FRACptr->den, budget, depth + 1);
+            return {numerator.closed && denominator.closed,
+                    numerator.containsPi || denominator.containsPi, denominator.skip};
+        }
+        default: return {false, false, false};
+    }
+}
+
+static bool skipOptionalSimplify(const giac::gen& g) {
+    unsigned budget = enginecontract::kMaxTreeNodes;
+    return inspectOptionalSimplify(g, budget).skip;
+}
+
 static MathEngineResult runTextual(giac::context* ctx, const char* expression,
                                    bool simplifyMode,
                                    EngineResultNode* outTree = nullptr,
@@ -839,14 +898,23 @@ static MathEngineResult runTextual(giac::context* ctx, const char* expression,
         if (simplifyMode && !giac::is_undef(out) &&
             // No implicit cancellation of a variable denominator: Calculation
             // has no conditions surface on which to retain the removed hole.
-            (!calculationPolicy || !symbolicDenominator(out, ctx))) {
-            const auto simplified = giac::_simplify(out, ctx);
-            // Calculation's default is a compact exact answer. Do not expand
-            // asin(sin(x)) into a long floor/piecewise identity just to display
-            // it. Explicit Simplify elsewhere keeps its existing policy.
-            if (!calculationPolicy || (!giac::is_undef(simplified) &&
-                simplified.print(ctx).size() <= out.print(ctx).size()))
-                out = simplified;
+            (!calculationPolicy || (!symbolicDenominator(out, ctx) &&
+                                    !skipOptionalSimplify(out)))) {
+            try {
+                const auto simplified = giac::_simplify(out, ctx);
+                // Calculation's default is a compact exact answer. Do not expand
+                // asin(sin(x)) into a long floor/piecewise identity just to display
+                // it. Explicit Simplify elsewhere keeps its existing policy.
+                if (!calculationPolicy || (!giac::is_undef(simplified) &&
+                    simplified.print(ctx).size() <= out.print(ctx).size()))
+                    out = simplified;
+            } catch (const std::length_error&) {
+                // WHY: this Giac snapshot's optional simplifier throws from
+                // vector::reserve for valid sin(pi/180). Keep the exact value
+                // already obtained by eval. Explicit Simplify and bad_alloc
+                // still fail; input/domain policy above is never bypassed.
+                if (!calculationPolicy) throw;
+            }
         }
 
         if (giac::is_undef(out)) {
@@ -1813,19 +1881,28 @@ StructuredSolveResult runStructuredSolve(
                 splitEquality(equationGens.front(),left,right);
                 const giac::gen canonical=giac::symb_equal(left.eval(1,ctx),right.eval(1,ctx));
                 // WHY: pinned ksolve.cc first applies exp2pow(), then overwrites
-                // that result when its input is an equality. For a sqrt node
-                // this loses the normalization and can return [] for sqrt(x)=3.
-                // The public _solve path calls equal2diff BEFORE solve. Match
-                // that path only for radical rows; keep authored equations above
-                // for domain/candidate validation and never use tutor answers here.
-                const giac::gen solveInput=giac::has_op(equationGens.front(),*giac::at_sqrt)
-                    ? giac::equal2diff(canonical) : canonical;
+                // that result when its input is an equality. For radical nodes
+                // (sqrt, surd, x^(1/n)) this loses the normalization and returns
+                // [] (sqrt(x)=3, surd(x,3)=-2). The public _solve path always
+                // calls equal2diff BEFORE solve; match it for every equation.
+                // Keep authored equations above for domain/candidate validation
+                // and never use tutor answers here.
+                const giac::gen solveInput=giac::equal2diff(canonical);
                 raw = giac::solve(solveInput, variables.front(),
                                   policy == SolveDomainPolicy::RealAndComplex ? 1 : 0,
                                   ctx);
             } else {
+                // WHY: the public _solve applies equal2diff to every equation
+                // before gsolve; its linearity test and elimination expect
+                // expressions. Fed raw equalities, nonlinear systems lost roots
+                // (y=x^2,y=3x -> only (0,0)) or produced relations. Authored
+                // equalities in equationGens stay untouched for verification.
+                giac::vecteur differences;
+                differences.reserve(equationGens.size());
+                for (const auto& equation : equationGens)
+                    differences.push_back(giac::equal2diff(equation));
                 raw = giac::gsolve(
-                    equationGens, giac::vecteur(variables.begin(), variables.end()),
+                    differences, giac::vecteur(variables.begin(), variables.end()),
                     policy == SolveDomainPolicy::RealAndComplex,
                     /*evalf_after=*/0, ctx);
             }

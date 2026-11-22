@@ -25,7 +25,7 @@ REPORT = (
     ROOT / "hardware" / "keyboard" / "production-keypad-map.generated.csv"
 )
 EXPECTED_LAYOUT_SHA256 = (
-    "7f6638ae7f830ef0741424d621832756268e5fa41292f2d8f8c363cdbc1a2fc3"
+    "9e4ada3f20fb9acca85d20d8f7815c85a1f8bbc43c9f12f1e849e8de87806533"
 )
 SCHEMATIC_SHA256 = (
     "6a5855fe3a239c35263f5d75fe9082fc44e228484b4a8f11a86a66a987a37007"
@@ -127,6 +127,15 @@ LEGACY_KEYCODES = {
     "ans": "ANS",
     "preans": "PREANS",
     "factorial": "FACT",
+    "log_base": "LOG_BASE",
+}
+
+# Semantics no key produces any more but that app code still names. Keeping
+# them in the enum keeps the firmware building; drop an entry once its last
+# handler is removed.
+RETAINED_SEMANTICS = {
+    "pow10",  # former SHIFT+LOG (10^x), replaced by log_base; handled in
+              # CalculationApp.cpp and EquationsApp.cpp
 }
 
 PLANES = ("primary", "shift", "alpha", "shiftAlpha")
@@ -258,7 +267,7 @@ def load_and_validate() -> tuple[dict, list[dict], list[str]]:
     # WHY: KeyEvent::semanticId is zero for every legacy/CAM/web event. Keep
     # `none` explicitly at zero so adding generated semantics can never change
     # the meaning of a zero-initialized event.
-    return layout, ordered, ["none"] + sorted(semantics - {"none"})
+    return layout, ordered, ["none"] + sorted((semantics | RETAINED_SEMANTICS) - {"none"})
 
 
 def emit() -> tuple[str, str]:

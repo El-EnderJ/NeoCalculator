@@ -55,7 +55,12 @@ typography:
     short: {cap: 2.60, weight: 640, width: 100,  min_width: 75,   uniform: true,  align: cap}   # VAR DEL AC EXE
     word:  {cap: 2.25, weight: 640, width: 87.5, min_width: 62.5, uniform: true,  align: cap}   # SHIFT HOME FORMAT …
     math:  {cap: 3.00, weight: 600, width: 100,  min_width: 87.5, uniform: false, align: ink}   # templates, x,t,θ,n
-  secondary: {cap: 1.24, weight: 620, width: 93.75, min_width: 62.5, gap: 0.55}
+    icon:  {cap: 3.00, weight: 600, width: 100,  min_width: 100,  uniform: false, align: ink}   # icon:… legends
+  secondary: {cap: 1.45, weight: 640, width: 93.75, min_width: 62.5, gap: 0.75, max_drop: 1.1, clearance: 0.6, max_shift: 0.8,  # corner legends
+              on_dark: {scale: 1.6, weight: 800, sans: true}}   # on dark keys (EXE): bigger, heavier, no hairlines
+  # Characters taken from Noto Sans Math exactly as designed, not thickened to the text
+  # weight: thickening closes the gap between the two waves of ≈ when printed small.
+  keep_as_designed: "≈"
   # Single lowercase letters set in italic (math variables). e, i and π stay upright (ISO 80000-2).
   italic_variables: "xytnθ"
   # Typographic (not functional) fix: ASCII hyphen → true minus sign.
@@ -64,8 +69,19 @@ typography:
   role_overrides: {}
 
 # Override any legend by key id (r<row>c<col>). Keys: primary / shift / alpha.
-label_overrides: {}
-print_hidden_legends: false   # true = also print F1–F6 etc. (layout printLegend: false)
+# "icon:<name>" draws a vector icon instead of text: toolbox, space, back, home.
+label_overrides:
+  r1c4: {primary: "icon:toolbox"}   # TOOLS
+  r9c0: {alpha: "icon:space"}       # ALPHA+0 = SPACE
+  r0c4: {primary: "icon:back"}      # BACK: curved return arrow
+  r0c3: {primary: "icon:home"}      # HOME: house (SHIFT legend SETUP stays)
+
+# Line icons: size in cap heights (u) of the legend size; stroke never thinner
+# than min_stroke_mm (prints cleanly at secondary-legend size).
+icons:
+  stroke_u: 0.125
+  min_stroke_mm: 0.17
+  scale: {toolbox: 1.12, home: 1.15, back: 1.22}   # per-icon size factor
 
 # ── Colour ─────────────────────────────────────────────────────────────────
 colors:
@@ -94,11 +110,16 @@ colors:
 page:
   size: [210.0, 297.0]       # A4
   margin: 10.0               # home printers can't print to the edge
-  sets: auto                 # as many full keyboard sets as fit (A4: 4)
-  min_gap: 3.0               # gap between stickers: as large as fits, within these
+  sets: auto                 # as many complete keyboards as fit (A4: 7)
+  # One uniform grid. 2.93 mm is the widest gap that still fits three keyboards
+  # (15 stickers) across inside the 10 mm margins.
+  min_gap: 2.9
   max_gap: 5.0
-  set_gap: 9.0
-  calibration_mm: 50.0       # discreet scale check under the stickers
+  calibration_mm: 50.0       # discreet scale bar under the stickers
+  calibration_reserve: 7.0
+  # Slots left after the complete keyboards are filled with spares: the bottom half
+  # of a keyboard, then whole keyboard rows in this order (0 = top row).
+  spare_rows: [6, 7, 8, 9, 5, 2, 3, 4, 1, 0]
 
 fit_test:
   insets: [0.2, 0.4, 0.6]
@@ -114,14 +135,22 @@ output:
 
 # ── TeX math ───────────────────────────────────────────────────────────────
 # Mathematical legends (variables, sin/cos/log, x², 10ˣ, √, fractions, π, ≤ …)
-# are typeset by matplotlib's mathtext (TeX layout rules) in Computer Modern,
-# the LaTeX fonts: 𝑥 is cmmi10 math italic. Words, digits and arithmetic keys
-# stay in Noto Sans.
+# are typeset by matplotlib's mathtext engine (TeX layout rules).
+#   font: cm         Computer Modern, the LaTeX fonts (default)
+#         stix-bold  STIX bold incl. bold math italic (sturdiest when printed small)
+#         stix       STIX regular
+#         (STIX is the family NumOS uses for math on screen)
+# Words, digits and arithmetic keys stay in Noto Sans.
 tex:
   enabled: true
-  upright_constants: "ei"   # e and i upright (\mathrm); set "" for LaTeX-default italic
-  embolden_em: 0.03         # stroke added to Computer Modern so it holds up at keycap size
-  min_stroke_mm: 0.085      # minimum added stroke (keeps 1.2 mm secondary legends printable)
+  font: cm                  # cm (Computer Modern, the LaTeX fonts) | stix | stix-bold
+  upright_constants: "ei"   # e and i upright (\mathrm); set "" for italic
+  embolden_em: 0.015        # light extra stroke for Computer Modern; more fills the counters
+  min_stroke_mm: 0.035
+  rule_em: 0.06             # fraction bars / radical lines / placeholder boxes
+  min_rule_mm: 0.13         # never thinner than this when printed
+  min_slot_mm: 0.85         # no placeholder box smaller than this
+  min_fraction_slot_mm: 0.95  # fraction boxes (incl. the stacked mixed fraction) at least this
   tight_superscripts: true  # x², x⁻¹ spaced like TeX (mathtext sets them a little loose)
-  rule_em: 0.045            # fraction bars / radical lines / placeholder boxes
   scale: 1.0
+  secondary_scale: 1.0      # corner math legends relative to corner words

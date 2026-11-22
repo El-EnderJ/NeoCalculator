@@ -425,7 +425,7 @@
           "printLegend": false
         },
         "shift": {
-          "label": "MGR",
+          "label": "MANAGER",
           "kind": "command",
           "legendType": "text",
           "consumesModifier": true,
@@ -951,12 +951,12 @@
           "printLegend": false
         },
         "shift": {
-          "label": "10ˣ",
+          "label": "\\log_{\\square}",
           "kind": "insert",
-          "legendType": "text",
+          "legendType": "math",
           "consumesModifier": true,
-          "insert": "10^{¶}",
-          "semanticId": "pow10",
+          "insert": "\\log_{¶}()",
+          "semanticId": "log_base",
           "printLegend": true
         },
         "alpha": {

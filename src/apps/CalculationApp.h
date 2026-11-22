@@ -249,6 +249,7 @@ private:
     enum class EntryStart : uint8_t { Fresh, ContinueFromAns };
     void startEntryAfterResult(EntryStart start);
     bool resultIsFresh() const;   ///< ENTER just showed an Ok result, untouched since
+    bool editorEmpty() const;     ///< root row holds no input (or only the Empty placeholder)
     void evaluateExpression();
     void showResult(vpam::NodePtr prepared = {});
     void clearResult();

@@ -246,6 +246,12 @@ void CalculationApp::resetExpression() {
 // expression (e.g. "2 ^ ENTER" -> parse error -> "neg 3 ENTER" = 2^-3).
 // ════════════════════════════════════════════════════════════════════════════
 
+bool CalculationApp::editorEmpty() const {
+    // resetExpression() leaves one Empty placeholder in the root row.
+    return _rootRow && (_rootRow->childCount() == 0 ||
+        (_rootRow->childCount() == 1 && _rootRow->child(0)->type() == vpam::NodeType::Empty));
+}
+
 bool CalculationApp::resultIsFresh() const {
     return _hasResult && _historyIndex < 0 &&
            _lastStatus == numos::MathEngineStatus::Ok;
@@ -659,8 +665,10 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
                 changed = false;
                 break;
             }
-            if (_hasResult || _historyIndex >= 0) {
-                // Navegar historial: ir a la entrada anterior
+            if (_hasResult || _historyIndex >= 0 ||
+                (editorEmpty() && !_history.empty())) {
+                // Navegar historial: ir a la entrada anterior. An empty
+                // editor (after AC) also recalls, instead of a dead caret move.
                 navigateHistory(-1);
                 changed = false;
             } else {
@@ -1205,6 +1213,13 @@ void CalculationApp::loadHistoryEntry(int index) {
         _reusePolicy=entry.reusePolicy;_sToDPolicy=entry.sToDPolicy;_fallbackReason=entry.fallbackReason;
         _quantity=entry.quantity;_quantityError=entry.quantityError;_outputUnit=output;_quantityView=std::move(view);
         showResult(std::move(visible));
+        // WHY: recalling the newest entry redraws the same expression and
+        // result, so UP looked dead. The title shows the recalled position.
+        char title[32];
+        std::snprintf(title,sizeof(title),"%s %d/%d",
+            numos::i18n::isSpanish(numos::i18n::productLocale)?"Historial":"History",
+            index+1,int(_history.size()));
+        _statusBar.setTitle(title);
 #if defined(__cpp_exceptions)
     }catch(const std::bad_alloc&){ui::StatusBar::showActiveNotice(numos::i18n::isSpanish(numos::i18n::productLocale)?"No se pudo recuperar la entrada":"Could not recover input");}
 #endif
@@ -1608,6 +1623,13 @@ bool CalculationApp::debugInput(const std::string& expected) const {
         return true;
     }
     if (expected == "no_result") return !_hasResult;
+    if (expected.compare(0,8,"history ")==0) {
+        const std::string want=expected.substr(8);
+        if (want=="none") return _historyIndex<0;
+        char actual[24]; std::snprintf(actual,sizeof(actual),"%d/%d",_historyIndex+1,int(_history.size()));
+        return _historyIndex>=0 && want==actual;
+    }
+    if (expected.compare(0,6,"title ")==0) return expected.substr(6)==_statusBar.title();
     unsigned unitId=0,prefixId=0,expectedCount=0;
     if (std::sscanf(expected.c_str(),"unit %u %u %u",&unitId,&prefixId,&expectedCount)==3) {
         std::array<const vpam::MathNode*,82> pending{};size_t size=1;pending[0]=_rootRow;unsigned matches=0;

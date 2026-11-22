@@ -1,0 +1,44 @@
+# calc_input_path_history_recall.numos — DEVICE-INPUT-PATH-01 (2.1).
+# Physical-path UP/DOWN history: the first UP after a result recalls the
+# calculation just shown (same expression, so the status-bar title is the
+# visible proof: "History n/N"); UP again goes back, DOWN forward, DOWN past
+# the newest returns to an empty editor; UP in an empty editor recalls.
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key 1
+key +
+key 1
+key exe
+wait 80
+key 2
+key +
+key 2
+key exe
+wait 80
+assert_calc_input title Calculation
+key up
+assert_calc_input history 2/2
+assert_calc_input title History 2/2
+key up
+assert_calc_input history 1/2
+assert_calc_input serialized 1+1
+assert_calc_exact 2
+key down
+assert_calc_input history 2/2
+assert_calc_input serialized 2+2
+key down
+assert_calc_input history none
+assert_calc_input no_result
+assert_calc_input title Calculation
+key up
+assert_calc_input history 2/2
+assert_calc_input serialized 2+2
+key ac
+key up
+assert_calc_input history 2/2
+key 7
+assert_calc_input title Calculation
+log "calc_input_path_history_recall: PASS"

@@ -1,0 +1,112 @@
+# calc_input_path_after_result_table.numos — DEVICE-INPUT-PATH-01 (2.1).
+# The after-result table run in order, as a user would, through the production
+# keypad path (`key` = matrix key -> KeySemanticResolver -> app; EXE resolves
+# to ENTER). History keeps growing between rows, so row 7 also proves that the
+# first UP recalls the calculation just shown, not an older one.
+# Assert-only (no screenshot, no golden).
+# Run: program --headless --deterministic --quiet --frames 2500 --script <this>
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+# 1: 5 EXE 7 EXE -> 7
+key 5
+key exe
+wait 80
+key 7
+key exe
+wait 80
+assert_calc_exact 7
+# 2: 2 EXE + 3 EXE -> Ans+3 = 5
+key 2
+key exe
+wait 80
+key +
+key 3
+assert_calc_input serialized numos_Ans+3
+key exe
+wait 80
+assert_calc_exact 5
+# 3: 2+3 EXE DEL 4 EXE -> 6
+key 2
+key +
+key 3
+key exe
+wait 80
+key del
+key 4
+key exe
+wait 80
+assert_calc_exact 6
+# 4: 3 EXE LEFT 5 EXE -> 53
+key 3
+key exe
+wait 80
+key left
+key 5
+key exe
+wait 80
+assert_calc_exact 53
+# 5: 3 EXE ) 5 EXE -> 53
+key 3
+key exe
+wait 80
+key )
+key 5
+key exe
+wait 80
+assert_calc_exact 53
+# 6: 2+3 EXE ) 7 EXE -> 72+3 = 75
+key 2
+key +
+key 3
+key exe
+wait 80
+key )
+key 7
+key exe
+wait 80
+assert_calc_exact 75
+# 7: 12+3 EXE UP LEFT LEFT 9 EXE -> 12+93 = 105 through recall
+key 1
+key 2
+key +
+key 3
+key exe
+wait 80
+assert_calc_input history none
+key up
+assert_calc_input history 13/13
+assert_calc_input serialized 12+3
+assert_calc_input title History 13/13
+key left
+key left
+key 9
+assert_calc_input serialized 12+93
+key exe
+wait 80
+assert_calc_exact 105
+# 8: ... 4 EXE -> 4 (a digit after the result starts a new entry)
+key 4
+key exe
+wait 80
+assert_calc_exact 4
+# 9: 1+1 EXE 2+2 EXE UP UP -> recalls 1+1
+key 1
+key +
+key 1
+key exe
+wait 80
+key 2
+key +
+key 2
+key exe
+wait 80
+key up
+assert_calc_input serialized 2+2
+key up
+assert_calc_input serialized 1+1
+assert_calc_input history 16/17
+assert_calc_input title History 16/17
+log "calc_input_path_after_result_table: PASS"

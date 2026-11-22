@@ -70,6 +70,7 @@ public:
 
     /** Establece el título centrado (nombre de la app activa). */
     void setTitle(const char* title);
+    const char* title() const { return _titleLabel ? lv_label_get_text(_titleLabel) : ""; }
 
     /** Nivel de batería visual (0-100). */
     void setBatteryLevel(uint8_t pct);

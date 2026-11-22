@@ -43,6 +43,7 @@
 #include <cstdint>
 #include <cstring>
 #endif
+#include "../BuildInfo.h"
 
 using namespace vpam;
 
@@ -233,6 +234,7 @@ void SettingsApp::end() {
         _container = nullptr;
         _hintLabel = nullptr;
         _brightnessSlider = nullptr;
+        _aboutLabel = nullptr;
         for (int i = 0; i < NUM_ITEMS; ++i) {
             _rows[i] = nullptr;
             _labels[i] = nullptr;
@@ -356,6 +358,41 @@ void SettingsApp::createUI() {
     lv_obj_remove_flag(_brightnessSlider, LV_OBJ_FLAG_CLICKABLE);
 #endif
 
+    // About (INTEGRATION-01): static build identity, not part of the focus
+    // cycle. Strings are literals from BuildInfo, set with _static: no heap.
+    {
+        const int aboutY = 6 + NUM_ITEMS * (ROW_H + ROW_GAP);
+        lv_obj_t* about = lv_obj_create(_container);
+        lv_obj_set_size(about, SCREEN_W - 2 * PAD, ABOUT_H);
+        lv_obj_set_pos(about, PAD, aboutY);
+        lv_obj_set_style_bg_opa(about, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_color(about, lv_color_hex(COL_BORDER), LV_PART_MAIN);
+        lv_obj_set_style_border_width(about, 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(about, 6, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(about, 0, LV_PART_MAIN);
+        lv_obj_remove_flag(about, LV_OBJ_FLAG_SCROLLABLE);
+
+        _aboutLabel = lv_label_create(about);
+        lv_obj_set_style_text_font(_aboutLabel, ui::tutorFont12(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(_aboutLabel, lv_color_hex(COL_TEXT), LV_PART_MAIN);
+        lv_obj_align(_aboutLabel, LV_ALIGN_LEFT_MID, 12, 0);
+
+        lv_obj_t* id = lv_label_create(about);
+        lv_label_set_text_static(id, numos::build::id());
+        lv_obj_set_style_text_font(id, ui::tutorFont12(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(id, lv_color_hex(COL_VALUE), LV_PART_MAIN);
+        lv_obj_align(id, LV_ALIGN_TOP_RIGHT, -12, 1);
+
+        lv_obj_t* env = lv_label_create(about);
+        lv_label_set_text_static(env, numos::build::environment());
+        lv_obj_set_width(env, SCREEN_W - 2 * PAD - 100);
+        lv_label_set_long_mode(env, LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_align(env, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+        lv_obj_set_style_text_font(env, ui::tutorFont12(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(env, lv_color_hex(COL_HINT), LV_PART_MAIN);
+        lv_obj_align(env, LV_ALIGN_BOTTOM_RIGHT, -12, -1);
+    }
+
     // Hint at bottom
     // Phase 7I: plain UI hint → lv_font_montserrat_14 (stix_math_18 has no U+0020
     // space glyph → tofu at every space). The LV_SYMBOL_UP/DOWN arrows
@@ -365,7 +402,7 @@ void SettingsApp::createUI() {
     _hintLabel = lv_label_create(_container);
     lv_obj_set_style_text_font(_hintLabel, ui::tutorFont12(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_hintLabel, lv_color_hex(COL_HINT), LV_PART_MAIN);
-    lv_obj_set_pos(_hintLabel, PAD, SCREEN_H - barH - 22);
+    lv_obj_set_pos(_hintLabel, PAD, SCREEN_H - barH - 17);
 
     lv_obj_set_style_text_font(_labels[LANGUAGE_ITEM],ui::tutorFont12(),0);
     lv_obj_set_style_text_font(_values[LANGUAGE_ITEM],ui::tutorFont12(),0);
@@ -405,6 +442,7 @@ void SettingsApp::updateValues() {
     static const char* labelsES[] = {"Unidad angular", "Números complejos", "Precisión decimal", "Modo paso a paso"};
     for (int i = 0; i < 4; ++i) lv_label_set_text(_labels[i], spanish ? labelsES[i] : labelsEN[i]);
     lv_label_set_text(_labels[LANGUAGE_ITEM], spanish ? "Idioma" : "Language");
+    if (_aboutLabel) lv_label_set_text_static(_aboutLabel, spanish ? "Acerca de" : "About");
     lv_label_set_text(_values[LANGUAGE_ITEM], localeDisplayName(productLocale));
     lv_obj_set_style_text_color(_values[LANGUAGE_ITEM], lv_color_hex(COL_VALUE), LV_PART_MAIN);
     updateHint();

@@ -47,13 +47,8 @@
 #error "The production demo profile is valid only for the WROOM-1U-N16R8 target"
 #endif
 
-#ifndef NUMOS_BUILD_COMMIT
-#define NUMOS_BUILD_COMMIT "unknown"
-#endif
-
-#ifndef NUMOS_BUILD_ENVIRONMENT
-#define NUMOS_BUILD_ENVIRONMENT "unknown"
-#endif
+// Build identity (commit, dirty flag, env): see BuildInfo.h. It is no longer a
+// global -D, so a new commit does not recompile every translation unit.
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 

@@ -8,6 +8,7 @@
 #include <esp_heap_caps.h>
 #include <lvgl.h>
 
+#include "../BuildInfo.h"
 #include "../SystemApp.h"
 #include "../display/DisplayDriver.h"
 #include "../display/ProductionDisplayRuntime.h"
@@ -191,7 +192,7 @@ void DemoDiagnostics::printInfo() const {
         numos::display::activeProductionDisplayProfile();
     NUMOS_SERIAL.printf(
         "[DIAG] commit=%s env=%s board=numos-esp32-s3-wroom-1u-n16r8\n",
-        NUMOS_BUILD_COMMIT, NUMOS_BUILD_ENVIRONMENT);
+        numos::build::id(), numos::build::environment());
     NUMOS_SERIAL.printf(
         "[DIAG] reset=%s safe=%u failures=%u phase=%u last_failure=%s "
         "last_app=%u launcher_ms=%u\n",

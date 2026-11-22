@@ -145,6 +145,7 @@
 #include "../ui/SplashScreen.h"
 #include "../ui/MainMenu.h"
 #include "../ui/StatusBar.h"              // Phase 5A: Math Showcase title bar
+#include "../BuildInfo.h"                 // INTEGRATION-01: [BOOT] identity line
 #include "../ui/MathRenderer.h"          // Phase 5A: MathCanvas (reuse, no geometry change)
 #include "../ui/MathTypography.h"        // Phase 5A: initMathTypography()
 #include "../math/MathRenderVisualCases.h" // Phase 5A: curated accepted expressions
@@ -4157,6 +4158,9 @@ static void scriptCaptureIfPending()
 static int emulatorInitialize(int argc, char** argv)
 {
     if (!parseArgs(argc, argv, g_opts)) return -1;  // --help → salida limpia
+    // INTEGRATION-01: same identity line as the firmware boot (also in --quiet).
+    std::printf("%s\n", numos::build::bootLine());
+    std::fflush(stdout);
 
     // Phase 4A: cargar y validar el script de entrada ANTES de inicializar SDL.
     // Un script malformado falla rapido (exit 2) sin tocar SDL/LVGL.

@@ -56,6 +56,8 @@ uint8_t setting_brightness = 96;
 #include "hardware/ProductionBringup.h"
 #endif
 
+#include "BuildInfo.h"
+
 #if NUMOS_PRODUCTION_DEMO_PROFILE
 #include "demo/DemoBootHealth.h"
 #include "demo/DemoDiagnostics.h"
@@ -162,12 +164,13 @@ void setup() {
     Serial.print(NUMOS_SERIAL_BACKEND_LABEL);
     Serial.println(")");
     Serial.println("=== NumOS Boot ===");
+    Serial.println(numos::build::bootLine());
 #if NUMOS_PRODUCTION_DEMO_PROFILE
     {
         const auto& health = numos::demo::bootHealthRecord();
         Serial.printf(
             "[BOOT] profile=demo commit=%s reset=%s failures=%u safe=%u\n",
-            NUMOS_BUILD_COMMIT,
+            numos::build::id(),
             numos::demo::resetClassName(health.lastReset),
             health.consecutiveFailures,
             numos::demo::safeModeActive());

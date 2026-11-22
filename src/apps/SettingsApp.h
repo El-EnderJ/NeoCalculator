@@ -66,8 +66,9 @@ private:
     static constexpr int SCREEN_H  = 240;
     static constexpr int PAD       = 12;
     static constexpr int ROW_H     =
-        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 28 : 34;
+        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 24 : 30;
     static constexpr int ROW_GAP   = 2;
+    static constexpr int ABOUT_H   = 30;   ///< static two-line build identity row
 
     lv_obj_t*       _screen;
     ui::StatusBar   _statusBar;
@@ -79,6 +80,7 @@ private:
     lv_obj_t*       _values[NUM_ITEMS];
     lv_obj_t*       _hintLabel;
     lv_obj_t*       _brightnessSlider;
+    lv_obj_t*       _aboutLabel = nullptr;  ///< "About" / "Acerca de" (not focusable)
 
     int             _focus;
     DisplayDriver*  _display;

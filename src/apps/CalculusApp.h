@@ -102,6 +102,7 @@ private:
     // ── LVGL widgets ─────────────────────────────────────────────────
     lv_obj_t*       _scr;
     ui::StatusBar   _statusBar;
+    KeyCode         _resultScrollKey = KeyCode::NONE;  ///< arrow whose held REPEATs keep scrolling the result
 
     // Mode tabs
     lv_obj_t*       _tabDerivative;  ///< Derivative mode

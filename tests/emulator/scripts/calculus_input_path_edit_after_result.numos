@@ -28,6 +28,13 @@ assert_modifier none
 key shift
 key left
 assert_calculus_state result
+# Holding the arrow keeps scrolling (its REPEATs stay in the result).
+key shift
+keydown down
+keyrepeat down
+keyrepeat down
+keyup down
+assert_calculus_state result
 key +
 assert_calculus_state editing
 key x

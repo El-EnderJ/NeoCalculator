@@ -757,7 +757,8 @@ void CalculusApp::handleKeyInput(const KeyEvent& ev) {
 // ────────────────────────────────────────────────────────────────────
 
 // Result scrolling rule (shared with CalculationApp): a result scrolls only with
-// SHIFT + arrow (SHIFT+LEFT/RIGHT horizontal, SHIFT+UP/DOWN vertical). Every
+// SHIFT + arrow (SHIFT+LEFT/RIGHT horizontal, SHIFT+UP/DOWN vertical), and keeps
+// scrolling while that arrow is held. Every
 // other editing key (digits, operators, functions, DEL, plain arrows) returns
 // to the editor of the current expression and is applied there, so no EXE is
 // needed first.
@@ -768,7 +769,13 @@ void CalculusApp::handleKeyResult(const KeyEvent& ev) {
     if (ev.code == KeyCode::ALPHA) { km.pressAlpha(); _statusBar.update(); return; }
     const bool arrow = ev.code == KeyCode::UP || ev.code == KeyCode::DOWN ||
                        ev.code == KeyCode::LEFT || ev.code == KeyCode::RIGHT;
-    if (arrow && km.isShift()) {
+    // Held arrow: REPEATs of the arrow that started a scroll keep scrolling;
+    // any new PRESS ends it.
+    const KeyCode heldScrollKey = _resultScrollKey;
+    if (ev.action == KeyAction::PRESS) _resultScrollKey = KeyCode::NONE;
+    if (arrow && (km.isShift() ||
+                  (ev.action == KeyAction::REPEAT && heldScrollKey == ev.code))) {
+        _resultScrollKey = ev.code;
         switch (ev.code) {
             case KeyCode::UP: lv_obj_scroll_by(_resultViewport, 0, 24, LV_ANIM_OFF); break;
             case KeyCode::DOWN: lv_obj_scroll_by(_resultViewport, 0, -24, LV_ANIM_OFF); break;

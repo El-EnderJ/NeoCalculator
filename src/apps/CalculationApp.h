@@ -167,6 +167,7 @@ private:
     bool _formatPickingUncertainty = false;
     std::unique_ptr<UnitOutputMenu> _unitMenu;
     KeyCode _formatSuppressed=KeyCode::NONE;
+    KeyCode _resultScrollKey=KeyCode::NONE;   ///< arrow whose held REPEATs keep scrolling the result
     uint8_t _fixedPlaces = 2;
     bool _angleResult = false;
     bool _resultInDegrees = false;

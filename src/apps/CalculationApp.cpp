@@ -299,6 +299,10 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
                 static_cast<int>(ev.code), static_cast<int>(ev.action));
 #endif
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
+    // Result scrolling continues while the arrow that started it is held:
+    // its REPEAT events keep scrolling; any new PRESS ends the scroll.
+    const KeyCode heldScrollKey = _resultScrollKey;
+    if (ev.action == KeyAction::PRESS) _resultScrollKey = KeyCode::NONE;
 
     // ── Step viewer active: intercept keys for scroll/back ──────────────
     if (_stepViewerActive) {
@@ -651,11 +655,14 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
 
         // ── Navegación ──
         // Result scrolling rule (shared with CalculusApp): a result scrolls
-        // only with SHIFT + arrow; plain LEFT/RIGHT always re-edit and plain
+        // only with SHIFT + arrow, and keeps scrolling while that arrow is
+        // held (its REPEATs); plain LEFT/RIGHT always re-edit and plain
         // UP/DOWN browse history. A wide result takes precedence, otherwise
         // SHIFT + LEFT/RIGHT exposes the wide authored expression.
         case KeyCode::LEFT:
-            if (_hasResult && km.isShift()) {
+            if (_hasResult && (km.isShift() ||
+                (ev.action == KeyAction::REPEAT && heldScrollKey == ev.code))) {
+                _resultScrollKey = ev.code;
                 (_resultCanvas.hasHorizontalOverflow() ? _resultCanvas : _mathCanvas).scrollBounded(20);
                 changed = false;
             } else {
@@ -666,7 +673,9 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             }
             break;
         case KeyCode::RIGHT:
-            if (_hasResult && km.isShift()) {
+            if (_hasResult && (km.isShift() ||
+                (ev.action == KeyAction::REPEAT && heldScrollKey == ev.code))) {
+                _resultScrollKey = ev.code;
                 (_resultCanvas.hasHorizontalOverflow() ? _resultCanvas : _mathCanvas).scrollBounded(-20);
                 changed = false;
             } else {
@@ -675,7 +684,9 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             }
             break;
         case KeyCode::UP:
-            if (_hasResult && km.isShift()) {
+            if (_hasResult && (km.isShift() ||
+                (ev.action == KeyAction::REPEAT && heldScrollKey == ev.code))) {
+                _resultScrollKey = ev.code;
                 // WHY: keep plain UP/DOWN for history. A tall result takes
                 // precedence; otherwise expose the tall authored expression.
                 (_resultCanvas.hasVerticalOverflow() ? _resultCanvas : _mathCanvas)
@@ -694,7 +705,9 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             }
             break;
         case KeyCode::DOWN:
-            if (_hasResult && km.isShift()) {
+            if (_hasResult && (km.isShift() ||
+                (ev.action == KeyAction::REPEAT && heldScrollKey == ev.code))) {
+                _resultScrollKey = ev.code;
                 (_resultCanvas.hasVerticalOverflow() ? _resultCanvas : _mathCanvas)
                     .scrollVerticalBounded(-20);
                 changed = false;

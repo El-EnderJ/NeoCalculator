@@ -22,17 +22,19 @@ env = dict(os.environ, NUMOS_CALC_INPUT_TRACE='1', PATH=
 records = []
 physical = {'P_FORMAT':(4,5),'P_ALPHA':(3,0),'P_SHIFT':(4,0),'P_LEFT':(3,1),'P_RIGHT':(1,1),'P_UP':(2,0),'P_DOWN':(2,1)}
 keys = lambda s: ''.join(('calc_physical %d %d\n' % physical[k]) if k in physical else 'key '+k+'\n' for k in s.split())
+# DEVICE-INPUT-PATH-01: a result scrolls with SHIFT + arrow; a plain arrow
+# re-edits the expression.
 cases = {
     'input-horizontal-pan': [('start', ' + '.join(str(i%9+1) for i in range(27))+' ENTER'), ('end', 'P_SHIFT P_RIGHT '*50), ('edge', 'P_SHIFT P_RIGHT '*10), ('back', 'P_SHIFT P_LEFT '*60)],
     'input-vertical-pan': [('start', '1 / '*12+'2 ENTER'), ('end', 'P_SHIFT P_DOWN '*30), ('edge', 'P_SHIFT P_DOWN '*10), ('back', 'P_SHIFT P_UP '*40)],
     'fraction-caret': [('start', '1 / '*12+'2'), ('end', 'LEFT')],
     'deep-root': [('start', 'SQRT '*14+'2')],
-    'exact-pan': [('start', '2 ^ 2 0 0 ENTER'), ('end', 'RIGHT '*120),
-                  ('edge', 'RIGHT '*10), ('back', 'LEFT '*120)],
-    'periodic-pan': [('start', '1 / 9 7 ENTER '+('sd' if a.baseline else 'P_SHIFT P_ALPHA P_FORMAT DOWN DOWN ENTER')), ('end', 'RIGHT '*120),
-                     ('edge', 'RIGHT '*10), ('back', 'LEFT '*120)],
-    'extended-bound': [('start', '1 / 7 ENTER '+('sd sd' if a.baseline else 'P_SHIFT P_ALPHA P_FORMAT DOWN DOWN DOWN ENTER')), ('end', 'RIGHT '*120),
-                       ('edge', 'RIGHT '*10), ('back', 'LEFT '*120)],
+    'exact-pan': [('start', '2 ^ 2 0 0 ENTER'), ('end', 'P_SHIFT P_RIGHT '*120),
+                  ('edge', 'P_SHIFT P_RIGHT '*10), ('back', 'P_SHIFT P_LEFT '*120)],
+    'periodic-pan': [('start', '1 / 9 7 ENTER '+('sd' if a.baseline else 'P_SHIFT P_ALPHA P_FORMAT DOWN DOWN ENTER')), ('end', 'P_SHIFT P_RIGHT '*120),
+                     ('edge', 'P_SHIFT P_RIGHT '*10), ('back', 'P_SHIFT P_LEFT '*120)],
+    'extended-bound': [('start', '1 / 7 ENTER '+('sd sd' if a.baseline else 'P_SHIFT P_ALPHA P_FORMAT DOWN DOWN DOWN ENTER')), ('end', 'P_SHIFT P_RIGHT '*120),
+                       ('edge', 'P_SHIFT P_RIGHT '*10), ('back', 'P_SHIFT P_LEFT '*120)],
 }
 for name, phases in cases.items():
     folder = a.out/name

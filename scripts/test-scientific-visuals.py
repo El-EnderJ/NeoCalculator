@@ -8,8 +8,10 @@ run('empty-template',keys('TOOLBOX')+search('measurement')+keys('ENTER')+shot('m
 run('constant-search',keys('TOOLBOX')+search('gravitational constant')+'assert_calc_input toolbox selected 16443 0\n'+shot('constant-search'))
 am=str(Fraction('5.29177210544e-11')*Fraction('9.1093837139e-31'))
 body=constant('Bohr radius',2)+keys('MUL')+constant('electron mass',3)+keys('ENTER')+check(am,am)+uncertainty(7.3474178868567063004e-51,2)
-body+=shot('correlated-start')+keys('RIGHT '*120)+check(am,am)+uncertainty(7.3474178868567063004e-51,2)+shot('correlated-end')
-body+=keys('RIGHT '*10)+shot('correlated-edge')+keys('LEFT '*120)+shot('correlated-return')
+# A result scrolls with SHIFT + arrow; a plain arrow re-edits the expression
+# (DEVICE-INPUT-PATH-01).
+body+=shot('correlated-start')+keys('SHIFT RIGHT '*120)+check(am,am)+uncertainty(7.3474178868567063004e-51,2)+shot('correlated-end')
+body+=keys('SHIFT RIGHT '*10)+shot('correlated-edge')+keys('SHIFT LEFT '*120)+shot('correlated-return')
 run('scientific-pan',body)
 body=keys('7 ENTER AC')
 for i in range(17):body+=(keys('ADD') if i else '')+measure('1','0.01')

@@ -1,0 +1,23 @@
+# calc_entry_after_result_digit_new.numos — INTEGRATION-01 entry after result.
+# Keys: 5 ENTER 7 ENTER -> new entry 7.
+# Rule: a digit typed right after ENTER starts a new entry; an operator
+# continues from Ans; caret navigation (LEFT/RIGHT/")"), DEL and history
+# recall end the fresh-result state, so later keys edit the shown input.
+# Assert-only (no screenshot, no golden).
+# Run: program --headless --deterministic --quiet --frames 1200 --script <this>
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key 5
+key enter
+wait 120
+key 7
+wait 3
+assert_calc_input serialized 7
+key enter
+wait 120
+assert_calc_exact 7
+log "calc_entry_after_result_digit_new: PASS"

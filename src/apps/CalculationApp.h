@@ -248,6 +248,7 @@ private:
     /// the result, so the key keeps editing the current expression.
     enum class EntryStart : uint8_t { Fresh, ContinueFromAns };
     void startEntryAfterResult(EntryStart start);
+    bool resultIsFresh() const;   ///< ENTER just showed an Ok result, untouched since
     void evaluateExpression();
     void showResult(vpam::NodePtr prepared = {});
     void clearResult();

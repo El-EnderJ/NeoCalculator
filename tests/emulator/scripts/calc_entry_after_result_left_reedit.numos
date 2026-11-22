@@ -1,0 +1,24 @@
+# calc_entry_after_result_left_reedit.numos — INTEGRATION-01 entry after result.
+# Keys: 3 ENTER LEFT 5 ENTER -> re-edit at the caret: 53.
+# Rule: a digit typed right after ENTER starts a new entry; an operator
+# continues from Ans; caret navigation (LEFT/RIGHT/")"), DEL and history
+# recall end the fresh-result state, so later keys edit the shown input.
+# Assert-only (no screenshot, no golden).
+# Run: program --headless --deterministic --quiet --frames 1200 --script <this>
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key 3
+key enter
+wait 120
+key left
+key 5
+wait 3
+assert_calc_input serialized 53
+key enter
+wait 120
+assert_calc_exact 53
+log "calc_entry_after_result_left_reedit: PASS"

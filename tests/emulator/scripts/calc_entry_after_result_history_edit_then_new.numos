@@ -1,0 +1,32 @@
+# calc_entry_after_result_history_edit_then_new.numos — INTEGRATION-01 entry after result.
+# Keys: 12+3 ENTER UP LEFT LEFT 9 ENTER 4 ENTER -> 4.
+# Rule: a digit typed right after ENTER starts a new entry; an operator
+# continues from Ans; caret navigation (LEFT/RIGHT/")"), DEL and history
+# recall end the fresh-result state, so later keys edit the shown input.
+# Assert-only (no screenshot, no golden).
+# Run: program --headless --deterministic --quiet --frames 1200 --script <this>
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key ac
+key 1
+key 2
+key +
+key 3
+key enter
+wait 120
+key up
+key left
+key left
+key 9
+key enter
+wait 120
+key 4
+wait 3
+assert_calc_input serialized 4
+key enter
+wait 120
+assert_calc_exact 4
+log "calc_entry_after_result_history_edit_then_new: PASS"

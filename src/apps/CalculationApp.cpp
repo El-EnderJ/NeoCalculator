@@ -236,13 +236,23 @@ void CalculationApp::resetExpression() {
 //
 // Without this, clearResult() only hid the result and the key was inserted at
 // the old cursor, so "2/6 ENTER sqrt 8 ENTER" evaluated (2/6)*sqrt(8).
-// LEFT/RIGHT/DEL deliberately bypass this to re-edit the previous expression.
+//
+// Only a *fresh* result starts a new entry: one that ENTER has just shown
+// (_historyIndex < 0). Caret navigation (LEFT/RIGHT/")"), DEL and history
+// recall (UP/DOWN, _historyIndex >= 0) end that state, so the next key edits
+// the shown expression at the caret: "3 ENTER LEFT 5" = 53 and
+// "12+3 ENTER UP LEFT LEFT 9" = 12+93.
 // An error is not a result: after one, keys keep completing/fixing the same
 // expression (e.g. "2 ^ ENTER" -> parse error -> "neg 3 ENTER" = 2^-3).
 // ════════════════════════════════════════════════════════════════════════════
 
+bool CalculationApp::resultIsFresh() const {
+    return _hasResult && _historyIndex < 0 &&
+           _lastStatus == numos::MathEngineStatus::Ok;
+}
+
 void CalculationApp::startEntryAfterResult(EntryStart start) {
-    if (!_hasResult || _lastStatus != numos::MathEngineStatus::Ok) {
+    if (!resultIsFresh()) {
         clearResult();
         return;
     }
@@ -623,6 +633,9 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
                 (km.isShift() ? _mathCanvas : _resultCanvas).scrollBounded(20);
                 changed = false;
             } else {
+                // Caret navigation leaves result view: the caret becomes
+                // visible and the next key edits the expression (no new entry).
+                clearResult();
                 _cursor.moveLeft();
             }
             break;
@@ -631,6 +644,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
                 (km.isShift() ? _mathCanvas : _resultCanvas).scrollBounded(-20);
                 changed = false;
             } else {
+                clearResult();
                 _cursor.moveRight();
             }
             break;

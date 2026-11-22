@@ -1,0 +1,29 @@
+# calc_input_path_nth_root.numos — DEVICE-INPUT-PATH-01 (2.4).
+# SHIFT + x^□ on the production keypad resolves to the semantic-only
+# nth_root_template; Calculation inserts the Toolbox indexed-root template
+# with the caret in the index slot: SHIFT x^□ 3 RIGHT 8 EXE -> 2.
+wait 200
+open_app Calculation
+wait 60
+set_angle_mode rad
+key ac
+key shift
+key pow
+assert_calc_input incomplete
+key 3
+key right
+key 8
+key exe
+wait 80
+assert_calc_exact 2
+# After a fresh result it starts a new entry, like the square-root key.
+key shift
+key pow
+key 4
+key right
+key 1
+key 6
+key exe
+wait 80
+assert_calc_exact 2
+log "calc_input_path_nth_root: PASS"

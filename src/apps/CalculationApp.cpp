@@ -383,6 +383,20 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
         refreshExpression();
         return;
     }
+    if (semantic == numos::input::SemanticId::nth_root_template) {
+        // SHIFT + x^□ on the production keypad: the same indexed-root
+        // template as Toolbox > Indexed root (caret in the index slot). Like
+        // the √ key, it starts a new entry after a fresh result.
+        startEntryAfterResult(EntryStart::Fresh);
+        auto degree = vpam::makeRow();
+        auto* degreeRow = static_cast<vpam::NodeRow*>(degree.get());
+        degreeRow->appendChild(vpam::makeEmpty());
+        _cursor.insertPrepared(vpam::makeRoot(nullptr, std::move(degree)), degreeRow);
+        _statusBar.update();
+        _mathCanvas.resetCursorBlink();
+        refreshExpression();
+        return;
+    }
     if (semantic == numos::input::SemanticId::pow10) {
         if (_cursor.insertPowerOfTen()) clearResult();
         _statusBar.update();

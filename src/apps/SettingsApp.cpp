@@ -381,16 +381,21 @@ void SettingsApp::createUI() {
         lv_label_set_text_static(id, numos::build::id());
         lv_obj_set_style_text_font(id, ui::tutorFont12(), LV_PART_MAIN);
         lv_obj_set_style_text_color(id, lv_color_hex(COL_VALUE), LV_PART_MAIN);
-        lv_obj_align(id, LV_ALIGN_TOP_RIGHT, -12, 1);
+        lv_obj_align(id, LV_ALIGN_TOP_RIGHT, -12, 0);
 
+        // One fixed line: "numos-esp32-s3-wroom-1u-n16r8" is wider than the
+        // old 196 px, so with auto height the label wrapped to two lines and
+        // its top (bottom-aligned) overlapped the id (measured on device:
+        // env y=185 above id y=189). Longer envs end in "..." instead.
         lv_obj_t* env = lv_label_create(about);
         lv_label_set_text_static(env, numos::build::environment());
-        lv_obj_set_width(env, SCREEN_W - 2 * PAD - 100);
+        lv_obj_set_size(env, SCREEN_W - 2 * PAD - 80,
+                        lv_font_get_line_height(ui::tutorFont12()));
         lv_label_set_long_mode(env, LV_LABEL_LONG_DOT);
         lv_obj_set_style_text_align(env, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
         lv_obj_set_style_text_font(env, ui::tutorFont12(), LV_PART_MAIN);
         lv_obj_set_style_text_color(env, lv_color_hex(COL_HINT), LV_PART_MAIN);
-        lv_obj_align(env, LV_ALIGN_BOTTOM_RIGHT, -12, -1);
+        lv_obj_align(env, LV_ALIGN_BOTTOM_RIGHT, -12, 0);
     }
 
     // Hint at bottom

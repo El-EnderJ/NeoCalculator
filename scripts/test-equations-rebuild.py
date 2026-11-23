@@ -49,7 +49,9 @@ SYSTEMS={
  'dependent':(['x + y = 2','2 * x + 2 * y = 4'],'all_values',[]),
  'conditional-family':(['x / x RIGHT = 1','y = y'],'all_values',[]),
  'rational-reordered':(['x - y = 0','x + y = 1'],'ok',[('x',0,'1/2'),('y',0,'1/2')]),
- 'nonlinear':(['x ^ 2 RIGHT = 1','y = x'],'unsupported',[]),
+ # Nonlinear systems are solved since CORRECTNESS-E2E-01 W5-F02/F03 (d947a5b):
+ # x^2 = 1, y = x -> (-1,-1), (1,1).
+ 'nonlinear':(['x ^ 2 RIGHT = 1','y = x'],'ok',[('x',0,'-1'),('y',0,'-1'),('x',1,'1'),('y',1,'1')]),
 }
 def oracle(status,values):
     s='assert_equations_status '+status+'\n'
